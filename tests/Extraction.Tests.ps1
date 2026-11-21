@@ -347,6 +347,15 @@ $wideWing = New-PdfBytes 'BT /F1 12 Tf <00350035> Tj ET' -Plain -FontDict '<< /T
     -ToUnicode 'begincmap 1 beginbfrange <0000> <FFFF> <0000> endbfrange endcmap'
 Assert-Equal '' (Get-TextFromBytes -Bytes $wideWing -FileName 'ww.pdf').Text.Trim() 'PDF: a 2-byte Wingdings font reads as spaces'
 
+# ---- A font's own glyph names (/Differences, the PAM 2026-11-21): standard names read, made-up names never ----
+$named = New-PdfBytes 'BT /F1 12 Tf (ABCD) Tj ET' -Plain -FontDict '<< /Type /Font /Subtype /Type1 /BaseFont /ABCDEF+Garamond /Encoding << /Differences [65 /S /eacute /seven /a.sc] >> >>'
+Assert-Equal ('S' + [char]0xE9 + '7a') (Get-TextFromBytes -Bytes $named -FileName 'n.pdf').Text.Trim() 'PDF: standard glyph names read (letter, accent, digit, suffix)'
+$madeUp = New-PdfBytes 'BT /F1 12 Tf (ABC) Tj ( end) Tj ET' -Plain -FontDict '<< /Type /Font /Subtype /Type1 /BaseFont /ABCDEF+X /Encoding 7 0 R >>' `
+    -Extra @('<< /Type /Encoding /Differences [65 /g1 /g2 /g3] >>')
+$madeUpRead = Get-TextFromBytes -Bytes $madeUp -FileName 'm.pdf'
+Assert-Equal 'end|True' ($madeUpRead.Text.Trim() + '|' + ($madeUpRead.Note -match 'could not be read')) `
+    'PDF: made-up glyph names (in an encoding object) read as spaces with a check-by-hand note; other codes as before'
+
 # ---- PDF review round 9 (2026-11-21): gaps decided per text block ----
 # Places text glyph by glyph as a PDF writer does: each move is the glyph's real Helvetica width at 12 pt plus the
 # letter spacing (in points).
