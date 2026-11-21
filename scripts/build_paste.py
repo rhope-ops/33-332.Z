@@ -4,7 +4,8 @@ PowerShell ISE and runs with F5 (AGENTS.md "Platform": paste and run, never an e
 
 Why: a gov computer runs pasted text in ISE, not downloaded files (ISSM ruling 2026-11-13). A pasted text loads no
 module file and runs no script file, so the execution policy does not apply to it.
-What it writes: paste/33332Z-pii-spot-check.ps1, in this order:
+What it writes: paste/33332Z-pii-spot-check.ps1 and the same text as paste/Ion-script.txt (the README links the .txt,
+because a .ps1 link causes trouble on gov computers; the PAM, 2026-11-21), in this order:
   1. a header (how to run first, then GENERATED, the sources with their SHA-256, Network/Writes/Credentials, a contents list);
   2. the Settings block: plain variables a person may set in ISE (site, results folder, file size limit);
   3. the seven modules of src/, inline (no Import-Module), in dependency order;
@@ -16,11 +17,11 @@ Inputs:  src/PiiDetectors.psm1, src/PiiMasking.psm1, src/OcrText.psm1, src/OleTe
          src/XlsxWriter.psm1, src/Report.psm1, src/ScanMeter.psm1,
          src/ChannelScan.psm1,
          src/Find-ChannelPII.ps1.
-Outputs: the bundle file; with --check, nothing: exit 1 when the committed bundle differs from a fresh build.
+Outputs: the two bundle files; with --check, nothing: exit 1 when either committed file differs from a fresh build.
 Usage:   python3 scripts/build_paste.py            build
          python3 scripts/build_paste.py --check    check (scripts/check.local.sh runs it)
 Network: none.
-Writes: paste/33332Z-pii-spot-check.ps1 (not with --check).
+Writes: paste/33332Z-pii-spot-check.ps1 and paste/Ion-script.txt (not with --check).
 Credentials: none.
 """
 
@@ -32,6 +33,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 BUNDLE = ROOT / 'paste' / '33332Z-pii-spot-check.ps1'
+# The same text as a .txt file: the README's links open it as plain text, with no .ps1 in the address.
+BUNDLE_TXT = ROOT / 'paste' / 'Ion-script.txt'
 MAIN = 'src/Find-ChannelPII.ps1'
 # Dependency order: each module uses only those listed before it (their headers say so).
 MODULES = ('src/PiiDetectors.psm1', 'src/PiiMasking.psm1', 'src/OcrText.psm1', 'src/OleText.psm1', 'src/ContainerText.psm1',
@@ -193,21 +196,22 @@ def build():
 
 
 def main():
-    """Build the bundle, or with --check compare it with the committed file. Exit 1 on a difference."""
+    """Build the two bundle files, or with --check compare them with the committed files. Exit 1 on a difference."""
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--check', action='store_true', help='fail when paste/ is not the fresh build')
     args = ap.parse_args()
     text = build()
-    if args.check:
-        if not BUNDLE.is_file() or BUNDLE.read_text(encoding='utf-8') != text:
-            print('PASTE FAIL: %s is not the fresh build; run python3 scripts/build_paste.py and commit it'
-                  % BUNDLE.relative_to(ROOT))
-            sys.exit(1)
-        print('PASTE PASS: %s is up to date' % BUNDLE.relative_to(ROOT))
-        return
-    BUNDLE.parent.mkdir(parents=True, exist_ok=True)
-    BUNDLE.write_text(text, encoding='utf-8', newline='\n')
-    print('PASTE BUILT: %s (%d lines)' % (BUNDLE.relative_to(ROOT), text.count('\n')))
+    for path in (BUNDLE, BUNDLE_TXT):
+        if args.check:
+            if not path.is_file() or path.read_text(encoding='utf-8') != text:
+                print('PASTE FAIL: %s is not the fresh build; run python3 scripts/build_paste.py and commit it'
+                      % path.relative_to(ROOT))
+                sys.exit(1)
+            print('PASTE PASS: %s is up to date' % path.relative_to(ROOT))
+            continue
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding='utf-8', newline='\n')
+        print('PASTE BUILT: %s (%d lines)' % (path.relative_to(ROOT), text.count('\n')))
 
 
 if __name__ == '__main__':
