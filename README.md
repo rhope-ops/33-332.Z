@@ -13,15 +13,14 @@ Keep your eyes on the files in local, network, and cloud directories you can acc
 
 <!-- site:key-facts -->
 <table>
-<tr><td><b>Universal:</b></td><td>Ion scans every type of file in the chosen directory.</td></tr>
+<tr><td><b>Universal:</b></td><td>Ion scans every type of file in the chosen directory</td></tr>
 <tr><td><b>Credentials:</b></td><td>CAC sign-on is needed to scan cloud directories</td></tr>
 <tr><td><b>Access:</b></td><td>Only sees what your account can see</td></tr>
-<tr><td><b>Read-only:</b></td><td>it makes no changes to anything it scans.</td></tr>
-<tr><td><b>Accountable:</b></td><td>see who added or changed PII, and when.</td></tr>
-<tr><td><b>Boundary:</b></td><td>nothing leaves DoD365; the export is saved to your computer.</td></tr>
-<tr><td><b>Verifiable:</b></td><td>inspect the commented code yourself within a .txt before execution.</td></tr>
-<tr><td><b>Accessible:</b></td><td>paste and run via ISE; no download, no admin rights, no policy change.</td></tr>
-<tr><td><b>Speed:</b></td><td>reads up to 8 files at once; each identical file is read only once</td></tr>
+<tr><td><b>Read-only:</b></td><td>it makes no changes to anything it scans</td></tr>
+<tr><td><b>Accountable:</b></td><td>see who added or changed PII, and when</td></tr>
+<tr><td><b>Boundary:</b></td><td>nothing leaves DoD365; the export is saved to your computer</td></tr>
+<tr><td><b>Verifiable:</b></td><td>inspect the commented code yourself within a .txt before execution</td></tr>
+<tr><td><b>Accessible:</b></td><td>paste and run via ISE; no download, no admin rights, no policy change</td></tr>
 </table>
 
 > Have concerns? Speak with your WCO.
@@ -62,7 +61,7 @@ The steps to run it are at the top of the script.
 
 | Not scanned | What to do |
 |---|---|
-| Channel posts and replies | Requires tenant admin rights. |
+| Channel posts and replies | Requires tenant admin rights |
 | Private and shared channels | Each has its own SharePoint site: run Ion again with that site's link |
 | Subsites | Run Ion again with the subsite's link |
 | A link to another folder inside a scanned drive folder | Listed as NOT SCANNED (a link can lead outside the folder): check it by hand |
