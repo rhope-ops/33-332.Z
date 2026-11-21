@@ -22,6 +22,7 @@ Set-StrictMode -Version 2.0
 # Old versions read per file with a hit, oldest first (a file with more is dated from the oldest ones read).
 $script:MaxVersionsRead = 30
 $script:NoHistory = 'Not recorded (no version history)'
+$script:MaybeEarlier = ' (an older version could not be read: it may have been added earlier)'
 $script:PartHistory = "Not recorded (not in the old versions read; check the file's version history by hand)"
 $script:DriveNoHistory = 'Not recorded (a drive keeps no file history)'
 
@@ -114,7 +115,10 @@ function Find-PiiAddedVersion {
         if ($text.Status -ne 'OK') { $complete = $false; continue }
         $found = @(Find-PiiInText $text.Text | ForEach-Object { Get-HitKey $_ })
         foreach ($key in @($open | Where-Object { $found -contains $_ })) {
-            $byHit[$key] = @{ AddedOn = (Get-DateText $version.Created); AddedBy = (Get-PersonText $version.CreatedBy) }
+            $on = Get-DateText $version.Created; $by = Get-PersonText $version.CreatedBy
+            # After a version that could not be read, this may not be the first one with the hit (review of PR 20).
+            if (-not $complete) { $on = 'by ' + $on; $by = $by + $script:MaybeEarlier }
+            $byHit[$key] = @{ AddedOn = $on; AddedBy = $by }
         }
         $open = @($open | Where-Object { -not $byHit.ContainsKey($_) })
     }

@@ -94,6 +94,14 @@ try {
         @(New-FakeVersion ([datetime]'2026-03-01') 'real.adder' $withSsn)
     $byHit = Find-PiiAddedVersion '/sites/x/Shared Documents/a.txt' 'a.txt' $hits $who
     Assert-Equal $true ($byHit[$hits[0].Detector + '|' + $hits[0].MaskedValue].AddedBy -match '^Not recorded') 'Who: past the versions read, who added it is not recorded'
+    # An older version that cannot be read: the later version with the SSN is named, marked "may have been added earlier".
+    $unreadable = New-FakeVersion ([datetime]'2026-01-01') 'unread.saver' $withSsn
+    $unreadable | Add-Member -MemberType ScriptMethod -Name OpenBinaryStream -Value { throw 'version not available' } -Force
+    $versionList = @($unreadable, (New-FakeVersion ([datetime]'2026-01-05') 'later.saver' $withSsn))
+    $byHit = Find-PiiAddedVersion '/sites/x/Shared Documents/a.txt' 'a.txt' $hits $who
+    $gapAdded = $byHit[$hits[0].Detector + '|' + $hits[0].MaskedValue]
+    $gapMarked = $gapAdded.AddedBy -match '^later\.saver \(an older version could not be read' -and $gapAdded.AddedOn -match '^by '
+    Assert-Equal $true $gapMarked 'Who: after an unread version, the credit says it may be earlier'
     $versionList = @()
     $byHit = Find-PiiAddedVersion '/sites/x/Shared Documents/a.txt' 'a.txt' $hits $who
     Assert-Equal 'first.saver' $byHit[$hits[0].Detector + '|' + $hits[0].MaskedValue].AddedBy 'Who: with no older version, the maker added it'

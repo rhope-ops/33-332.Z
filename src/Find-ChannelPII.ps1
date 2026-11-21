@@ -17,7 +17,7 @@
   Run target:  Windows PowerShell 5.1 (also PowerShell 7) with PnP.PowerShell 1.12.0. No other modules.
   Network:     only the one SharePoint site, or the one drive folder's server, given. Channel posts are not read (the PAM, 2026-11-20).
   Writes:      only the workbook in -OutputFolder (default Documents\Ion); nothing in Teams or SharePoint.
-  Credentials: the person's own CAC sign-in in the PnP sign-in window; nothing is stored or saved.
+  Credentials: the person's own CAC sign-in in the PnP sign-in window (a drive folder: the Windows logon); nothing is stored.
 
   Policy:      Read-only; one site only (no network reconnaissance); file content stays in memory; values
                masked (the PAM, 2026-11-20). No script file is collected or sent: script types are not

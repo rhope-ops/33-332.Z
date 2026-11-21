@@ -171,7 +171,7 @@ def header(sources, contents):
             '  Run target: Windows PowerShell 5.1 with PnP.PowerShell 1.12.0; no admin rights, no file to unblock.',
             '  Network: only the one site or drive folder given (a folder: through your Windows logon).',
             '  Writes: only the results workbook under $OutputFolder (default Documents\\Ion).',
-            '  Credentials: your own CAC sign-in in the PnP sign-in window; nothing is stored.',
+            '  Credentials: your own CAC sign-in in the PnP sign-in window (a drive folder: your Windows logon); nothing is stored.',
             '',
             '  Contents (line numbers of this file):']
     out += ['    line %5d  %s' % (line, title) for line, title in contents]

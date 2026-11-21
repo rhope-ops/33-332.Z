@@ -34,16 +34,16 @@
     src/Report.psm1, sha256 4c5c871cb5c5
     src/ScanMeter.psm1, sha256 2c2a5a750104
     src/ScanQueue.psm1, sha256 1ec233b97fc7
-    src/Accountability.psm1, sha256 8f985b071028
+    src/Accountability.psm1, sha256 3498d3d7744d
     src/ChannelScan.psm1, sha256 0a32b46dcc63
     src/DriveScan.psm1, sha256 27925138f3c7
-    src/Find-ChannelPII.ps1, sha256 7900bd04d77e
+    src/Find-ChannelPII.ps1, sha256 b2d6bfd7a72b
 
   Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.
   Run target: Windows PowerShell 5.1 with PnP.PowerShell 1.12.0; no admin rights, no file to unblock.
   Network: only the one site or drive folder given (a folder: through your Windows logon).
   Writes: only the results workbook under $OutputFolder (default Documents\Ion).
-  Credentials: your own CAC sign-in in the PnP sign-in window; nothing is stored.
+  Credentials: your own CAC sign-in in the PnP sign-in window (a drive folder: your Windows logon); nothing is stored.
 
   Contents (line numbers of this file):
     line    75  Settings
@@ -66,10 +66,10 @@
     line  4650  Module ScanMeter.psm1
     line  4915  Module ScanQueue.psm1
     line  5131  Module Accountability.psm1
-    line  5288  Module ChannelScan.psm1
-    line  5843  Module DriveScan.psm1
-    line  6073  Body of Find-ChannelPII.ps1
-    line  6182  Clean-up
+    line  5292  Module ChannelScan.psm1
+    line  5847  Module DriveScan.psm1
+    line  6077  Body of Find-ChannelPII.ps1
+    line  6186  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -5152,6 +5152,7 @@ Accountability.psm1 - who made and changed a file with PII, and who put the PII 
 # Old versions read per file with a hit, oldest first (a file with more is dated from the oldest ones read).
 $script:MaxVersionsRead = 30
 $script:NoHistory = 'Not recorded (no version history)'
+$script:MaybeEarlier = ' (an older version could not be read: it may have been added earlier)'
 $script:PartHistory = "Not recorded (not in the old versions read; check the file's version history by hand)"
 $script:DriveNoHistory = 'Not recorded (a drive keeps no file history)'
 
@@ -5244,7 +5245,10 @@ function Find-PiiAddedVersion {
         if ($text.Status -ne 'OK') { $complete = $false; continue }
         $found = @(Find-PiiInText $text.Text | ForEach-Object { Get-HitKey $_ })
         foreach ($key in @($open | Where-Object { $found -contains $_ })) {
-            $byHit[$key] = @{ AddedOn = (Get-DateText $version.Created); AddedBy = (Get-PersonText $version.CreatedBy) }
+            $on = Get-DateText $version.Created; $by = Get-PersonText $version.CreatedBy
+            # After a version that could not be read, this may not be the first one with the hit (review of PR 20).
+            if (-not $complete) { $on = 'by ' + $on; $by = $by + $script:MaybeEarlier }
+            $byHit[$key] = @{ AddedOn = $on; AddedBy = $by }
         }
         $open = @($open | Where-Object { -not $byHit.ContainsKey($_) })
     }
