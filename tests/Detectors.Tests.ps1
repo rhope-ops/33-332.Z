@@ -40,6 +40,7 @@ foreach ($word in @('Acct.No.', 'Ref.No.', 'REF.NO.', 'backup.config.', 'Ph.No.'
     Assert-Equal 0 @(Get-HitSummary ($word + $Sample.DodId) | Where-Object { $_ -like 'DoD ID/*' }).Count "No CAC name: $word"
 }
 Assert-Equal 'DoD ID/Low/******7890' ((Get-HitSummary ('DOE' + '.J.' + $Sample.DodId)) -join ',') 'CAC name with a one-letter first name'
+Assert-Equal 'Low' (@(Find-PiiInText "Name: Jane Doe signed $cacName$($Sample.DodId)" | Where-Object { $_.Detector -eq 'Name' })[0].Confidence) 'An e-signature DoD ID does not raise a name to High'
 # Review of PR 49: an unlabelled SSN next to a row number, a date, initials or an abbreviation is still found.
 $bareSsn = $Sample.Ssn -replace '-', ''
 foreach ($case in @("Row 12 $($Sample.Ssn) DOE JANE", "1 $($Sample.Ssn)", "$($Sample.Ssn) 05/12/1990", "SMITH, J.A. $($Sample.Ssn)",

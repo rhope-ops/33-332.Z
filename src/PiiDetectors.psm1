@@ -522,7 +522,9 @@ function Set-NameNearIdentifierHigh {
     foreach ($nameHit in @($Hits | Where-Object { $_.Detector -eq 'Name' })) {
         foreach ($other in $Hits) {
             $near = [Math]::Abs($other.Index - $nameHit.Index) -le $script:NameToIdentifierChars
-            if ($near -and $script:IdentifierTypes -contains $other.Detector) { $nameHit.Confidence = 'High'; break }
+            # An e-signature DoD ID (Low) does not raise a name: the name would be surer than the ID (review of PR 50).
+            $signatureId = $other.Detector -eq 'DoD ID' -and $other.Confidence -eq 'Low'
+            if ($near -and -not $signatureId -and $script:IdentifierTypes -contains $other.Detector) { $nameHit.Confidence = 'High'; break }
         }
     }
 }

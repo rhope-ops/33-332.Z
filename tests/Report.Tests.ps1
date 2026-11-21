@@ -175,7 +175,15 @@ $mixed = @([pscustomobject]@{ Detector = 'DoD ID'; Confidence = 'Low'; MaskedVal
     [pscustomobject]@{ Detector = 'SSN'; Confidence = 'High'; MaskedValue = '***-**-6789' })
 $byHit = & (Get-Module ScanQueue) { param($i, $h) Get-AddedByHit $i $h } $addedInfo $mixed
 $seen = ($looked -join ',') + '|' + $byHit['DoD ID|******7890'].AddedBy + '|' + $byHit['SSN|***-**-6789'].AddedBy
-Assert-Equal 'SSN|Not looked up|y' $seen 'History: read for the SSN only; the e-signature DoD ID is "Not looked up"'
+Assert-Equal 'SSN|Not recorded|y' $seen 'History: read for the SSN only; the e-signature DoD ID is not looked up'
 $looked.Clear()
 $null = & (Get-Module ScanQueue) { param($i, $h) Get-AddedByHit $i $h } $addedInfo @($mixed[0])
 Assert-Equal 0 $looked.Count 'History: a file with only an e-signature DoD ID reads no versions'
+# Review of PR 50: a labelled DoD ID with the same masked value keeps its history; no made-up account.
+$sameId = @([pscustomobject]@{ Detector = 'DoD ID'; Confidence = 'High'; MaskedValue = '******7890' },
+    [pscustomobject]@{ Detector = 'DoD ID'; Confidence = 'Low'; MaskedValue = '******7890' })
+$idInfo = @{ Added = { param($hits) @{ 'DoD ID|******7890' = @{ AddedOn = 'x'; AddedBy = 'a.one'; Note = '' } } } }
+$idByHit = & (Get-Module ScanQueue) { param($i, $h) Get-AddedByHit $i $h } $idInfo $sameId
+Assert-Equal 'a.one' $idByHit['DoD ID|******7890'].AddedBy 'History: the labelled DoD ID keeps its result'
+$notLooked = @([pscustomobject]@{ AddedBy = 'Not recorded'; Channel = 'Ops'; Item = 'sig.pdf'; Confidence = 'Low' })
+Assert-Equal 0 @(Get-AccountRows $notLooked).Count 'By account: an e-signature DoD ID makes no account row'

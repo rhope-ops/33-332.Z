@@ -18,8 +18,10 @@ ScanQueue.psm1 - turns the reader pool's results into report rows, in the order 
 
 Set-StrictMode -Version 2.0
 
-# The "PII first saved" cells of a hit whose version history is not read (an e-signature DoD ID).
-$script:NotLookedUp = 'Not looked up'
+# The "PII first saved" cells of a hit whose version history is not read (an e-signature DoD ID): "Not recorded", the
+# word the By account tab leaves out, so no account is made up (review of PR 50); the History note says why.
+$script:NotLookedUp = 'Not recorded'
+$script:NotLookedUpNote = 'Not looked up: a DoD ID in an e-signature; its version history is not read'
 
 function New-ScanQueue {
     <#
@@ -205,8 +207,10 @@ function Get-AddedByHit {
     $byHit = @{}
     if ($looked.Count -gt 0) { $byHit = & $Info.Added $looked }
     foreach ($hit in @($Hits | Where-Object { & $signature $_ })) {
-        $byHit[[string]$hit.Detector + '|' + [string]$hit.MaskedValue] = @{ AddedOn = $script:NotLookedUp; AddedBy = $script:NotLookedUp
-            Note = 'A DoD ID in an e-signature: the version history is not read for it' }
+        $key = [string]$hit.Detector + '|' + [string]$hit.MaskedValue
+        # The same masked value as a labelled DoD ID of this file keeps that one's history (review of PR 50).
+        if ($byHit.ContainsKey($key)) { continue }
+        $byHit[$key] = @{ AddedOn = $script:NotLookedUp; AddedBy = $script:NotLookedUp; Note = $script:NotLookedUpNote }
     }
     return $byHit
 }
