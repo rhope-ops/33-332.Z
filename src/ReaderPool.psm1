@@ -34,7 +34,7 @@ $script:LongPathAt = 240
 
 # The reader modules, in load order, for a development run (the bundle gives the reader block's text instead).
 $script:ReaderModules = @('PiiDetectors', 'PiiMasking', 'OcrText', 'OleText', 'ContainerText', 'PdfCore', 'PdfObjects', 'PdfFonts',
-    'PdfText', 'TextExtract', 'ReaderPool')
+    'PdfLayout', 'PdfText', 'TextExtract', 'ReaderPool')
 
 # The script each worker runs per job: it loads the reader code once per runspace, then reads one file.
 $script:PoolWorkerScript = @'

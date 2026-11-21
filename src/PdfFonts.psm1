@@ -33,6 +33,8 @@ $script:MaxWidthEntries = 65536
 
 # Per font: shown strings decoded and measured before (text and width in ems), up to this many each (speed).
 $script:MaxFontCache = 20000
+# Entries of what a line showed before they are summed (Compress-PdfShown).
+$script:MaxShownItems = 1024
 $script:MaxCacheKey = 256   # longer strings are rarely shown twice: not kept (memory)
 # Shown hex strings decoded before (speed): short tokens only, emptied when full.
 $script:ShownHex = New-Object 'System.Collections.Generic.Dictionary[string,string]'
@@ -300,6 +302,51 @@ function Get-PdfShownText {
     return (ConvertFrom-PdfGlyphs $Raw $Font)
 }
 
+function Compress-PdfShown {
+    <#
+    .SYNOPSIS
+      Keeps the list of what a line showed short: past $MaxShownItems entries, they become their width (one
+      number), so a line of millions of strings cannot hold gigabytes (fresh review r14).
+    .PARAMETER State
+      The text state.
+    #>
+    param([hashtable]$State)
+    if ($State.Shown.Count -lt $script:MaxShownItems) { return }
+    $sum = Get-PdfAdvance $State
+    $State.Shown.Clear()
+    $State.Shown.Add([double]$sum)
+}
+
+function Get-PdfAdvance {
+    <#
+    .SYNOPSIS
+      The width shown since the line's start, in text space units: the shown strings measured by their fonts, plus
+      TJ adjustments (kept as numbers).
+    .PARAMETER State
+      The text state.
+    .OUTPUTS
+      [double]
+    #>
+    param([hashtable]$State)
+    $sum = 0.0
+    $count = 0
+    foreach ($item in $State.Shown) {
+        if ((++$count % 2000) -eq 0) { Assert-PdfTime }
+        if ($item -is [double]) { $sum += $item; continue }
+        $font = $item[2]
+        $ems = 0.0
+        if ($font -and -not $font.Vertical -and $font.EmCache -and $font.EmCache.TryGetValue($item[0], [ref]$ems)) {
+            # Measured before (Get-PdfShowWidth's cache): the same sum without the call (speed).
+            $step = [Math]::Max(1, [int]$font.Bytes)
+            $glyphs = [Math]::Max(1, [int]($item[0].Length / $step))
+            $spaces = 0; if ($step -eq 1) { $spaces = $item[0].Length - $item[0].Replace(' ', '').Length }
+            $sum += ($ems * $item[3] + $item[4] * $glyphs + $item[5] * $spaces) * $item[6]
+        }
+        else { $sum += Get-PdfShowWidth $item[0] $item[1] $item[2] $item[3] $item[4] $item[5] $item[6] }
+    }
+    return $sum
+}
+
 function Get-PdfShowWidth {
     <#
     .SYNOPSIS
@@ -372,4 +419,4 @@ function Get-PdfTextWidth {
     return ($ems * $Size)
 }
 
-Export-ModuleMember -Function Get-PdfFonts, Get-PdfFontTable, ConvertFrom-PdfGlyphs, Get-PdfShowWidth, Get-PdfShownRaw, Get-PdfShownText
+Export-ModuleMember -Function Get-PdfFonts, Get-PdfFontTable, ConvertFrom-PdfGlyphs, Get-PdfShowWidth, Get-PdfShownRaw, Get-PdfShownText, Get-PdfAdvance, Compress-PdfShown

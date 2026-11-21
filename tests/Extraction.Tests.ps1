@@ -419,3 +419,37 @@ Assert-Equal $true (@(Find-PiiInText $openArray.Text | ForEach-Object { $_.Detec
 $shortRuns = (Get-GlyphRun 'SSN:' 3.6) + ' 0 -14 Td ' + (Get-GlyphRun '1234' 3.6)
 $shortRead = Get-TextFromBytes -Bytes (New-PdfBytes "BT /F1 12 Tf $shortRuns ET" -Plain) -FileName 'sr.pdf'
 Assert-Equal $true ($shortRead.Text -match 'SSN:' -and $shortRead.Text -match '1234') 'PDF: short letter-spaced lines keep their words'
+
+# ---- PDF review round 15 (2026-11-21) ----
+# An unclosed [ takes in the rest of the stream: its strings are still read, with a note.
+$unclosed = Get-TextFromBytes -Bytes (New-PdfBytes "BT /F1 12 Tf (Roster) Tj ET BT /F1 12 Tf [(x) TJ ET BT /F1 12 Tf (SSN: $($Sample.Ssn)) Tj ET" -Plain) -FileName 'uc.pdf'
+Assert-Equal $true ((@(Find-PiiInText $unclosed.Text | ForEach-Object { $_.Detector }) -contains 'SSN') -and $unclosed.Note -match 'unclosed') 'PDF: text after an unclosed [ is read, with a note'
+# Two initials and a word gap under a letter-spaced heading: the word gap stays a space.
+$initials = (Get-GlyphRun 'ROSTER LIST' 3.6) + " 0 -14 Td (Y) Tj 10.272 0 Td (N) Tj 12.264 0 Td ($($Sample.Ssn)) Tj"
+$initialsRead = Get-TextFromBytes -Bytes (New-PdfBytes "BT /F1 12 Tf $initials ET" -Plain) -FileName 'in.pdf'
+Assert-Equal $true (@(Find-PiiInText $initialsRead.Text | ForEach-Object { $_.Detector }) -contains 'SSN') 'PDF: a word gap after initials under a spaced heading stays a space'
+# ---- PDF review round 16 (2026-11-21) ----
+# An unclosed [ before a later, closed one: its text is read, with a note; its lines stay apart.
+$twoArrays = Get-TextFromBytes -Bytes (New-PdfBytes "BT /F1 12 Tf [(SSN: $($Sample.Ssn)) TJ ET BT /F1 12 Tf [(ok)] TJ ET" -Plain) -FileName 'ta.pdf'
+$twoFound = @(Find-PiiInText $twoArrays.Text | ForEach-Object { $_.Detector }) -contains 'SSN'
+Assert-Equal $true ($twoFound -and $twoArrays.Note -match 'unclosed') 'PDF: an unclosed [ before a closed one is read, with a note'
+$moves = Get-TextFromBytes -Bytes (New-PdfBytes "BT /F1 12 Tf [(Name) TJ 0 -14 Td (SSN: $($Sample.Ssn)) Tj 0 -14 Td (2024) Tj ET" -Plain) -FileName 'mv.pdf'
+Assert-Equal $true (@(Find-PiiInText $moves.Text | ForEach-Object { $_.Detector }) -contains 'SSN') 'PDF: moves after an unclosed [ still break lines'
+# ---- PDF review round 17 (2026-11-21) ----
+# An empty [ closed by an operator: every string that follows is read by the bare TJ.
+$emptyOpen = Get-TextFromBytes -Bytes (New-PdfBytes "BT /F1 12 Tf [ 0 Tc (SSN: $($Sample.Ssn)) ( end)] TJ ET" -Plain) -FileName 'eo.pdf'
+Assert-Equal $true (@(Find-PiiInText $emptyOpen.Text | ForEach-Object { $_.Detector }) -contains 'SSN') 'PDF: strings after an empty unclosed [ are all read'
+# A marked-content property list with true in an array: well formed, so no note and no extra text.
+$property = Get-TextFromBytes -Bytes (New-PdfBytes "/P << /A [(lbl) true] >> BDC BT /F1 12 Tf (Body) Tj ET EMC" -Plain) -FileName 'pl.pdf'
+Assert-Equal 'Body|' ($property.Text.Trim() + '|' + $property.Note) 'PDF: true inside an array is a value, not an operator'
+# ---- PDF review round 18 (2026-11-21) ----
+# Stray strings or arrays next to a show operator's own operand: every one is read, with a note.
+foreach ($stray in @("[(SSN: $($Sample.Ssn))] (x) TJ", "(SSN: $($Sample.Ssn)) [(x)] TJ", "[(SSN: $($Sample.Ssn))] [(x)] TJ", "(SSN: $($Sample.Ssn)) (x) Tj")) {
+    $strayRead = Get-TextFromBytes -Bytes (New-PdfBytes "BT /F1 12 Tf $stray ET" -Plain) -FileName 'st.pdf'
+    $strayFound = @(Find-PiiInText $strayRead.Text | ForEach-Object { $_.Detector }) -contains 'SSN'
+    Assert-Equal $true ($strayFound -and $strayRead.Note -match 'stray') ('PDF: stray operands read, with a note: ' + $stray.Substring($stray.Length - 2))
+}
+# ---- PDF review round 19 (2026-11-21) ----
+# A TJ whose array is its last operand is the usual case (no note), also with a stray number before it.
+$usualTj = Get-TextFromBytes -Bytes (New-PdfBytes "BT /F1 12 Tf 5 [(Stray) -50 (Num)] TJ ET" -Plain) -FileName 'ut.pdf'
+Assert-Equal '' $usualTj.Note 'PDF: a TJ with its array last is the usual case'

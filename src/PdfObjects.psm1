@@ -61,6 +61,12 @@ function Get-PdfStringError {
     return $script:PdfStringError
 }
 
+function Stop-PdfHostile {
+    # Ends the read of a PDF with more operands or array entries than any real one has: it is reported as NOT SCANNED
+    # ("part could not be read"), so a hostile file cannot hold gigabytes (reviews r14, r18).
+    throw (New-Object System.FormatException (Get-PdfStringError))
+}
+
 function Reset-PdfOldObjects {
     # Forgets the older object versions of the last PDF (Get-PdfText, before each PDF).
     $script:PdfOldObjects.Clear()
@@ -351,4 +357,4 @@ function Get-PdfXfaText {
 }
 
 Export-ModuleMember -Function Get-PdfObjects, ConvertFrom-PdfString, ConvertFrom-PdfTextString, Assert-PdfGap, Get-PdfDictText, Get-PdfXfaText, Get-PdfStringPattern,
-Get-PdfStringError, Reset-PdfOldObjects, Get-PdfOldObjects
+Get-PdfStringError, Stop-PdfHostile, Reset-PdfOldObjects, Get-PdfOldObjects
