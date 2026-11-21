@@ -4,6 +4,7 @@ A record, read on demand: a decision binds the task or thing it names. A decisio
 
 | Date | Decision | By | Replaces |
 |---|---|---|---|
+| 2026-11-21 | Ion accountability: when PII was removed from a SharePoint file and later put back, "PII added by" also names who put it back and when ("put back by <e-mail> on <date>", up to 3, then a count), from the version history (the PAM: "Yes", in this chat). Scope: the Ion report. | the PAM | — |
 | 2026-11-21 | One script link (the PAM, in chat): the README and the site show only "Open the script", which opens paste/Ion-script.txt (the site in a new tab). The site's Copy button, its clipboard script and the .ps1 fetch are removed. Scope: README.md, index.html. | the PAM | the Copy link of the README script links row of 2026-11-21 and the site's two buttons |
 | 2026-11-21 | README script links (the PAM, in chat): "Open the script" opens a .txt, not a .ps1 (a .ps1 causes serious issues on gov computers). scripts/build_paste.py also writes the bundle as paste/Ion-script.txt; both README links (Copy and Open) go to the .txt. Scope: README.md, scripts/build_paste.py, paste/. | the PAM | the .ps1 links of the README row of 2026-11-21 |
 | 2026-11-21 | README merge now (the PAM, in chat): put the README from "The site as a README" tab on main now, without waiting for network-drives; the PAM sets aside whether its text matches what the script does today. Scope: README.md (PR 21). | the PAM | "The pull request merges only after network-drives" in the README rebuilt row of 2026-11-21 |

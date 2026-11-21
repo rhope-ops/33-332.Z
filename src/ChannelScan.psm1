@@ -41,6 +41,8 @@ $script:Timing = @{ Download = [TimeSpan]::Zero; Check = [TimeSpan]::Zero }
 
 # How the report and the screen name the files at the top of the library (in no folder).
 $script:RootGroupName = '(top of the library)'
+# A drive folder: X:\<folder> (a mapped drive) or \\<server>\<share>\<folder> (UNC), with or without quotes.
+$script:DrivePathPattern = '^"?(?:[A-Za-z]:\\|\\\\[^\\/\s]+\\[^\\/]+)'
 
 # Office types that SharePoint opens by file ID (Doc.aspx?sourcedoc=): the link for a file whose path holds PII.
 $script:IdLinkExtensions = @('.docx', '.docm', '.doc', '.xlsx', '.xlsm', '.xls', '.pptx', '.pptm', '.ppt')
@@ -104,18 +106,20 @@ function Get-ScanTarget {
     .PARAMETER Address
       The Teams link or the site address.
     .OUTPUTS
-      [pscustomobject] GroupId ([guid] from a Teams link, else $null), SiteUrl (the site, else '') and
-      IsChannel (true for a channel's link).
+      [pscustomobject] GroupId ([guid] from a Teams link, else $null), SiteUrl (the site, else ''), IsChannel
+      (true for a channel's link) and DrivePath (a drive or network folder, else '').
     #>
     param([string]$Address)
+    # A folder on a mapped drive (X:\...) or a network share (\\server\share\...): scanned by DriveScan.psm1.
+    if ($Address -match $script:DrivePathPattern) { return [pscustomobject]@{ GroupId = $null; SiteUrl = ''; IsChannel = $false; DrivePath = $Address.Trim('"') } }
     $link = [regex]::Match((Add-UrlScheme $Address), $script:TeamsLinkPattern, 'IgnoreCase')
     if ($link.Success) {
-        return [pscustomobject]@{ GroupId = [guid]$link.Groups['id'].Value; SiteUrl = ''; IsChannel = ($link.Groups['kind'].Value -ieq 'channel') }
+        return [pscustomobject]@{ GroupId = [guid]$link.Groups['id'].Value; SiteUrl = ''; IsChannel = ($link.Groups['kind'].Value -ieq 'channel'); DrivePath = '' }
     }
     if ($Address -match '/l/(team|channel)/') {
         throw 'This Teams link has no groupId. In Teams: the ... next to the team or channel name > Copy link.'
     }
-    return [pscustomobject]@{ GroupId = $null; SiteUrl = (Test-TeamSiteUrl $Address); IsChannel = $false }
+    return [pscustomobject]@{ GroupId = $null; SiteUrl = (Test-TeamSiteUrl $Address); IsChannel = $false; DrivePath = '' }
 }
 
 function Assert-SiteGroup {
@@ -392,37 +396,13 @@ function Get-RootFiles {
     }
 }
 
-function Read-FileText {
-    <#
-    .SYNOPSIS
-      Downloads one file and reads its text, showing the per-file bar and counting the time of each part.
-    .PARAMETER Ref
-      The file's server-relative path.
-    .PARAMETER Name
-      The file name (its extension decides how it is read).
-    .PARAMETER Size
-      The file size in bytes (for the per-file bar).
-    .PARAMETER Clock
-      A running stopwatch; restarted here, so the caller can time the PII check after it.
-    .OUTPUTS
-      Output of Get-TextFromBytes.
-    #>
-    param([string]$Ref, [string]$Name, [long]$Size, $Clock)
-    Write-FileStep $Size 'Downloading' 10
-    $bytes = Get-FileBytes $Ref
-    $script:Timing.Download += $Clock.Elapsed
-    Write-FileStep $Size 'Reading the text' 50
-    $Clock.Restart()
-    $text = Get-TextFromBytes -Bytes $bytes -FileName $Name
-    $script:Timing.Check += $Clock.Elapsed
-    return $text
-}
-
 function Invoke-OneFileScan {
     <#
     .SYNOPSIS
-      Scans one file: its name, then its text. Adds report rows. Unsupported, too large, damaged
-      or blocked files get a NOT SCANNED row instead.
+      Starts one file: a hit for PII in its name, then a NOT SCANNED row (unsupported, too large, download failed)
+      or its download, handed to the readers (its text rows follow when a worker finishes).
+    .PARAMETER Queue
+      Output of New-ScanQueue.
     .PARAMETER File
       The list item.
     .PARAMETER Channel
@@ -433,12 +413,11 @@ function Invoke-OneFileScan {
       https://<host>
     .PARAMETER MaxFileMB
       The size limit.
-    .PARAMETER Rows
-      The list that receives the rows.
     .OUTPUTS
-      [int] 1 when the file's text was scanned, else 0.
+      [bool] true when the file went to the readers (else its rows are in and it still needs counting).
     #>
-    param($File, [string]$Channel, [string]$Prefix, [string]$Origin, [int]$MaxFileMB, $Rows)
+    param([hashtable]$Queue, $File, [string]$Channel, [string]$Prefix, [string]$Origin, [int]$MaxFileMB)
+    $rows = $Queue.Rows
     $name = Get-FieldValue $File 'FileLeafRef'
     $ref = Get-FieldValue $File 'FileRef'
     $rawChannel = $Channel
@@ -449,39 +428,36 @@ function Invoke-OneFileScan {
     $item = Get-ShownItem $rawChannel $rawItem
     $link = Get-SafeLink $Origin $ref (Get-FieldValue $File 'UniqueId')
     foreach ($hit in @(Find-PiiInText ($rawChannel + '/' + $rawItem))) {
-        $Rows.Add((New-ReportRow 'File name' $Channel $item $link $modified $hit.Detector $hit.Confidence $hit.MaskedValue 'In the file or folder name'))
+        $rows.Add((New-ReportRow 'File name' $Channel $item $link $modified $hit.Detector $hit.Confidence $hit.MaskedValue 'In the file or folder name'))
     }
     $size = 0L
     [void][long]::TryParse((Get-FieldValue $File 'File_x0020_Size'), [ref]$size)
     $skipReason = ''
     if (-not (Test-SupportedFile $name)) { $skipReason = 'File type is not read by this script: check by hand' }
     elseif ($size -gt ($MaxFileMB * 1MB)) { $skipReason = "Larger than $MaxFileMB MB: check by hand" }
-    if ($skipReason) { $Rows.Add((New-ReportRow 'File' $Channel $item $link $modified 'NOT SCANNED' '' '' $skipReason)); return 0 }
+    if ($skipReason) { $rows.Add((New-ReportRow 'File' $Channel $item $link $modified 'NOT SCANNED' '' '' $skipReason)); return $false }
     $clock = [Diagnostics.Stopwatch]::StartNew()
-    try { $text = Read-FileText $ref $name $size $clock }
+    Write-FileStep $size 'Downloading' 30
+    try { $bytes = Get-FileBytes $ref }
     catch {
         # One file that cannot be downloaded must not stop the scan: note it and go on.
         $reason = Protect-PiiText ('Download failed: ' + $_.Exception.Message)
-        $Rows.Add((New-ReportRow 'File' $Channel $item $link $modified 'NOT SCANNED' '' '' $reason)); return 0
+        $rows.Add((New-ReportRow 'File' $Channel $item $link $modified 'NOT SCANNED' '' '' $reason)); return $false
     }
-    if ($text.Status -ne 'OK') { $Rows.Add((New-ReportRow 'File' $Channel $item $link $modified 'NOT SCANNED' '' '' (Protect-PiiText $text.Reason))); return 0 }
-    # A file read in part (a PDF over a cap, damaged, or with attachments): a "check by hand" row next to its hits.
-    if ($text.Note) { $Rows.Add((New-ReportRow 'File' $Channel $item $link $modified 'NOT SCANNED' '' '' (Protect-PiiText $text.Note))) }
-    Write-FileStep $size 'Checking for PII' 80
-    $clock.Restart()
-    foreach ($hit in @(Find-PiiInText $text.Text)) {
-        $Rows.Add((New-ReportRow 'File' $Channel $item $link $modified $hit.Detector $hit.Confidence $hit.MaskedValue $hit.Context))
-    }
-    # No @() here: @() around an empty generic list property fails in PowerShell ("Argument types do not match").
-    if ($null -ne $text.Parts) { foreach ($part in $text.Parts) { Add-PartRows $part $Channel $item $link $modified $Rows } }
-    $script:Timing.Check += $clock.Elapsed
-    return 1
+    finally { $script:Timing.Download += $clock.Elapsed; Write-Progress -Id 2 -Activity 'This file' -Completed }
+    # The main thread downloads the next file while workers read this one (speed, the PAM 2026-11-21).
+    # Accountability: who made and changed the file; for a file with a hit, who added each hit (version history).
+    $who = Get-SharePointWho $File
+    $who.Modified = $modified
+    $added = { param($hits) Find-PiiAddedVersion $ref $name $hits $who }.GetNewClosure()
+    Submit-ScanFile $Queue @{ Channel = $Channel; Item = $item; Link = $link; Modified = $modified; Who = $who; Added = $added } $name $bytes ''
+    return $true
 }
 
 function Get-ScanTiming {
     # The time of the last file scan spent downloading and spent reading and checking, as minutes:seconds text.
     $format = { param($t) '{0:00}:{1:00}' -f [int][Math]::Floor($t.TotalMinutes), $t.Seconds }
-    [ordered]@{ 'Time downloading' = (& $format $script:Timing.Download); 'Time reading and checking' = (& $format $script:Timing.Check) }
+    [ordered]@{ 'Time downloading' = (& $format $script:Timing.Download); 'Time reading and checking (all workers)' = (& $format $script:Timing.Check) }
 }
 
 function Get-ScanGroups {
@@ -498,7 +474,7 @@ function Get-ScanGroups {
       [pscustomobject] Name, Prefix, Files; a group without files is kept only when it is a folder.
     #>
     param($Library, [string[]]$Folders, [string]$Label)
-    $fields = @('FileLeafRef', 'FileRef', 'FSObjType', 'File_x0020_Size', 'Modified', 'UniqueId')
+    $fields = @('FileLeafRef', 'FileRef', 'FSObjType', 'File_x0020_Size', 'Modified', 'UniqueId', 'Created', 'Author', 'Editor')
     $allItems = @(Get-PnPListItem -List $Library.List -PageSize $script:ListPageSize -Fields $fields -ErrorAction Stop)
     foreach ($folder in $Folders) {
         $prefix = $Library.ServerRelativeUrl + '/' + $folder + '/'
@@ -525,10 +501,12 @@ function Invoke-FileScan {
       Files larger than this are reported as NOT SCANNED.
     .PARAMETER Rows
       The list that receives the rows.
+    .PARAMETER Init
+      How the reader workers load their code (New-ReaderPool).
     .OUTPUTS
       [int] the number of files whose text was scanned.
     #>
-    param($Library, [string[]]$Channels, [string]$SiteUrl, [int]$MaxFileMB, $Rows)
+    param($Library, [string[]]$Channels, [string]$SiteUrl, [int]$MaxFileMB, $Rows, [hashtable]$Init)
     $origin = ([uri]$SiteUrl).GetLeftPart([System.UriPartial]::Authority)
     $script:Timing = @{ Download = [TimeSpan]::Zero; Check = [TimeSpan]::Zero }
     $libraries = @($Library)
@@ -546,24 +524,13 @@ function Invoke-FileScan {
     Write-Ui ('==== Scanning {0} files in {1} folders ====' -f $total, $groups.Count) 'Title'
     $meter = New-ScanMeter $total
     $meter.NameWidth = Get-NameWidth @($groups | ForEach-Object { Protect-PiiName $_.Name })
-    for ($c = 0; $c -lt $groups.Count; $c++) {
-        $group = $groups[$c]
-        $shownChannel = Protect-PiiName $group.Name   # the progress bar is on screen too
-        $before = $meter.Clone()
-        foreach ($file in $group.Files) {
-            # The file in work, with PII masked (the PAM, 2026-11-20: a slow file is then visible).
-            $shownFile = Get-ShownItem $group.Name ((Get-FieldValue $file 'FileRef').Substring($group.Prefix.Length))
-            Write-Progress -Id 1 -Activity ("Scanning files - folder {0} of {1}: '{2}'" -f ($c + 1), $groups.Count, $shownChannel) `
-                -Status (Get-ScanMeterText $meter 'file') -PercentComplete (Get-MeterPercent $meter) -CurrentOperation ('Now: ' + $shownFile)
-            $firstRow = $Rows.Count
-            $read = Invoke-OneFileScan $file $group.Name $group.Prefix $origin $MaxFileMB $Rows
-            Write-Progress -Id 2 -Activity 'This file' -Completed
-            Update-ScanMeter $meter $Rows $firstRow $read
-            Write-MeterLine $meter 'file'   # the running total, at most every $LiveLineSeconds (a long folder does not look hung)
-        }
-        Write-ChannelLine $group.Name $before $meter 'file'
-    }
-    Write-Progress -Id 1 -Activity 'Scanning files' -Completed
+    $queue = New-ScanQueue $Init $Rows $meter
+    # Starts one file of a group (Invoke-GroupScan calls it); then the file's masked path for the progress bar.
+    $start = { param($group, $file) Invoke-OneFileScan $queue $file $group.Name $group.Prefix $origin $MaxFileMB }
+    # The file's masked path inside its folder, for the progress bar.
+    $shown = { param($group, $file) Get-ShownItem $group.Name ((Get-FieldValue $file 'FileRef').Substring($group.Prefix.Length)) }
+    try { Invoke-GroupScan $queue $groups $start $shown }
+    finally { $script:Timing.Check = Close-ScanQueue $queue }
     # The folder rows form one table; the total closes it, under a rule.
     Write-RuleLine
     Write-MeterLine $meter 'file' -Force
@@ -587,4 +554,4 @@ function Test-TeamSite {
 }
 
 Export-ModuleMember -Function Test-TeamSiteUrl, Get-ScanTarget, Read-ScanTarget, ConvertTo-FriendlyError, Connect-TeamSite, Get-SiteDocumentLibraries, Get-ChannelFolderNames,
-Invoke-FileScan, Get-ScanTiming, Test-TeamSite
+Invoke-FileScan, Get-ScanTiming, Test-TeamSite, Get-ShownItem

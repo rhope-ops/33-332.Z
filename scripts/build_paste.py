@@ -8,15 +8,13 @@ What it writes: paste/33332Z-pii-spot-check.ps1 and the same text as paste/Ion-s
 because a .ps1 link causes trouble on gov computers; the PAM, 2026-11-21), in this order:
   1. a header (how to run first, then GENERATED, the sources with their SHA-256, Network/Writes/Credentials, a contents list);
   2. the Settings block: plain variables a person may set in ISE (site, results folder, file size limit);
-  3. the seven modules of src/, inline (no Import-Module), in dependency order;
+  3. the modules of src/, inline (no module file is loaded), in dependency order: the reader modules inside one
+     script block ($IonReaderBlock), loaded as an in-memory module by the script and by each reader worker
+     (ReaderPool.psm1 gets the block's text as $IonWorkerInit), then the scan and report modules;
   4. the body of src/Find-ChannelPII.ps1 (from its "# ==== Body ====" line to the end);
   5. a Clean-up block: parts 3 and 4 run inside try/finally, which turns strict mode off and puts the ISE session's
      error setting back when the run ends.
-Inputs:  src/PiiDetectors.psm1, src/PiiMasking.psm1, src/OcrText.psm1, src/OleText.psm1, src/ContainerText.psm1,
-         src/PdfCore.psm1, src/PdfObjects.psm1, src/PdfFonts.psm1, src/PdfLayout.psm1, src/PdfText.psm1, src/TextExtract.psm1,
-         src/XlsxWriter.psm1, src/Report.psm1, src/ScanMeter.psm1,
-         src/ChannelScan.psm1,
-         src/Find-ChannelPII.ps1.
+Inputs:  the files in READERS and MODULES below (src/*.psm1) and src/Find-ChannelPII.ps1.
 Outputs: the two bundle files; with --check, nothing: exit 1 when either committed file differs from a fresh build.
 Usage:   python3 scripts/build_paste.py            build
          python3 scripts/build_paste.py --check    check (scripts/check.local.sh runs it)
@@ -37,10 +35,22 @@ BUNDLE = ROOT / 'paste' / '33332Z-pii-spot-check.ps1'
 BUNDLE_TXT = ROOT / 'paste' / 'Ion-script.txt'
 MAIN = 'src/Find-ChannelPII.ps1'
 # Dependency order: each module uses only those listed before it (their headers say so).
-MODULES = ('src/PiiDetectors.psm1', 'src/PiiMasking.psm1', 'src/OcrText.psm1', 'src/OleText.psm1', 'src/ContainerText.psm1',
+# The reader modules come first; the reader workers (ReaderPool.psm1) load exactly these.
+READERS = ('src/PiiDetectors.psm1', 'src/PiiMasking.psm1', 'src/OcrText.psm1', 'src/OleText.psm1', 'src/ContainerText.psm1',
            'src/PdfCore.psm1', 'src/PdfObjects.psm1', 'src/PdfFonts.psm1', 'src/PdfLayout.psm1', 'src/PdfText.psm1', 'src/TextExtract.psm1',
-           'src/XlsxWriter.psm1', 'src/Report.psm1',
-           'src/ScanMeter.psm1', 'src/ChannelScan.psm1')
+           'src/ReaderPool.psm1')
+MODULES = READERS + ('src/XlsxWriter.psm1', 'src/Report.psm1', 'src/ScanMeter.psm1', 'src/ScanQueue.psm1', 'src/Accountability.psm1',
+                     'src/ChannelScan.psm1', 'src/DriveScan.psm1')
+READER_START = """# ==== Reader modules ==== (one script block: this script loads it as an in-memory module, and each reader
+# worker loads the same text; nothing is read from a file)
+$IonReaderBlock = {
+Set-StrictMode -Version 2.0
+$ErrorActionPreference = 'Stop'
+"""
+READER_END = """}
+$null = New-Module -Name IonReaders -ScriptBlock $IonReaderBlock
+$IonWorkerInit = @{ Code = $IonReaderBlock.ToString() }
+"""
 BODY_MARK = '# ==== Body ===='
 # The end of the bundle: strict mode off and the session's error setting back, also after an error or Ctrl+C, so
 # the ISE session the person keeps working in is as it was before F5.
@@ -147,23 +157,24 @@ def header(sources, contents):
            '    3. Paste ALL of this text (Ctrl+V) and press F5.',
            '    4. When asked, paste a Teams link (... next to the team or channel name > Copy link) or a SharePoint',
            '       site address (in Teams: the Shared tab > ... > Open in SharePoint). Sign in with your CAC.',
-           '       If you do not see a sign-in window, press Alt+Tab.',
+           '       If you do not see a sign-in window, press Alt+Tab. Or paste a folder on a drive (X:\\<folder> or',
+           '       \\\\<server>\\<share>\\<folder>): it is read with your Windows logon, no sign-in.',
            '    5. Watch the two progress bars (the whole scan, and the file in work) and the line per folder.',
            '       At the end, read the summary of hits per PII type. The results workbook is saved in',
            '       Documents\\Ion\\<site>\\<date>: a Summary tab, then one tab per PII type (worst first).',
            '       Handle it as CUI: it shows where PII is.',
            '',
-           '  It scans the site\'s Documents library: every folder (in a team, one per standard channel) and the files at',
-           '  its top. One sign-in only: channel posts are not read.',
+           '  It scans every visible document library of the site (every folder, in a team one per standard channel, and',
+           '  the files at each library\'s top), or the drive folder and all its subfolders. Channel posts are not read.',
            '',
            '  Built from these files; to change it, change them and rebuild with: python3 scripts/build_paste.py']
     out += ['    %s, sha256 %s' % (rel, digest[:12]) for rel, digest in sources]
     out += ['',
             '  Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.',
             '  Run target: Windows PowerShell 5.1 with PnP.PowerShell 1.12.0; no admin rights, no file to unblock.',
-            '  Network: only the one site given.',
+            '  Network: only the one site or drive folder given (a folder: through your Windows logon).',
             '  Writes: only the results workbook under $OutputFolder (default Documents\\Ion).',
-            '  Credentials: your own CAC sign-in in the PnP sign-in window; nothing is stored.',
+            '  Credentials: your own CAC sign-in in the PnP sign-in window (a drive folder: your Windows logon); nothing is stored.',
             '',
             '  Contents (line numbers of this file):']
     out += ['    line %5d  %s' % (line, title) for line, title in contents]
@@ -179,8 +190,11 @@ def build():
     """
     modules = [(rel, module_code(rel)) for rel in MODULES]
     check_names(modules)
-    parts = [('Settings', SETTINGS)]
-    parts += [('Module %s' % Path(rel).name, '# ==== Module %s ====\n%s' % (Path(rel).name, code)) for rel, code in modules]
+    parts = [('Settings', SETTINGS), ('Reader block', READER_START)]
+    for rel, code in modules:
+        parts.append(('Module %s' % Path(rel).name, '# ==== Module %s ====\n%s' % (Path(rel).name, code)))
+        if rel == READERS[-1]:
+            parts.append(('Reader block end', READER_END))
     parts.append(('Body of Find-ChannelPII.ps1', body_code()))
     parts.append(('Clean-up', CLEANUP))
     sources = [(rel, sha256(read(rel))) for rel in MODULES + (MAIN,)]

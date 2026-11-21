@@ -1,0 +1,248 @@
+<#
+ReaderPool.psm1 - reads several files at once in PowerShell runspaces, and each identical file only once per run.
+
+  Purpose:     Speed (the PAM, 2026-11-21): files are read and checked for PII by 1 to 8 workers at a time, while the
+               main thread lists, downloads (SharePoint) and reports. The number of workers follows the load: it
+               grows while the throughput grows and shrinks when it falls. A file whose content (SHA-256) was
+               already read in this run is not read again: it gets the same hits. Nothing is kept after the run.
+  Inputs:      jobs: a file's bytes (SharePoint) or its local or network path (drives), and its name.
+  Outputs:     results: Status, Reason, Note, Hits, Parts, Hash, Duplicate, Seconds, Size.
+  How to run:  imported by Find-ChannelPII.ps1; each worker loads the same reader code (the readers above this
+               module and this module) once.
+  Depends on:  PiiDetectors.psm1 (Find-PiiInText) and TextExtract.psm1 (Get-TextFromBytes), imported first.
+  Run target:  Windows PowerShell 5.1 (also PowerShell 7). Runspaces are part of PowerShell: no module, no
+               compiled code, no other process.
+  Network:     none here (a network-drive path is opened read-only with the person's Windows logon).
+  Writes:      none. Bytes stay in memory; nothing is saved to disk.
+  Credentials: none.
+#>
+
+Set-StrictMode -Version 2.0
+
+# Workers: at most this many (and at most one per processor); the first target is 2.
+$script:MaxWorkers = 8
+$script:FirstWorkers = 2
+# The target is reviewed after every this many finished files: up one when the MB per second rose by more than
+# $GrowthStep, down one when it fell by more than $DropStep.
+$script:ReviewEvery = 6
+$script:GrowthStep = 0.05
+$script:DropStep = 0.15
+# How long the main thread waits for a worker between screen updates (milliseconds).
+$script:WaitSliceMs = 250
+# Paths longer than this are opened with the \\?\ prefix (Windows' classic limit is 260 characters).
+$script:LongPathAt = 240
+
+# The reader modules, in load order, for a development run (the bundle gives the reader block's text instead).
+$script:ReaderModules = @('PiiDetectors', 'PiiMasking', 'OcrText', 'OleText', 'ContainerText', 'PdfCore', 'PdfObjects', 'PdfFonts',
+    'PdfLayout', 'PdfText', 'TextExtract', 'ReaderPool')
+
+# The script each worker runs per job: it loads the reader code once per runspace, then reads one file.
+$script:PoolWorkerScript = @'
+param($Init, $Job, $Seen)
+if (-not $global:IonReaderReady) {
+    if ($Init.ContainsKey('Code')) { New-Module -Name IonReaders -ScriptBlock ([scriptblock]::Create($Init.Code)) | Import-Module -Global }
+    else { Import-Module $Init.Paths -Global -Force }
+    $global:IonReaderReady = $true
+}
+Invoke-PooledRead $Job $Seen
+'@
+
+function Read-LocalFileBytes {
+    <#
+    .SYNOPSIS
+      The bytes of one local or network file, opened read-only and shared (others may keep it open and write):
+      the file is never locked, changed or touched otherwise. Long paths get the \\?\ prefix.
+    .PARAMETER Path
+      The full path (X:\... or \\server\share\...).
+    .OUTPUTS
+      [byte[]]
+    #>
+    param([string]$Path)
+    $open = $Path
+    if ($Path.Length -gt $script:LongPathAt -and -not $Path.StartsWith('\\?\')) {
+        if ($Path.StartsWith('\\')) { $open = '\\?\UNC\' + $Path.Substring(2) } else { $open = '\\?\' + $Path }
+    }
+    $stream = New-Object System.IO.FileStream($open, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]'ReadWrite, Delete')
+    try {
+        $memory = New-Object System.IO.MemoryStream
+        try { $stream.CopyTo($memory); return , $memory.ToArray() } finally { $memory.Dispose() }
+    }
+    finally { $stream.Dispose() }
+}
+
+function Get-ContentHash {
+    <#
+    .SYNOPSIS
+      The SHA-256 of a file's bytes as hex text, with the FIPS-validated Windows provider (DoD computers enforce
+      FIPS mode); empty when it is not available, and then the file is simply read.
+    .PARAMETER Bytes
+      The file bytes.
+    .OUTPUTS
+      [string]
+    #>
+    param([byte[]]$Bytes)
+    try {
+        $sha = New-Object System.Security.Cryptography.SHA256CryptoServiceProvider
+        try { return [BitConverter]::ToString($sha.ComputeHash($Bytes)).Replace('-', '') } finally { $sha.Dispose() }
+    }
+    catch { return '' }
+}
+
+function Invoke-PooledRead {
+    <#
+    .SYNOPSIS
+      Reads one file and checks its text for PII (runs in a worker). A file whose content another job of this run
+      already claimed is not read again: Duplicate, with the Id of that job.
+    .PARAMETER Job
+      @{ Id; Name; Bytes (or $null); Path (when Bytes is $null) }.
+    .PARAMETER Seen
+      A synchronized hashtable shared by all workers: content hash and extension -> the Id of the job that reads it.
+    .OUTPUTS
+      [hashtable] Id, Status, Reason, Note, Hits, Parts, Hash, Duplicate, Original, Seconds, Size, Props.
+    #>
+    param([hashtable]$Job, [hashtable]$Seen)
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    $result = @{ Id = $Job.Id; Status = 'OK'; Reason = ''; Note = ''; Hits = @(); Parts = @(); Hash = ''; Duplicate = $false
+        Original = $null; Seconds = 0.0; Size = 0; Props = $null }
+    try {
+        $bytes = $Job.Bytes
+        if ($null -eq $bytes) { $bytes = Read-LocalFileBytes $Job.Path }
+        $result.Size = $bytes.Length
+        # Same content and same extension (the extension decides the reader): read once.
+        $hash = Get-ContentHash $bytes
+        if ($hash) { $result.Hash = $hash + '|' + [System.IO.Path]::GetExtension($Job.Name).ToLowerInvariant() }
+        if ($result.Hash -and $null -ne $Seen) {
+            $claimed = $false
+            [System.Threading.Monitor]::Enter($Seen.SyncRoot)
+            try { if ($Seen.ContainsKey($result.Hash)) { $result.Original = $Seen[$result.Hash] } else { $Seen[$result.Hash] = $Job.Id; $claimed = $true } }
+            finally { [System.Threading.Monitor]::Exit($Seen.SyncRoot) }
+            if (-not $claimed) { $result.Duplicate = $true; return $result }
+        }
+        $text = Get-TextFromBytes -Bytes $bytes -FileName $Job.Name
+        $result.Status = $text.Status; $result.Reason = $text.Reason; $result.Note = $text.Note
+        if ($text.Status -eq 'OK') { $result.Hits = @(Find-PiiInText $text.Text) }
+        if ($result.Hits.Count -gt 0) { $result.Props = Get-OfficeProps $bytes }   # who made and changed it (Office files)
+        # No @() around the list itself: @() around an empty generic list property fails in PowerShell.
+        if ($null -ne $text.Parts -and $text.Parts.Count -gt 0) { $result.Parts = $text.Parts.ToArray() }
+    }
+    catch {
+        $result.Status = 'NOT SCANNED'
+        $result.Reason = 'Could not read the file (in use, damaged or protected?): ' + $_.Exception.Message
+    }
+    finally { $result.Seconds = $clock.Elapsed.TotalSeconds }
+    return $result
+}
+
+function New-ReaderPool {
+    <#
+    .SYNOPSIS
+      Opens the worker pool: up to $MaxWorkers runspaces (at most one per processor), $FirstWorkers busy at first.
+    .PARAMETER Init
+      How a worker loads the reader code: @{ Code = <text> } (the paste bundle) or @{ Paths = <module files> }; when
+      empty, the files of the reader modules loaded now (a development run).
+    .OUTPUTS
+      [hashtable] the pool state for Add-PoolJob, Receive-PoolResult and Close-ReaderPool.
+    #>
+    param([hashtable]$Init)
+    if (-not $Init) { $Init = @{ Paths = @(Get-Module $script:ReaderModules | ForEach-Object { $_.Path }) } }
+    $max = [Math]::Max(1, [Math]::Min($script:MaxWorkers, [Environment]::ProcessorCount))
+    $pool = [runspacefactory]::CreateRunspacePool(1, $max)
+    $pool.Open()
+    return @{ Pool = $pool; Init = $Init; Jobs = (New-Object System.Collections.Generic.List[object]); Max = $max
+        Target = [Math]::Min($script:FirstWorkers, $max); Seen = [hashtable]::Synchronized(@{}); Done = 0
+        WindowBytes = 0L; WindowClock = [Diagnostics.Stopwatch]::StartNew(); LastRate = 0.0 }
+}
+
+function Add-PoolJob {
+    <#
+    .SYNOPSIS
+      Hands one file to a worker; first waits (and returns the finished results) while the target number of
+      workers is busy.
+    .PARAMETER State
+      The pool of New-ReaderPool.
+    .PARAMETER Job
+      @{ Id; Name; Bytes or Path } (see Invoke-PooledRead).
+    .OUTPUTS
+      The results that finished while waiting (Receive-PoolResult).
+    #>
+    param([hashtable]$State, [hashtable]$Job)
+    while ($State.Jobs.Count -ge $State.Target) { Receive-PoolResult $State -Wait }
+    $shell = [powershell]::Create()
+    $shell.RunspacePool = $State.Pool
+    [void]$shell.AddScript($script:PoolWorkerScript).AddArgument($State.Init).AddArgument($Job).AddArgument($State.Seen)
+    $State.Jobs.Add(@{ Shell = $shell; Handle = $shell.BeginInvoke(); Id = $Job.Id })
+}
+
+function Receive-PoolResult {
+    <#
+    .SYNOPSIS
+      The results of the workers that have finished (with -Wait: waits until at least one has, a slice at a time).
+    .PARAMETER State
+      The pool of New-ReaderPool.
+    .PARAMETER Wait
+      Wait for at least one result when none is ready (and jobs are running).
+    .OUTPUTS
+      [hashtable] results of Invoke-PooledRead.
+    #>
+    param([hashtable]$State, [switch]$Wait)
+    while ($true) {
+        $ready = @($State.Jobs | Where-Object { $_.Handle.IsCompleted })
+        if ($ready.Count -gt 0 -or -not $Wait -or $State.Jobs.Count -eq 0) { break }
+        [void]$State.Jobs[0].Handle.AsyncWaitHandle.WaitOne($script:WaitSliceMs)
+    }
+    foreach ($job in $ready) {
+        [void]$State.Jobs.Remove($job)
+        try {
+            $output = @($job.Shell.EndInvoke($job.Handle))
+            $result = $output | Where-Object { $_ -is [hashtable] } | Select-Object -Last 1
+            if (-not $result) { $result = @{ Id = $job.Id; Status = 'NOT SCANNED'; Reason = 'The reader gave no result: check by hand' } }
+        }
+        catch { $result = @{ Id = $job.Id; Status = 'NOT SCANNED'; Reason = 'The reader failed: ' + $_.Exception.Message } }
+        finally { $job.Shell.Dispose() }
+        Update-PoolTarget $State $result
+        $result
+    }
+}
+
+function Update-PoolTarget {
+    <#
+    .SYNOPSIS
+      Counts one finished file and, every $ReviewEvery files, moves the number of busy workers by one: up while the
+      MB per second grows, down when it falls or a file could not be read.
+    .PARAMETER State
+      The pool of New-ReaderPool.
+    .PARAMETER Result
+      The finished result.
+    #>
+    param([hashtable]$State, [hashtable]$Result)
+    $State.Done++
+    if ($Result.ContainsKey('Size')) { $State.WindowBytes += [long]$Result.Size }
+    $failed = $Result.Status -ne 'OK' -and $Result.Reason -match '^Could not read the file|^The reader'
+    if ($failed -and $State.Target -gt 1) { $State.Target--; return }
+    if ($State.Done % $script:ReviewEvery -ne 0) { return }
+    $rate = $State.WindowBytes / [Math]::Max(0.001, $State.WindowClock.Elapsed.TotalSeconds)
+    if ($rate -gt $State.LastRate * (1 + $script:GrowthStep) -and $State.Target -lt $State.Max) { $State.Target++ }
+    elseif ($rate -lt $State.LastRate * (1 - $script:DropStep) -and $State.Target -gt 1) { $State.Target-- }
+    $State.LastRate = $rate
+    $State.WindowBytes = 0L
+    $State.WindowClock.Restart()
+}
+
+function Close-ReaderPool {
+    <#
+    .SYNOPSIS
+      Stops the workers that still run (after a cancel or an error) and closes the pool.
+    .PARAMETER State
+      The pool of New-ReaderPool.
+    #>
+    param([hashtable]$State)
+    foreach ($job in $State.Jobs.ToArray()) {
+        try { $job.Shell.Stop() } catch { Write-Verbose 'A worker had already stopped.' }   # nothing left to stop
+        $job.Shell.Dispose()
+    }
+    $State.Jobs.Clear()
+    $State.Pool.Close()
+    $State.Pool.Dispose()
+}
+
+Export-ModuleMember -Function Read-LocalFileBytes, Get-ContentHash, Invoke-PooledRead, New-ReaderPool, Add-PoolJob, Receive-PoolResult, Close-ReaderPool

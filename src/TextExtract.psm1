@@ -191,6 +191,36 @@ function Get-SharedStrings {
     foreach ($item in [regex]::Matches((Read-ZipEntry $entry), '(?s)<(?:\w+:)?si>(.*?)</(?:\w+:)?si>')) { Convert-XmlToText $item.Groups[1].Value }
 }
 
+function Get-OfficeProps {
+    <#
+    .SYNOPSIS
+      The names an Office file stores about itself (docProps/core.xml: creator, last modified by), as Office saved
+      them; empty for other files (the accountability columns, the PAM 2026-11-21).
+    .PARAMETER Bytes
+      The file bytes.
+    .OUTPUTS
+      [hashtable] Creator, LastModifiedBy.
+    #>
+    param([byte[]]$Bytes)
+    $props = @{ Creator = ''; LastModifiedBy = '' }
+    if ($Bytes.Length -lt 4 -or $Bytes[0] -ne 0x50 -or $Bytes[1] -ne 0x4B) { return $props }   # not a zip
+    try {
+        $memory = New-Object System.IO.MemoryStream(, $Bytes)
+        $zip = New-Object System.IO.Compression.ZipArchive($memory, [System.IO.Compression.ZipArchiveMode]::Read)
+        try {
+            $core = $zip.GetEntry('docProps/core.xml')
+            if ($core) {
+                $xml = Read-ZipEntry $core
+                $props.Creator = [System.Net.WebUtility]::HtmlDecode([regex]::Match($xml, '<dc:creator>([^<]*)</dc:creator>').Groups[1].Value)
+                $props.LastModifiedBy = [System.Net.WebUtility]::HtmlDecode([regex]::Match($xml, '<cp:lastModifiedBy>([^<]*)</cp:lastModifiedBy>').Groups[1].Value)
+            }
+        }
+        finally { $zip.Dispose(); $memory.Dispose() }
+    }
+    catch { return @{ Creator = ''; LastModifiedBy = '' } }   # a damaged zip: its reader reports it
+    return $props
+}
+
 function Get-ZipPartText {
     <#
     .SYNOPSIS
@@ -381,4 +411,4 @@ function Add-ContainerParts {
     }
 }
 
-Export-ModuleMember -Function Get-TextFromBytes, Convert-HtmlToText, Test-SupportedFile
+Export-ModuleMember -Function Get-TextFromBytes, Convert-HtmlToText, Test-SupportedFile, Get-OfficeProps

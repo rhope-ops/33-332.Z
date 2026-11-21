@@ -16,9 +16,9 @@ Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
 
 $sourceFolder = Join-Path (Split-Path $PSScriptRoot -Parent) 'src'
-foreach ($module in @('PiiDetectors.psm1', 'PiiMasking.psm1', 'OcrText.psm1', 'OleText.psm1', 'ContainerText.psm1',
-    'PdfCore.psm1', 'PdfObjects.psm1', 'PdfFonts.psm1', 'PdfLayout.psm1', 'PdfText.psm1',
-    'TextExtract.psm1', 'XlsxWriter.psm1', 'Report.psm1', 'ScanMeter.psm1', 'ChannelScan.psm1')) {
+$readerModules = @('PiiDetectors.psm1', 'PiiMasking.psm1', 'OcrText.psm1', 'OleText.psm1', 'ContainerText.psm1',
+    'PdfCore.psm1', 'PdfObjects.psm1', 'PdfFonts.psm1', 'PdfLayout.psm1', 'PdfText.psm1', 'TextExtract.psm1', 'ReaderPool.psm1')
+foreach ($module in $readerModules + @('XlsxWriter.psm1', 'Report.psm1', 'ScanMeter.psm1', 'ScanQueue.psm1', 'Accountability.psm1', 'ChannelScan.psm1', 'DriveScan.psm1')) {
     Import-Module (Join-Path $sourceFolder $module) -Force
 }
 
@@ -26,7 +26,7 @@ foreach ($module in @('PiiDetectors.psm1', 'PiiMasking.psm1', 'OcrText.psm1', 'O
 . (Join-Path $PSScriptRoot 'FakePnP.ps1')
 
 # Order matters: Extraction builds $Docx and $Txt, which the later files use.
-foreach ($testFile in @('Detectors.Tests.ps1', 'Extraction.Tests.ps1', 'ChannelScan.Tests.ps1', 'Report.Tests.ps1', 'EndToEnd.Tests.ps1', 'Bundle.Tests.ps1')) {
+foreach ($testFile in @('Detectors.Tests.ps1', 'Extraction.Tests.ps1', 'ChannelScan.Tests.ps1', 'DriveScan.Tests.ps1', 'Report.Tests.ps1', 'EndToEnd.Tests.ps1', 'Bundle.Tests.ps1')) {
     . (Join-Path $PSScriptRoot $testFile)
 }
 

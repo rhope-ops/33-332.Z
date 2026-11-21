@@ -88,7 +88,7 @@ function Get-ZipEncryptedFlags {
     if ($end -lt 0) { return $null }
     [long]$count = [BitConverter]::ToUInt16($Bytes, $end + 10)
     [long]$offset = [BitConverter]::ToUInt32($Bytes, $end + 16)
-        # Zip64: the locator before the end record; the full fields compared as decimals (0xFFFFFFFF would read as -1).
+    # Zip64: the locator before the end record; the full fields compared as decimals (0xFFFFFFFF would read as -1).
     if (($count -eq 65535 -or $offset -eq 4294967295) -and $end -ge 20) {
         $locator = $end - 20
         if ($Bytes[$locator] -ne 0x50 -or $Bytes[$locator + 1] -ne 0x4B -or $Bytes[$locator + 2] -ne 6 -or $Bytes[$locator + 3] -ne 7) { return $null }
@@ -151,6 +151,12 @@ function Get-ArchiveParts {
     finally { $zip.Dispose(); $memory.Dispose() }
 }
 
+function Get-HeaderKey {
+    # A header value for comparing two copies: without spaces around ; and =, without quotes, in lower case.
+    param([string]$Value)
+    return (($Value -replace '\s*([;=])\s*', '$1' -replace '"', '').Trim().ToLowerInvariant())
+}
+
 function Split-MimeEntity {
     <#
     .SYNOPSIS
@@ -158,7 +164,7 @@ function Split-MimeEntity {
     .PARAMETER Text
       The entity's text (Latin-1 characters, one per byte).
     .OUTPUTS
-      [hashtable] Headers, Body.
+      [hashtable] Headers, Body, Conflict (a deciding header given twice with different values).
     #>
     param([string]$Text)
     # The headers end at a blank line, or at the first line that is neither "Name: value" nor a continuation
@@ -177,7 +183,7 @@ function Split-MimeEntity {
         $name = $line.Substring(0, $colon).Trim().ToLower(); $value = $line.Substring($colon + 1).Trim()
         if (-not $values.ContainsKey($name)) { $values[$name] = New-Object System.Collections.Generic.List[string] }
         elseif ($script:DecidingHeaders -contains $name) {
-            if ($values[$name][0] -ne $value) { $conflict = $true }
+            if ((Get-HeaderKey $values[$name][0]) -ne (Get-HeaderKey $value)) { $conflict = $true }   # spacing, quotes and case do not count
             continue
         }
         $values[$name].Add($value)
