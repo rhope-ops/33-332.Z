@@ -31,13 +31,13 @@
     src/TextExtract.psm1, sha256 3b52ab6462e5
     src/ReaderPool.psm1, sha256 8f8f73fda166
     src/XlsxWriter.psm1, sha256 e29becdc6a65
-    src/Report.psm1, sha256 bf59cd935625
-    src/ScanMeter.psm1, sha256 739747d75471
-    src/ScanQueue.psm1, sha256 37e83cec1fd9
+    src/Report.psm1, sha256 fb6dd1862a31
+    src/ScanMeter.psm1, sha256 88a95c795335
+    src/ScanQueue.psm1, sha256 9ec2ae15fa3c
     src/Accountability.psm1, sha256 15472f8fab6e
-    src/ChannelScan.psm1, sha256 1055c746bb52
-    src/DriveScan.psm1, sha256 9d9539409ff4
-    src/Find-ChannelPII.ps1, sha256 ab9e06070142
+    src/ChannelScan.psm1, sha256 7c06a0c235ee
+    src/DriveScan.psm1, sha256 c164f659c74d
+    src/Find-ChannelPII.ps1, sha256 a44ed116cea2
 
   Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.
   Run target: Windows PowerShell 5.1 with PnP.PowerShell 1.12.0; no admin rights, no file to unblock.
@@ -65,11 +65,11 @@
     line  4258  Module Report.psm1
     line  4855  Module ScanMeter.psm1
     line  5178  Module ScanQueue.psm1
-    line  5416  Module Accountability.psm1
-    line  5710  Module ChannelScan.psm1
-    line  6307  Module DriveScan.psm1
-    line  6549  Body of Find-ChannelPII.ps1
-    line  6663  Clean-up
+    line  5518  Module Accountability.psm1
+    line  5812  Module ChannelScan.psm1
+    line  6397  Module DriveScan.psm1
+    line  6628  Body of Find-ChannelPII.ps1
+    line  6769  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -4299,7 +4299,7 @@ $script:DefaultScreenWidth = 120
 $script:MinScreenWidth = 60
 $script:MinLastColumn = 12
 # Under the table of types: what High, Medium and Low mean (the PAM, 2026-11-21: plain words for a unit member).
-$script:ConfidenceKey = 'High = labelled ("SSN:") or a sure pattern. Medium = right form, no label. Low = weak match, often not PII.'
+$script:ConfidenceKey = @('High = labelled ("SSN:") or a sure pattern. Medium = right form, no label.', 'Low = weak match, often not PII.')
 
 # Screen colours (the PAM, 2026-11-20: less grey, more format). Write-Host has only the 16 console colours:
 # Cyan = headings and labels, White = values, Green = clean or done, Yellow = check by hand and Medium,
@@ -4611,7 +4611,7 @@ function Get-ScanSummaryText {
     & $add '' 'Text'; & $add '==== Results ====' 'Title'
     # A scan that stopped early says so first, in red: its results cover only the files read so far.
     if (@($Rows | Where-Object { $_.Detector -eq 'INCOMPLETE' }).Count -gt 0) {
-        & $add ('INCOMPLETE: the scan stopped early. Only the {0} files read are in these results; scan again.' -f $ItemsScanned) 'Alert'
+        & $add ('INCOMPLETE: the scan stopped early. Only the {0} {1} read are in these results; scan again.' -f $ItemsScanned, @('files', 'file')[[int]($ItemsScanned -eq 1)]) 'Alert'
     }
     # The values start in one column, after the longest label (labels differ: site, drive, timing lines).
     $pairs = @($Header.GetEnumerator()) + @((Get-ScanMetrics $Rows $ItemsScanned).GetEnumerator())
@@ -4627,7 +4627,7 @@ function Get-ScanSummaryText {
         $kinds = @($types | ForEach-Object { if ($_.High -gt 0) { 'Alert' } elseif ($_.Medium -gt 0) { 'Accent' } else { 'Text' } })
         Get-TableLines @('Type', 'High', 'Medium', 'Low', 'Total') @($types | ForEach-Object { , @($_.Type, $_.High, $_.Medium, $_.Low, $_.Total) }) $kinds |
             ForEach-Object { $out.Add($_) }
-        & $add $script:ConfidenceKey 'Muted'
+        foreach ($keyLine in $script:ConfidenceKey) { & $add $keyLine 'Muted' }
         $top = @(Get-ReportSummary $Rows | Select-Object -First $script:TopItems)
         & $add '' 'Text'; & $add ('FILES WITH THE MOST SERIOUS HITS (first {0}; all are in the workbook)' -f $script:TopItems) 'Title'
         $kinds = @($top | ForEach-Object { if ($_.Highest -eq 'High') { 'Alert' } else { 'Accent' } })
@@ -5185,8 +5185,9 @@ ScanQueue.psm1 - turns the reader pool's results into report rows, in the order 
   Inputs:      per file: how the report shows it (folder, item, link, change time) and its bytes or path.
   Outputs:     report rows (Report.psm1 New-ReportRow) in the caller's row list; the meter and the live line.
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
-  Depends on:  ReaderPool.psm1, PiiMasking.psm1, Report.psm1 (New-ReportRow, Add-PartRows) and ScanMeter.psm1,
-               imported first by Find-ChannelPII.ps1.
+  Depends on:  ReaderPool.psm1, PiiMasking.psm1, TextExtract.psm1 (Test-SupportedFile), Report.psm1 (New-ReportRow,
+               Add-PartRows, Write-Ui) and ScanMeter.psm1, imported first by Find-ChannelPII.ps1. The steps both scans
+               share (a file's start rows, the scan run around the groups) live here, once.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7).
   Network:     none here.
   Writes:      none (rows in memory).
@@ -5311,7 +5312,7 @@ function Invoke-GroupScan {
     .PARAMETER Groups
       The groups, each with Name and Files.
     .PARAMETER StartFile
-      { param($Group, $File) } that starts one file; returns true when the file went to the readers.
+      { param($Queue, $Group, $File) } that starts one file; returns true when the file went to the readers.
     .PARAMETER ShownFile
       { param($Group, $File) } that gives the file's masked path for the progress bar.
     #>
@@ -5326,7 +5327,7 @@ function Invoke-GroupScan {
             Write-Progress -Id 1 -Activity $Queue.Activity -Status (Get-ScanMeterText $meter 'file') -PercentComplete (Get-MeterPercent $meter) `
                 -CurrentOperation ('Now: ' + (& $ShownFile $group $file))
             $firstRow = $Queue.Rows.Count
-            if (-not (& $StartFile $group $file)) {
+            if (-not (& $StartFile $Queue $group $file)) {
                 Update-ScanMeter $meter $Queue.Rows $firstRow 0
                 Write-MeterLine $meter 'file'   # the running total, at most every $LiveLineSeconds
             }
@@ -5408,9 +5409,110 @@ function Close-ScanQueue {
 }
 
 function Get-QueueWorkers {
-    # The number of files read at once now (for the live line and the header).
+    # The number of files read at the same time now (for the drive scan's header).
     param([hashtable]$Queue)
     return $Queue.Pool.Target
+}
+
+function Add-FileStartRows {
+    <#
+    .SYNOPSIS
+      The rows every file gets before it is read, for both scans: a hit row for PII in its name or folder, then a NOT
+      SCANNED row when its type is not read or it is over the size limit.
+    .PARAMETER Rows
+      The list that receives the rows.
+    .PARAMETER Info
+      @{ Channel; Item; Link; Modified } as the report shows the file (already masked).
+    .PARAMETER RawPath
+      The folder and file path as written (checked for PII; never shown).
+    .PARAMETER Name
+      The file name (its extension decides whether it is read).
+    .PARAMETER Size
+      The file size in bytes.
+    .PARAMETER MaxFileMB
+      The size limit.
+    .OUTPUTS
+      [bool] true when the file is to be read; false when it got its NOT SCANNED row.
+    #>
+    param($Rows, [hashtable]$Info, [string]$RawPath, [string]$Name, [long]$Size, [int]$MaxFileMB)
+    foreach ($hit in @(Find-PiiInText $RawPath)) {
+        $Rows.Add((New-ReportRow 'File name' $Info.Channel $Info.Item $Info.Link $Info.Modified $hit.Detector $hit.Confidence $hit.MaskedValue 'In the file or folder name'))
+    }
+    $reason = ''
+    if (-not (Test-SupportedFile $Name)) { $reason = 'File type is not read by this script: check by hand' }
+    elseif ($Size -gt ($MaxFileMB * 1MB)) { $reason = "Larger than $MaxFileMB MB: check by hand" }
+    if ($reason) { $Rows.Add((New-ReportRow 'File' $Info.Channel $Info.Item $Info.Link $Info.Modified 'NOT SCANNED' '' '' $reason)) }
+    return (-not $reason)
+}
+
+function Confirm-ScanStart {
+    <#
+    .SYNOPSIS
+      Before a scan: how many files and MB were found, and how many will be listed but not read (type or size); then
+      "Scan now? [Y/n]" (Enter = yes; the PAM, 2026-11-21: a guard against a scope larger than meant).
+    .PARAMETER Groups
+      The groups, each with Files.
+    .PARAMETER Facts
+      { param($File) } that gives @(name, size in bytes) of one file.
+    .PARAMETER MaxFileMB
+      The size limit.
+    .OUTPUTS
+      [bool] true to scan.
+    #>
+    param([object[]]$Groups, [scriptblock]$Facts, [int]$MaxFileMB)
+    $count = 0; $bytes = 0L; $skipped = 0
+    foreach ($group in $Groups) {
+        foreach ($file in $group.Files) {
+            $name, $size = & $Facts $file
+            $count++; $bytes += [long]$size
+            if (-not (Test-SupportedFile $name) -or [long]$size -gt $MaxFileMB * 1MB) { $skipped++ }
+        }
+    }
+    Write-Ui ('Found {0} files ({1:N1} MB) in {2} folders; {3} will be listed but not read (file type, or over {4} MB).' -f
+        $count, ($bytes / 1MB), $Groups.Count, $skipped, $MaxFileMB) 'Text'
+    $answer = Read-Host 'Scan now? [Y/n]'
+    return -not ($answer -and $answer.Trim() -match '^(n|no)$')
+}
+
+function Invoke-ScanRun {
+    <#
+    .SYNOPSIS
+      One scan of the groups, for both scans: the "Scanning N files" banner, the meter, the readers, every group, then
+      the rule and the total line. The run's meter, reading time and worker count go in Run, also when the scan
+      stops part way (the caller's 'finally' reads them).
+    .PARAMETER Init
+      How the reader workers load their code (New-ReaderPool).
+    .PARAMETER Rows
+      The list that receives the rows.
+    .PARAMETER Groups
+      The groups, each with Name and Files.
+    .PARAMETER StartFile
+      { param($Queue, $Group, $File) } that starts one file (Invoke-GroupScan).
+    .PARAMETER ShownFile
+      { param($Group, $File) } that gives the file's masked path for the progress bar.
+    .PARAMETER Run
+      Receives Meter, Reading ([TimeSpan]) and Workers; Declined = $true when the person answered no to "Scan now?".
+    .PARAMETER Facts
+      { param($File) } that gives @(name, size in bytes) of one file, for the question before the scan.
+    .PARAMETER MaxFileMB
+      The size limit (files over it are listed, not read).
+    #>
+    param([hashtable]$Init, $Rows, [object[]]$Groups, [scriptblock]$StartFile, [scriptblock]$ShownFile, [hashtable]$Run,
+          [scriptblock]$Facts, [int]$MaxFileMB)
+    $total = 0
+    foreach ($group in $Groups) { $total += $group.Files.Count }
+    $Run.Meter = New-ScanMeter 0; $Run.Reading = [TimeSpan]::Zero; $Run.Workers = 0; $Run.Declined = $false
+    if ($Facts -and -not (Confirm-ScanStart $Groups $Facts $MaxFileMB)) { $Run.Declined = $true; return }
+    Write-Ui ('==== Scanning {0} files in {1} folders ====' -f $total, $Groups.Count) 'Title'
+    $meter = New-ScanMeter $total
+    $meter.NameWidth = Get-NameWidth @($Groups | ForEach-Object { Protect-PiiName $_.Name })
+    $Run.Meter = $meter; $Run.Reading = [TimeSpan]::Zero; $Run.Workers = 0
+    $queue = New-ScanQueue $Init $Rows $meter
+    try { Invoke-GroupScan $queue $Groups $StartFile $ShownFile; $Run.Workers = Get-QueueWorkers $queue }
+    finally { $Run.Reading = Close-ScanQueue $queue }
+    # The folder rows form one table; the total closes it, under a rule.
+    Write-RuleLine
+    Write-MeterLine $meter 'file' -Force
 }
 
 # ==== Module Accountability.psm1 ====
@@ -6116,32 +6218,31 @@ function Get-FileBytes {
     }
 }
 
-function Get-ChannelFiles {
+function Get-FilesByFolder {
     <#
     .SYNOPSIS
-      The files (not folders) under one channel folder, at any depth.
+      The files (not folders) of a library, sorted once by their top-level folder (any depth below it); the files at
+      the top of the library, in no folder, under the key ''. One pass over the items, not one per folder (speed).
     .PARAMETER AllItems
       Every item of the library (one Get-PnPListItem call for all channels).
-    .PARAMETER Prefix
-      /sites/<name>/<library>/<channel>/
+    .PARAMETER LibraryUrl
+      /sites/<name>/<library>
     .OUTPUTS
-      List items.
+      [hashtable] top-level folder name (any letter case) -> list of items.
     #>
-    param([object[]]$AllItems, [string]$Prefix)
-    $AllItems | Where-Object {
-        (Get-FieldValue $_ 'FSObjType') -eq '0' -and (Get-FieldValue $_ 'FileRef').StartsWith($Prefix, [System.StringComparison]::OrdinalIgnoreCase)
-    }
-}
-
-function Get-RootFiles {
-    # The files at the top of the library, in no folder (a plain SharePoint site keeps files there; a team has none).
     param([object[]]$AllItems, [string]$LibraryUrl)
     $prefix = $LibraryUrl + '/'
-    $AllItems | Where-Object {
-        $ref = Get-FieldValue $_ 'FileRef'
-        (Get-FieldValue $_ 'FSObjType') -eq '0' -and $ref.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase) -and
-            $ref.Substring($prefix.Length).IndexOf('/') -lt 0
+    $byFolder = @{}
+    foreach ($item in $AllItems) {
+        if ((Get-FieldValue $item 'FSObjType') -ne '0') { continue }
+        $ref = Get-FieldValue $item 'FileRef'
+        if (-not $ref.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) { continue }
+        $slash = $ref.IndexOf('/', $prefix.Length)
+        $folder = ''; if ($slash -ge 0) { $folder = $ref.Substring($prefix.Length, $slash - $prefix.Length) }
+        if (-not $byFolder.ContainsKey($folder)) { $byFolder[$folder] = New-Object System.Collections.Generic.List[object] }
+        $byFolder[$folder].Add($item)
     }
+    return $byFolder
 }
 
 function Invoke-OneFileScan {
@@ -6175,15 +6276,10 @@ function Invoke-OneFileScan {
     $rawItem = $ref.Substring($Prefix.Length)
     $item = Get-ShownItem $rawChannel $rawItem
     $link = Get-SafeLink $Origin $ref (Get-FieldValue $File 'UniqueId')
-    foreach ($hit in @(Find-PiiInText ($rawChannel + '/' + $rawItem))) {
-        $rows.Add((New-ReportRow 'File name' $Channel $item $link $modified $hit.Detector $hit.Confidence $hit.MaskedValue 'In the file or folder name'))
-    }
     $size = 0L
     [void][long]::TryParse((Get-FieldValue $File 'File_x0020_Size'), [ref]$size)
-    $skipReason = ''
-    if (-not (Test-SupportedFile $name)) { $skipReason = 'File type is not read by this script: check by hand' }
-    elseif ($size -gt ($MaxFileMB * 1MB)) { $skipReason = "Larger than $MaxFileMB MB: check by hand" }
-    if ($skipReason) { $rows.Add((New-ReportRow 'File' $Channel $item $link $modified 'NOT SCANNED' '' '' $skipReason)); return $false }
+    $info = @{ Channel = $Channel; Item = $item; Link = $link; Modified = $modified }
+    if (-not (Add-FileStartRows $rows $info ($rawChannel + '/' + $rawItem) $name $size $MaxFileMB)) { return $false }
     $clock = [Diagnostics.Stopwatch]::StartNew()
     try { $bytes = Get-FileBytes $ref $size }
     catch {
@@ -6196,15 +6292,15 @@ function Invoke-OneFileScan {
     # Accountability: who made and changed the file; for a file with a hit, who added each hit (version history).
     $who = Get-SharePointWho $File
     $who.Modified = $modified
-    $added = { param($hits) Find-PiiAddedVersion $ref $name $hits $who }.GetNewClosure()
-    Submit-ScanFile $Queue @{ Channel = $Channel; Item = $item; Link = $link; Modified = $modified; Who = $who; Added = $added } $name $bytes ''
+    $info.Who = $who
+    $info.Added = { param($hits) Find-PiiAddedVersion $ref $name $hits $who }.GetNewClosure()
+    Submit-ScanFile $Queue $info $name $bytes ''
     return $true
 }
 
 function Get-ScanTiming {
     # The time of the last file scan spent downloading and spent reading, as minutes:seconds text.
-    $format = { param($t) '{0:00}:{1:00}' -f [int][Math]::Floor($t.TotalMinutes), $t.Seconds }
-    [ordered]@{ 'Time downloading' = (& $format $script:Timing.Download); 'Time reading files (all readers)' = (& $format $script:Timing.Check) }
+    [ordered]@{ 'Time downloading' = (Format-Duration $script:Timing.Download); 'Time reading files (all readers)' = (Format-Duration $script:Timing.Check) }
 }
 
 function Get-ScanGroups {
@@ -6223,11 +6319,12 @@ function Get-ScanGroups {
     param($Library, [string[]]$Folders, [string]$Label)
     $fields = @('FileLeafRef', 'FileRef', 'FSObjType', 'File_x0020_Size', 'Modified', 'UniqueId', 'Created', 'Author', 'Editor')
     $allItems = @(Get-PnPListItem -List $Library.List -PageSize $script:ListPageSize -Fields $fields -ErrorAction Stop)
+    $byFolder = Get-FilesByFolder $allItems $Library.ServerRelativeUrl
     foreach ($folder in $Folders) {
-        $prefix = $Library.ServerRelativeUrl + '/' + $folder + '/'
-        [pscustomobject]@{ Name = $Label + $folder; Prefix = $prefix; Files = @(Get-ChannelFiles $allItems $prefix) }
+        $files = @(); if ($byFolder.ContainsKey($folder)) { $files = $byFolder[$folder].ToArray() }
+        [pscustomobject]@{ Name = $Label + $folder; Prefix = ($Library.ServerRelativeUrl + '/' + $folder + '/'); Files = $files }
     }
-    $rootFiles = @(Get-RootFiles $allItems $Library.ServerRelativeUrl)
+    $rootFiles = @(); if ($byFolder.ContainsKey('')) { $rootFiles = $byFolder[''].ToArray() }
     if ($rootFiles.Count -gt 0) {
         [pscustomobject]@{ Name = $Label + $script:RootGroupName; Prefix = $Library.ServerRelativeUrl + '/'; Files = $rootFiles }
     }
@@ -6269,23 +6366,16 @@ function Invoke-FileScan {
             $Rows.Add((New-ReportRow 'Scan' (Protect-PiiName $one.Title) '(library)' '' '' 'BLOCKED' '' '' ('Could not read this library: ' + (Protect-PiiText $_.Exception.Message))))
         }
     })
-    $total = 0
-    foreach ($group in $groups) { $total += $group.Files.Count }
-    Write-Ui ('==== Scanning {0} files in {1} folders ====' -f $total, $groups.Count) 'Title'
-    $meter = New-ScanMeter $total
-    if ($Progress) { $Progress.Meter = $meter }
-    $meter.NameWidth = Get-NameWidth @($groups | ForEach-Object { Protect-PiiName $_.Name })
-    $queue = New-ScanQueue $Init $Rows $meter
-    # Starts one file of a group (Invoke-GroupScan calls it); then the file's masked path for the progress bar.
-    $start = { param($group, $file) Invoke-OneFileScan $queue $file $group.Name $group.Prefix $origin $MaxFileMB }
+    # Starts one file of a group (Invoke-GroupScan calls it).
+    $start = { param($queue, $group, $file) Invoke-OneFileScan $queue $file $group.Name $group.Prefix $origin $MaxFileMB }
     # The file's masked path inside its folder, for the progress bar.
     $shown = { param($group, $file) Get-ShownItem $group.Name ((Get-FieldValue $file 'FileRef').Substring($group.Prefix.Length)) }
-    try { Invoke-GroupScan $queue $groups $start $shown }
-    finally { $script:Timing.Check = Close-ScanQueue $queue }
-    # The folder rows form one table; the total closes it, under a rule.
-    Write-RuleLine
-    Write-MeterLine $meter 'file' -Force
-    return $meter.Read
+    $run = $Progress; if (-not $run) { $run = @{} }
+    # A file's name and size, for the question before the scan.
+    $facts = { param($file) (Get-FieldValue $file 'FileLeafRef'), [long](Get-FieldValue $file 'File_x0020_Size') }
+    try { Invoke-ScanRun $Init $Rows $groups $start $shown $run $facts $MaxFileMB }
+    finally { if ($run.ContainsKey('Reading')) { $script:Timing.Check = $run.Reading } }
+    return $run.Meter.Read
 }
 
 # =====================================================================================
@@ -6416,14 +6506,10 @@ function Invoke-DriveFile {
     $channel = Protect-PiiName $Group
     $item = Get-ShownItem $Group $File.Inner
     $link = Get-DriveLink $File.Path
-    foreach ($hit in @(Find-PiiInText ($Group + '/' + $File.Inner))) {
-        $rows.Add((New-ReportRow 'File name' $channel $item $link $File.Modified $hit.Detector $hit.Confidence $hit.MaskedValue 'In the file or folder name'))
-    }
-    $skipReason = ''
-    if (-not (Test-SupportedFile $File.Name)) { $skipReason = 'File type is not read by this script: check by hand' }
-    elseif ($File.Size -gt ($MaxFileMB * 1MB)) { $skipReason = "Larger than $MaxFileMB MB: check by hand" }
-    if ($skipReason) { $rows.Add((New-ReportRow 'File' $channel $item $link $File.Modified 'NOT SCANNED' '' '' $skipReason)); return $false }
-    Submit-ScanFile $Queue @{ Channel = $channel; Item = $item; Link = $link; Modified = $File.Modified; DrivePath = $File.Path } $File.Name $null $File.Path
+    $info = @{ Channel = $channel; Item = $item; Link = $link; Modified = $File.Modified }
+    if (-not (Add-FileStartRows $rows $info ($Group + '/' + $File.Inner) $File.Name $File.Size $MaxFileMB)) { return $false }
+    $info.DrivePath = $File.Path
+    Submit-ScanFile $Queue $info $File.Name $null $File.Path
     return $true
 }
 
@@ -6473,14 +6559,12 @@ function Get-DriveHeader {
       [System.Collections.Specialized.OrderedDictionary]
     #>
     param([string]$Path, [object[]]$Groups, [TimeSpan]$Used, [TimeSpan]$Reading, [int]$Workers)
-    # A time as minutes:seconds.
-    $format = { param($t) '{0:00}:{1:00}' -f [int][Math]::Floor($t.TotalMinutes), $t.Seconds }
     $header = [ordered]@{}
     $header['Folder'] = Protect-PiiName $Path
     $header['Folders'] = ($Groups | ForEach-Object { Protect-PiiName $_.Name }) -join ', '
     $header['Run'] = Get-Date -Format 'yyyy-MM-dd HH:mm'
-    $header['Time used'] = & $format $Used
-    $header['Time reading files (all readers)'] = & $format $Reading
+    $header['Time used'] = Format-Duration $Used
+    $header['Time reading files (all readers)'] = Format-Duration $Reading
     $header['Files read at the same time (at the end)'] = [string]$Workers
     return $header
 }
@@ -6506,31 +6590,21 @@ function Invoke-DriveScan {
     $rows = New-Object System.Collections.Generic.List[object]
     $finished = $false
     $groups = @()
-    $workers = 0
-    $reading = [TimeSpan]::Zero
-    $meter = New-ScanMeter 0
+    $workbook = $null
+    $run = @{ Meter = (New-ScanMeter 0); Reading = [TimeSpan]::Zero; Workers = 0 }   # filled by Invoke-ScanRun
     try {
         if (-not (Test-Path -LiteralPath $Path -PathType Container)) { throw 'This folder cannot be opened (check the path, and that you can open it in File Explorer).' }
         Write-Ui 'Listing the files ...' 'Muted'
         $found = Get-DriveGroups $Path
         $groups = $found.Groups.ToArray()
         Add-DriveListRows $found $rows
-        $total = ($groups | ForEach-Object { $_.Files.Count } | Measure-Object -Sum).Sum
-        Write-Ui ('==== Scanning {0} files in {1} folders ====' -f $total, $groups.Count) 'Title'
-        $meter = New-ScanMeter ([int]$total)
-        $meter.NameWidth = Get-NameWidth @($groups | ForEach-Object { Protect-PiiName $_.Name })
-        $queue = New-ScanQueue $Init $rows $meter
-        try {
-            # Starts one file (Invoke-GroupScan calls it).
-            $start = { param($group, $file) Invoke-DriveFile $queue $group.Name $file $MaxFileMB }
-            # The file's masked path inside its folder, for the progress bar.
-            $shown = { param($group, $file) Get-ShownItem $group.Name $file.Inner }
-            Invoke-GroupScan $queue $groups $start $shown
-            $workers = Get-QueueWorkers $queue
-        }
-        finally { $reading = Close-ScanQueue $queue }
-        Write-RuleLine
-        Write-MeterLine $meter 'file' -Force
+        # Starts one file (Invoke-GroupScan calls it).
+        $start = { param($queue, $group, $file) Invoke-DriveFile $queue $group.Name $file $MaxFileMB }
+        # The file's masked path inside its folder, for the progress bar.
+        $shown = { param($group, $file) Get-ShownItem $group.Name $file.Inner }
+        # A file's name and size, for the question before the scan.
+        $facts = { param($file) $file.Name, $file.Size }
+        Invoke-ScanRun $Init $rows $groups $start $shown $run $facts $MaxFileMB
         $finished = $true
     }
     catch {
@@ -6539,11 +6613,16 @@ function Invoke-DriveScan {
         $rows.Add((New-ReportRow 'Scan' '(all)' '(scan)' '' '' 'INCOMPLETE' '' '' ('Stopped early: ' + $reason)))
     }
     finally {
-        Add-IncompleteRow -Rows $rows -Finished $finished; $header = Get-DriveHeader $Path $groups $clock.Elapsed $reading $workers
-        $name = $Path.TrimEnd('\') -replace '\\', '/'   # the results folder is named after the folder's last part
-        $path = Publish-ScanReport -Rows $rows.ToArray() -ItemsScanned $meter.Read -Header $header -OutputFolder $OutputFolder -SiteUrl $name -FolderLabel 'Folder'
+        # "No" to "Scan now?": nothing was read, so nothing is saved (the PAM, 2026-11-21).
+        if ($run.ContainsKey('Declined') -and $run.Declined) { Write-Ui 'Not scanned: nothing was saved.' 'Accent' }
+        else {
+            Add-IncompleteRow -Rows $rows -Finished $finished
+            $header = Get-DriveHeader $Path $groups $clock.Elapsed $run.Reading $run.Workers
+            $name = $Path.TrimEnd('\') -replace '\\', '/'   # the results folder is named after the folder's last part
+            $workbook = Publish-ScanReport -Rows $rows.ToArray() -ItemsScanned $run.Meter.Read -Header $header -OutputFolder $OutputFolder -SiteUrl $name -FolderLabel 'Folder'
+        }
     }
-    return $path
+    return $workbook
 }
 
 # ==== Body ==== (scripts/build_paste.py copies everything from this line into the paste bundle; the lines above
@@ -6594,13 +6673,13 @@ function Invoke-SiteFiles {
     finally {
         if (-not $finished -and $progress.ContainsKey('Meter')) { $scanned = $progress.Meter.Read }   # stopped part way: the live count
         Add-IncompleteRow -Rows $rows -Finished $finished
-        $header = [ordered]@{ Site = $SiteUrl }
-        if (-not $listName) { $listName = $folderLabel + 's' }
-        $header[$listName] = ($selected | ForEach-Object { Protect-PiiName $_ }) -join ', '
-        $header['Run'] = Get-Date -Format 'yyyy-MM-dd HH:mm'
-        $header['Time used'] = '{0:00}:{1:00}' -f [int][Math]::Floor($clock.Elapsed.TotalMinutes), $clock.Elapsed.Seconds
-        foreach ($pair in (Get-ScanTiming).GetEnumerator()) { $header[$pair.Key] = $pair.Value }
-        try { $path = Publish-ScanReport -Rows $rows.ToArray() -ItemsScanned $scanned -Header $header -OutputFolder $OutputFolder -SiteUrl $SiteUrl -FolderLabel $folderLabel }
+        try {
+            if ($progress.ContainsKey('Declined') -and $progress.Declined) { Write-Ui 'Not scanned: nothing was saved.' 'Accent' }   # "No" to "Scan now?"
+            else {
+                $header = Get-SiteHeader $SiteUrl $listName $folderLabel $selected $clock.Elapsed
+                $path = Publish-ScanReport -Rows $rows.ToArray() -ItemsScanned $scanned -Header $header -OutputFolder $OutputFolder -SiteUrl $SiteUrl -FolderLabel $folderLabel
+            }
+        }
         finally {
             # Sign out even when the results could not be saved (for example, a folder that cannot be written).
             try { Disconnect-PnPOnline }
@@ -6608,6 +6687,33 @@ function Invoke-SiteFiles {
         }
     }
     return $path
+}
+
+function Get-SiteHeader {
+    <#
+    .SYNOPSIS
+      The top of a site scan's summary: the site, what was scanned (as Channels, Folders or Libraries), when, how long.
+    .PARAMETER SiteUrl
+      The site.
+    .PARAMETER ListName
+      The label of the scanned list ('Channels', 'Folders' or 'Libraries'); empty when the scan stopped before it.
+    .PARAMETER FolderLabel
+      'Channel', 'Folder' or 'Library / Folder' (the label when ListName is empty).
+    .PARAMETER Selected
+      The folders or libraries scanned.
+    .PARAMETER Used
+      The time the scan took.
+    .OUTPUTS
+      [System.Collections.Specialized.OrderedDictionary]
+    #>
+    param([string]$SiteUrl, [string]$ListName, [string]$FolderLabel, [string[]]$Selected, [TimeSpan]$Used)
+    if (-not $ListName) { $ListName = $FolderLabel + 's' }   # stopped before the libraries were read
+    $header = [ordered]@{ Site = $SiteUrl }
+    $header[$ListName] = ($Selected | ForEach-Object { Protect-PiiName $_ }) -join ', '
+    $header['Run'] = Get-Date -Format 'yyyy-MM-dd HH:mm'
+    $header['Time used'] = Format-Duration $Used
+    foreach ($pair in (Get-ScanTiming).GetEnumerator()) { $header[$pair.Key] = $pair.Value }
+    return $header
 }
 
 function Open-ScanResult {

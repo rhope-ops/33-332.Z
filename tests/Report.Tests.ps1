@@ -116,4 +116,4 @@ $keyText = (@(Get-ScanSummaryText -Rows $reportRows -ItemsScanned 2 -Header $hea
 Assert-Equal $true ($keyText -match '(?m)^High = labelled') 'Summary: the key to High, Medium and Low is under the type table'
 $narrow = @(& (Get-Module Report) { Format-BoxTable @('Reason', 'Files') @(, @(('r' * 115), 1)) 119 })
 Assert-Equal $true (($narrow | ForEach-Object { $_.Length } | Measure-Object -Maximum).Maximum -le 127) 'Table: a narrow last column is never widened'
-Assert-Equal $true ($script:Pass -gt 0 -and ((& (Get-Module Report) { $script:ConfidenceKey }).Length -lt 119)) 'Summary: the confidence key fits the default width'
+Assert-Equal 0 @(& (Get-Module Report) { $script:ConfidenceKey } | Where-Object { $_.Length -gt 79 }).Count 'Summary: each confidence key line fits 80 characters'

@@ -407,32 +407,31 @@ function Get-FileBytes {
     }
 }
 
-function Get-ChannelFiles {
+function Get-FilesByFolder {
     <#
     .SYNOPSIS
-      The files (not folders) under one channel folder, at any depth.
+      The files (not folders) of a library, sorted once by their top-level folder (any depth below it); the files at
+      the top of the library, in no folder, under the key ''. One pass over the items, not one per folder (speed).
     .PARAMETER AllItems
       Every item of the library (one Get-PnPListItem call for all channels).
-    .PARAMETER Prefix
-      /sites/<name>/<library>/<channel>/
+    .PARAMETER LibraryUrl
+      /sites/<name>/<library>
     .OUTPUTS
-      List items.
+      [hashtable] top-level folder name (any letter case) -> list of items.
     #>
-    param([object[]]$AllItems, [string]$Prefix)
-    $AllItems | Where-Object {
-        (Get-FieldValue $_ 'FSObjType') -eq '0' -and (Get-FieldValue $_ 'FileRef').StartsWith($Prefix, [System.StringComparison]::OrdinalIgnoreCase)
-    }
-}
-
-function Get-RootFiles {
-    # The files at the top of the library, in no folder (a plain SharePoint site keeps files there; a team has none).
     param([object[]]$AllItems, [string]$LibraryUrl)
     $prefix = $LibraryUrl + '/'
-    $AllItems | Where-Object {
-        $ref = Get-FieldValue $_ 'FileRef'
-        (Get-FieldValue $_ 'FSObjType') -eq '0' -and $ref.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase) -and
-            $ref.Substring($prefix.Length).IndexOf('/') -lt 0
+    $byFolder = @{}
+    foreach ($item in $AllItems) {
+        if ((Get-FieldValue $item 'FSObjType') -ne '0') { continue }
+        $ref = Get-FieldValue $item 'FileRef'
+        if (-not $ref.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) { continue }
+        $slash = $ref.IndexOf('/', $prefix.Length)
+        $folder = ''; if ($slash -ge 0) { $folder = $ref.Substring($prefix.Length, $slash - $prefix.Length) }
+        if (-not $byFolder.ContainsKey($folder)) { $byFolder[$folder] = New-Object System.Collections.Generic.List[object] }
+        $byFolder[$folder].Add($item)
     }
+    return $byFolder
 }
 
 function Invoke-OneFileScan {
@@ -466,15 +465,10 @@ function Invoke-OneFileScan {
     $rawItem = $ref.Substring($Prefix.Length)
     $item = Get-ShownItem $rawChannel $rawItem
     $link = Get-SafeLink $Origin $ref (Get-FieldValue $File 'UniqueId')
-    foreach ($hit in @(Find-PiiInText ($rawChannel + '/' + $rawItem))) {
-        $rows.Add((New-ReportRow 'File name' $Channel $item $link $modified $hit.Detector $hit.Confidence $hit.MaskedValue 'In the file or folder name'))
-    }
     $size = 0L
     [void][long]::TryParse((Get-FieldValue $File 'File_x0020_Size'), [ref]$size)
-    $skipReason = ''
-    if (-not (Test-SupportedFile $name)) { $skipReason = 'File type is not read by this script: check by hand' }
-    elseif ($size -gt ($MaxFileMB * 1MB)) { $skipReason = "Larger than $MaxFileMB MB: check by hand" }
-    if ($skipReason) { $rows.Add((New-ReportRow 'File' $Channel $item $link $modified 'NOT SCANNED' '' '' $skipReason)); return $false }
+    $info = @{ Channel = $Channel; Item = $item; Link = $link; Modified = $modified }
+    if (-not (Add-FileStartRows $rows $info ($rawChannel + '/' + $rawItem) $name $size $MaxFileMB)) { return $false }
     $clock = [Diagnostics.Stopwatch]::StartNew()
     try { $bytes = Get-FileBytes $ref $size }
     catch {
@@ -487,15 +481,15 @@ function Invoke-OneFileScan {
     # Accountability: who made and changed the file; for a file with a hit, who added each hit (version history).
     $who = Get-SharePointWho $File
     $who.Modified = $modified
-    $added = { param($hits) Find-PiiAddedVersion $ref $name $hits $who }.GetNewClosure()
-    Submit-ScanFile $Queue @{ Channel = $Channel; Item = $item; Link = $link; Modified = $modified; Who = $who; Added = $added } $name $bytes ''
+    $info.Who = $who
+    $info.Added = { param($hits) Find-PiiAddedVersion $ref $name $hits $who }.GetNewClosure()
+    Submit-ScanFile $Queue $info $name $bytes ''
     return $true
 }
 
 function Get-ScanTiming {
     # The time of the last file scan spent downloading and spent reading, as minutes:seconds text.
-    $format = { param($t) '{0:00}:{1:00}' -f [int][Math]::Floor($t.TotalMinutes), $t.Seconds }
-    [ordered]@{ 'Time downloading' = (& $format $script:Timing.Download); 'Time reading files (all readers)' = (& $format $script:Timing.Check) }
+    [ordered]@{ 'Time downloading' = (Format-Duration $script:Timing.Download); 'Time reading files (all readers)' = (Format-Duration $script:Timing.Check) }
 }
 
 function Get-ScanGroups {
@@ -514,11 +508,12 @@ function Get-ScanGroups {
     param($Library, [string[]]$Folders, [string]$Label)
     $fields = @('FileLeafRef', 'FileRef', 'FSObjType', 'File_x0020_Size', 'Modified', 'UniqueId', 'Created', 'Author', 'Editor')
     $allItems = @(Get-PnPListItem -List $Library.List -PageSize $script:ListPageSize -Fields $fields -ErrorAction Stop)
+    $byFolder = Get-FilesByFolder $allItems $Library.ServerRelativeUrl
     foreach ($folder in $Folders) {
-        $prefix = $Library.ServerRelativeUrl + '/' + $folder + '/'
-        [pscustomobject]@{ Name = $Label + $folder; Prefix = $prefix; Files = @(Get-ChannelFiles $allItems $prefix) }
+        $files = @(); if ($byFolder.ContainsKey($folder)) { $files = $byFolder[$folder].ToArray() }
+        [pscustomobject]@{ Name = $Label + $folder; Prefix = ($Library.ServerRelativeUrl + '/' + $folder + '/'); Files = $files }
     }
-    $rootFiles = @(Get-RootFiles $allItems $Library.ServerRelativeUrl)
+    $rootFiles = @(); if ($byFolder.ContainsKey('')) { $rootFiles = $byFolder[''].ToArray() }
     if ($rootFiles.Count -gt 0) {
         [pscustomobject]@{ Name = $Label + $script:RootGroupName; Prefix = $Library.ServerRelativeUrl + '/'; Files = $rootFiles }
     }
@@ -560,23 +555,16 @@ function Invoke-FileScan {
             $Rows.Add((New-ReportRow 'Scan' (Protect-PiiName $one.Title) '(library)' '' '' 'BLOCKED' '' '' ('Could not read this library: ' + (Protect-PiiText $_.Exception.Message))))
         }
     })
-    $total = 0
-    foreach ($group in $groups) { $total += $group.Files.Count }
-    Write-Ui ('==== Scanning {0} files in {1} folders ====' -f $total, $groups.Count) 'Title'
-    $meter = New-ScanMeter $total
-    if ($Progress) { $Progress.Meter = $meter }
-    $meter.NameWidth = Get-NameWidth @($groups | ForEach-Object { Protect-PiiName $_.Name })
-    $queue = New-ScanQueue $Init $Rows $meter
-    # Starts one file of a group (Invoke-GroupScan calls it); then the file's masked path for the progress bar.
-    $start = { param($group, $file) Invoke-OneFileScan $queue $file $group.Name $group.Prefix $origin $MaxFileMB }
+    # Starts one file of a group (Invoke-GroupScan calls it).
+    $start = { param($queue, $group, $file) Invoke-OneFileScan $queue $file $group.Name $group.Prefix $origin $MaxFileMB }
     # The file's masked path inside its folder, for the progress bar.
     $shown = { param($group, $file) Get-ShownItem $group.Name ((Get-FieldValue $file 'FileRef').Substring($group.Prefix.Length)) }
-    try { Invoke-GroupScan $queue $groups $start $shown }
-    finally { $script:Timing.Check = Close-ScanQueue $queue }
-    # The folder rows form one table; the total closes it, under a rule.
-    Write-RuleLine
-    Write-MeterLine $meter 'file' -Force
-    return $meter.Read
+    $run = $Progress; if (-not $run) { $run = @{} }
+    # A file's name and size, for the question before the scan.
+    $facts = { param($file) (Get-FieldValue $file 'FileLeafRef'), [long](Get-FieldValue $file 'File_x0020_Size') }
+    try { Invoke-ScanRun $Init $Rows $groups $start $shown $run $facts $MaxFileMB }
+    finally { if ($run.ContainsKey('Reading')) { $script:Timing.Check = $run.Reading } }
+    return $run.Meter.Read
 }
 
 # =====================================================================================

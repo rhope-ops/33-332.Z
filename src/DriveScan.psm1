@@ -110,14 +110,10 @@ function Invoke-DriveFile {
     $channel = Protect-PiiName $Group
     $item = Get-ShownItem $Group $File.Inner
     $link = Get-DriveLink $File.Path
-    foreach ($hit in @(Find-PiiInText ($Group + '/' + $File.Inner))) {
-        $rows.Add((New-ReportRow 'File name' $channel $item $link $File.Modified $hit.Detector $hit.Confidence $hit.MaskedValue 'In the file or folder name'))
-    }
-    $skipReason = ''
-    if (-not (Test-SupportedFile $File.Name)) { $skipReason = 'File type is not read by this script: check by hand' }
-    elseif ($File.Size -gt ($MaxFileMB * 1MB)) { $skipReason = "Larger than $MaxFileMB MB: check by hand" }
-    if ($skipReason) { $rows.Add((New-ReportRow 'File' $channel $item $link $File.Modified 'NOT SCANNED' '' '' $skipReason)); return $false }
-    Submit-ScanFile $Queue @{ Channel = $channel; Item = $item; Link = $link; Modified = $File.Modified; DrivePath = $File.Path } $File.Name $null $File.Path
+    $info = @{ Channel = $channel; Item = $item; Link = $link; Modified = $File.Modified }
+    if (-not (Add-FileStartRows $rows $info ($Group + '/' + $File.Inner) $File.Name $File.Size $MaxFileMB)) { return $false }
+    $info.DrivePath = $File.Path
+    Submit-ScanFile $Queue $info $File.Name $null $File.Path
     return $true
 }
 
@@ -167,14 +163,12 @@ function Get-DriveHeader {
       [System.Collections.Specialized.OrderedDictionary]
     #>
     param([string]$Path, [object[]]$Groups, [TimeSpan]$Used, [TimeSpan]$Reading, [int]$Workers)
-    # A time as minutes:seconds.
-    $format = { param($t) '{0:00}:{1:00}' -f [int][Math]::Floor($t.TotalMinutes), $t.Seconds }
     $header = [ordered]@{}
     $header['Folder'] = Protect-PiiName $Path
     $header['Folders'] = ($Groups | ForEach-Object { Protect-PiiName $_.Name }) -join ', '
     $header['Run'] = Get-Date -Format 'yyyy-MM-dd HH:mm'
-    $header['Time used'] = & $format $Used
-    $header['Time reading files (all readers)'] = & $format $Reading
+    $header['Time used'] = Format-Duration $Used
+    $header['Time reading files (all readers)'] = Format-Duration $Reading
     $header['Files read at the same time (at the end)'] = [string]$Workers
     return $header
 }
@@ -200,31 +194,21 @@ function Invoke-DriveScan {
     $rows = New-Object System.Collections.Generic.List[object]
     $finished = $false
     $groups = @()
-    $workers = 0
-    $reading = [TimeSpan]::Zero
-    $meter = New-ScanMeter 0
+    $workbook = $null
+    $run = @{ Meter = (New-ScanMeter 0); Reading = [TimeSpan]::Zero; Workers = 0 }   # filled by Invoke-ScanRun
     try {
         if (-not (Test-Path -LiteralPath $Path -PathType Container)) { throw 'This folder cannot be opened (check the path, and that you can open it in File Explorer).' }
         Write-Ui 'Listing the files ...' 'Muted'
         $found = Get-DriveGroups $Path
         $groups = $found.Groups.ToArray()
         Add-DriveListRows $found $rows
-        $total = ($groups | ForEach-Object { $_.Files.Count } | Measure-Object -Sum).Sum
-        Write-Ui ('==== Scanning {0} files in {1} folders ====' -f $total, $groups.Count) 'Title'
-        $meter = New-ScanMeter ([int]$total)
-        $meter.NameWidth = Get-NameWidth @($groups | ForEach-Object { Protect-PiiName $_.Name })
-        $queue = New-ScanQueue $Init $rows $meter
-        try {
-            # Starts one file (Invoke-GroupScan calls it).
-            $start = { param($group, $file) Invoke-DriveFile $queue $group.Name $file $MaxFileMB }
-            # The file's masked path inside its folder, for the progress bar.
-            $shown = { param($group, $file) Get-ShownItem $group.Name $file.Inner }
-            Invoke-GroupScan $queue $groups $start $shown
-            $workers = Get-QueueWorkers $queue
-        }
-        finally { $reading = Close-ScanQueue $queue }
-        Write-RuleLine
-        Write-MeterLine $meter 'file' -Force
+        # Starts one file (Invoke-GroupScan calls it).
+        $start = { param($queue, $group, $file) Invoke-DriveFile $queue $group.Name $file $MaxFileMB }
+        # The file's masked path inside its folder, for the progress bar.
+        $shown = { param($group, $file) Get-ShownItem $group.Name $file.Inner }
+        # A file's name and size, for the question before the scan.
+        $facts = { param($file) $file.Name, $file.Size }
+        Invoke-ScanRun $Init $rows $groups $start $shown $run $facts $MaxFileMB
         $finished = $true
     }
     catch {
@@ -233,11 +217,16 @@ function Invoke-DriveScan {
         $rows.Add((New-ReportRow 'Scan' '(all)' '(scan)' '' '' 'INCOMPLETE' '' '' ('Stopped early: ' + $reason)))
     }
     finally {
-        Add-IncompleteRow -Rows $rows -Finished $finished; $header = Get-DriveHeader $Path $groups $clock.Elapsed $reading $workers
-        $name = $Path.TrimEnd('\') -replace '\\', '/'   # the results folder is named after the folder's last part
-        $path = Publish-ScanReport -Rows $rows.ToArray() -ItemsScanned $meter.Read -Header $header -OutputFolder $OutputFolder -SiteUrl $name -FolderLabel 'Folder'
+        # "No" to "Scan now?": nothing was read, so nothing is saved (the PAM, 2026-11-21).
+        if ($run.ContainsKey('Declined') -and $run.Declined) { Write-Ui 'Not scanned: nothing was saved.' 'Accent' }
+        else {
+            Add-IncompleteRow -Rows $rows -Finished $finished
+            $header = Get-DriveHeader $Path $groups $clock.Elapsed $run.Reading $run.Workers
+            $name = $Path.TrimEnd('\') -replace '\\', '/'   # the results folder is named after the folder's last part
+            $workbook = Publish-ScanReport -Rows $rows.ToArray() -ItemsScanned $run.Meter.Read -Header $header -OutputFolder $OutputFolder -SiteUrl $name -FolderLabel 'Folder'
+        }
     }
-    return $path
+    return $workbook
 }
 
 Export-ModuleMember -Function Get-DriveGroups, Invoke-DriveScan

@@ -7,8 +7,9 @@ ScanQueue.psm1 - turns the reader pool's results into report rows, in the order 
   Inputs:      per file: how the report shows it (folder, item, link, change time) and its bytes or path.
   Outputs:     report rows (Report.psm1 New-ReportRow) in the caller's row list; the meter and the live line.
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
-  Depends on:  ReaderPool.psm1, PiiMasking.psm1, Report.psm1 (New-ReportRow, Add-PartRows) and ScanMeter.psm1,
-               imported first by Find-ChannelPII.ps1.
+  Depends on:  ReaderPool.psm1, PiiMasking.psm1, TextExtract.psm1 (Test-SupportedFile), Report.psm1 (New-ReportRow,
+               Add-PartRows, Write-Ui) and ScanMeter.psm1, imported first by Find-ChannelPII.ps1. The steps both scans
+               share (a file's start rows, the scan run around the groups) live here, once.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7).
   Network:     none here.
   Writes:      none (rows in memory).
@@ -134,7 +135,7 @@ function Invoke-GroupScan {
     .PARAMETER Groups
       The groups, each with Name and Files.
     .PARAMETER StartFile
-      { param($Group, $File) } that starts one file; returns true when the file went to the readers.
+      { param($Queue, $Group, $File) } that starts one file; returns true when the file went to the readers.
     .PARAMETER ShownFile
       { param($Group, $File) } that gives the file's masked path for the progress bar.
     #>
@@ -149,7 +150,7 @@ function Invoke-GroupScan {
             Write-Progress -Id 1 -Activity $Queue.Activity -Status (Get-ScanMeterText $meter 'file') -PercentComplete (Get-MeterPercent $meter) `
                 -CurrentOperation ('Now: ' + (& $ShownFile $group $file))
             $firstRow = $Queue.Rows.Count
-            if (-not (& $StartFile $group $file)) {
+            if (-not (& $StartFile $Queue $group $file)) {
                 Update-ScanMeter $meter $Queue.Rows $firstRow 0
                 Write-MeterLine $meter 'file'   # the running total, at most every $LiveLineSeconds
             }
@@ -231,9 +232,111 @@ function Close-ScanQueue {
 }
 
 function Get-QueueWorkers {
-    # The number of files read at once now (for the live line and the header).
+    # The number of files read at the same time now (for the drive scan's header).
     param([hashtable]$Queue)
     return $Queue.Pool.Target
 }
 
-Export-ModuleMember -Function New-ScanQueue, Submit-ScanFile, Invoke-GroupScan, Wait-ScanQueue, Close-ScanQueue, Get-QueueWorkers
+function Add-FileStartRows {
+    <#
+    .SYNOPSIS
+      The rows every file gets before it is read, for both scans: a hit row for PII in its name or folder, then a NOT
+      SCANNED row when its type is not read or it is over the size limit.
+    .PARAMETER Rows
+      The list that receives the rows.
+    .PARAMETER Info
+      @{ Channel; Item; Link; Modified } as the report shows the file (already masked).
+    .PARAMETER RawPath
+      The folder and file path as written (checked for PII; never shown).
+    .PARAMETER Name
+      The file name (its extension decides whether it is read).
+    .PARAMETER Size
+      The file size in bytes.
+    .PARAMETER MaxFileMB
+      The size limit.
+    .OUTPUTS
+      [bool] true when the file is to be read; false when it got its NOT SCANNED row.
+    #>
+    param($Rows, [hashtable]$Info, [string]$RawPath, [string]$Name, [long]$Size, [int]$MaxFileMB)
+    foreach ($hit in @(Find-PiiInText $RawPath)) {
+        $Rows.Add((New-ReportRow 'File name' $Info.Channel $Info.Item $Info.Link $Info.Modified $hit.Detector $hit.Confidence $hit.MaskedValue 'In the file or folder name'))
+    }
+    $reason = ''
+    if (-not (Test-SupportedFile $Name)) { $reason = 'File type is not read by this script: check by hand' }
+    elseif ($Size -gt ($MaxFileMB * 1MB)) { $reason = "Larger than $MaxFileMB MB: check by hand" }
+    if ($reason) { $Rows.Add((New-ReportRow 'File' $Info.Channel $Info.Item $Info.Link $Info.Modified 'NOT SCANNED' '' '' $reason)) }
+    return (-not $reason)
+}
+
+function Confirm-ScanStart {
+    <#
+    .SYNOPSIS
+      Before a scan: how many files and MB were found, and how many will be listed but not read (type or size); then
+      "Scan now? [Y/n]" (Enter = yes; the PAM, 2026-11-21: a guard against a scope larger than meant).
+    .PARAMETER Groups
+      The groups, each with Files.
+    .PARAMETER Facts
+      { param($File) } that gives @(name, size in bytes) of one file.
+    .PARAMETER MaxFileMB
+      The size limit.
+    .OUTPUTS
+      [bool] true to scan.
+    #>
+    param([object[]]$Groups, [scriptblock]$Facts, [int]$MaxFileMB)
+    $count = 0; $bytes = 0L; $skipped = 0
+    foreach ($group in $Groups) {
+        foreach ($file in $group.Files) {
+            $name, $size = & $Facts $file
+            $count++; $bytes += [long]$size
+            if (-not (Test-SupportedFile $name) -or [long]$size -gt $MaxFileMB * 1MB) { $skipped++ }
+        }
+    }
+    Write-Ui ('Found {0} files ({1:N1} MB) in {2} folders; {3} will be listed but not read (file type, or over {4} MB).' -f
+        $count, ($bytes / 1MB), $Groups.Count, $skipped, $MaxFileMB) 'Text'
+    $answer = Read-Host 'Scan now? [Y/n]'
+    return -not ($answer -and $answer.Trim() -match '^(n|no)$')
+}
+
+function Invoke-ScanRun {
+    <#
+    .SYNOPSIS
+      One scan of the groups, for both scans: the "Scanning N files" banner, the meter, the readers, every group, then
+      the rule and the total line. The run's meter, reading time and worker count go in Run, also when the scan
+      stops part way (the caller's 'finally' reads them).
+    .PARAMETER Init
+      How the reader workers load their code (New-ReaderPool).
+    .PARAMETER Rows
+      The list that receives the rows.
+    .PARAMETER Groups
+      The groups, each with Name and Files.
+    .PARAMETER StartFile
+      { param($Queue, $Group, $File) } that starts one file (Invoke-GroupScan).
+    .PARAMETER ShownFile
+      { param($Group, $File) } that gives the file's masked path for the progress bar.
+    .PARAMETER Run
+      Receives Meter, Reading ([TimeSpan]) and Workers; Declined = $true when the person answered no to "Scan now?".
+    .PARAMETER Facts
+      { param($File) } that gives @(name, size in bytes) of one file, for the question before the scan.
+    .PARAMETER MaxFileMB
+      The size limit (files over it are listed, not read).
+    #>
+    param([hashtable]$Init, $Rows, [object[]]$Groups, [scriptblock]$StartFile, [scriptblock]$ShownFile, [hashtable]$Run,
+          [scriptblock]$Facts, [int]$MaxFileMB)
+    $total = 0
+    foreach ($group in $Groups) { $total += $group.Files.Count }
+    $Run.Meter = New-ScanMeter 0; $Run.Reading = [TimeSpan]::Zero; $Run.Workers = 0; $Run.Declined = $false
+    if ($Facts -and -not (Confirm-ScanStart $Groups $Facts $MaxFileMB)) { $Run.Declined = $true; return }
+    Write-Ui ('==== Scanning {0} files in {1} folders ====' -f $total, $Groups.Count) 'Title'
+    $meter = New-ScanMeter $total
+    $meter.NameWidth = Get-NameWidth @($Groups | ForEach-Object { Protect-PiiName $_.Name })
+    $Run.Meter = $meter; $Run.Reading = [TimeSpan]::Zero; $Run.Workers = 0
+    $queue = New-ScanQueue $Init $Rows $meter
+    try { Invoke-GroupScan $queue $Groups $StartFile $ShownFile; $Run.Workers = Get-QueueWorkers $queue }
+    finally { $Run.Reading = Close-ScanQueue $queue }
+    # The folder rows form one table; the total closes it, under a rule.
+    Write-RuleLine
+    Write-MeterLine $meter 'file' -Force
+}
+
+Export-ModuleMember -Function New-ScanQueue, Submit-ScanFile, Invoke-GroupScan, Wait-ScanQueue, Close-ScanQueue, Get-QueueWorkers, Add-FileStartRows,
+    Invoke-ScanRun

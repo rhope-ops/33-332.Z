@@ -42,6 +42,7 @@ function Reset-FakePnP {
         StopInFolder2 = $false                                    # the scan stops (as at Ctrl+C) when it reaches folder 2
         SiteGroupId = [guid]'11111111-2222-3333-4444-555555555555'
         OpenAnswer  = ''                                          # the answer to "Open the workbook now?" ('' = Enter = yes)
+        ScanAnswer  = ''                                          # the answer to "Scan now?" ('' = Enter = yes)
         Calls       = New-Object System.Collections.Generic.List[string]
         Progress    = New-Object System.Collections.Generic.List[string]
     }
@@ -67,13 +68,16 @@ function Set-FakeSiteAnswer {
       The answers of the fake Read-Host, in order; after the last, it returns '' (Enter). 'cancel' = the prompt fails.
     .PARAMETER SiteGroupId
       The group ID of the connected site (Get-PnPSite).
+    .PARAMETER ScanAnswer
+      The answer to "Scan now?" ('' = Enter = yes).
     .OUTPUTS
       None (changes $global:FakePnP).
     #>
-    param([string[]]$TypedSite = @(), [guid]$SiteGroupId = '11111111-2222-3333-4444-555555555555')
+    param([string[]]$TypedSite = @(), [guid]$SiteGroupId = '11111111-2222-3333-4444-555555555555', [string]$ScanAnswer = '')
     $global:FakePnP.TypedSite.Clear()
     foreach ($answer in $TypedSite) { if ($answer) { $global:FakePnP.TypedSite.Enqueue($answer) } }
     $global:FakePnP.SiteGroupId = $SiteGroupId
+    $global:FakePnP.ScanAnswer = $ScanAnswer
 }
 
 function Get-FakePnPConnection {
@@ -246,6 +250,7 @@ function global:Read-Host {
     [CmdletBinding()] param($Prompt)
     # The open-the-workbook question has its own answer (Enter = open), so the queued addresses stay in order.
     if ([string]$Prompt -like 'Open the workbook*') { $global:FakePnP.Calls.Add('Open question'); return $global:FakePnP.OpenAnswer }
+    if ([string]$Prompt -like 'Scan now*') { $global:FakePnP.Calls.Add('Scan question'); return $global:FakePnP.ScanAnswer }
     $global:FakePnP.Calls.Add('Read-Host')
     # A real cancel stops the whole pipeline (the test run too); an error leaves through the same 'finally'.
     if ($global:FakePnP.TypedSite.Count -eq 0) { return '' }

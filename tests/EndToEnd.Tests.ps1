@@ -33,6 +33,18 @@ Assert-Equal $true ((Get-FakeProgressText) -match '    2/    3 files \| read +\d
 Assert-Equal $true ((Get-FakeProgressText) -match "folder 2 of 2: 'Ops'") 'Progress bar names the folder and its number'
 Assert-Equal $false ((Get-FakeProgressText) -match 'Downloading this file Downloading') 'Small files: no per-file bar (it would only slow the scan)'
 
+Assert-Equal $true (Test-FakePnPCall 'Scan question') 'Before the scan: "Scan now?" is asked'
+
+# ---- "No" to "Scan now?": nothing read, nothing saved, signed out (the PAM, 2026-11-21) ----
+Reset-FakePnP @{ "$library/General/notes.txt" = $Txt; "$library/Ops/scan.exe" = $Txt }
+Set-FakeSiteAnswer -ScanAnswer 'n'
+$noFolder = Join-Path $runFolder 'declined'
+$noShown = (& $script -SiteUrl $Sample.Site -OutputFolder $noFolder 6>&1 | ForEach-Object { [string]$_ }) -join ' '
+Assert-Equal $true ($noShown -match 'Found 2 files \([\d.]+ MB\) in 2 folders; 1 will be listed but not read') 'Before the scan: files, MB and the ones not read'
+Assert-Equal $true ($noShown -match 'Not scanned: nothing was saved') 'Declined: the person is told'
+Assert-Equal 0 @(Get-ResultFiles $noFolder).Count 'Declined: nothing saved'
+Assert-Equal $true (Test-FakePnPCall 'Disconnect-PnPOnline') 'Declined: signed out'
+
 # ---- A plain SharePoint site (no team): Folder column, top-of-library files ----
 Reset-FakePnP @{ "$library/top.txt" = $Txt }
 Set-FakeSiteAnswer -TypedSite '' -SiteGroupId ([guid]::Empty)
@@ -84,7 +96,7 @@ Assert-Equal $true (Test-FakePnPCall 'Disconnect-PnPOnline') 'Signed out after a
 Reset-FakePnP @{ "$library/General/notes.txt" = $Txt; "$library/Ops/a.txt" = $Txt }
 Set-FakePnPOption StopInFolder2 $true
 $stopShown = (& $script -SiteUrl $Sample.Site -OutputFolder (Join-Path $runFolder 'stop') 6>&1 | ForEach-Object { [string]$_ }) -join ' '
-Assert-Equal $true ($stopShown -match 'INCOMPLETE: the scan stopped early\. Only the 1 files read') 'Stopped part way: the red line counts the files read'
+Assert-Equal $true ($stopShown -match 'INCOMPLETE: the scan stopped early\. Only the 1 file read') 'Stopped part way: the red line counts the files read'
 
 # ---- A report that cannot be saved: the script still signs out ----
 Reset-FakePnP @{}
