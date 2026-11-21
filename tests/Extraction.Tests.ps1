@@ -222,9 +222,26 @@ Assert-Equal 'SSN' (@(Find-PiiInText $byName['(message text)']) | Select-Object 
 Assert-Equal 'Phone' (@(Find-PiiInText $byName['notes.txt']) | Select-Object -First 1).Detector 'EML: base64 attachment read'
 
 # Images: without Windows OCR (this test machine) a reason; with OCR (a stand-in here) the text is read, also from a scanned PDF.
-Assert-Equal $true ((Get-TextFromBytes -Bytes ([byte[]](1, 2, 3)) -FileName 'scan.png').Reason -match 'Windows OCR is not available') 'Image: no OCR gives a reason'
+# Bytes that are no image: a reason either way (no OCR here; or, where Windows has OCR, the image cannot be opened).
+$unreadable = '^(Image: Windows OCR is not available|Image: its text could not be read)'
+Assert-Equal $true ((Get-TextFromBytes -Bytes ([byte[]](1, 2, 3)) -FileName 'scan.png').Reason -match $unreadable) 'Image: no OCR or no image gives a reason'
 $scanPdf = New-PdfBytes 'q /Im1 Do Q' -Plain -Extra @("<< /Type /XObject /Subtype /Image /Filter /DCTDecode /Length 4 >> stream`nJPEG`nendstream")
-Assert-Equal $true ((Get-TextFromBytes -Bytes $scanPdf -FileName 's.pdf').Reason -match '^Scanned PDF: Image: Windows OCR') 'Scanned PDF: no OCR gives a reason'
+Assert-Equal $true ((Get-TextFromBytes -Bytes $scanPdf -FileName 's.pdf').Reason -match ('^Scanned PDF: ' + $unreadable.Substring(1))) 'Scanned PDF: no OCR or a damaged page image gives a reason'
+# Where Windows has OCR (the ps51 CI runner): a real image with an invented SSN drawn in it is read and the SSN found.
+$ocrHere = (Get-TextFromBytes -Bytes ([byte[]](1, 2, 3)) -FileName 'x.png').Reason -notmatch 'not available'
+if ($ocrHere -and $PSVersionTable.PSVersion.Major -eq 5) {
+    Add-Type -AssemblyName System.Drawing   # tests only: draws the sample image (the bundle never loads it)
+    # Types looked up by name: written as [System.Drawing...] they would be resolved, and fail, where it is missing.
+    $drawing = @{}; foreach ($name in 'Graphics', 'Color', 'Brushes', 'Imaging.ImageFormat') { $drawing[$name] = ('System.Drawing.' + $name) -as [type] }
+    $bitmap = New-Object System.Drawing.Bitmap 900, 120
+    $graphics = $drawing['Graphics']::FromImage($bitmap)
+    $graphics.Clear($drawing['Color']::White)
+    $graphics.DrawString($ssnLine, (New-Object System.Drawing.Font 'Arial', 36), $drawing['Brushes']::Black, 10, 30)
+    $png = New-Object System.IO.MemoryStream
+    $bitmap.Save($png, $drawing['Imaging.ImageFormat']::Png); $graphics.Dispose(); $bitmap.Dispose()
+    $ocrRead = Get-TextFromBytes -Bytes $png.ToArray() -FileName 'roster.png'
+    Assert-Equal $true (@(Find-PiiInText $ocrRead.Text | ForEach-Object { $_.Detector }) -contains 'SSN') 'Image: Windows OCR reads an SSN drawn in a picture'
+}
 & (Get-Module OcrText) { param($line) $script:OcrOverride = [scriptblock]::Create("param(`$b) @{ Text = '$line'; Reason = ''; Note = '' }") } $ssnLine
 Assert-Equal 'SSN' (@(Find-PiiInText (Get-TextFromBytes -Bytes ([byte[]](1, 2, 3)) -FileName 'scan.png').Text) | Select-Object -First 1).Detector 'Image: OCR text checked'
 Assert-Equal 'SSN' (@(Find-PiiInText (Get-TextFromBytes -Bytes $scanPdf -FileName 's.pdf').Text) | Select-Object -First 1).Detector 'Scanned PDF: page images read with OCR'
