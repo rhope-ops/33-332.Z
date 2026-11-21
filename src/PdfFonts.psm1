@@ -45,7 +45,8 @@ $script:GlyphMarks = @{ acute = 0x301; grave = 0x300; circumflex = 0x302; dieres
 # A made-up glyph name: up to 5 letters, then a number (g12, a3, G1, cid34, glyph7, index5), with an optional suffix.
 # Not the Adobe names that are letters and a number too: afii (Cyrillic and other letters), uni and u (code points),
 # SF and H (box drawing and shapes).
-$script:MadeUpGlyphName = '^(?!afii|uni|u\d|SF\d|H\d)[A-Za-z]{1,5}\d+(?:\..*)?$'
+# Case-sensitive (?-i): Adobe names are case-exact, so h12 or sf1 stay made-up names (review of PR 34).
+$script:MadeUpGlyphName = '(?-i)^(?!afii|uni[0-9A-F]{4}|u[0-9A-F]{4,6}$|SF\d|H\d)[A-Za-z]{1,5}\d+(?:\..*)?$'
 
 $script:PictureFontPattern = '(?i)wingdings|webdings|dingbats|marlett|(?:^|\+)symbol(?:mt)?(?:$|[,-])'
 
