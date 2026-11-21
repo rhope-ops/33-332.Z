@@ -25,16 +25,16 @@
     src/ContainerText.psm1, sha256 7378569bd7e6
     src/PdfCore.psm1, sha256 da11bdba883c
     src/PdfObjects.psm1, sha256 4479101a8f3e
-    src/PdfFonts.psm1, sha256 7ae85965bcee
+    src/PdfFonts.psm1, sha256 8ad00db84c87
     src/PdfLayout.psm1, sha256 feafecd946b7
     src/PdfText.psm1, sha256 312351e30b87
     src/TextExtract.psm1, sha256 3b52ab6462e5
     src/ReaderPool.psm1, sha256 8f8f73fda166
     src/XlsxWriter.psm1, sha256 e29becdc6a65
-    src/Report.psm1, sha256 d4de6ecb5092
+    src/Report.psm1, sha256 0f10bf11fed0
     src/ScanMeter.psm1, sha256 739747d75471
     src/ScanQueue.psm1, sha256 37e83cec1fd9
-    src/Accountability.psm1, sha256 6a1d334dbbe3
+    src/Accountability.psm1, sha256 15472f8fab6e
     src/ChannelScan.psm1, sha256 b0c58f9fd643
     src/DriveScan.psm1, sha256 59ea6a456910
     src/Find-ChannelPII.ps1, sha256 b2d6bfd7a72b
@@ -56,20 +56,20 @@
     line  1420  Module PdfCore.psm1
     line  1779  Module PdfObjects.psm1
     line  2137  Module PdfFonts.psm1
-    line  2567  Module PdfLayout.psm1
-    line  2707  Module PdfText.psm1
-    line  3200  Module TextExtract.psm1
-    line  3613  Module ReaderPool.psm1
-    line  3865  Reader block end
-    line  3869  Module XlsxWriter.psm1
-    line  4140  Module Report.psm1
-    line  4707  Module ScanMeter.psm1
-    line  5030  Module ScanQueue.psm1
-    line  5268  Module Accountability.psm1
-    line  5546  Module ChannelScan.psm1
-    line  6134  Module DriveScan.psm1
-    line  6376  Body of Find-ChannelPII.ps1
-    line  6485  Clean-up
+    line  2684  Module PdfLayout.psm1
+    line  2824  Module PdfText.psm1
+    line  3317  Module TextExtract.psm1
+    line  3730  Module ReaderPool.psm1
+    line  3982  Reader block end
+    line  3986  Module XlsxWriter.psm1
+    line  4257  Module Report.psm1
+    line  4828  Module ScanMeter.psm1
+    line  5151  Module ScanQueue.psm1
+    line  5389  Module Accountability.psm1
+    line  5683  Module ChannelScan.psm1
+    line  6271  Module DriveScan.psm1
+    line  6513  Body of Find-ChannelPII.ps1
+    line  6622  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -2156,6 +2156,33 @@ PdfFonts.psm1 - the fonts of a PDF: their character maps and their real glyph wi
 # Fonts that draw pictures, not text (by name, with or without a subset prefix such as ABCDEF+): Wingdings 1-3,
 # Webdings, (Zapf) Dingbats, Marlett and Symbol (Greek and maths signs). Their text is read as spaces: a row of symbols
 # read as letters and digits gave Low hits that were plainly wrong (the PAM, 2026-11-21).
+# Standard glyph names (Adobe Glyph List) of the digits and common signs, for a font's /Differences; single letters
+# name themselves. Any other name is a made-up one: its glyph cannot be read.
+$script:GlyphNames = @{ space = ' '; zero = '0'; one = '1'; two = '2'; three = '3'; four = '4'; five = '5'; six = '6'; seven = '7'
+    eight = '8'; nine = '9'; period = '.'; comma = ','; colon = ':'; semicolon = ';'; hyphen = '-'; minus = '-'; endash = [string][char]0x2013
+    emdash = [string][char]0x2014; slash = '/'; backslash = '\'; parenleft = '('; parenright = ')'; bracketleft = '['; bracketright = ']'
+    braceleft = '{'; braceright = '}'; at = '@'; numbersign = '#'; dollar = '$'; percent = '%'; ampersand = '&'; asterisk = '*'; plus = '+'
+    equal = '='; less = '<'; greater = '>'; exclam = '!'; question = '?'; underscore = '_'; bar = '|'; asciitilde = '~'; quotesingle = "'"
+    quotedbl = '"'; quoteleft = [string][char]0x2018; quoteright = [string][char]0x2019; quotedblleft = [string][char]0x201C
+    quotedblright = [string][char]0x201D; bullet = [string][char]0x2022; degree = [string][char]0xB0; section = [string][char]0xA7
+    periodcentered = [string][char]0xB7; germandbls = [string][char]0xDF; dotlessi = 'i'; fi = 'fi'; fl = 'fl'; ff = 'ff'; ffi = 'ffi'; ffl = 'ffl'
+    nbspace = ' ' }
+# Glyph names are case-sensitive (AE and ae are two letters), so the table is an ordinal dictionary.
+$glyphTable = $script:GlyphNames
+$script:GlyphNames = New-Object 'System.Collections.Generic.Dictionary[string,string]' ([StringComparer]::Ordinal)
+foreach ($name in $glyphTable.Keys) { $script:GlyphNames[$name] = $glyphTable[$name] }
+foreach ($pair in @(@('AE', 0xC6), @('ae', 0xE6), @('Oslash', 0xD8), @('oslash', 0xF8), @('OE', 0x152), @('oe', 0x153))) {
+    $script:GlyphNames[$pair[0]] = [string][char]$pair[1]
+}
+
+# The combining marks of accented glyph names (eacute = e + U+0301).
+$script:GlyphMarks = @{ acute = 0x301; grave = 0x300; circumflex = 0x302; dieresis = 0x308; tilde = 0x303; ring = 0x30A; cedilla = 0x327; caron = 0x30C
+    macron = 0x304; breve = 0x306; ogonek = 0x328; dotaccent = 0x307; hungarumlaut = 0x30B; commaaccent = 0x326 }
+# A made-up glyph name: up to 5 letters, then a number (g12, a3, G1, cid34, glyph7, index5), with an optional suffix.
+# Not the Adobe names that are letters and a number too: afii (Cyrillic and other letters), uni and u (code points),
+# SF and H (box drawing and shapes).
+$script:MadeUpGlyphName = '^(?!afii|uni|u\d|SF\d|H\d)[A-Za-z]{1,5}\d+(?:\..*)?$'
+
 $script:PictureFontPattern = '(?i)wingdings|webdings|dingbats|marlett|(?:^|\+)symbol(?:mt)?(?:$|[,-])'
 
 # Widths of the standard fonts (Adobe AFM, in thousandths of an em) for character codes 32-126; Courier is 600 for all.
@@ -2255,6 +2282,7 @@ function New-PdfFontRecord {
         $record.Bytes = [Math]::Max(1, [int]$record.CMap.Bytes)
     }
     elseif ($composite) { $record.CMap = @{ Bytes = 2; Map = @{}; Ranges = @(); Unreadable = $true } }
+    else { $record.Glyphs = Get-PdfDifferences $Dict $Objects }   # a simple font without a map: its own glyph names
     if ($composite) { Add-PdfCidWidths $record $Dict $Objects }
     else { Add-PdfSimpleWidths $record $Dict $Objects }
     return $record
@@ -2280,6 +2308,68 @@ function Get-PdfArrayText {
         return ''
     }
     return $value.Groups[1].Value
+}
+
+function Get-PdfDifferences {
+    <#
+    .SYNOPSIS
+      The /Differences of a simple font's /Encoding (in the font, or in an encoding object of its own): code -> text by
+      glyph name. A made-up name (letters and a number, such as /g12, /a3 or /cid34, as subset and Type3 fonts use) maps
+      to $null: its glyph cannot be read. Any other name this table does not know is left out: its code reads as before. Without them, codes were read as Latin-1 and gave nonsense letters and
+      signs (the PAM, 2026-11-21: "Wingdings"-like text from a PDF with no Wingdings font).
+    .PARAMETER Dict
+      The font dictionary.
+    .PARAMETER Objects
+      Output of Get-PdfObjects.
+    .OUTPUTS
+      [hashtable] code -> text or $null; $null when the font has no /Differences.
+    #>
+    param([string]$Dict, $Objects)
+    $source = $Dict
+    $reference = [regex]::Match($Dict, '/Encoding\s+(\d+)\s+\d+\s+R')
+    if ($reference.Success -and $Objects.Contains($reference.Groups[1].Value)) { $source = $Objects[$reference.Groups[1].Value].Dict }
+    $array = Get-PdfArrayText $source 'Differences' $Objects
+    if (-not $array) { return $null }
+    $glyphs = @{}
+    $code = 0
+    foreach ($token in [regex]::Matches($array, '(\d+)|/([^\s/\[\]()<>]+)')) {
+        if ($token.Groups[1].Success) { $code = [int]$token.Groups[1].Value; continue }
+        # A name can hold #xx escapes (/a#20b = "a b", ISO 32000-1, 7.3.5).
+        $name = [regex]::Replace($token.Groups[2].Value, '#([0-9A-Fa-f]{2})',
+            [System.Text.RegularExpressions.MatchEvaluator] { param($m) [string][char][Convert]::ToInt32($m.Groups[1].Value, 16) })
+        if ($code -le 255) {
+            $text = Get-PdfGlyphNameText $name
+            if ($null -ne $text) { $glyphs[$code] = $text }
+            elseif ($name -match $script:MadeUpGlyphName) { $glyphs[$code] = $null }
+            else { [void]$glyphs.Remove($code) }   # a real name this table does not know: the code reads as Latin-1
+        }
+        $code++
+    }
+    return $glyphs
+}
+
+function Get-PdfGlyphNameText {
+    <#
+    .SYNOPSIS
+      The text of a standard glyph name (Adobe Glyph List names for the letters, digits and common signs; accented
+      letters; uniXXXX and uXXXX; a suffix such as .sc is dropped); $null for a name this table does not know.
+    .PARAMETER Name
+      The glyph name, without its slash.
+    .OUTPUTS
+      [string] or $null.
+    #>
+    param([string]$Name)
+    $base = ($Name -split '\.')[0]
+    if ($base -cmatch '^[A-Za-z]$') { return $base }
+    if ($script:GlyphNames.ContainsKey($base)) { return $script:GlyphNames[$base] }
+    # An accented letter: the letter and its mark (eacute = e + acute), joined into one character.
+    $accent = [regex]::Match($base, '^([A-Za-z])(acute|grave|circumflex|dieresis|tilde|ring|cedilla|caron|macron|breve|ogonek|dotaccent|hungarumlaut|commaaccent)$')
+    if ($accent.Success) { return ($accent.Groups[1].Value + [string][char]$script:GlyphMarks[$accent.Groups[2].Value]).Normalize() }
+    if ($base -match '^uni([0-9A-Fa-f]{4})$' -or $base -match '^u([0-9A-Fa-f]{4,5})$') {
+        $value = [Convert]::ToInt32($Matches[1], 16)
+        if ($value -lt 0x10000 -and ($value -lt 0xD800 -or $value -gt 0xDFFF)) { return [string][char]$value }
+    }
+    return $null
 }
 
 function Add-PdfSimpleWidths {
@@ -2380,7 +2470,9 @@ function ConvertFrom-PdfGlyphs {
     #>
     param([string]$Raw, $Font)
     # A picture font (Wingdings and the like): one space per glyph, so its symbols never read as PII (the PAM, 2026-11-21).
+    # First, before its glyph names: a picture font's codes are never letters.
     if ($Font -and $Font.ContainsKey('Picture') -and $Font.Picture) { return ' ' * [int][Math]::Ceiling($Raw.Length / [Math]::Max(1, [int]$Font.Bytes)) }
+    if ($Font -and -not $Font.CMap -and $Font.ContainsKey('Glyphs') -and $Font.Glyphs) { return ConvertFrom-PdfNamedGlyphs $Raw $Font }
     if (-not $Font -or -not $Font.CMap) { return $Raw }
     $cmap = $Font.CMap
     if ($cmap.ContainsKey('Unreadable')) {
@@ -2411,6 +2503,31 @@ function ConvertFrom-PdfGlyphs {
     }
     $result = $out.ToString()
     if ($cache -and $cache.Count -lt $script:MaxFontCache -and $Raw.Length -le $script:MaxCacheKey) { $cache[$Raw] = $result }
+    return $result
+}
+
+function ConvertFrom-PdfNamedGlyphs {
+    <#
+    .SYNOPSIS
+      The text of one shown string in a simple font with /Differences: a code it names gets its glyph's text (a
+      glyph that cannot be read: a space and a "check by hand" note); any other code reads as Latin-1.
+    .PARAMETER Raw
+      The raw bytes as Latin-1 text.
+    .PARAMETER Font
+      The font record (Glyphs set).
+    #>
+    param([string]$Raw, $Font)
+    if ($Font.TextCache.ContainsKey($Raw)) { return $Font.TextCache[$Raw] }
+    $out = New-Object System.Text.StringBuilder
+    foreach ($char in $Raw.ToCharArray()) {
+        $code = [int]$char
+        if (-not $Font.Glyphs.ContainsKey($code)) { [void]$out.Append($char); continue }
+        $text = $Font.Glyphs[$code]
+        if ($null -eq $text) { Add-PdfNote 'A font in this PDF could not be read: check by hand'; [void]$out.Append(' ') }
+        else { [void]$out.Append($text) }
+    }
+    $result = $out.ToString()
+    if ($Font.TextCache.Count -lt $script:MaxFontCache -and $Raw.Length -le $script:MaxCacheKey) { $Font.TextCache[$Raw] = $result }
     return $result
 }
 
@@ -4238,7 +4355,8 @@ function New-ReportRow {
       The masked snippet, or the reason for a note.
     .OUTPUTS
       [pscustomobject] Source, Channel, Item, Detector, Confidence, MaskedValue, Context, Modified, Link, and the
-      accountability fields (empty until Set-RowAccountability fills them): ModifiedBy, Created, CreatedBy, AddedOn, AddedBy.
+      accountability fields (empty until Set-RowAccountability fills them): ModifiedBy, Created, CreatedBy, AddedOn, AddedBy,
+      HistoryNote.
     #>
     param(
         [string]$Source, [string]$Channel, [string]$Item, [string]$Link, [string]$Modified,
@@ -4247,7 +4365,7 @@ function New-ReportRow {
     [pscustomobject]@{
         Source = $Source; Channel = $Channel; Item = $Item; Detector = $Detector; Confidence = $Confidence
         MaskedValue = $MaskedValue; Context = $Context; Modified = $Modified; Link = $Link
-        ModifiedBy = ''; Created = ''; CreatedBy = ''; AddedOn = ''; AddedBy = ''
+        ModifiedBy = ''; Created = ''; CreatedBy = ''; AddedOn = ''; AddedBy = ''; HistoryNote = ''
     }
 }
 
@@ -4538,7 +4656,7 @@ function Get-HitCells {
     # One row of a hit tab: the hit's cells in the order of $HitColumns.
     param($Hit)
     @($Hit.Confidence, $Hit.Channel, $Hit.Item, $Hit.MaskedValue, $Hit.Context, $Hit.Modified, $Hit.Link, $Hit.Source,
-        $Hit.Created, $Hit.CreatedBy, $Hit.ModifiedBy, $Hit.AddedOn, $Hit.AddedBy)
+        $Hit.Created, $Hit.CreatedBy, $Hit.ModifiedBy, $Hit.AddedOn, $Hit.AddedBy, $Hit.HistoryNote)
 }
 
 function Set-RowAccountability {
@@ -4549,18 +4667,20 @@ function Set-RowAccountability {
     .PARAMETER Rows
       The file's rows (New-ReportRow).
     .PARAMETER Who
-      @{ ModifiedBy; Created; CreatedBy; AddedOn; AddedBy; ByHit } (any may be missing); ByHit: "type|masked value"
-      -> @{ AddedOn; AddedBy } for each hit dated from the file's history.
+      @{ ModifiedBy; Created; CreatedBy; AddedOn; AddedBy; HistoryNote; ByHit } (any may be missing); ByHit:
+      "type|masked value" -> @{ AddedOn; AddedBy; Note } for each hit dated from the file's history.
     #>
     param([object[]]$Rows, [hashtable]$Who)
     if (-not $Who) { return }
     foreach ($row in $Rows) {
-        foreach ($key in @('ModifiedBy', 'Created', 'CreatedBy', 'AddedOn', 'AddedBy')) {
+        foreach ($key in @('ModifiedBy', 'Created', 'CreatedBy', 'AddedOn', 'AddedBy', 'HistoryNote')) {
             if ($Who.ContainsKey($key) -and $Who[$key]) { $row.$key = [string]$Who[$key] }
         }
         $hitKey = $row.Detector + '|' + $row.MaskedValue
         if ($Who.ContainsKey('ByHit') -and $Who.ByHit -and $Who.ByHit.ContainsKey($hitKey)) {
-            $row.AddedOn = [string]$Who.ByHit[$hitKey].AddedOn; $row.AddedBy = [string]$Who.ByHit[$hitKey].AddedBy
+            $entry = $Who.ByHit[$hitKey]
+            $row.AddedOn = [string]$entry.AddedOn; $row.AddedBy = [string]$entry.AddedBy
+            if ($entry.ContainsKey('Note')) { $row.HistoryNote = [string]$entry.Note }
         }
     }
 }
@@ -4584,10 +4704,11 @@ function Get-WorkbookSheets {
     param([object[]]$Rows, [int]$ItemsScanned, [System.Collections.IDictionary]$Header, [string]$FolderLabel)
     $hits = @($Rows | Where-Object { $script:Rank.ContainsKey($_.Confidence) })
     # Accountability (the PAM, 2026-11-21): who made and changed the file, and who put the PII in and when (by e-mail).
-    # Created and Created by come before Modified by; Modified stays in its place (the PAM, 2026-11-21).
-    $columns = @('Confidence', $FolderLabel, 'File', 'Masked value', 'Context', 'Modified', 'Link', 'Found in',
-        'Created', 'Created by', 'Modified by', 'PII added', 'PII added by')
-    $widths = @(11, 22, 45, 18, 60, 17, 50, 10, 17, 30, 30, 17, 30)
+    # Created and Created by come before Last saved by; Last saved stays in its place. "Modified" is named "Last saved"
+    # (any save, not only the PII), and the caveats of "PII added by" have their own column (the PAM, 2026-11-21).
+    $columns = @('Confidence', $FolderLabel, 'File', 'Masked value', 'Context', 'Last saved', 'Link', 'Found in',
+        'Created', 'Created by', 'Last saved by', 'PII added', 'PII added by', 'History note')
+    $widths = @(11, 22, 45, 18, 60, 17, 50, 10, 17, 30, 30, 17, 30, 50)
     $byRank = @{ Expression = { $script:Rank[$_.Confidence] }; Descending = $true }
     $sheets = New-Object System.Collections.Generic.List[object]
     $sheets.Add((New-XlsxSheet 'Summary' @($script:ToolTitle, '', '', '', '') (Get-SummaryRows $Rows $ItemsScanned $Header) @(28, 70, 9, 9, 9)))
@@ -5275,7 +5396,9 @@ Accountability.psm1 - who made and changed a file with PII, and who put the PII 
                version history (the first version that holds each hit). Drives: the file's owner (a Windows logon
                name, which Windows looks up from the owner's ID; no search of the directory: "No reconnaissance"), its times, and the names an Office file stores.
   Inputs:      the file's list item, path or reader result, and its hits.
-  Outputs:     @{ ModifiedBy; Created; CreatedBy; AddedOn; AddedBy; ByHit } for Report.psm1 Set-RowAccountability.
+  Outputs:     @{ ModifiedBy; Created; CreatedBy; AddedOn; AddedBy; HistoryNote; ByHit } for Report.psm1 Set-RowAccountability.
+               "PII added" and "PII added by" hold only a date and a person (or "Not recorded"); every caveat goes in
+               "History note" (the PAM, 2026-11-21: the columns must be easy to understand).
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
   Depends on:  TextExtract.psm1 (Get-TextFromBytes), PiiDetectors.psm1 (Find-PiiInText) and, for SharePoint,
                PnP.PowerShell 1.12.0 (Get-PnPFileVersion, Get-PnPContext; read-only), imported first.
@@ -5288,12 +5411,13 @@ Accountability.psm1 - who made and changed a file with PII, and who put the PII 
 
 # Old versions read per file with a hit, oldest first (a file with more is dated from the oldest ones read).
 $script:MaxVersionsRead = 30
-$script:NoHistory = 'Not recorded (no version history)'
-# Put-backs named per hit in "PII added by" (the rest are counted).
+$script:NotRecorded = 'Not recorded'
+$script:NoHistory = 'The file has no version history'
+# Put-backs named per hit in its history note (the rest are counted).
 $script:MaxPutBacks = 3
-$script:MaybeEarlier = ' (an older version could not be read: it may have been added earlier)'
-$script:PartHistory = "Not recorded (not in the old versions read; check the file's version history by hand)"
-$script:DriveNoHistory = 'Not recorded (a drive keeps no file history)'
+$script:MaybeEarlier = 'An older version could not be read: it may have been added earlier'
+$script:PartHistory = "Not in the old versions read: check the file's version history by hand"
+$script:DriveNoHistory = 'A drive keeps no file history'
 
 function Get-PersonText {
     <#
@@ -5347,7 +5471,7 @@ function Complete-CurrentVersion {
       hit in no old version came with the current one (with no old version: the file's maker) - only when every old
       version was read; else who added it is not known, and the report says so (review of PR 20).
     .PARAMETER ByHit
-      Hit key -> @{ AddedOn; AddedBy }.
+      Hit key -> @{ AddedOn; AddedBy; Note }.
     .PARAMETER Back
       Hit key -> put-back texts.
     .PARAMETER Present
@@ -5366,9 +5490,9 @@ function Complete-CurrentVersion {
         }
     }
     foreach ($key in @($Keys | Where-Object { -not $ByHit.ContainsKey($_) })) {
-        if (-not $Read.Complete) { $ByHit[$key] = @{ AddedOn = $script:PartHistory; AddedBy = $script:PartHistory } }
-        elseif ($Read.Versions -eq 0) { $ByHit[$key] = @{ AddedOn = $Who.Created; AddedBy = $Who.CreatedBy } }
-        else { $ByHit[$key] = @{ AddedOn = $Who.Modified; AddedBy = $Who.ModifiedBy } }
+        if (-not $Read.Complete) { $ByHit[$key] = New-AddedEntry $script:NotRecorded $script:NotRecorded $script:PartHistory }
+        elseif ($Read.Versions -eq 0) { $ByHit[$key] = New-AddedEntry $Who.Created $Who.CreatedBy }
+        else { $ByHit[$key] = New-AddedEntry $Who.Modified $Who.ModifiedBy }
     }
 }
 
@@ -5422,10 +5546,10 @@ function Read-VersionText {
 function Add-PutBackText {
     <#
     .SYNOPSIS
-      Adds the put-backs to "PII added by": "first adder; put back by X on D" (at most $MaxPutBacks named, the rest
-      counted), and notes what the history read cannot show.
+      Adds the put-backs to the history note: "Put back by X on D" (at most $MaxPutBacks named, the rest counted),
+      and notes what the history read cannot show.
     .PARAMETER ByHit
-      Hit key -> @{ AddedOn; AddedBy }.
+      Hit key -> @{ AddedOn; AddedBy; Note }.
     .PARAMETER Back
       Hit key -> the put-back texts (Add-PutBack).
     .PARAMETER Unsure
@@ -5439,12 +5563,12 @@ function Add-PutBackText {
         $text = @($list | Select-Object -First $script:MaxPutBacks) -join '; '
         $more = $list.Count - $script:MaxPutBacks
         if ($more -eq 1) { $text += '; and 1 more time' } elseif ($more -gt 1) { $text += ('; and {0} more times' -f $more) }
-        $ByHit[$key].AddedBy = $ByHit[$key].AddedBy + '; ' + $text
+        Add-HistoryNote $ByHit[$key] $text
     }
     # Say what the history read cannot show, so "PII added by" never reads as complete when it is not (review).
-    foreach ($key in @($ByHit.Keys | Where-Object { $ByHit[$_].AddedBy -ne $script:PartHistory })) {
-        if ($Unsure.ContainsKey($key)) { $ByHit[$key].AddedBy += '; it may have been removed and put back (a version could not be read)' }
-        if (-not $AllRead) { $ByHit[$key].AddedBy += "; versions after the $script:MaxVersionsRead read were not checked" }
+    foreach ($key in @($ByHit.Keys | Where-Object { $ByHit[$_].AddedBy -ne $script:NotRecorded })) {
+        if ($Unsure.ContainsKey($key)) { Add-HistoryNote $ByHit[$key] 'It may have been removed and put back (a version could not be read)' }
+        if (-not $AllRead) { Add-HistoryNote $ByHit[$key] "Versions after the $script:MaxVersionsRead oldest were not checked" }
     }
 }
 
@@ -5452,7 +5576,19 @@ function Add-PutBack {
     # Notes that a hit was put back (in a version after one without it): who saved that version and when.
     param([hashtable]$Back, [string]$Key, [string]$By, [string]$On)
     if (-not $Back.ContainsKey($Key)) { $Back[$Key] = New-Object System.Collections.Generic.List[string] }
-    $Back[$Key].Add(('put back by {0} on {1}' -f $By, $On))
+    $Back[$Key].Add(('Put back by {0} on {1}' -f $By, $On))
+}
+
+function New-AddedEntry {
+    # Who added one hit and when, with an optional history note.
+    param([string]$On, [string]$By, [string]$Note = '')
+    return @{ AddedOn = $On; AddedBy = $By; Note = $Note }
+}
+
+function Add-HistoryNote {
+    # Adds one sentence to a hit's history note ("; " between sentences).
+    param([hashtable]$Entry, [string]$Text)
+    if ($Entry.Note) { $Entry.Note += '; ' + $Text } else { $Entry.Note = $Text }
 }
 
 function Find-PiiAddedVersion {
@@ -5470,14 +5606,14 @@ function Find-PiiAddedVersion {
     .PARAMETER Who
       Get-SharePointWho of the file, with Modified (the current version's time).
     .OUTPUTS
-      [hashtable] hit key -> @{ AddedOn; AddedBy }.
+      [hashtable] hit key -> @{ AddedOn; AddedBy; Note }.
     #>
     param([string]$Ref, [string]$Name, [object[]]$Hits, [hashtable]$Who)
     $byHit = @{}
     $open = @($Hits | ForEach-Object { Get-HitKey $_ } | Sort-Object -Unique)
     $history = Get-OldVersions $Ref
     if ($null -eq $history) {
-        foreach ($key in $open) { $byHit[$key] = @{ AddedOn = $script:NoHistory; AddedBy = $script:NoHistory } }
+        foreach ($key in $open) { $byHit[$key] = New-AddedEntry $script:NotRecorded $script:NotRecorded $script:NoHistory }
         return $byHit
     }
     $versions = $history.Versions; $context = $history.Context
@@ -5504,8 +5640,8 @@ function Find-PiiAddedVersion {
             $has = $found -contains $key
             if ($has -and -not $byHit.ContainsKey($key)) {
                 # After a version that could not be read, this may not be the first one with the hit (review of PR 20).
-                if (-not $readFailed) { $byHit[$key] = @{ AddedOn = $on; AddedBy = $by } }
-                else { $byHit[$key] = @{ AddedOn = 'by ' + $on; AddedBy = $by + $script:MaybeEarlier } }
+                if (-not $readFailed) { $byHit[$key] = New-AddedEntry $on $by }
+                else { $byHit[$key] = New-AddedEntry $on $by $script:MaybeEarlier }
             }
             elseif ($has -and $present.ContainsKey($key) -and $present[$key] -eq $false) { Add-PutBack $back $key $by $on }
             $present[$key] = $has
@@ -5527,7 +5663,7 @@ function Get-DriveWho {
     .PARAMETER Props
       The Office names of the reader result (Creator, LastModifiedBy), or $null.
     .OUTPUTS
-      [hashtable] ModifiedBy, Created, CreatedBy, AddedOn, AddedBy.
+      [hashtable] ModifiedBy, Created, CreatedBy, AddedOn, AddedBy, HistoryNote.
     #>
     param([string]$Path, [hashtable]$Props)
     $owner = ''
@@ -5540,7 +5676,8 @@ function Get-DriveWho {
         if ($Props.LastModifiedBy) { $modifiedBy = $Props.LastModifiedBy + ' (as saved in the file)' }
         if (-not $createdBy -and $Props.Creator) { $createdBy = $Props.Creator + ' (as saved in the file)' }
     }
-    return @{ ModifiedBy = $modifiedBy; Created = $created; CreatedBy = $createdBy; AddedOn = $script:DriveNoHistory; AddedBy = $script:DriveNoHistory }
+    return @{ ModifiedBy = $modifiedBy; Created = $created; CreatedBy = $createdBy; AddedOn = $script:NotRecorded; AddedBy = $script:NotRecorded
+        HistoryNote = $script:DriveNoHistory }
 }
 
 # ==== Module ChannelScan.psm1 ====

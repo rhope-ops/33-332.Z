@@ -20,6 +20,33 @@ Set-StrictMode -Version 2.0
 # Fonts that draw pictures, not text (by name, with or without a subset prefix such as ABCDEF+): Wingdings 1-3,
 # Webdings, (Zapf) Dingbats, Marlett and Symbol (Greek and maths signs). Their text is read as spaces: a row of symbols
 # read as letters and digits gave Low hits that were plainly wrong (the PAM, 2026-11-21).
+# Standard glyph names (Adobe Glyph List) of the digits and common signs, for a font's /Differences; single letters
+# name themselves. Any other name is a made-up one: its glyph cannot be read.
+$script:GlyphNames = @{ space = ' '; zero = '0'; one = '1'; two = '2'; three = '3'; four = '4'; five = '5'; six = '6'; seven = '7'
+    eight = '8'; nine = '9'; period = '.'; comma = ','; colon = ':'; semicolon = ';'; hyphen = '-'; minus = '-'; endash = [string][char]0x2013
+    emdash = [string][char]0x2014; slash = '/'; backslash = '\'; parenleft = '('; parenright = ')'; bracketleft = '['; bracketright = ']'
+    braceleft = '{'; braceright = '}'; at = '@'; numbersign = '#'; dollar = '$'; percent = '%'; ampersand = '&'; asterisk = '*'; plus = '+'
+    equal = '='; less = '<'; greater = '>'; exclam = '!'; question = '?'; underscore = '_'; bar = '|'; asciitilde = '~'; quotesingle = "'"
+    quotedbl = '"'; quoteleft = [string][char]0x2018; quoteright = [string][char]0x2019; quotedblleft = [string][char]0x201C
+    quotedblright = [string][char]0x201D; bullet = [string][char]0x2022; degree = [string][char]0xB0; section = [string][char]0xA7
+    periodcentered = [string][char]0xB7; germandbls = [string][char]0xDF; dotlessi = 'i'; fi = 'fi'; fl = 'fl'; ff = 'ff'; ffi = 'ffi'; ffl = 'ffl'
+    nbspace = ' ' }
+# Glyph names are case-sensitive (AE and ae are two letters), so the table is an ordinal dictionary.
+$glyphTable = $script:GlyphNames
+$script:GlyphNames = New-Object 'System.Collections.Generic.Dictionary[string,string]' ([StringComparer]::Ordinal)
+foreach ($name in $glyphTable.Keys) { $script:GlyphNames[$name] = $glyphTable[$name] }
+foreach ($pair in @(@('AE', 0xC6), @('ae', 0xE6), @('Oslash', 0xD8), @('oslash', 0xF8), @('OE', 0x152), @('oe', 0x153))) {
+    $script:GlyphNames[$pair[0]] = [string][char]$pair[1]
+}
+
+# The combining marks of accented glyph names (eacute = e + U+0301).
+$script:GlyphMarks = @{ acute = 0x301; grave = 0x300; circumflex = 0x302; dieresis = 0x308; tilde = 0x303; ring = 0x30A; cedilla = 0x327; caron = 0x30C
+    macron = 0x304; breve = 0x306; ogonek = 0x328; dotaccent = 0x307; hungarumlaut = 0x30B; commaaccent = 0x326 }
+# A made-up glyph name: up to 5 letters, then a number (g12, a3, G1, cid34, glyph7, index5), with an optional suffix.
+# Not the Adobe names that are letters and a number too: afii (Cyrillic and other letters), uni and u (code points),
+# SF and H (box drawing and shapes).
+$script:MadeUpGlyphName = '^(?!afii|uni|u\d|SF\d|H\d)[A-Za-z]{1,5}\d+(?:\..*)?$'
+
 $script:PictureFontPattern = '(?i)wingdings|webdings|dingbats|marlett|(?:^|\+)symbol(?:mt)?(?:$|[,-])'
 
 # Widths of the standard fonts (Adobe AFM, in thousandths of an em) for character codes 32-126; Courier is 600 for all.
@@ -119,6 +146,7 @@ function New-PdfFontRecord {
         $record.Bytes = [Math]::Max(1, [int]$record.CMap.Bytes)
     }
     elseif ($composite) { $record.CMap = @{ Bytes = 2; Map = @{}; Ranges = @(); Unreadable = $true } }
+    else { $record.Glyphs = Get-PdfDifferences $Dict $Objects }   # a simple font without a map: its own glyph names
     if ($composite) { Add-PdfCidWidths $record $Dict $Objects }
     else { Add-PdfSimpleWidths $record $Dict $Objects }
     return $record
@@ -144,6 +172,68 @@ function Get-PdfArrayText {
         return ''
     }
     return $value.Groups[1].Value
+}
+
+function Get-PdfDifferences {
+    <#
+    .SYNOPSIS
+      The /Differences of a simple font's /Encoding (in the font, or in an encoding object of its own): code -> text by
+      glyph name. A made-up name (letters and a number, such as /g12, /a3 or /cid34, as subset and Type3 fonts use) maps
+      to $null: its glyph cannot be read. Any other name this table does not know is left out: its code reads as before. Without them, codes were read as Latin-1 and gave nonsense letters and
+      signs (the PAM, 2026-11-21: "Wingdings"-like text from a PDF with no Wingdings font).
+    .PARAMETER Dict
+      The font dictionary.
+    .PARAMETER Objects
+      Output of Get-PdfObjects.
+    .OUTPUTS
+      [hashtable] code -> text or $null; $null when the font has no /Differences.
+    #>
+    param([string]$Dict, $Objects)
+    $source = $Dict
+    $reference = [regex]::Match($Dict, '/Encoding\s+(\d+)\s+\d+\s+R')
+    if ($reference.Success -and $Objects.Contains($reference.Groups[1].Value)) { $source = $Objects[$reference.Groups[1].Value].Dict }
+    $array = Get-PdfArrayText $source 'Differences' $Objects
+    if (-not $array) { return $null }
+    $glyphs = @{}
+    $code = 0
+    foreach ($token in [regex]::Matches($array, '(\d+)|/([^\s/\[\]()<>]+)')) {
+        if ($token.Groups[1].Success) { $code = [int]$token.Groups[1].Value; continue }
+        # A name can hold #xx escapes (/a#20b = "a b", ISO 32000-1, 7.3.5).
+        $name = [regex]::Replace($token.Groups[2].Value, '#([0-9A-Fa-f]{2})',
+            [System.Text.RegularExpressions.MatchEvaluator] { param($m) [string][char][Convert]::ToInt32($m.Groups[1].Value, 16) })
+        if ($code -le 255) {
+            $text = Get-PdfGlyphNameText $name
+            if ($null -ne $text) { $glyphs[$code] = $text }
+            elseif ($name -match $script:MadeUpGlyphName) { $glyphs[$code] = $null }
+            else { [void]$glyphs.Remove($code) }   # a real name this table does not know: the code reads as Latin-1
+        }
+        $code++
+    }
+    return $glyphs
+}
+
+function Get-PdfGlyphNameText {
+    <#
+    .SYNOPSIS
+      The text of a standard glyph name (Adobe Glyph List names for the letters, digits and common signs; accented
+      letters; uniXXXX and uXXXX; a suffix such as .sc is dropped); $null for a name this table does not know.
+    .PARAMETER Name
+      The glyph name, without its slash.
+    .OUTPUTS
+      [string] or $null.
+    #>
+    param([string]$Name)
+    $base = ($Name -split '\.')[0]
+    if ($base -cmatch '^[A-Za-z]$') { return $base }
+    if ($script:GlyphNames.ContainsKey($base)) { return $script:GlyphNames[$base] }
+    # An accented letter: the letter and its mark (eacute = e + acute), joined into one character.
+    $accent = [regex]::Match($base, '^([A-Za-z])(acute|grave|circumflex|dieresis|tilde|ring|cedilla|caron|macron|breve|ogonek|dotaccent|hungarumlaut|commaaccent)$')
+    if ($accent.Success) { return ($accent.Groups[1].Value + [string][char]$script:GlyphMarks[$accent.Groups[2].Value]).Normalize() }
+    if ($base -match '^uni([0-9A-Fa-f]{4})$' -or $base -match '^u([0-9A-Fa-f]{4,5})$') {
+        $value = [Convert]::ToInt32($Matches[1], 16)
+        if ($value -lt 0x10000 -and ($value -lt 0xD800 -or $value -gt 0xDFFF)) { return [string][char]$value }
+    }
+    return $null
 }
 
 function Add-PdfSimpleWidths {
@@ -244,7 +334,9 @@ function ConvertFrom-PdfGlyphs {
     #>
     param([string]$Raw, $Font)
     # A picture font (Wingdings and the like): one space per glyph, so its symbols never read as PII (the PAM, 2026-11-21).
+    # First, before its glyph names: a picture font's codes are never letters.
     if ($Font -and $Font.ContainsKey('Picture') -and $Font.Picture) { return ' ' * [int][Math]::Ceiling($Raw.Length / [Math]::Max(1, [int]$Font.Bytes)) }
+    if ($Font -and -not $Font.CMap -and $Font.ContainsKey('Glyphs') -and $Font.Glyphs) { return ConvertFrom-PdfNamedGlyphs $Raw $Font }
     if (-not $Font -or -not $Font.CMap) { return $Raw }
     $cmap = $Font.CMap
     if ($cmap.ContainsKey('Unreadable')) {
@@ -275,6 +367,31 @@ function ConvertFrom-PdfGlyphs {
     }
     $result = $out.ToString()
     if ($cache -and $cache.Count -lt $script:MaxFontCache -and $Raw.Length -le $script:MaxCacheKey) { $cache[$Raw] = $result }
+    return $result
+}
+
+function ConvertFrom-PdfNamedGlyphs {
+    <#
+    .SYNOPSIS
+      The text of one shown string in a simple font with /Differences: a code it names gets its glyph's text (a
+      glyph that cannot be read: a space and a "check by hand" note); any other code reads as Latin-1.
+    .PARAMETER Raw
+      The raw bytes as Latin-1 text.
+    .PARAMETER Font
+      The font record (Glyphs set).
+    #>
+    param([string]$Raw, $Font)
+    if ($Font.TextCache.ContainsKey($Raw)) { return $Font.TextCache[$Raw] }
+    $out = New-Object System.Text.StringBuilder
+    foreach ($char in $Raw.ToCharArray()) {
+        $code = [int]$char
+        if (-not $Font.Glyphs.ContainsKey($code)) { [void]$out.Append($char); continue }
+        $text = $Font.Glyphs[$code]
+        if ($null -eq $text) { Add-PdfNote 'A font in this PDF could not be read: check by hand'; [void]$out.Append(' ') }
+        else { [void]$out.Append($text) }
+    }
+    $result = $out.ToString()
+    if ($Font.TextCache.Count -lt $script:MaxFontCache -and $Raw.Length -le $script:MaxCacheKey) { $Font.TextCache[$Raw] = $result }
     return $result
 }
 

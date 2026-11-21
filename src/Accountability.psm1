@@ -7,7 +7,9 @@ Accountability.psm1 - who made and changed a file with PII, and who put the PII 
                version history (the first version that holds each hit). Drives: the file's owner (a Windows logon
                name, which Windows looks up from the owner's ID; no search of the directory: "No reconnaissance"), its times, and the names an Office file stores.
   Inputs:      the file's list item, path or reader result, and its hits.
-  Outputs:     @{ ModifiedBy; Created; CreatedBy; AddedOn; AddedBy; ByHit } for Report.psm1 Set-RowAccountability.
+  Outputs:     @{ ModifiedBy; Created; CreatedBy; AddedOn; AddedBy; HistoryNote; ByHit } for Report.psm1 Set-RowAccountability.
+               "PII added" and "PII added by" hold only a date and a person (or "Not recorded"); every caveat goes in
+               "History note" (the PAM, 2026-11-21: the columns must be easy to understand).
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
   Depends on:  TextExtract.psm1 (Get-TextFromBytes), PiiDetectors.psm1 (Find-PiiInText) and, for SharePoint,
                PnP.PowerShell 1.12.0 (Get-PnPFileVersion, Get-PnPContext; read-only), imported first.
@@ -21,12 +23,13 @@ Set-StrictMode -Version 2.0
 
 # Old versions read per file with a hit, oldest first (a file with more is dated from the oldest ones read).
 $script:MaxVersionsRead = 30
-$script:NoHistory = 'Not recorded (no version history)'
-# Put-backs named per hit in "PII added by" (the rest are counted).
+$script:NotRecorded = 'Not recorded'
+$script:NoHistory = 'The file has no version history'
+# Put-backs named per hit in its history note (the rest are counted).
 $script:MaxPutBacks = 3
-$script:MaybeEarlier = ' (an older version could not be read: it may have been added earlier)'
-$script:PartHistory = "Not recorded (not in the old versions read; check the file's version history by hand)"
-$script:DriveNoHistory = 'Not recorded (a drive keeps no file history)'
+$script:MaybeEarlier = 'An older version could not be read: it may have been added earlier'
+$script:PartHistory = "Not in the old versions read: check the file's version history by hand"
+$script:DriveNoHistory = 'A drive keeps no file history'
 
 function Get-PersonText {
     <#
@@ -80,7 +83,7 @@ function Complete-CurrentVersion {
       hit in no old version came with the current one (with no old version: the file's maker) - only when every old
       version was read; else who added it is not known, and the report says so (review of PR 20).
     .PARAMETER ByHit
-      Hit key -> @{ AddedOn; AddedBy }.
+      Hit key -> @{ AddedOn; AddedBy; Note }.
     .PARAMETER Back
       Hit key -> put-back texts.
     .PARAMETER Present
@@ -99,9 +102,9 @@ function Complete-CurrentVersion {
         }
     }
     foreach ($key in @($Keys | Where-Object { -not $ByHit.ContainsKey($_) })) {
-        if (-not $Read.Complete) { $ByHit[$key] = @{ AddedOn = $script:PartHistory; AddedBy = $script:PartHistory } }
-        elseif ($Read.Versions -eq 0) { $ByHit[$key] = @{ AddedOn = $Who.Created; AddedBy = $Who.CreatedBy } }
-        else { $ByHit[$key] = @{ AddedOn = $Who.Modified; AddedBy = $Who.ModifiedBy } }
+        if (-not $Read.Complete) { $ByHit[$key] = New-AddedEntry $script:NotRecorded $script:NotRecorded $script:PartHistory }
+        elseif ($Read.Versions -eq 0) { $ByHit[$key] = New-AddedEntry $Who.Created $Who.CreatedBy }
+        else { $ByHit[$key] = New-AddedEntry $Who.Modified $Who.ModifiedBy }
     }
 }
 
@@ -155,10 +158,10 @@ function Read-VersionText {
 function Add-PutBackText {
     <#
     .SYNOPSIS
-      Adds the put-backs to "PII added by": "first adder; put back by X on D" (at most $MaxPutBacks named, the rest
-      counted), and notes what the history read cannot show.
+      Adds the put-backs to the history note: "Put back by X on D" (at most $MaxPutBacks named, the rest counted),
+      and notes what the history read cannot show.
     .PARAMETER ByHit
-      Hit key -> @{ AddedOn; AddedBy }.
+      Hit key -> @{ AddedOn; AddedBy; Note }.
     .PARAMETER Back
       Hit key -> the put-back texts (Add-PutBack).
     .PARAMETER Unsure
@@ -172,12 +175,12 @@ function Add-PutBackText {
         $text = @($list | Select-Object -First $script:MaxPutBacks) -join '; '
         $more = $list.Count - $script:MaxPutBacks
         if ($more -eq 1) { $text += '; and 1 more time' } elseif ($more -gt 1) { $text += ('; and {0} more times' -f $more) }
-        $ByHit[$key].AddedBy = $ByHit[$key].AddedBy + '; ' + $text
+        Add-HistoryNote $ByHit[$key] $text
     }
     # Say what the history read cannot show, so "PII added by" never reads as complete when it is not (review).
-    foreach ($key in @($ByHit.Keys | Where-Object { $ByHit[$_].AddedBy -ne $script:PartHistory })) {
-        if ($Unsure.ContainsKey($key)) { $ByHit[$key].AddedBy += '; it may have been removed and put back (a version could not be read)' }
-        if (-not $AllRead) { $ByHit[$key].AddedBy += "; versions after the $script:MaxVersionsRead read were not checked" }
+    foreach ($key in @($ByHit.Keys | Where-Object { $ByHit[$_].AddedBy -ne $script:NotRecorded })) {
+        if ($Unsure.ContainsKey($key)) { Add-HistoryNote $ByHit[$key] 'It may have been removed and put back (a version could not be read)' }
+        if (-not $AllRead) { Add-HistoryNote $ByHit[$key] "Versions after the $script:MaxVersionsRead oldest were not checked" }
     }
 }
 
@@ -185,7 +188,19 @@ function Add-PutBack {
     # Notes that a hit was put back (in a version after one without it): who saved that version and when.
     param([hashtable]$Back, [string]$Key, [string]$By, [string]$On)
     if (-not $Back.ContainsKey($Key)) { $Back[$Key] = New-Object System.Collections.Generic.List[string] }
-    $Back[$Key].Add(('put back by {0} on {1}' -f $By, $On))
+    $Back[$Key].Add(('Put back by {0} on {1}' -f $By, $On))
+}
+
+function New-AddedEntry {
+    # Who added one hit and when, with an optional history note.
+    param([string]$On, [string]$By, [string]$Note = '')
+    return @{ AddedOn = $On; AddedBy = $By; Note = $Note }
+}
+
+function Add-HistoryNote {
+    # Adds one sentence to a hit's history note ("; " between sentences).
+    param([hashtable]$Entry, [string]$Text)
+    if ($Entry.Note) { $Entry.Note += '; ' + $Text } else { $Entry.Note = $Text }
 }
 
 function Find-PiiAddedVersion {
@@ -203,14 +218,14 @@ function Find-PiiAddedVersion {
     .PARAMETER Who
       Get-SharePointWho of the file, with Modified (the current version's time).
     .OUTPUTS
-      [hashtable] hit key -> @{ AddedOn; AddedBy }.
+      [hashtable] hit key -> @{ AddedOn; AddedBy; Note }.
     #>
     param([string]$Ref, [string]$Name, [object[]]$Hits, [hashtable]$Who)
     $byHit = @{}
     $open = @($Hits | ForEach-Object { Get-HitKey $_ } | Sort-Object -Unique)
     $history = Get-OldVersions $Ref
     if ($null -eq $history) {
-        foreach ($key in $open) { $byHit[$key] = @{ AddedOn = $script:NoHistory; AddedBy = $script:NoHistory } }
+        foreach ($key in $open) { $byHit[$key] = New-AddedEntry $script:NotRecorded $script:NotRecorded $script:NoHistory }
         return $byHit
     }
     $versions = $history.Versions; $context = $history.Context
@@ -237,8 +252,8 @@ function Find-PiiAddedVersion {
             $has = $found -contains $key
             if ($has -and -not $byHit.ContainsKey($key)) {
                 # After a version that could not be read, this may not be the first one with the hit (review of PR 20).
-                if (-not $readFailed) { $byHit[$key] = @{ AddedOn = $on; AddedBy = $by } }
-                else { $byHit[$key] = @{ AddedOn = 'by ' + $on; AddedBy = $by + $script:MaybeEarlier } }
+                if (-not $readFailed) { $byHit[$key] = New-AddedEntry $on $by }
+                else { $byHit[$key] = New-AddedEntry $on $by $script:MaybeEarlier }
             }
             elseif ($has -and $present.ContainsKey($key) -and $present[$key] -eq $false) { Add-PutBack $back $key $by $on }
             $present[$key] = $has
@@ -260,7 +275,7 @@ function Get-DriveWho {
     .PARAMETER Props
       The Office names of the reader result (Creator, LastModifiedBy), or $null.
     .OUTPUTS
-      [hashtable] ModifiedBy, Created, CreatedBy, AddedOn, AddedBy.
+      [hashtable] ModifiedBy, Created, CreatedBy, AddedOn, AddedBy, HistoryNote.
     #>
     param([string]$Path, [hashtable]$Props)
     $owner = ''
@@ -273,7 +288,8 @@ function Get-DriveWho {
         if ($Props.LastModifiedBy) { $modifiedBy = $Props.LastModifiedBy + ' (as saved in the file)' }
         if (-not $createdBy -and $Props.Creator) { $createdBy = $Props.Creator + ' (as saved in the file)' }
     }
-    return @{ ModifiedBy = $modifiedBy; Created = $created; CreatedBy = $createdBy; AddedOn = $script:DriveNoHistory; AddedBy = $script:DriveNoHistory }
+    return @{ ModifiedBy = $modifiedBy; Created = $created; CreatedBy = $createdBy; AddedOn = $script:NotRecorded; AddedBy = $script:NotRecorded
+        HistoryNote = $script:DriveNoHistory }
 }
 
 Export-ModuleMember -Function Get-PersonText, Get-SharePointWho, Find-PiiAddedVersion, Get-DriveWho
