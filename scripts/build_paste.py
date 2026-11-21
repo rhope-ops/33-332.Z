@@ -142,7 +142,7 @@ def header(sources, contents):
            '  Ion - DoD365 PII Reporter (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)',
            '',
            '  HOW TO RUN',
-           '    1. Optional: read this text first (the Open the script button saves it as a .txt file for Notepad).',
+           '    1. Optional: read this text first (Open the script shows it as a .txt in your browser).',
            '    2. Open Windows PowerShell ISE and choose File > New.',
            '    3. Paste ALL of this text (Ctrl+V) and press F5.',
            '    4. When asked, paste a Teams link (... next to the team or channel name > Copy link) or a SharePoint',
