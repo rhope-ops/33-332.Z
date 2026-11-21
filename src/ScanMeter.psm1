@@ -118,8 +118,9 @@ function Get-ScanMeterText {
       [string] for example "12 of 40 files (30%) | read 10 | not scanned 2 | possible PII 3 in 2 files | 00:42 elapsed, about 01:48 left".
     #>
     param([hashtable]$Meter, [string]$Noun)
-    $text = '{0:N0} {1}s' -f $Meter.Done, $Noun
-    if ($Meter.Total -gt 0) { $text = '{0:N0} of {1:N0} {2}s ({3}%)' -f $Meter.Done, $Meter.Total, $Noun, (Get-MeterPercent $Meter) }
+    $totalNoun = $Noun + 's'; if ([Math]::Max($Meter.Total, $Meter.Done) -eq 1) { $totalNoun = $Noun }   # "1 of 1 file"
+    $text = '{0:N0} {1}' -f $Meter.Done, $totalNoun
+    if ($Meter.Total -gt 0) { $text = '{0:N0} of {1:N0} {2} ({3}%)' -f $Meter.Done, $Meter.Total, $totalNoun, (Get-MeterPercent $Meter) }
     $hitNoun = $Noun + 's'; if ($Meter.HitItems -eq 1) { $hitNoun = $Noun }   # "in 1 file", "in 2 files"
     $text += ' | read {0:N0} | not scanned {1:N0} | possible PII {2:N0} in {3:N0} {4} | {5} elapsed{6}' -f
         $Meter.Read, $Meter.Skipped, $Meter.Hits, $Meter.HitItems, $hitNoun, (Format-Duration $Meter.Clock.Elapsed), (Get-TimeLeftText $Meter)
@@ -209,7 +210,7 @@ function Get-MeterPercent {
     # The meter's percent done (0-100); 0 when the total is not known.
     param([hashtable]$Meter)
     if ($Meter.Total -le 0) { return 0 }
-    return [int][Math]::Min(100, 100 * $Meter.Done / $Meter.Total)
+    return [int][Math]::Floor([Math]::Min(100.0, 100.0 * $Meter.Done / $Meter.Total))   # down: 100% only when all are done
 }
 
 function Test-FileBarSize {
@@ -240,7 +241,7 @@ function Write-FileStep {
         $percent = 0
     }
     else {
-        $percent = [int][Math]::Floor([Math]::Min(100, 100 * $Done / [Math]::Max(1, $Size)))
+        $percent = [int][Math]::Floor([Math]::Min(100.0, 100.0 * $Done / [Math]::Max(1, $Size)))
         $status = '{0:N1} of {1:N1} MB ({2}%)' -f ($Done / 1MB), $sizeMB, $percent
         $seconds = $Elapsed.TotalSeconds
         if ($Done -gt 0 -and $seconds -ge $script:RateAfterSeconds) {

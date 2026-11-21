@@ -31,13 +31,13 @@
     src/TextExtract.psm1, sha256 3b52ab6462e5
     src/ReaderPool.psm1, sha256 8f8f73fda166
     src/XlsxWriter.psm1, sha256 e29becdc6a65
-    src/Report.psm1, sha256 868b95b6c3ba
-    src/ScanMeter.psm1, sha256 21bf250fe3e1
+    src/Report.psm1, sha256 efad858780e7
+    src/ScanMeter.psm1, sha256 da4143adff10
     src/ScanQueue.psm1, sha256 85cb65afb492
     src/Accountability.psm1, sha256 15472f8fab6e
     src/ChannelScan.psm1, sha256 4eec88ad8ca9
     src/DriveScan.psm1, sha256 f307e810f8f5
-    src/Find-ChannelPII.ps1, sha256 968f052f3e55
+    src/Find-ChannelPII.ps1, sha256 12724f0b06d3
 
   Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.
   Run target: Windows PowerShell 5.1 with PnP.PowerShell 1.12.0; no admin rights, no file to unblock.
@@ -64,12 +64,12 @@
     line  3987  Module XlsxWriter.psm1
     line  4258  Module Report.psm1
     line  4855  Module ScanMeter.psm1
-    line  5178  Module ScanQueue.psm1
-    line  5521  Module Accountability.psm1
-    line  5815  Module ChannelScan.psm1
-    line  6408  Module DriveScan.psm1
-    line  6640  Body of Find-ChannelPII.ps1
-    line  6781  Clean-up
+    line  5179  Module ScanQueue.psm1
+    line  5522  Module Accountability.psm1
+    line  5816  Module ChannelScan.psm1
+    line  6409  Module DriveScan.psm1
+    line  6641  Body of Find-ChannelPII.ps1
+    line  6782  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -4263,7 +4263,7 @@ Report.psm1 - the scan results for a person: a summary on screen and one Excel w
                and saves the workbook: Summary tab first, one tab per type, Low confidence, Not scanned
                (the PAM, 2026-11-20: tabs to cut noise; no .txt or .csv).
   Inputs:      report rows (New-ReportRow) from ChannelScan.psm1; values in them are already masked.
-  Outputs:     the summary on screen; <OutputFolder>\<site>\<yyyy-MM-dd>\Ion Results <HH-mm-ss>.xlsx.
+  Outputs:     the summary on screen; <OutputFolder>\<site>\Ion <site> <yyyy-MM-dd HHmm>.xlsx.
   Depends on:  PiiDetectors.psm1 (Find-PiiInText), PiiMasking.psm1 (Protect-PiiName, Protect-PiiText), XlsxWriter.psm1,
                imported first by Find-ChannelPII.ps1.
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
@@ -4290,8 +4290,7 @@ $script:ToolTitle = 'Ion - DoD365 PII Reporter'
 # first, then identity documents and accounts, then contact details.
 $script:SeverityOrder = @('SSN', 'Date of birth', 'Passport', 'Payment card', 'DoD ID', 'Home address', 'Name', 'Phone', 'Personal e-mail')
 
-# How many files the screen summary lists (the workbook lists all).
-$script:TopItems = 10
+$script:TopItems = 10   # how many files the screen summary lists (the workbook lists all)
 
 # Screen tables fit the window: under 60 characters or unknown = 120; the last column keeps 12 (the author's choice, 2026-11-21).
 $script:DefaultScreenWidth = 120
@@ -4330,8 +4329,9 @@ $script:NotScannedGroups = [ordered]@{
 $script:BreachAdvice = 'PII where it should not be is a potential or actual breach; report it to your servicing Privacy ' +
                        'Manager/Monitor without delay (AFI 33-332 para 3.1.2, as changed by AFI33-332_DAFGM2026-01 (7 July 2026), ' +
                        'page 1, second paragraph).'
-# Shown as two lines, the advice and then its rule source (the PAM, 2026-11-21); the text stays README.md's, word for word.
-$script:BreachLines = @(($script:BreachAdvice -replace ' \(AFI .*$', '.'), ('Source: ' + ($script:BreachAdvice -replace '^.*\((AFI .*)\)\.$', '$1') + '.'))
+# Shown as two lines, the advice and its rule source (the PAM, 2026-11-21); one line if no "(AFI ...)." part is found.
+$script:BreachLines = @($script:BreachAdvice)
+if ($script:BreachAdvice -match '^(.*) \((AFI .*)\)\.$') { $script:BreachLines = @(($Matches[1] + '.'), ('Source: ' + $Matches[2] + '.')) }
 
 # =====================================================================================
 # Rows and summary
@@ -4648,9 +4648,9 @@ function Get-ScanSummaryText {
 function Get-ResultPath {
     <#
     .SYNOPSIS
-      A new workbook path: <OutputFolder>\<site>\<yyyy-MM-dd>\Ion Results <HH-mm-ss>.xlsx, with (2), (3) ... added
-      if the name exists, so a result is never overwritten. Creates the folders. The site name is masked like any
-      name the tool shows (found PII only), and characters Windows refuses in a folder name are replaced.
+      A new workbook path: <OutputFolder>\<site>\Ion <site> <yyyy-MM-dd HHmm>.xlsx (the PAM, 2026-11-21), with (2), (3) ...
+      if the name exists, so a result is never overwritten. Creates the folder. The site name is masked like any name the
+      tool shows (found PII only); characters Windows refuses in a folder name are replaced.
     .PARAMETER OutputFolder
       The base folder.
     .PARAMETER SiteUrl
@@ -4664,9 +4664,9 @@ function Get-ResultPath {
     if (-not $siteName) { $siteName = 'site' }
     if ($siteName -match '^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\..*)?$') { $siteName = '_' + $siteName }   # names Windows keeps for devices
     $now = Get-Date
-    $folder = Join-Path (Join-Path $OutputFolder $siteName) ($now.ToString('yyyy-MM-dd'))
+    $folder = Join-Path $OutputFolder $siteName
     if (-not (Test-Path -LiteralPath $folder)) { New-Item -ItemType Directory -Path $folder -Force -ErrorAction Stop | Out-Null }
-    $base = 'Ion Results ' + $now.ToString('HH-mm-ss')
+    $base = 'Ion {0} {1}' -f $siteName, $now.ToString('yyyy-MM-dd HHmm')
     $path = Join-Path $folder ($base + '.xlsx')
     $copy = 2
     while (Test-Path -LiteralPath $path) { $path = Join-Path $folder ('{0} ({1}).xlsx' -f $base, $copy); $copy++ }
@@ -4780,7 +4780,7 @@ function Get-SummaryRows {
     , @('Tabs', 'One tab per type with High or Medium hits, worst type first; then Low confidence; then Not scanned.')
     , @('Confidence', 'A pattern guess, not proof: open each item and check it before you act.')
     , @('If you find PII', $script:BreachLines[0])
-    , @('Source', $script:BreachLines[1])
+    , @('Rule source', ($script:BreachLines[-1] -replace '^Source: ', ''))
     , @('Handling', 'Handle this file as CUI: it shows where PII is. Every value in it is masked.')
 }
 
@@ -4795,7 +4795,7 @@ function Publish-ScanReport {
     .PARAMETER Header
       Label and value pairs for the top of the summary.
     .PARAMETER OutputFolder
-      The base folder; the workbook goes in <site>\<day> under it.
+      The base folder; the workbook goes in <site> under it.
     .PARAMETER SiteUrl
       The site address (names the site folder).
     .PARAMETER FolderLabel
@@ -4816,8 +4816,8 @@ function Publish-ScanReport {
         Write-Ui ''; Write-Ui "Saved (values masked): $path" 'Good'; Write-Ui 'Handle this file as CUI: it shows where PII is.' 'Accent'
     }
     finally {
-        Write-Ui ''; Write-Ui 'Confidence is a pattern guess, not proof: open each item and check it before you act.' 'Muted'; Write-Ui $script:BreachLines[0] 'Accent'
-        Write-Ui $script:BreachLines[1] 'Muted'
+        Write-Ui ''; Write-Ui 'Confidence is a pattern guess, not proof: open each item and check it before you act.' 'Muted'
+        Write-Ui $script:BreachLines[0] 'Accent'; if ($script:BreachLines.Count -gt 1) { Write-Ui $script:BreachLines[1] 'Muted' }
     }
     return $path
 }
@@ -4972,8 +4972,9 @@ function Get-ScanMeterText {
       [string] for example "12 of 40 files (30%) | read 10 | not scanned 2 | possible PII 3 in 2 files | 00:42 elapsed, about 01:48 left".
     #>
     param([hashtable]$Meter, [string]$Noun)
-    $text = '{0:N0} {1}s' -f $Meter.Done, $Noun
-    if ($Meter.Total -gt 0) { $text = '{0:N0} of {1:N0} {2}s ({3}%)' -f $Meter.Done, $Meter.Total, $Noun, (Get-MeterPercent $Meter) }
+    $totalNoun = $Noun + 's'; if ([Math]::Max($Meter.Total, $Meter.Done) -eq 1) { $totalNoun = $Noun }   # "1 of 1 file"
+    $text = '{0:N0} {1}' -f $Meter.Done, $totalNoun
+    if ($Meter.Total -gt 0) { $text = '{0:N0} of {1:N0} {2} ({3}%)' -f $Meter.Done, $Meter.Total, $totalNoun, (Get-MeterPercent $Meter) }
     $hitNoun = $Noun + 's'; if ($Meter.HitItems -eq 1) { $hitNoun = $Noun }   # "in 1 file", "in 2 files"
     $text += ' | read {0:N0} | not scanned {1:N0} | possible PII {2:N0} in {3:N0} {4} | {5} elapsed{6}' -f
         $Meter.Read, $Meter.Skipped, $Meter.Hits, $Meter.HitItems, $hitNoun, (Format-Duration $Meter.Clock.Elapsed), (Get-TimeLeftText $Meter)
@@ -5063,7 +5064,7 @@ function Get-MeterPercent {
     # The meter's percent done (0-100); 0 when the total is not known.
     param([hashtable]$Meter)
     if ($Meter.Total -le 0) { return 0 }
-    return [int][Math]::Min(100, 100 * $Meter.Done / $Meter.Total)
+    return [int][Math]::Floor([Math]::Min(100.0, 100.0 * $Meter.Done / $Meter.Total))   # down: 100% only when all are done
 }
 
 function Test-FileBarSize {
@@ -5094,7 +5095,7 @@ function Write-FileStep {
         $percent = 0
     }
     else {
-        $percent = [int][Math]::Floor([Math]::Min(100, 100 * $Done / [Math]::Max(1, $Size)))
+        $percent = [int][Math]::Floor([Math]::Min(100.0, 100.0 * $Done / [Math]::Max(1, $Size)))
         $status = '{0:N1} of {1:N1} MB ({2}%)' -f ($Done / 1MB), $sizeMB, $percent
         $seconds = $Elapsed.TotalSeconds
         if ($Done -gt 0 -and $seconds -ge $script:RateAfterSeconds) {

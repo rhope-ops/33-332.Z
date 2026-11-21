@@ -36,7 +36,11 @@ The steps to run it are at the top of the script.
 
 ### 🔺 How it works
 
-<kbd>Sign in</kbd> → <kbd>Read files in memory</kbd> → <kbd>Find PII</kbd> → <kbd><b>Mask it</b></kbd> → <kbd>Report</kbd>
+<kbd>Sign in</kbd> → <kbd>List and confirm</kbd> → <kbd>Read files in memory</kbd> → <kbd>Find PII</kbd> → <kbd><b>Mask it</b></kbd> → <kbd>Report</kbd>
+
+- **List and confirm:** Ion lists the files first and shows how many it found, their size, and how many it will list but not read. It asks "Scan now? [Y/n]"; Enter starts the scan, and "n" saves nothing.
+- **Progress:** one bar shows the folder, the run so far (files done, read, not scanned, possible PII, time elapsed and left) and the file in work; a second bar shows the MB downloaded of a large file.
+- **Report:** one Excel workbook per run, in `Documents\Ion\<site>\Ion <site> <yyyy-MM-dd HHmm>.xlsx` (a drive folder gets a folder of its own name). It has a Summary tab, one tab per PII type (worst first), Low confidence and Not scanned. Each hit row shows when the file was created and by whom, when it was last saved and by whom, who added the PII and when, and a History note when the file's history cannot show that.
 
 #### What it looks for
 
@@ -77,6 +81,7 @@ The steps to run it are at the top of the script.
 | Symbols in picture fonts (Wingdings, Webdings, Dingbats, Marlett, Symbol) in a PDF | Not read as text, so not checked for PII |
 | Text in a PDF font with no character map and made-up glyph names (such as g12) | Not read; the file gets the note "A font in this PDF could not be read": check it by hand |
 | Old .doc .xls .ppt and Outlook .msg | Read in part (numbers in an old .xls are not read): check these files by hand |
+| A Low-confidence match inside text that is mostly unreadable characters | Dropped as noise; High and Medium matches are always kept |
 
 ---
 
@@ -98,7 +103,7 @@ The steps to run it are at the top of the script.
 - **No stored credentials:** you sign in with your CAC each run; no password or token is saved.
 - **Masked output:** every found value is masked on screen and in the workbook; links open the file or folder without showing PII.
 - **Formula-safe workbook:** all text is stored as plain text, so scanned content cannot run as an Excel formula.
-- **Fails safe:** on an error or Ctrl+C, the workbook is still saved and marked INCOMPLETE, and Ion signs out of SharePoint.
+- **Fails safe:** on an error or Ctrl+C during the scan, the workbook is still saved and marked INCOMPLETE, and Ion signs out of SharePoint. A "no" or a cancel at "Scan now?" reads and saves nothing.
 - **Handle the workbook as CUI:** file names and masked fragments still show where PII is.
 
 ---
@@ -113,7 +118,7 @@ Each file starts with a header: purpose, inputs, outputs, how to run, run target
 | `src/ChannelScan.psm1` | SharePoint and Teams steps: check the address, team or plain site, list folders, read files |
 | `src/DriveScan.psm1` | Scans a folder on a mapped or network drive (`X:\folder` or `\\server\share\folder`) |
 | `src/ReaderPool.psm1` | Reads several files at once in PowerShell runspaces, and each identical file only once per run |
-| `src/ScanQueue.psm1` | Turns the reader pool's results into report rows, in the order files finish |
+| `src/ScanQueue.psm1` | Turns the reader pool's results into report rows, in the order files finish; the steps both scans share, and the "Scan now?" question |
 | `src/Accountability.psm1` | Who made and changed a file with PII, and who put the PII in and when |
 | `src/TextExtract.psm1` | Turns file bytes into plain text, in memory, and picks the reader for each file type |
 | `src/PdfCore.psm1`, `src/PdfObjects.psm1`, `src/PdfFonts.psm1`, `src/PdfLayout.psm1`, `src/PdfText.psm1` | The PDF reader, with .NET only: limits and stream filters, objects, fonts, word spacing, page text |

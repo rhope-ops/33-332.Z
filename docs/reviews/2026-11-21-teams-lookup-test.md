@@ -1,6 +1,6 @@
 # Teams-link lookup test (2026-11-21)
 
-The PAM approved this test in the question dialog of 2026-11-21. Goal: find out whether Ion can turn a Teams link into its team's site address on DoD365 without the tenant-root sign-in that hung on 2026-11-20 (docs/DECISIONS.md). If one method works, Ion can accept a Teams link alone, and the person no longer types the site address.
+The PAM approved this test in the question dialog of 2026-11-21. Goal: find out whether Ion can turn a Teams link into its team's site address on DoD365. Test 1 tries it from the team's own site; test 2 tries the tenant root again, whose sign-in hung on 2026-11-20 (docs/DECISIONS.md). If test 2 works, Ion can accept a Teams link alone, and the person no longer types the site address.
 
 ## What it does
 

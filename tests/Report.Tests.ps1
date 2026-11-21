@@ -1,7 +1,7 @@
 <#
 Report.Tests.ps1 - tests of Report.psm1 and XlsxWriter.psm1: the screen summary and the results workbook.
 
-  Purpose:     The workbook goes to <site>\<day>, never overwrites, has the Summary tab first and one tab per PII
+  Purpose:     The workbook goes to <site> as "Ion <site> <date time>", never overwrites, has the Summary tab first and one tab per PII
                type worst first, holds masked values only and no formula; the folder column is named for a team
                or a site; the screen shows hits per type.
   Inputs:      $Sample (TestKit.ps1).
@@ -26,9 +26,8 @@ $dob = @(Find-PiiInText 'DOB: 03/14/1985')[0]
 $reportRows += (New-ReportRow 'File' 'Ops' 'Recall.xlsx' '' '' $dob.Detector $dob.Confidence $dob.MaskedValue $dob.Context)
 $header = [ordered]@{ Site = 'https://tenant.example.com/teams/TeamA'; Channels = 'General, Ops' }
 $path = Publish-ScanReport -Rows $reportRows -ItemsScanned 2 -Header $header -OutputFolder $reportFolder -SiteUrl $header.Site -FolderLabel 'Channel' 6>$null
-$day = Split-Path $path -Parent
-Assert-Equal ('TeamA/' + (Get-Date -Format 'yyyy-MM-dd')) ((Split-Path (Split-Path $day -Parent) -Leaf) + '/' + (Split-Path $day -Leaf)) 'Saved in <site>\<day>'
-Assert-Equal $true ((Split-Path $path -Leaf) -match '^Ion Results \d\d-\d\d-\d\d\.xlsx$') 'Named Ion Results <time>.xlsx'
+Assert-Equal 'TeamA' (Split-Path (Split-Path $path -Parent) -Leaf) 'Saved in <site>, no day folder'
+Assert-Equal $true ((Split-Path $path -Leaf) -match ('^Ion TeamA ' + (Get-Date -Format 'yyyy-MM-dd') + ' \d{4}( \(\d+\))?\.xlsx$')) 'Named Ion <site> <date time>.xlsx'
 $book = Get-XlsxSheets $path
 Assert-Equal 'Summary|SSN|Date of birth|Low confidence|Not scanned' (@($book.Keys) -join '|') 'Tabs: Summary, types worst first, Low, Not scanned'
 $hitHeader = 'Confidence|Channel|File|Masked value|Context|Last saved|Link|Found in|Created|Created by|Last saved by|PII added|PII added by|History note'
@@ -122,4 +121,4 @@ $adviceShown = (Publish-ScanReport -Rows $reportRows -ItemsScanned 2 -Header $he
     Where-Object { $_ -isnot [string] } | ForEach-Object { [string]$_ })
 Assert-Equal $true (@($adviceShown | Where-Object { $_ -match '^Source: AFI 33-332 para 3\.1\.2' }).Count -eq 1) 'Advice: the AFI reference is its own line'
 $sourceBook = Get-XlsxSheets (@(Get-ResultFiles $reportFolder) | Sort-Object LastWriteTime | Select-Object -Last 1).FullName
-Assert-Equal 1 @($sourceBook['Summary'] | Where-Object { $_[0] -eq 'Source' -and $_[1] -match '^Source: AFI 33-332' }).Count 'Advice: the Summary tab has the reference as its own row'
+Assert-Equal 1 @($sourceBook['Summary'] | Where-Object { $_[0] -eq 'Rule source' -and $_[1] -match '^AFI 33-332' }).Count 'Advice: the Summary tab has the reference as its own row'
