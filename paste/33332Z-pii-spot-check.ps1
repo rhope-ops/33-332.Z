@@ -29,14 +29,14 @@
     src/PdfLayout.psm1, sha256 feafecd946b7
     src/PdfText.psm1, sha256 312351e30b87
     src/TextExtract.psm1, sha256 3b52ab6462e5
-    src/ReaderPool.psm1, sha256 5d6516b11068
+    src/ReaderPool.psm1, sha256 8f8f73fda166
     src/XlsxWriter.psm1, sha256 e29becdc6a65
-    src/Report.psm1, sha256 4c5c871cb5c5
-    src/ScanMeter.psm1, sha256 2c2a5a750104
-    src/ScanQueue.psm1, sha256 1ec233b97fc7
+    src/Report.psm1, sha256 9a6fbc1c5935
+    src/ScanMeter.psm1, sha256 b6322e030a9d
+    src/ScanQueue.psm1, sha256 15022d820d1a
     src/Accountability.psm1, sha256 6a1d334dbbe3
-    src/ChannelScan.psm1, sha256 0a32b46dcc63
-    src/DriveScan.psm1, sha256 1dad4613859d
+    src/ChannelScan.psm1, sha256 bad92da8f11e
+    src/DriveScan.psm1, sha256 803bef724c37
     src/Find-ChannelPII.ps1, sha256 b2d6bfd7a72b
 
   Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.
@@ -60,16 +60,16 @@
     line  2659  Module PdfText.psm1
     line  3152  Module TextExtract.psm1
     line  3565  Module ReaderPool.psm1
-    line  3812  Reader block end
-    line  3816  Module XlsxWriter.psm1
-    line  4087  Module Report.psm1
-    line  4650  Module ScanMeter.psm1
-    line  4915  Module ScanQueue.psm1
-    line  5131  Module Accountability.psm1
-    line  5409  Module ChannelScan.psm1
-    line  5964  Module DriveScan.psm1
-    line  6206  Body of Find-ChannelPII.ps1
-    line  6315  Clean-up
+    line  3817  Reader block end
+    line  3821  Module XlsxWriter.psm1
+    line  4092  Module Report.psm1
+    line  4658  Module ScanMeter.psm1
+    line  4943  Module ScanQueue.psm1
+    line  5179  Module Accountability.psm1
+    line  5457  Module ChannelScan.psm1
+    line  6099  Module DriveScan.psm1
+    line  6341  Body of Find-ChannelPII.ps1
+    line  6450  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -3726,11 +3726,13 @@ function Add-PoolJob {
       The pool of New-ReaderPool.
     .PARAMETER Job
       @{ Id; Name; Bytes or Path } (see Invoke-PooledRead).
+    .PARAMETER OnWait
+      { param($busy) } called before each wait slice (the screen shows the wait); optional.
     .OUTPUTS
       The results that finished while waiting (Receive-PoolResult).
     #>
-    param([hashtable]$State, [hashtable]$Job)
-    while ($State.Jobs.Count -ge $State.Target) { Receive-PoolResult $State -Wait }
+    param([hashtable]$State, [hashtable]$Job, [scriptblock]$OnWait)
+    while ($State.Jobs.Count -ge $State.Target) { Receive-PoolResult $State -Wait -OnWait $OnWait }
     $shell = [powershell]::Create()
     $shell.RunspacePool = $State.Pool
     [void]$shell.AddScript($script:PoolWorkerScript).AddArgument($State.Init).AddArgument($Job).AddArgument($State.Seen)
@@ -3745,13 +3747,16 @@ function Receive-PoolResult {
       The pool of New-ReaderPool.
     .PARAMETER Wait
       Wait for at least one result when none is ready (and jobs are running).
+    .PARAMETER OnWait
+      { param($busy) } called before each wait slice with the number of busy workers; optional.
     .OUTPUTS
       [hashtable] results of Invoke-PooledRead.
     #>
-    param([hashtable]$State, [switch]$Wait)
+    param([hashtable]$State, [switch]$Wait, [scriptblock]$OnWait)
     while ($true) {
         $ready = @($State.Jobs | Where-Object { $_.Handle.IsCompleted })
         if ($ready.Count -gt 0 -or -not $Wait -or $State.Jobs.Count -eq 0) { break }
+        if ($OnWait) { & $OnWait $State.Jobs.Count }
         [void]$State.Jobs[0].Handle.AsyncWaitHandle.WaitOne($script:WaitSliceMs)
     }
     foreach ($job in $ready) {
@@ -4416,9 +4421,12 @@ function Get-ScanSummaryText {
     $out = New-Object System.Collections.Generic.List[object]
     # Adds one screen line with its colour; the first LabelLength characters are written in the label colour.
     $add = { param($text, $kind, $labelLength = 0) $out.Add([pscustomobject]@{ Text = $text; Kind = $kind; LabelLength = $labelLength }) }
-    & $add '' 'Text'; & $add ('==== ' + $script:ToolTitle + ' ====') 'Title'
-    foreach ($pair in @($Header.GetEnumerator()) + @((Get-ScanMetrics $Rows $ItemsScanned).GetEnumerator())) {
-        & $add ('{0,-26} {1}' -f ($pair.Key + ':'), $pair.Value) 'Text' 27
+    & $add '' 'Text'; & $add '==== Results ====' 'Title'
+    # The values start in one column, after the longest label (labels differ: site, drive, timing lines).
+    $pairs = @($Header.GetEnumerator()) + @((Get-ScanMetrics $Rows $ItemsScanned).GetEnumerator())
+    $labelWidth = ($pairs | ForEach-Object { ([string]$_.Key).Length + 1 } | Measure-Object -Maximum).Maximum
+    foreach ($pair in $pairs) {
+        & $add (($pair.Key + ':').PadRight($labelWidth) + ' ' + $pair.Value) 'Text' ($labelWidth + 1)
     }
     $hits = @($Rows | Where-Object { $script:Rank.ContainsKey($_.Confidence) })
     if ($hits.Count -eq 0) { & $add '' 'Text'; & $add 'No possible PII found in the files that were read.' 'Good' }
@@ -4666,13 +4674,12 @@ ScanMeter.psm1 - the progress bars and the per-folder lines of a scan: counts on
 #>
 
 
-# From this size on, the per-file bar says the step can take a minute (5 MB: a slow download on a gov network
-# takes tens of seconds; the author's choice, 2026-11-20).
-$script:LargeFileBytes = 5MB
-
 # The per-file bar is shown only from this size on: a small file is done in a moment, and each bar update costs time in
 # Windows PowerShell 5.1 (the author's choice, 2026-11-20: faster scans of many small files).
 $script:FileBarBytes = 1MB
+
+# The per-file bar shows a speed and a time left only after this many seconds (before that the speed jumps about).
+$script:RateAfterSeconds = 1
 
 # A coloured line of live counts is printed under the progress bar at most this often (and after each folder).
 $script:LiveLineSeconds = 10
@@ -4858,24 +4865,45 @@ function Get-MeterPercent {
     return [int][Math]::Min(100, 100 * $Meter.Done / $Meter.Total)
 }
 
+function Test-FileBarSize {
+    # True when a file is large enough for the per-file bar (smaller files are done in a moment).
+    param([long]$Size)
+    return $Size -ge $script:FileBarBytes
+}
+
 function Write-FileStep {
     <#
     .SYNOPSIS
-      A second progress bar for the file in work: its size and its step, so a large file does not look hung.
-      PnP gives no byte count while it downloads, so the bar moves by step (download, read, check), not by byte.
+      The second progress bar: the download of the file in work, by byte (MB done of the size, speed, time left), so a
+      large file does not look hung (the PAM, 2026-11-21: the bar must move). Reading happens in the workers, after it.
     .PARAMETER Size
       The file size in bytes.
     .PARAMETER Step
-      What is being done now.
-    .PARAMETER Percent
-      How far through the file's steps (0-100).
+      What is being done now, for example 'Downloading'.
+    .PARAMETER Done
+      The bytes done so far; -1 when the download method gives no byte count (the bar then says so and does not move).
+    .PARAMETER Elapsed
+      The time the step has taken so far.
     #>
-    param([long]$Size, [string]$Step, [int]$Percent)
-    if ($Size -lt $script:FileBarBytes) { return }
-    $status = '{0} - {1:N1} MB' -f $Step, ($Size / 1MB)
-    if ($Size -ge $script:LargeFileBytes) { $status += ' (a large file: this step can take a minute)' }
+    param([long]$Size, [string]$Step, [long]$Done = -1, [TimeSpan]$Elapsed = [TimeSpan]::Zero)
+    if (-not (Test-FileBarSize $Size)) { return }
+    $sizeMB = $Size / 1MB
+    if ($Done -lt 0) {
+        $status = '{0} {1:N1} MB - no byte count from SharePoint for this file: please wait' -f $Step, $sizeMB
+        $percent = 0
+    }
+    else {
+        $percent = [int][Math]::Min(100, 100 * $Done / [Math]::Max(1, $Size))
+        $status = '{0} {1,5:N1} of {2:N1} MB {3,3}%' -f $Step, ($Done / 1MB), $sizeMB, $percent
+        $seconds = $Elapsed.TotalSeconds
+        if ($Done -gt 0 -and $seconds -ge $script:RateAfterSeconds) {
+            $rate = $Done / $seconds
+            $status += ' | {0:N1} MB/s' -f ($rate / 1MB)
+            if ($Done -lt $Size) { $status += ', about {0} left' -f (Format-Duration ([TimeSpan]::FromSeconds(($Size - $Done) / $rate))) }
+        }
+    }
     # No -ParentId: Windows PowerShell ISE indents a child bar; the PAM wants both bars aligned (2026-11-20).
-    Write-Progress -Id 2 -Activity 'This file' -Status $status -PercentComplete $Percent
+    Write-Progress -Id 2 -Activity 'Downloading this file' -Status $status -PercentComplete $percent
 }
 
 function Write-ChannelLine {
@@ -4946,7 +4974,7 @@ function New-ScanQueue {
     #>
     param([hashtable]$Init, $Rows, [hashtable]$Meter)
     return @{ Pool = (New-ReaderPool $Init); Rows = $Rows; Meter = $Meter; Info = @{}; Results = @{}; Waiting = @{}; NextId = 0
-        Seconds = 0.0 }
+        Seconds = 0.0; Activity = '' }
 }
 
 function Submit-ScanFile {
@@ -4969,7 +4997,8 @@ function Submit-ScanFile {
     $id = $Queue.NextId
     $Queue.Info[$id] = $Info
     $job = @{ Id = $id; Name = $Name; Bytes = $Bytes; Path = $Path }
-    foreach ($result in @(Add-PoolJob $Queue.Pool $job)) { Resolve-ScanResult $Queue $result }
+    $onWait = { param($busy) Write-WaitBar $Queue $busy }
+    foreach ($result in @(Add-PoolJob $Queue.Pool $job $onWait)) { Resolve-ScanResult $Queue $result }
 }
 
 function Resolve-ScanResult {
@@ -5057,8 +5086,9 @@ function Invoke-GroupScan {
         $before = $meter.Clone()
         foreach ($file in $group.Files) {
             # The file in work, with PII masked (the PAM, 2026-11-20: a slow file is then visible).
-            Write-Progress -Id 1 -Activity ("Scanning files - folder {0} of {1}: '{2}'" -f ($c + 1), $Groups.Count, (Protect-PiiName $group.Name)) `
-                -Status (Get-ScanMeterText $meter 'file') -PercentComplete (Get-MeterPercent $meter) -CurrentOperation ('Now: ' + (& $ShownFile $group $file))
+            $Queue.Activity = "Scanning files - folder {0} of {1}: '{2}'" -f ($c + 1), $Groups.Count, (Protect-PiiName $group.Name)
+            Write-Progress -Id 1 -Activity $Queue.Activity -Status (Get-ScanMeterText $meter 'file') -PercentComplete (Get-MeterPercent $meter) `
+                -CurrentOperation ('Now: ' + (& $ShownFile $group $file))
             $firstRow = $Queue.Rows.Count
             if (-not (& $StartFile $group $file)) {
                 Update-ScanMeter $meter $Queue.Rows $firstRow 0
@@ -5102,9 +5132,27 @@ function Wait-ScanQueue {
       Output of New-ScanQueue.
     #>
     param([hashtable]$Queue)
+    $onWait = { param($busy) Write-WaitBar $Queue $busy }
     while ($Queue.Pool.Jobs.Count -gt 0) {
-        foreach ($result in @(Receive-PoolResult $Queue.Pool -Wait)) { Resolve-ScanResult $Queue $result }
+        foreach ($result in @(Receive-PoolResult $Queue.Pool -Wait -OnWait $onWait)) { Resolve-ScanResult $Queue $result }
     }
+}
+
+function Write-WaitBar {
+    <#
+    .SYNOPSIS
+      The scan bar while every worker is busy or a folder waits for its last files: the time keeps moving and the bar
+      says what it waits for, so the scan does not look hung (the PAM, 2026-11-21).
+    .PARAMETER Queue
+      Output of New-ScanQueue.
+    .PARAMETER Busy
+      The number of files being read now.
+    #>
+    param([hashtable]$Queue, [int]$Busy)
+    if (-not $Queue.Activity) { return }
+    $noun = 'files'; if ($Busy -eq 1) { $noun = 'file' }
+    Write-Progress -Id 1 -Activity $Queue.Activity -Status (Get-ScanMeterText $Queue.Meter 'file') -PercentComplete (Get-MeterPercent $Queue.Meter) `
+        -CurrentOperation ('Reading {0} {1} (a large or long file takes longer) ...' -f $Busy, $noun)
 }
 
 function Close-ScanQueue {
@@ -5444,8 +5492,22 @@ $script:NotScannedLibraries = @('Style Library', 'Form Templates')
 # Teams makes one top-level folder per standard channel. "Forms" is SharePoint's own folder, not a channel.
 $script:NotChannelFolders = @('Forms')
 
-# Time spent downloading and spent reading and checking, for the summary (it shows where a slow scan loses its time).
+# Time spent downloading and spent reading, for the summary (it shows where a slow scan loses its time).
 $script:Timing = @{ Download = [TimeSpan]::Zero; Check = [TimeSpan]::Zero }
+
+# The streamed download of a large file (Read-DirectFileBytes): the SharePoint client call File.OpenBinaryDirect on the
+# signed-in connection gives the file as a stream, so the per-file bar can count the bytes (the PAM, 2026-11-21).
+# Set to $false for the rest of a scan when it fails once; tests replace the opener.
+$script:DirectDownload = $true
+$script:OpenDirectStream = {
+    param([string]$ServerRelativeUrl)
+    $fileType = 'Microsoft.SharePoint.Client.File' -as [type]
+    if (-not $fileType) { throw 'The SharePoint client library is not loaded.' }
+    return $fileType::OpenBinaryDirect((Get-PnPContext), $ServerRelativeUrl).Stream
+}
+# Bytes read at a time (256 KB), and the shortest time between two bar updates (4 a second).
+$script:ChunkBytes = 256KB
+$script:BarRefreshMs = 250
 
 # How the report and the screen name the files at the top of the library (in no folder).
 $script:RootGroupName = '(top of the library)'
@@ -5754,17 +5816,37 @@ function Get-FileBytes {
     .SYNOPSIS
       Downloads one file into memory (never to disk).
     .DESCRIPTION
-      Tries Get-PnPFile -AsMemoryStream first. If this PnP version has no such switch, it uses the
-      SharePoint client call OpenBinaryStream on the same connection.
+      A file large enough for the per-file bar is read from SharePoint as a stream, a chunk at a time, so the bar shows
+      the MB done (Read-DirectFileBytes). If that fails, or for a small file, Get-PnPFile -AsMemoryStream gives the
+      whole file in one call; if this PnP version has no such switch, the SharePoint client call OpenBinaryStream on
+      the same connection does.
     .PARAMETER ServerRelativeUrl
       /sites/<name>/<library>/<folder>/<file>
+    .PARAMETER Size
+      The file size from the list (0 when not known).
     .OUTPUTS
       [byte[]]
     #>
-    param([string]$ServerRelativeUrl)
+    param([string]$ServerRelativeUrl, [long]$Size = 0)
+    # '#' and '%' in a path break the stream call's address: such a file takes the normal download.
+    if ($script:DirectDownload -and (Test-FileBarSize $Size) -and $ServerRelativeUrl.IndexOfAny([char[]]'#%') -lt 0) {
+        try {
+            $bytes = Read-DirectFileBytes $ServerRelativeUrl $Size
+            if ($bytes.LongLength -eq $Size) { return , $bytes }
+            # Not the size the list gives (a sign-in page, for example): the normal download decides.
+            throw ('the stream gave {0} bytes, the list says {1}' -f $bytes.LongLength, $Size)
+        }
+        catch {
+            # The streamed download does not work with this sign-in or PnP version: the normal one for the rest of the scan.
+            $script:DirectDownload = $false
+            Write-Verbose ('Streamed download not possible, normal download used: ' + $_.Exception.Message)
+        }
+    }
+    Write-FileStep $Size 'Downloading'   # no byte count: the bar says so
+    # The leading commas keep the byte array whole: PowerShell would otherwise unroll it, byte by byte (slow).
     try {
         $stream = Get-PnPFile -Url $ServerRelativeUrl -AsMemoryStream -ErrorAction Stop
-        return $stream.ToArray()
+        return , $stream.ToArray()
     }
     catch [System.Management.Automation.ParameterBindingException] {
         # This PnP version has no -AsMemoryStream: use the client call instead (same connection, same rights).
@@ -5772,8 +5854,61 @@ function Get-FileBytes {
         $binary = $context.Web.GetFileByServerRelativeUrl($ServerRelativeUrl).OpenBinaryStream()
         $context.ExecuteQuery()
         $memory = New-Object System.IO.MemoryStream
-        try { $binary.Value.CopyTo($memory); return $memory.ToArray() } finally { $memory.Dispose() }
+        try { $binary.Value.CopyTo($memory); return , $memory.ToArray() } finally { $memory.Dispose() }
     }
+}
+
+function Read-DirectFileBytes {
+    <#
+    .SYNOPSIS
+      Downloads one file as a stream on the signed-in connection (a read: HTTP GET of the file, same site, same rights)
+      and moves the per-file bar as the bytes arrive.
+    .PARAMETER ServerRelativeUrl
+      /sites/<name>/<library>/<folder>/<file>
+    .PARAMETER Size
+      The file size from the list.
+    .OUTPUTS
+      [byte[]]
+    #>
+    param([string]$ServerRelativeUrl, [long]$Size)
+    $stream = & $script:OpenDirectStream $ServerRelativeUrl
+    try {
+        $clock = [Diagnostics.Stopwatch]::StartNew()
+        $onProgress = { param($done) Write-FileStep $Size 'Downloading' $done $clock.Elapsed }.GetNewClosure()
+        return , (Copy-StreamWithProgress $stream $Size $onProgress)
+    }
+    finally { $stream.Dispose() }
+}
+
+function Copy-StreamWithProgress {
+    <#
+    .SYNOPSIS
+      Reads a stream to its end into memory, a chunk at a time, and reports the bytes done at most every
+      $BarRefreshMs (each bar update costs time in Windows PowerShell 5.1) and once at the end.
+    .PARAMETER Stream
+      The stream to read.
+    .PARAMETER Size
+      The expected size (the first buffer size); 0 when not known.
+    .PARAMETER OnProgress
+      { param($done) } called with the bytes read so far.
+    .OUTPUTS
+      [byte[]]
+    #>
+    param([System.IO.Stream]$Stream, [long]$Size, [scriptblock]$OnProgress)
+    $memory = New-Object System.IO.MemoryStream([int][Math]::Min([long][int]::MaxValue, [Math]::Max(0L, $Size)))
+    try {
+        $buffer = New-Object byte[] $script:ChunkBytes
+        $clock = [Diagnostics.Stopwatch]::StartNew()
+        $last = -1L
+        & $OnProgress 0L
+        while (($count = $Stream.Read($buffer, 0, $buffer.Length)) -gt 0) {
+            $memory.Write($buffer, 0, $count)
+            if ($clock.ElapsedMilliseconds - $last -ge $script:BarRefreshMs) { $last = $clock.ElapsedMilliseconds; & $OnProgress $memory.Length }
+        }
+        & $OnProgress $memory.Length
+        return , $memory.ToArray()
+    }
+    finally { $memory.Dispose() }
 }
 
 function Get-ChannelFiles {
@@ -5845,14 +5980,13 @@ function Invoke-OneFileScan {
     elseif ($size -gt ($MaxFileMB * 1MB)) { $skipReason = "Larger than $MaxFileMB MB: check by hand" }
     if ($skipReason) { $rows.Add((New-ReportRow 'File' $Channel $item $link $modified 'NOT SCANNED' '' '' $skipReason)); return $false }
     $clock = [Diagnostics.Stopwatch]::StartNew()
-    Write-FileStep $size 'Downloading' 30
-    try { $bytes = Get-FileBytes $ref }
+    try { $bytes = Get-FileBytes $ref $size }
     catch {
         # One file that cannot be downloaded must not stop the scan: note it and go on.
         $reason = Protect-PiiText ('Download failed: ' + $_.Exception.Message)
         $rows.Add((New-ReportRow 'File' $Channel $item $link $modified 'NOT SCANNED' '' '' $reason)); return $false
     }
-    finally { $script:Timing.Download += $clock.Elapsed; Write-Progress -Id 2 -Activity 'This file' -Completed }
+    finally { $script:Timing.Download += $clock.Elapsed; Write-Progress -Id 2 -Activity 'Downloading this file' -Completed }
     # The main thread downloads the next file while workers read this one (speed, the PAM 2026-11-21).
     # Accountability: who made and changed the file; for a file with a hit, who added each hit (version history).
     $who = Get-SharePointWho $File
@@ -5863,9 +5997,9 @@ function Invoke-OneFileScan {
 }
 
 function Get-ScanTiming {
-    # The time of the last file scan spent downloading and spent reading and checking, as minutes:seconds text.
+    # The time of the last file scan spent downloading and spent reading, as minutes:seconds text.
     $format = { param($t) '{0:00}:{1:00}' -f [int][Math]::Floor($t.TotalMinutes), $t.Seconds }
-    [ordered]@{ 'Time downloading' = (& $format $script:Timing.Download); 'Time reading and checking (all workers)' = (& $format $script:Timing.Check) }
+    [ordered]@{ 'Time downloading' = (& $format $script:Timing.Download); 'Time reading (all workers)' = (& $format $script:Timing.Check) }
 }
 
 function Get-ScanGroups {
@@ -5917,6 +6051,7 @@ function Invoke-FileScan {
     param($Library, [string[]]$Channels, [string]$SiteUrl, [int]$MaxFileMB, $Rows, [hashtable]$Init)
     $origin = ([uri]$SiteUrl).GetLeftPart([System.UriPartial]::Authority)
     $script:Timing = @{ Download = [TimeSpan]::Zero; Check = [TimeSpan]::Zero }
+    $script:DirectDownload = $true   # tried again on each site
     $libraries = @($Library)
     $groups = @(foreach ($one in $libraries) {
         if ($libraries.Count -eq 1) { Get-ScanGroups $one $Channels ''; continue }
@@ -6137,7 +6272,7 @@ function Get-DriveHeader {
     $header['Folders'] = ($Groups | ForEach-Object { Protect-PiiName $_.Name }) -join ', '
     $header['Run'] = Get-Date -Format 'yyyy-MM-dd HH:mm'
     $header['Time used'] = & $format $Used
-    $header['Time reading and checking (all workers)'] = & $format $Reading
+    $header['Time reading (all workers)'] = & $format $Reading
     $header['Files read at once (at the end)'] = [string]$Workers
     return $header
 }

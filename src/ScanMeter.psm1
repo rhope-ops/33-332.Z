@@ -17,13 +17,12 @@ ScanMeter.psm1 - the progress bars and the per-folder lines of a scan: counts on
 
 Set-StrictMode -Version 2.0
 
-# From this size on, the per-file bar says the step can take a minute (5 MB: a slow download on a gov network
-# takes tens of seconds; the author's choice, 2026-11-20).
-$script:LargeFileBytes = 5MB
-
 # The per-file bar is shown only from this size on: a small file is done in a moment, and each bar update costs time in
 # Windows PowerShell 5.1 (the author's choice, 2026-11-20: faster scans of many small files).
 $script:FileBarBytes = 1MB
+
+# The per-file bar shows a speed and a time left only after this many seconds (before that the speed jumps about).
+$script:RateAfterSeconds = 1
 
 # A coloured line of live counts is printed under the progress bar at most this often (and after each folder).
 $script:LiveLineSeconds = 10
@@ -209,24 +208,45 @@ function Get-MeterPercent {
     return [int][Math]::Min(100, 100 * $Meter.Done / $Meter.Total)
 }
 
+function Test-FileBarSize {
+    # True when a file is large enough for the per-file bar (smaller files are done in a moment).
+    param([long]$Size)
+    return $Size -ge $script:FileBarBytes
+}
+
 function Write-FileStep {
     <#
     .SYNOPSIS
-      A second progress bar for the file in work: its size and its step, so a large file does not look hung.
-      PnP gives no byte count while it downloads, so the bar moves by step (download, read, check), not by byte.
+      The second progress bar: the download of the file in work, by byte (MB done of the size, speed, time left), so a
+      large file does not look hung (the PAM, 2026-11-21: the bar must move). Reading happens in the workers, after it.
     .PARAMETER Size
       The file size in bytes.
     .PARAMETER Step
-      What is being done now.
-    .PARAMETER Percent
-      How far through the file's steps (0-100).
+      What is being done now, for example 'Downloading'.
+    .PARAMETER Done
+      The bytes done so far; -1 when the download method gives no byte count (the bar then says so and does not move).
+    .PARAMETER Elapsed
+      The time the step has taken so far.
     #>
-    param([long]$Size, [string]$Step, [int]$Percent)
-    if ($Size -lt $script:FileBarBytes) { return }
-    $status = '{0} - {1:N1} MB' -f $Step, ($Size / 1MB)
-    if ($Size -ge $script:LargeFileBytes) { $status += ' (a large file: this step can take a minute)' }
+    param([long]$Size, [string]$Step, [long]$Done = -1, [TimeSpan]$Elapsed = [TimeSpan]::Zero)
+    if (-not (Test-FileBarSize $Size)) { return }
+    $sizeMB = $Size / 1MB
+    if ($Done -lt 0) {
+        $status = '{0} {1:N1} MB - no byte count from SharePoint for this file: please wait' -f $Step, $sizeMB
+        $percent = 0
+    }
+    else {
+        $percent = [int][Math]::Min(100, 100 * $Done / [Math]::Max(1, $Size))
+        $status = '{0} {1,5:N1} of {2:N1} MB {3,3}%' -f $Step, ($Done / 1MB), $sizeMB, $percent
+        $seconds = $Elapsed.TotalSeconds
+        if ($Done -gt 0 -and $seconds -ge $script:RateAfterSeconds) {
+            $rate = $Done / $seconds
+            $status += ' | {0:N1} MB/s' -f ($rate / 1MB)
+            if ($Done -lt $Size) { $status += ', about {0} left' -f (Format-Duration ([TimeSpan]::FromSeconds(($Size - $Done) / $rate))) }
+        }
+    }
     # No -ParentId: Windows PowerShell ISE indents a child bar; the PAM wants both bars aligned (2026-11-20).
-    Write-Progress -Id 2 -Activity 'This file' -Status $status -PercentComplete $Percent
+    Write-Progress -Id 2 -Activity 'Downloading this file' -Status $status -PercentComplete $percent
 }
 
 function Write-ChannelLine {
@@ -263,4 +283,4 @@ function Write-RuleLine {
     Write-Ui ('  ' + ('-' * $script:RuleWidth)) 'Rule'
 }
 
-Export-ModuleMember -Function New-ScanMeter, Update-ScanMeter, Get-ScanMeterText, Get-MeterPercent, Get-NameWidth, Write-MeterLine, Write-FileStep, Write-ChannelLine, Write-RuleLine
+Export-ModuleMember -Function New-ScanMeter, Update-ScanMeter, Get-ScanMeterText, Get-MeterPercent, Get-NameWidth, Write-MeterLine, Test-FileBarSize, Write-FileStep, Write-ChannelLine, Write-RuleLine

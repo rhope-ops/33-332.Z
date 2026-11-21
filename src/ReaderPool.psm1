@@ -162,11 +162,13 @@ function Add-PoolJob {
       The pool of New-ReaderPool.
     .PARAMETER Job
       @{ Id; Name; Bytes or Path } (see Invoke-PooledRead).
+    .PARAMETER OnWait
+      { param($busy) } called before each wait slice (the screen shows the wait); optional.
     .OUTPUTS
       The results that finished while waiting (Receive-PoolResult).
     #>
-    param([hashtable]$State, [hashtable]$Job)
-    while ($State.Jobs.Count -ge $State.Target) { Receive-PoolResult $State -Wait }
+    param([hashtable]$State, [hashtable]$Job, [scriptblock]$OnWait)
+    while ($State.Jobs.Count -ge $State.Target) { Receive-PoolResult $State -Wait -OnWait $OnWait }
     $shell = [powershell]::Create()
     $shell.RunspacePool = $State.Pool
     [void]$shell.AddScript($script:PoolWorkerScript).AddArgument($State.Init).AddArgument($Job).AddArgument($State.Seen)
@@ -181,13 +183,16 @@ function Receive-PoolResult {
       The pool of New-ReaderPool.
     .PARAMETER Wait
       Wait for at least one result when none is ready (and jobs are running).
+    .PARAMETER OnWait
+      { param($busy) } called before each wait slice with the number of busy workers; optional.
     .OUTPUTS
       [hashtable] results of Invoke-PooledRead.
     #>
-    param([hashtable]$State, [switch]$Wait)
+    param([hashtable]$State, [switch]$Wait, [scriptblock]$OnWait)
     while ($true) {
         $ready = @($State.Jobs | Where-Object { $_.Handle.IsCompleted })
         if ($ready.Count -gt 0 -or -not $Wait -or $State.Jobs.Count -eq 0) { break }
+        if ($OnWait) { & $OnWait $State.Jobs.Count }
         [void]$State.Jobs[0].Handle.AsyncWaitHandle.WaitOne($script:WaitSliceMs)
     }
     foreach ($job in $ready) {

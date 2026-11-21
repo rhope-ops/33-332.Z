@@ -127,8 +127,35 @@ $rootRows = New-Object System.Collections.Generic.List[object]
 Assert-Equal 1 (Invoke-FileScan -Library $lib -Channels @() -SiteUrl $Sample.Site -MaxFileMB 25 -Rows $rootRows 6>$null) 'Top-of-library file scanned'
 Assert-Equal '(top of the library)' (($rootRows | Select-Object -ExpandProperty Channel -Unique) -join ',') 'Top-of-library files named as such'
 Assert-Equal 'top.txt' (($rootRows | Select-Object -ExpandProperty Item -Unique) -join ',') 'Only the top file, not the folder file'
-Write-FileStep (6MB) 'Downloading' 10
-Assert-Equal $true ((Get-FakeProgressText) -match 'This file Downloading - 6\.0 MB \(a large file') 'Large file: the per-file bar says it can take a minute'
+Write-FileStep (6MB) 'Downloading' (3MB) ([TimeSpan]::FromSeconds(2))
+Assert-Equal $true ((Get-FakeProgressText) -match 'Downloading this file Downloading   3\.0 of 6\.0 MB  50% \| 1\.5 MB/s, about 00:02 left') `
+    'Per-file bar: MB done of the size, percent, speed and time left'
+Write-FileStep (6MB) 'Downloading'
+Assert-Equal $true ((Get-FakeProgressText) -match 'Downloading 6\.0 MB - no byte count') 'Per-file bar: says when the download gives no byte count'
+
+# ---- The streamed download of a large file: the bar counts the bytes ----
+$chunked = New-Object System.IO.MemoryStream(, [byte[]](1..200 | ForEach-Object { [byte]$_ }))
+$seen = New-Object System.Collections.Generic.List[long]
+$copied = Copy-StreamWithProgress $chunked 200 { param($done) $seen.Add($done) }
+Assert-Equal '200|0|200' ('{0}|{1}|{2}' -f $copied.Length, $seen[0], $seen[$seen.Count - 1]) 'Stream copy: all bytes, progress from 0 to the end'
+Assert-Equal $true ($copied -is [byte[]]) 'Stream copy: a byte array, not unrolled'
+$largeFile = New-Object byte[] (2MB); [System.Text.Encoding]::UTF8.GetBytes('Call ' + $Sample.Phone).CopyTo($largeFile, 0)
+$channelScan = Get-Module ChannelScan
+$normalOpener = & $channelScan { $script:OpenDirectStream }
+# The fake stream opener: the file bytes, or (Short) fewer bytes than the list says, as a sign-in page would give.
+& $channelScan { $script:OpenDirectStream = { param($url) Get-FakeFileStream $url } }
+Reset-FakePnP @{ "$library/General/large.txt" = $largeFile }
+$streamRows = New-Object System.Collections.Generic.List[object]
+Assert-Equal 1 (Invoke-FileScan -Library $lib -Channels @('General') -SiteUrl $Sample.Site -MaxFileMB 25 -Rows $streamRows 6>$null) 'Streamed: the large file is read'
+Assert-Equal 1 @($streamRows | Where-Object { $_.Detector -eq 'Phone' }).Count 'Streamed: its PII is found'
+Assert-Equal $true ((Get-FakeProgressText) -match 'Downloading   2\.0 of 2\.0 MB 100%') 'Streamed: the bar reaches the full size'
+& $channelScan { $script:OpenDirectStream = { param($url) Get-FakeFileStream $url -Short } }
+Reset-FakePnP @{ "$library/General/large.txt" = $largeFile; "$library/General/large2.txt" = $largeFile }
+$shortRows = New-Object System.Collections.Generic.List[object]
+Assert-Equal 2 (Invoke-FileScan -Library $lib -Channels @('General') -SiteUrl $Sample.Site -MaxFileMB 25 -Rows $shortRows 6>$null) 'Wrong size streamed: the normal download is used'
+Assert-Equal 2 @($shortRows | Where-Object { $_.Detector -eq 'Phone' }).Count 'Wrong size streamed: the PII is still found'
+Assert-Equal $false (& $channelScan { $script:DirectDownload }) 'Wrong size streamed: no more streamed downloads in this scan'
+& $channelScan { param($opener) $script:OpenDirectStream = $opener } $normalOpener
 
 # A file named after an SSN: reported as a hit, and neither the item nor the link shows the SSN.
 $nameRows = @($rows | Where-Object { $_.Source -eq 'File name' })
@@ -220,7 +247,7 @@ Assert-Equal $live.IndexOf('| read') $wide.IndexOf('| read') 'Live line: columns
 Assert-Equal $live.IndexOf('| possible PII') $wide.IndexOf('| possible PII') 'Live line: PII column stays in place'
 $liveMeter.Clock = [pscustomobject]@{ Elapsed = [TimeSpan]::FromSeconds(25) }
 Assert-Equal '' ((Write-MeterLine $liveMeter 'file' 6>&1 | ForEach-Object { [string]$_ }) -join '') 'Live line: not again within 10 seconds'
-Assert-Equal 'Time downloading|Time reading and checking (all workers)' (@((Get-ScanTiming).Keys) -join '|') 'Timing: download and check times'
+Assert-Equal 'Time downloading|Time reading (all workers)' (@((Get-ScanTiming).Keys) -join '|') 'Timing: download and check times'
 
 # ---- Team or plain site: names the folder column ----
 Reset-FakePnP @{}
