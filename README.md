@@ -40,7 +40,7 @@ The steps to run it are at the top of the script.
 
 - **List and confirm:** Ion lists the files first and shows how many it found, their size, and how many it will list but not read. When it finds files, it asks "Scan now? [Y/n]"; Enter starts the scan, and "n" saves nothing.
 - **Progress:** one bar shows the folder, the run so far (files done, read, not scanned, possible PII, time elapsed and left) and the file in work; for a SharePoint or Teams file of 1 MB or more, a second bar shows the MB downloaded.
-- **Report:** one Excel workbook per run, in `Documents\Ion\<site>\Ion <site> <yyyy-MM-dd HHmm>.xlsx` (a drive folder gets a folder of its own name). It has a Summary tab, one tab per PII type (worst first), Low confidence and Not scanned. Each hit row shows when the file was created and by whom, when it was last saved and by whom, which account first saved a version with the PII and when, and a History note when the file's history cannot show that. The Method tab explains how each column is worked out: the "first saved by" account is evidence, not proof of who typed the PII.
+- **Report:** one Excel workbook per run, in `Documents\Ion\<site>\Ion <site> <yyyy-MM-dd HHmm>.xlsx` (a drive folder gets a folder of its own name; a site or folder name longer than 40 characters is cut to 40 in the path). It has a Summary tab, one tab per PII type (worst first), Low confidence, Not scanned and, last, Method. Each hit row shows when the file was created and by whom, when it was last saved and by whom, which account first saved a version with the PII and when, and a History note when the file's history cannot show that. The Method tab explains, for each PII type, when a match is Low, Medium or High, and how each column is worked out: the "first saved by" account is evidence, not proof of who typed the PII.
 
 #### What it looks for
 
@@ -52,7 +52,7 @@ The steps to run it are at the top of the script.
 | Date of birth | A date after "DOB", "date of birth" or "born" | `[date masked]` |
 | Payment card | 13 to 19 digits with a card network's prefix that pass the card check | `************1111` |
 | Passport | 6 to 9 letters and digits after "passport" | `*****567` |
-| Phone | A US 10-digit number | `***-***-0142` |
+| Phone | A US 10-digit number written with separators (dashes, dots, spaces or brackets); 10 digits in a row are not found | `***-***-0142` |
 | Personal e-mail | Any address not ending in .gov or .mil (Gmail, Yahoo and the like rank higher) | `***@domain` |
 | Home address | Number, street name and street type (St, Ave, Rd ...) | `[address masked]` |
 | Name | After "Name:", "Full name:", "Member:", "Spouse:", "Dependent:", "NOK:" or "POC:" | Initials |
