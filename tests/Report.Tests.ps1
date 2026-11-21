@@ -37,6 +37,7 @@ Assert-Equal 'High|General|Roster.docx|***-**-6789' (($book['SSN'][1] | Select-O
 Assert-Equal 'Phone' $book['Low confidence'][1][0] 'Low hit in the Low confidence tab, with its type'
 Assert-Equal '=HYPERLINK("x")' $book['Low confidence'][1][5] 'Formula-like text kept as plain text (an inline string is never a formula)'
 Assert-Equal 'NOT SCANNED|Ops|scan.pdf' (($book['Not scanned'][1] | Select-Object -First 3) -join '|') 'Not scanned tab row'
+Assert-Equal 'Group|Type not read: .pdf' ($book['Not scanned'][0][4] + '|' + $book['Not scanned'][1][4]) 'Not scanned tab: a Group column, as the Summary counts it'
 $summary = ($book['Summary'] | ForEach-Object { $_ -join '|' }) -join "`n"
 Assert-Equal $true ($summary -match '(?m)^Type not read: \.pdf\|1$') 'Summary: not-scanned files counted per reason'
 # The link column is a clickable link: a sheet relationship, never a formula.
@@ -165,3 +166,24 @@ Assert-Equal 'PDF time limit reached (file may be fine)' (& $groupOf 'This PDF t
 Assert-Equal 'PDF parts not read (file may open fine)' (& $groupOf 'Part of this PDF is not well formed (the file may still open fine): check by hand') 'Groups: a PDF part not read'
 Assert-Equal 'Not a valid file (damaged or wrong name)' (& $groupOf 'Not a valid PDF (damaged, or another type with a .pdf name): check by hand') 'Groups: not a valid file'
 Assert-Equal 'Could not read (in use, damaged or protected)' (& $groupOf 'Could not read the file (in use, damaged or protected?): x') 'Groups: a file that could not be read is not called invalid'
+# An e-signature DoD ID (the only Low DoD ID) gets no version-history read; other hits do (the PAM, 2026-11-21).
+$looked = New-Object System.Collections.Generic.List[string]
+# A fake version-history lookup: records which hit types it was asked about.
+$addedLookup = { param($hits) foreach ($h in $hits) { $looked.Add($h.Detector) }; @{ 'SSN|***-**-6789' = @{ AddedOn = 'x'; AddedBy = 'y'; Note = '' } } }
+$addedInfo = @{ Added = $addedLookup.GetNewClosure() }
+$mixed = @([pscustomobject]@{ Detector = 'DoD ID'; Confidence = 'Low'; MaskedValue = '******7890' },
+    [pscustomobject]@{ Detector = 'SSN'; Confidence = 'High'; MaskedValue = '***-**-6789' })
+$byHit = & (Get-Module ScanQueue) { param($i, $h) Get-AddedByHit $i $h } $addedInfo $mixed
+$seen = ($looked -join ',') + '|' + $byHit['DoD ID|******7890'].AddedBy + '|' + $byHit['SSN|***-**-6789'].AddedBy
+Assert-Equal 'SSN|Not recorded|y' $seen 'History: read for the SSN only; the e-signature DoD ID is not looked up'
+$looked.Clear()
+$null = & (Get-Module ScanQueue) { param($i, $h) Get-AddedByHit $i $h } $addedInfo @($mixed[0])
+Assert-Equal 0 $looked.Count 'History: a file with only an e-signature DoD ID reads no versions'
+# Review of PR 50: a labelled DoD ID with the same masked value keeps its history; no made-up account.
+$sameId = @([pscustomobject]@{ Detector = 'DoD ID'; Confidence = 'High'; MaskedValue = '******7890' },
+    [pscustomobject]@{ Detector = 'DoD ID'; Confidence = 'Low'; MaskedValue = '******7890' })
+$idInfo = @{ Added = { param($hits) @{ 'DoD ID|******7890' = @{ AddedOn = 'x'; AddedBy = 'a.one'; Note = '' } } } }
+$idByHit = & (Get-Module ScanQueue) { param($i, $h) Get-AddedByHit $i $h } $idInfo $sameId
+Assert-Equal 'a.one' $idByHit['DoD ID|******7890'].AddedBy 'History: the labelled DoD ID keeps its result'
+$notLooked = @([pscustomobject]@{ AddedBy = 'Not recorded'; Channel = 'Ops'; Item = 'sig.pdf'; Confidence = 'Low' })
+Assert-Equal 0 @(Get-AccountRows $notLooked).Count 'By account: an e-signature DoD ID makes no account row'

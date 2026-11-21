@@ -49,7 +49,7 @@ The steps to run it are at the top of the script.
 | Type | Found when | Shown as |
 |---|---|---|
 | SSN | 3-2-4 digits the SSA could issue | `***-**-1234` |
-| DoD ID | 10 digits after "DoD ID", "DODID", "EDIPI" or "CAC", or at the end of a CAC name (LAST.FIRST.M. then 10 digits, as in e-signatures) | `******7890` |
+| DoD ID | 10 digits after "DoD ID", "DODID", "EDIPI" or "CAC", or at the end of a CAC name (LAST.FIRST.M. then 10 digits, as in e-signatures: Low) | `******7890` |
 | Date of birth | A date after "DOB", "date of birth" or "born" | `[date masked]` |
 | Payment card | 13 to 19 digits with a card network's prefix that pass the card check | `************1111` |
 | Passport | 6 to 9 letters and digits after "passport" | `*****567` |

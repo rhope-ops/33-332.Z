@@ -18,7 +18,7 @@
   the files at each library's top), or the drive folder and all its subfolders. Channel posts are not read.
 
   Built from these files; to change it, change them and rebuild with: python3 scripts/build_paste.py
-    src/PiiDetectors.psm1, sha256 dd4192e5cad7
+    src/PiiDetectors.psm1, sha256 4f6da5461023
     src/PiiMasking.psm1, sha256 752c251a94b2
     src/OcrText.psm1, sha256 a39acab441d4
     src/OleText.psm1, sha256 2f5d0a036e97
@@ -31,10 +31,10 @@
     src/TextExtract.psm1, sha256 5e02d07ddf10
     src/ReaderPool.psm1, sha256 8f8f73fda166
     src/XlsxWriter.psm1, sha256 0d8b1a3e1de1
-    src/Report.psm1, sha256 fbda0ca47111
+    src/Report.psm1, sha256 64da7afe875f
     src/ScanMeter.psm1, sha256 18c82f0b37c3
-    src/ScanQueue.psm1, sha256 b5f06a023aaf
-    src/Accountability.psm1, sha256 3d2b527a9444
+    src/ScanQueue.psm1, sha256 ae11c97d5b8b
+    src/Accountability.psm1, sha256 0f9f669ef687
     src/SiteTarget.psm1, sha256 339a273b6fb2
     src/ChannelScan.psm1, sha256 0cd4894c7c7b
     src/DriveScan.psm1, sha256 f307e810f8f5
@@ -50,28 +50,28 @@
     line    77  Settings
     line    88  Reader block
     line    94  Module PiiDetectors.psm1
-    line   669  Module PiiMasking.psm1
-    line   869  Module OcrText.psm1
-    line  1022  Module OleText.psm1
-    line  1161  Module ContainerText.psm1
-    line  1500  Module PdfCore.psm1
-    line  1862  Module PdfObjects.psm1
-    line  2220  Module PdfFonts.psm1
-    line  2768  Module PdfLayout.psm1
-    line  2908  Module PdfText.psm1
-    line  3410  Module TextExtract.psm1
-    line  3828  Module ReaderPool.psm1
-    line  4080  Reader block end
-    line  4084  Module XlsxWriter.psm1
-    line  4391  Module Report.psm1
-    line  4951  Module ScanMeter.psm1
-    line  5348  Module ScanQueue.psm1
-    line  5706  Module Accountability.psm1
-    line  6088  Module SiteTarget.psm1
-    line  6340  Module ChannelScan.psm1
-    line  6742  Module DriveScan.psm1
-    line  6974  Body of Find-ChannelPII.ps1
-    line  7115  Clean-up
+    line   672  Module PiiMasking.psm1
+    line   872  Module OcrText.psm1
+    line  1025  Module OleText.psm1
+    line  1164  Module ContainerText.psm1
+    line  1503  Module PdfCore.psm1
+    line  1865  Module PdfObjects.psm1
+    line  2223  Module PdfFonts.psm1
+    line  2771  Module PdfLayout.psm1
+    line  2911  Module PdfText.psm1
+    line  3413  Module TextExtract.psm1
+    line  3831  Module ReaderPool.psm1
+    line  4083  Reader block end
+    line  4087  Module XlsxWriter.psm1
+    line  4394  Module Report.psm1
+    line  4956  Module ScanMeter.psm1
+    line  5353  Module ScanQueue.psm1
+    line  5743  Module Accountability.psm1
+    line  6125  Module SiteTarget.psm1
+    line  6377  Module ChannelScan.psm1
+    line  6779  Module DriveScan.psm1
+    line  7011  Body of Find-ChannelPII.ps1
+    line  7152  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -350,7 +350,7 @@ function Find-DodIdHits {
     .PARAMETER Text
       The text to search.
     .OUTPUTS
-      Hit objects (New-PiiHit), always High.
+      Hit objects (New-PiiHit): High with a label; Low at the end of a CAC name (an e-signature).
     #>
     param([string]$Text)
     $labels = 'DoD\s*ID|DODID|EDIPI|\bCAC\b|DoD\s*(?:ID\s*)?(?:#|no\.?|number)'
@@ -358,11 +358,12 @@ function Find-DodIdHits {
         if (Test-KeywordBefore $Text $m.Index $labels) { New-PiiHit 'DoD ID' 'High' $m.Index $m.Value }
     }
     # A CAC name, as a digital signature shows it: LAST.FIRST.MIDDLE. then the DoD ID (the digits may be drawn with single
-    # spaces between them). The name itself is the label (the PAM's gov run, 2026-11-21).
+    # spaces between them): Low, the only Low DoD ID, so the scan reads no version history for it (the PAM, 2026-11-21:
+    # "Low tab, no history").
     foreach ($m in [regex]::Matches($Text, $script:CacNamePattern)) {
         $digits = $m.Groups['id']
         if (Test-KeywordBefore $Text $digits.Index $labels) { continue }   # already found above, with its label
-        New-PiiHit 'DoD ID' 'High' $digits.Index $digits.Value
+        New-PiiHit 'DoD ID' 'Low' $digits.Index $digits.Value
     }
 }
 
@@ -614,7 +615,9 @@ function Set-NameNearIdentifierHigh {
     foreach ($nameHit in @($Hits | Where-Object { $_.Detector -eq 'Name' })) {
         foreach ($other in $Hits) {
             $near = [Math]::Abs($other.Index - $nameHit.Index) -le $script:NameToIdentifierChars
-            if ($near -and $script:IdentifierTypes -contains $other.Detector) { $nameHit.Confidence = 'High'; break }
+            # An e-signature DoD ID (Low) does not raise a name: the name would be surer than the ID (review of PR 50).
+            $signatureId = $other.Detector -eq 'DoD ID' -and $other.Confidence -eq 'Low'
+            if ($near -and -not $signatureId -and $script:IdentifierTypes -contains $other.Detector) { $nameHit.Confidence = 'High'; break }
         }
     }
 }
@@ -4833,8 +4836,10 @@ function Get-WorkbookSheets {
     }
     $notes = @($Rows | Where-Object { -not $script:Rank.ContainsKey($_.Confidence) })
     if ($notes.Count -gt 0) {
-        $sheets.Add((New-XlsxSheet 'Not scanned' @('Status', $FolderLabel, 'File', 'Reason', 'Link') `
-            @($notes | ForEach-Object { , @($_.Detector, $_.Channel, $_.Item, $_.Context, $_.Link) }) @(14, 22, 45, 70, 50) -List -LinkColumn 4))
+        # A Group column, so the tab filters by the groups the Summary counts (the PAM, 2026-11-21).
+        $sheets.Add((New-XlsxSheet 'Not scanned' @('Status', $FolderLabel, 'File', 'Reason', 'Group', 'Link') `
+            @($notes | ForEach-Object { , @($_.Detector, $_.Channel, $_.Item, $_.Context, (Get-NotScannedGroup $_), $_.Link) }) `
+            @(14, 22, 45, 70, 30, 50) -List -LinkColumn 5))
     }
     $accounts = @(Get-AccountRows $hits)   # C6 (the PAM, 2026-11-21): whom to contact first
     if ($accounts.Count -gt 0) {
@@ -5365,6 +5370,11 @@ ScanQueue.psm1 - turns the reader pool's results into report rows, in the order 
 #>
 
 
+# The "PII first saved" cells of a hit whose version history is not read (an e-signature DoD ID): "Not recorded", the
+# word the By account tab leaves out, so no account is made up (review of PR 50); the History note says why.
+$script:NotLookedUp = 'Not recorded'
+$script:NotLookedUpNote = 'Not looked up: a DoD ID in an e-signature; its version history is not read'
+
 function New-ScanQueue {
     <#
     .SYNOPSIS
@@ -5524,10 +5534,37 @@ function Add-WhoToRows {
     if ($Info.ContainsKey('DrivePath')) { $who = Get-DriveWho $Info.DrivePath $props }
     elseif ($Info.ContainsKey('Who')) {
         $who = $Info.Who.Clone()
-        if ($Info.ContainsKey('Added') -and $Result.Hits.Count -gt 0) { $who.ByHit = (& $Info.Added $Result.Hits) }
+        if ($Info.ContainsKey('Added') -and $Result.Hits.Count -gt 0) { $who.ByHit = Get-AddedByHit $Info $Result.Hits }
     }
     else { return }
     Set-RowAccountability $FileRows $who
+}
+
+function Get-AddedByHit {
+    <#
+    .SYNOPSIS
+      Who first saved each hit, from the version history, except for a DoD ID in an e-signature (the only Low DoD ID):
+      its history is not read, so a file with only such hits costs no version reads (the PAM, 2026-11-21).
+    .PARAMETER Info
+      The file's queue info (Added: the version-history lookup).
+    .PARAMETER Hits
+      The file's hits.
+    .OUTPUTS
+      [hashtable] "type|masked value" -> @{ AddedOn; AddedBy; Note }.
+    #>
+    param([hashtable]$Info, [object[]]$Hits)
+    # True for an e-signature DoD ID (the only Low DoD ID).
+    $signature = { param($hit) $hit.Detector -eq 'DoD ID' -and $hit.Confidence -eq 'Low' }
+    $looked = @($Hits | Where-Object { -not (& $signature $_) })
+    $byHit = @{}
+    if ($looked.Count -gt 0) { $byHit = & $Info.Added $looked }
+    foreach ($hit in @($Hits | Where-Object { & $signature $_ })) {
+        $key = [string]$hit.Detector + '|' + [string]$hit.MaskedValue
+        # The same masked value as a labelled DoD ID of this file keeps that one's history (review of PR 50).
+        if ($byHit.ContainsKey($key)) { continue }
+        $byHit[$key] = @{ AddedOn = $script:NotLookedUp; AddedBy = $script:NotLookedUp; Note = $script:NotLookedUpNote }
+    }
+    return $byHit
 }
 
 function Wait-ScanQueue {
@@ -6043,8 +6080,8 @@ function Get-MethodRows {
         'Without a label, 9 digits that go on into a longer number (a digit one space away, ' +
         'or a CAC name such as LAST.FIRST.M. just before) are not an SSN.'))
     , @('DoD ID', ('A 10-digit number, found only with a label just before it ("DoD ID", "DODID", "EDIPI", "CAC", "DoD #", "DoD number"), ' +
-        'or at the end of a CAC name (LAST.FIRST.M. then the 10 digits, as digital signatures show it): ' +
-        'always High.'))
+        'High. At the end of a CAC name (LAST.FIRST.M. then the 10 digits, as digital signatures show it): Low, ' +
+        'and its version history is not read (History note "Not looked up").'))
     , @('Date of birth', ('A date written as 1/2/1990, 01-02-90, 1990-01-02, 2 Jan 1990, 02JAN1990 or January 2, 1990, found only with a label ' +
         'just before it ("DOB", "D.O.B.", "date of birth", "birth date", "birthdate", "born"): always High. Other date forms are not found.'))
     , @('Payment card', ('Medium: 13 to 19 digits (the length each card network uses), starting with that network''s digits, and the whole ' +

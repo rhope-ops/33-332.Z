@@ -338,8 +338,8 @@ function Get-MethodRows {
         'Without a label, 9 digits that go on into a longer number (a digit one space away, ' +
         'or a CAC name such as LAST.FIRST.M. just before) are not an SSN.'))
     , @('DoD ID', ('A 10-digit number, found only with a label just before it ("DoD ID", "DODID", "EDIPI", "CAC", "DoD #", "DoD number"), ' +
-        'or at the end of a CAC name (LAST.FIRST.M. then the 10 digits, as digital signatures show it): ' +
-        'always High.'))
+        'High. At the end of a CAC name (LAST.FIRST.M. then the 10 digits, as digital signatures show it): Low, ' +
+        'and its version history is not read (History note "Not looked up").'))
     , @('Date of birth', ('A date written as 1/2/1990, 01-02-90, 1990-01-02, 2 Jan 1990, 02JAN1990 or January 2, 1990, found only with a label ' +
         'just before it ("DOB", "D.O.B.", "date of birth", "birth date", "birthdate", "born"): always High. Other date forms are not found.'))
     , @('Payment card', ('Medium: 13 to 19 digits (the length each card network uses), starting with that network''s digits, and the whole ' +

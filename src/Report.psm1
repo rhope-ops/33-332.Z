@@ -443,8 +443,10 @@ function Get-WorkbookSheets {
     }
     $notes = @($Rows | Where-Object { -not $script:Rank.ContainsKey($_.Confidence) })
     if ($notes.Count -gt 0) {
-        $sheets.Add((New-XlsxSheet 'Not scanned' @('Status', $FolderLabel, 'File', 'Reason', 'Link') `
-            @($notes | ForEach-Object { , @($_.Detector, $_.Channel, $_.Item, $_.Context, $_.Link) }) @(14, 22, 45, 70, 50) -List -LinkColumn 4))
+        # A Group column, so the tab filters by the groups the Summary counts (the PAM, 2026-11-21).
+        $sheets.Add((New-XlsxSheet 'Not scanned' @('Status', $FolderLabel, 'File', 'Reason', 'Group', 'Link') `
+            @($notes | ForEach-Object { , @($_.Detector, $_.Channel, $_.Item, $_.Context, (Get-NotScannedGroup $_), $_.Link) }) `
+            @(14, 22, 45, 70, 30, 50) -List -LinkColumn 5))
     }
     $accounts = @(Get-AccountRows $hits)   # C6 (the PAM, 2026-11-21): whom to contact first
     if ($accounts.Count -gt 0) {
