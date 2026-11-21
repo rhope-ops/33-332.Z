@@ -24,6 +24,14 @@ $script:MaxArchiveBytes = 200MB
 
 # An e-mail's MIME parts nest at most this deep (a hostile message cannot recurse without end).
 $script:MaxMimeDepth = 5
+# Parts read from one e-mail (a hostile message can hold hundreds of thousands); the count of the one in work.
+$script:MaxMimeParts = 500
+# Headers that decide how a part is read: one value each (a second, different one is a conflict, Split-MimeEntity).
+$script:DecidingHeaders = @('content-type', 'content-transfer-encoding', 'content-disposition')
+# Headers that hold no message text (how a part is coded, and mail-server stamps and signatures): not read as text.
+$script:NoTextHeaders = @('content-type', 'content-transfer-encoding', 'content-disposition', 'content-id', 'mime-version',
+    'received', 'dkim-signature', 'authentication-results', 'received-spf')
+$script:MimeParts = 0
 
 # Bytes as characters one to one, so a message can be cut with string functions and decoded part by part.
 $script:MimeLatin1 = [System.Text.Encoding]::GetEncoding(28591)
@@ -61,6 +69,42 @@ function Read-LimitedStream {
     finally { $Stream.Dispose(); $memory.Dispose() }
 }
 
+function Get-ZipEncryptedFlags {
+    <#
+    .SYNOPSIS
+      For each entry of a zip, in directory order (the order of ZipArchive.Entries): whether it is encrypted (bit 0
+      of its flags). Read from the central directory that the end record points to, so bytes inside a file are
+      never taken for a record; .NET opens a stored encrypted entry without an error (reviews of PR 19).
+    .PARAMETER Bytes
+      The archive bytes.
+    .OUTPUTS
+      [bool[]], or $null when the directory cannot be read.
+    #>
+    param([byte[]]$Bytes)
+    $end = -1
+    for ($at = $Bytes.Length - 22; $at -ge [Math]::Max(0, $Bytes.Length - 65557); $at--) {   # the end record: PK 05 06
+        if ($Bytes[$at] -eq 0x50 -and $Bytes[$at + 1] -eq 0x4B -and $Bytes[$at + 2] -eq 5 -and $Bytes[$at + 3] -eq 6) { $end = $at; break }
+    }
+    if ($end -lt 0) { return $null }
+    [long]$count = [BitConverter]::ToUInt16($Bytes, $end + 10)
+    [long]$offset = [BitConverter]::ToUInt32($Bytes, $end + 16)
+    # Zip64: the locator before the end record; the full fields compared as decimals (0xFFFFFFFF would read as -1).
+    if (($count -eq 65535 -or $offset -eq 4294967295) -and $end -ge 20) {
+        $locator = $end - 20
+        if ($Bytes[$locator] -ne 0x50 -or $Bytes[$locator + 1] -ne 0x4B -or $Bytes[$locator + 2] -ne 6 -or $Bytes[$locator + 3] -ne 7) { return $null }
+        $zip64 = [BitConverter]::ToInt64($Bytes, $locator + 8)
+        if ($zip64 -lt 0 -or $zip64 + 56 -gt $Bytes.Length -or [BitConverter]::ToUInt32($Bytes, [int]$zip64) -ne 0x06064B50) { return $null }
+        $count = [BitConverter]::ToInt64($Bytes, $zip64 + 32); $offset = [BitConverter]::ToInt64($Bytes, $zip64 + 48)
+    }
+    $flags = New-Object System.Collections.Generic.List[bool]
+    for ($i = 0; $i -lt $count; $i++) {
+        if ($offset -lt 0 -or $offset + 46 -gt $Bytes.Length -or [BitConverter]::ToUInt32($Bytes, [int]$offset) -ne 0x02014B50) { return $null }
+        $flags.Add((([BitConverter]::ToUInt16($Bytes, [int]$offset + 8)) -band 1) -eq 1)
+        $offset += 46 + [BitConverter]::ToUInt16($Bytes, [int]$offset + 28) + [BitConverter]::ToUInt16($Bytes, [int]$offset + 30) + [BitConverter]::ToUInt16($Bytes, [int]$offset + 32)
+    }
+    return , $flags.ToArray()
+}
+
 function Get-ArchiveParts {
     <#
     .SYNOPSIS
@@ -77,13 +121,21 @@ function Get-ArchiveParts {
     try {
         $count = 0
         $total = 0L
+        $encrypted = Get-ZipEncryptedFlags $Bytes
+        if ($null -eq $encrypted -or $encrypted.Count -ne $zip.Entries.Count) {
+            New-Part '(archive)' -Reason 'The archive directory could not be checked for encrypted files: check by hand'
+            $encrypted = $null
+        }
+        $index = -1
         foreach ($entry in $zip.Entries) {
+            $index++
             if (-not $entry.Name) { continue }   # a folder
             $count++
             if ($count -gt $script:MaxArchiveEntries) {
                 New-Part '(more files)' -Reason "More than $script:MaxArchiveEntries files in this archive: the rest is not scanned: check by hand"
                 break
             }
+            if ($null -ne $encrypted -and $encrypted[$index]) { New-Part $entry.FullName -Reason 'Encrypted (password-protected) in the archive: check by hand'; continue }
             if ($entry.Length -gt $script:MaxEntryBytes -or $total + $entry.Length -gt $script:MaxArchiveBytes) {
                 New-Part $entry.FullName -Reason 'Too large to unpack in memory: check by hand'
                 continue
@@ -99,6 +151,12 @@ function Get-ArchiveParts {
     finally { $zip.Dispose(); $memory.Dispose() }
 }
 
+function Get-HeaderKey {
+    # A header value for comparing two copies: without spaces around ; and =, without quotes, in lower case.
+    param([string]$Value)
+    return (($Value -replace '\s*([;=])\s*', '$1' -replace '"', '').Trim().ToLowerInvariant())
+}
+
 function Split-MimeEntity {
     <#
     .SYNOPSIS
@@ -106,18 +164,33 @@ function Split-MimeEntity {
     .PARAMETER Text
       The entity's text (Latin-1 characters, one per byte).
     .OUTPUTS
-      [hashtable] Headers, Body.
+      [hashtable] Headers, Body, Conflict (a deciding header given twice with different values).
     #>
     param([string]$Text)
-    $cut = [regex]::Match($Text, '\r?\n\r?\n')
-    $head = $Text; $body = ''
-    if ($cut.Success) { $head = $Text.Substring(0, $cut.Index); $body = $Text.Substring($cut.Index + $cut.Length) }
-    $headers = @{}
+    # The headers end at a blank line, or at the first line that is neither "Name: value" nor a continuation
+    # (a part may start with text and no blank line): such a line and all after it are the body (reviews of PR 19).
+    $end = [regex]::Match($Text, '\A(?:[!-9;-~]+:[^\r\n]*(?:\r?\n[ \t][^\r\n]*)*(?:\r?\n|\z))*')
+    $head = $end.Value
+    $body = $Text.Substring($end.Length) -replace '\A\r?\n', ''
+    # Values per name in a list, joined once (a header given thousands of times stays linear). A name given twice
+    # keeps both values, except the headers that decide how the part is read: they keep their first, and a second,
+    # different value marks the part Conflict (it is read one way, and gets a "check by hand" reason).
+    $values = @{}
+    $conflict = $false
     foreach ($line in (($head -replace '\r?\n[ \t]+', ' ') -split '\r?\n')) {
         $colon = $line.IndexOf(':')
-        if ($colon -gt 0) { $headers[$line.Substring(0, $colon).Trim().ToLower()] = $line.Substring($colon + 1).Trim() }
+        if ($colon -le 0) { continue }
+        $name = $line.Substring(0, $colon).Trim().ToLower(); $value = $line.Substring($colon + 1).Trim()
+        if (-not $values.ContainsKey($name)) { $values[$name] = New-Object System.Collections.Generic.List[string] }
+        elseif ($script:DecidingHeaders -contains $name) {
+            if ((Get-HeaderKey $values[$name][0]) -ne (Get-HeaderKey $value)) { $conflict = $true }   # spacing, quotes and case do not count
+            continue
+        }
+        $values[$name].Add($value)
     }
-    return @{ Headers = $headers; Body = $body }
+    $headers = @{}
+    foreach ($name in $values.Keys) { $headers[$name] = $values[$name] -join "`n" }
+    return @{ Headers = $headers; Body = $body; Conflict = $conflict }
 }
 
 function Get-HeaderParameter {
@@ -176,6 +249,23 @@ function ConvertFrom-EncodedWords {
     return [regex]::Replace($Value, '=\?([^?]+)\?([BbQq])\?([^?]*)\?=', $evaluator)
 }
 
+function Get-HeaderLines {
+    <#
+    .SYNOPSIS
+      The headers of a message or part as "Name: value" lines, encoded words decoded; the headers in $NoTextHeaders
+      and ARC-* left out, as they hold no text of the message (Content-Description is kept: it is free text).
+    .PARAMETER Headers
+      The headers of Split-MimeEntity (names in lower case).
+    .OUTPUTS
+      [string] lines.
+    #>
+    param([hashtable]$Headers)
+    foreach ($name in @($Headers.Keys | Sort-Object)) {
+        if ($script:NoTextHeaders -contains $name -or $name -like 'arc-*') { continue }
+        (Get-Culture).TextInfo.ToTitleCase($name) + ': ' + (ConvertFrom-EncodedWords $Headers[$name])
+    }
+}
+
 function Get-MimeParts {
     <#
     .SYNOPSIS
@@ -190,15 +280,25 @@ function Get-MimeParts {
     #>
     param([string]$Text, [int]$Depth)
     $entity = Split-MimeEntity $Text
+    if ($entity.Conflict) { New-Part '(message part)' -Reason 'An e-mail part with conflicting Content headers (it may be read another way): check by hand' }
+    if ($Depth -gt 0) {   # a part's own headers other than its content ones (a line such as "Note: ..." is kept)
+        $own = @(Get-HeaderLines $entity.Headers)
+        if ($own.Count -gt 0) { New-Part '(part headers)' -Text ($own -join "`n") }
+    }
     $type = [string]$entity.Headers['content-type']
     $encoding = [string]$entity.Headers['content-transfer-encoding']
     if ($type -match '(?i)^\s*multipart/') {
         $boundary = Get-HeaderParameter $type 'boundary'
-        if (-not $boundary -or $Depth -ge $script:MaxMimeDepth) { return }
+        if ($Depth -ge $script:MaxMimeDepth) { New-Part '(message part)' -Reason 'An e-mail part nested too deep to read: check by hand'; return }
+        if (-not $boundary) { New-Part '(message text)' -Text $entity.Body; return }   # damaged: the body is still read as text
         $pieces = $entity.Body -split ('(?m)^--' + [regex]::Escape($boundary) + '(?:--)?[ \t]*\r?$')
         for ($i = 1; $i -lt $pieces.Count; $i++) {   # piece 0 is the preamble
             $piece = $pieces[$i] -replace '^\r?\n', ''
-            if ($piece.Trim()) { Get-MimeParts $piece ($Depth + 1) }
+            if (-not $piece.Trim()) { continue }
+            if ((++$script:MimeParts) -gt $script:MaxMimeParts) {
+                New-Part '(more parts)' -Reason "More than $script:MaxMimeParts parts in this e-mail: the rest is not scanned: check by hand"; return
+            }
+            Get-MimeParts $piece ($Depth + 1)
         }
         return
     }
@@ -231,11 +331,10 @@ function Get-EmailParts {
     param([byte[]]$Bytes)
     $text = $script:MimeLatin1.GetString($Bytes)
     $entity = Split-MimeEntity $text
-    $lines = foreach ($name in @('subject', 'from', 'to', 'cc', 'date')) {
-        if ($entity.Headers.ContainsKey($name)) { (Get-Culture).TextInfo.ToTitleCase($name) + ': ' + (ConvertFrom-EncodedWords $entity.Headers[$name]) }
-    }
+    $lines = Get-HeaderLines $entity.Headers
     New-Part '(message headers)' -Text (@($lines) -join "`n")
+    $script:MimeParts = 0
     Get-MimeParts $text 0
 }
 
-Export-ModuleMember -Function Get-ArchiveParts, Get-EmailParts
+Export-ModuleMember -Function Get-ArchiveParts, Get-EmailParts, Read-LimitedStream

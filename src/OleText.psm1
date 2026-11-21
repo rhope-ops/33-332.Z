@@ -34,6 +34,9 @@ $script:EncryptedStreamNames = @('EncryptedPackage', 'EncryptedSummary')
 # An old .xls keeps numbers as binary values, not text: a number typed into a cell (an SSN without dashes) is not
 # read, so every .xls gets this note. Old .doc, .ppt and .msg files keep their text as text.
 $script:XlsNote = 'Old Excel file: numbers stored as values are not read: check by hand'
+$script:MsgAttachNote = 'This Outlook message has attachments, which are not read: open them and check by hand'
+# The stream name of an attachment, as UTF-16 in the file's directory (bytes as Latin-1 characters).
+$script:MsgAttachMark = -join ('__attach_version1.0_'.ToCharArray() | ForEach-Object { [string]$_ + [char]0 })
 
 function Test-OleSignature {
     # True when the bytes start like an OLE compound file.
@@ -99,6 +102,8 @@ function Get-OleText {
     foreach ($run in [regex]::Matches($text, $script:AnsiRunPattern)) { $runs.Add($run.Value) }
     if ($runs.Count -eq 0) { return @{ Text = ''; Reason = 'No readable text in this old Office or Outlook file: check by hand'; Note = '' } }
     $note = ''; if ($Extension -eq '.xls') { $note = $script:XlsNote }
+    # An Outlook message's attachments are stored as their own streams (__attach_version1.0_#n): not read here.
+    if ($Extension -eq '.msg' -and $text.Contains($script:MsgAttachMark)) { $note = $script:MsgAttachNote }
     return @{ Text = ($runs -join "`n"); Reason = ''; Note = $note }
 }
 

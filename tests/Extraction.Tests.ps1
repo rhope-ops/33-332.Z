@@ -222,9 +222,26 @@ Assert-Equal 'SSN' (@(Find-PiiInText $byName['(message text)']) | Select-Object 
 Assert-Equal 'Phone' (@(Find-PiiInText $byName['notes.txt']) | Select-Object -First 1).Detector 'EML: base64 attachment read'
 
 # Images: without Windows OCR (this test machine) a reason; with OCR (a stand-in here) the text is read, also from a scanned PDF.
-Assert-Equal $true ((Get-TextFromBytes -Bytes ([byte[]](1, 2, 3)) -FileName 'scan.png').Reason -match 'Windows OCR is not available') 'Image: no OCR gives a reason'
+# Bytes that are no image: a reason either way (no OCR here; or, where Windows has OCR, the image cannot be opened).
+$unreadable = '^(Image: Windows OCR is not available|Image: its text could not be read)'
+Assert-Equal $true ((Get-TextFromBytes -Bytes ([byte[]](1, 2, 3)) -FileName 'scan.png').Reason -match $unreadable) 'Image: no OCR or no image gives a reason'
 $scanPdf = New-PdfBytes 'q /Im1 Do Q' -Plain -Extra @("<< /Type /XObject /Subtype /Image /Filter /DCTDecode /Length 4 >> stream`nJPEG`nendstream")
-Assert-Equal $true ((Get-TextFromBytes -Bytes $scanPdf -FileName 's.pdf').Reason -match '^Scanned PDF: Image: Windows OCR') 'Scanned PDF: no OCR gives a reason'
+Assert-Equal $true ((Get-TextFromBytes -Bytes $scanPdf -FileName 's.pdf').Reason -match ('^Scanned PDF: ' + $unreadable.Substring(1))) 'Scanned PDF: no OCR or a damaged page image gives a reason'
+# Where Windows has OCR (the ps51 CI runner): a real image with an invented SSN drawn in it is read and the SSN found.
+$ocrHere = (Get-TextFromBytes -Bytes ([byte[]](1, 2, 3)) -FileName 'x.png').Reason -notmatch 'not available'
+if ($ocrHere -and $PSVersionTable.PSVersion.Major -eq 5) {
+    Add-Type -AssemblyName System.Drawing   # tests only: draws the sample image (the bundle never loads it)
+    # Types looked up by name: written as [System.Drawing...] they would be resolved, and fail, where it is missing.
+    $drawing = @{}; foreach ($name in 'Graphics', 'Color', 'Brushes', 'Imaging.ImageFormat') { $drawing[$name] = ('System.Drawing.' + $name) -as [type] }
+    $bitmap = New-Object System.Drawing.Bitmap 900, 120
+    $graphics = $drawing['Graphics']::FromImage($bitmap)
+    $graphics.Clear($drawing['Color']::White)
+    $graphics.DrawString($ssnLine, (New-Object System.Drawing.Font 'Arial', 36), $drawing['Brushes']::Black, 10, 30)
+    $png = New-Object System.IO.MemoryStream
+    $bitmap.Save($png, $drawing['Imaging.ImageFormat']::Png); $graphics.Dispose(); $bitmap.Dispose()
+    $ocrRead = Get-TextFromBytes -Bytes $png.ToArray() -FileName 'roster.png'
+    Assert-Equal $true (@(Find-PiiInText $ocrRead.Text | ForEach-Object { $_.Detector }) -contains 'SSN') 'Image: Windows OCR reads an SSN drawn in a picture'
+}
 & (Get-Module OcrText) { param($line) $script:OcrOverride = [scriptblock]::Create("param(`$b) @{ Text = '$line'; Reason = ''; Note = '' }") } $ssnLine
 Assert-Equal 'SSN' (@(Find-PiiInText (Get-TextFromBytes -Bytes ([byte[]](1, 2, 3)) -FileName 'scan.png').Text) | Select-Object -First 1).Detector 'Image: OCR text checked'
 Assert-Equal 'SSN' (@(Find-PiiInText (Get-TextFromBytes -Bytes $scanPdf -FileName 's.pdf').Text) | Select-Object -First 1).Detector 'Scanned PDF: page images read with OCR'
@@ -453,3 +470,80 @@ foreach ($stray in @("[(SSN: $($Sample.Ssn))] (x) TJ", "(SSN: $($Sample.Ssn)) [(
 # A TJ whose array is its last operand is the usual case (no note), also with a stray number before it.
 $usualTj = Get-TextFromBytes -Bytes (New-PdfBytes "BT /F1 12 Tf 5 [(Stray) -50 (Num)] TJ ET" -Plain) -FileName 'ut.pdf'
 Assert-Equal '' $usualTj.Note 'PDF: a TJ with its array last is the usual case'
+
+# ---- Review of PR 19 (2026-11-21): no silent misses in containers ----
+# An encrypted zip entry (flag bit 0 in the central directory) is named, never read as clean.
+$lockedZip = New-ZipBytes @{ 'secret.txt' = $ssnLine }
+for ($z = 0; $z + 3 -lt $lockedZip.Length; $z++) {
+    if ($lockedZip[$z] -eq 0x50 -and $lockedZip[$z + 1] -eq 0x4B -and $lockedZip[$z + 2] -eq 1 -and $lockedZip[$z + 3] -eq 2) { $lockedZip[$z + 8] = $lockedZip[$z + 8] -bor 1 }
+}
+$lockedPart = (Get-TextFromBytes -Bytes $lockedZip -FileName 'l.zip').Parts.ToArray()[0]
+Assert-Equal $true ($lockedPart.Reason -match '^Encrypted') 'Zip: an encrypted entry is named, not read as clean'
+# MIME: nested too deep gives a reason; multipart without a boundary and a part without headers are still read.
+$deep = "SSN: $($Sample.Ssn)"
+for ($d = 0; $d -lt 7; $d++) { $deep = "Content-Type: multipart/mixed; boundary=`"B$d`"`r`n`r`n--B$d`r`n$deep`r`n--B$d--" }
+$deepParts = (Get-TextFromBytes -Bytes ([System.Text.Encoding]::ASCII.GetBytes($deep)) -FileName 'd.eml').Parts.ToArray()
+Assert-Equal $true (@($deepParts | Where-Object { $_.Reason -match 'nested too deep' }).Count -eq 1) 'EML: a part nested too deep gives a reason'
+$noBoundary = "Content-Type: multipart/mixed`r`n`r`nSSN: $($Sample.Ssn)`r`n"
+$noBoundaryText = ((Get-TextFromBytes -Bytes ([System.Text.Encoding]::ASCII.GetBytes($noBoundary)) -FileName 'n.eml').Parts.ToArray() | ForEach-Object { $_.Text }) -join ' '
+Assert-Equal $true (@(Find-PiiInText $noBoundaryText | ForEach-Object { $_.Detector }) -contains 'SSN') 'EML: multipart without a boundary is read as text'
+$bare = "Content-Type: multipart/mixed; boundary=`"XX`"`r`n`r`n--XX`r`n`r`nSSN: $($Sample.Ssn)`r`n`r`nmore`r`n--XX--`r`n"
+$bareText = ((Get-TextFromBytes -Bytes ([System.Text.Encoding]::ASCII.GetBytes($bare)) -FileName 'b.eml').Parts.ToArray() | ForEach-Object { $_.Text }) -join ' '
+Assert-Equal $true (@(Find-PiiInText $bareText | ForEach-Object { $_.Detector }) -contains 'SSN') 'EML: a part without headers keeps its first lines'
+# An encrypted OpenDocument file is named; an Outlook message with attachments gets a note.
+$lockedOdt = New-ZipBytes @{ 'content.xml' = 'x'; 'META-INF/manifest.xml' = '<manifest:file-entry><manifest:encryption-data/></manifest:file-entry>' }
+Assert-Equal $true ((Get-TextFromBytes -Bytes $lockedOdt -FileName 'l.odt').Reason -match '^Encrypted') 'ODT: a password-protected file is named'
+$attachMark = [System.Text.Encoding]::Unicode.GetBytes('__attach_version1.0_#00000000')
+$msgAttach = [byte[]]($oleHead + [System.Text.Encoding]::ASCII.GetBytes("Subject: roster $ssnLine") + $attachMark)
+Assert-Equal $true ((Get-TextFromBytes -Bytes $msgAttach -FileName 'm.msg').Note -match 'attachments') 'Outlook .msg: attachments get a note'
+# An e-mail with more parts than the limit: the rest gets a reason.
+$manyParts = "Content-Type: multipart/mixed; boundary=`"P`"`r`n`r`n" + ((1..600 | ForEach-Object { "--P`r`nContent-Type: text/plain`r`n`r`nline $_`r`n" }) -join '') + "--P--`r`n"
+$manyRead = (Get-TextFromBytes -Bytes ([System.Text.Encoding]::ASCII.GetBytes($manyParts)) -FileName 'p.eml').Parts.ToArray()
+Assert-Equal 1 @($manyRead | Where-Object { $_.Reason -match '^More than 500 parts' }).Count 'EML: past the part limit, the rest gets a reason'
+# Re-review of PR 19: a part's first line that looks like a header, with no blank line, keeps the lines after it.
+$noBlank = "Content-Type: multipart/mixed; boundary=`"XX`"`r`n`r`n--XX`r`nNote: call me`r`nSSN $($Sample.Ssn)`r`n--XX--`r`n"
+$noBlankText = ((Get-TextFromBytes -Bytes ([System.Text.Encoding]::ASCII.GetBytes($noBlank)) -FileName 'nb.eml').Parts.ToArray() | ForEach-Object { $_.Text }) -join ' '
+Assert-Equal $true (@(Find-PiiInText $noBlankText | ForEach-Object { $_.Detector }) -contains 'SSN') 'EML: lines after a header-like first line are read'
+# An encrypted entry whose name is not UTF-8 (byte 0x82, as 7-Zip writes some letters) is still named encrypted.
+$oddName = New-ZipBytes @{ 'rXsume.txt' = $ssnLine }
+for ($z = 0; $z + 3 -lt $oddName.Length; $z++) {
+    if ($oddName[$z] -eq 0x50 -and $oddName[$z + 1] -eq 0x4B -and $oddName[$z + 3] -in @(2, 4) -and $oddName[$z + 2] -in @(1, 3)) {
+        $oddName[$z + 6 + 2 * [int]($oddName[$z + 2] -eq 1)] = $oddName[$z + 6 + 2 * [int]($oddName[$z + 2] -eq 1)] -bor 1   # flags: bit 0
+    }
+}
+for ($z = 0; $z + 1 -lt $oddName.Length; $z++) { if ($oddName[$z] -eq [byte][char]'X' -and $oddName[$z + 1] -eq [byte][char]'s') { $oddName[$z] = 0x82 } }
+$oddPart = (Get-TextFromBytes -Bytes $oddName -FileName 'o.zip').Parts.ToArray()[0]
+Assert-Equal $true ($oddPart.Reason -match '^Encrypted') 'Zip: an encrypted entry with a non-UTF-8 name is named encrypted'
+# Third review of PR 19: past the entry limit an encrypted file still gives the "more files" reason.
+$limitZip = New-ZipBytes ([ordered]@{ 'a.txt' = 'plain'; 'secret.txt' = $ssnLine })
+$seen = 0
+for ($z = 0; $z + 3 -lt $limitZip.Length; $z++) {
+    if ($limitZip[$z] -eq 0x50 -and $limitZip[$z + 1] -eq 0x4B -and $limitZip[$z + 2] -eq 1 -and $limitZip[$z + 3] -eq 2) { if ((++$seen) -eq 2) { $limitZip[$z + 8] = $limitZip[$z + 8] -bor 1 } }
+}
+& (Get-Module ContainerText) { $script:MaxArchiveEntries = 1 }
+$limitParts = (Get-TextFromBytes -Bytes $limitZip -FileName 'lim.zip').Parts.ToArray()
+& (Get-Module ContainerText) { $script:MaxArchiveEntries = 2000 }
+Assert-Equal 1 @($limitParts | Where-Object { $_.Reason -match '^More than 1 files' }).Count 'Zip: an encrypted file past the limit gives the more-files reason'
+# A header given twice keeps both values; Content-Description is read as text.
+$twice = "Comments: SSN $($Sample.Ssn)`r`nComments: second`r`nSubject: s`r`n`r`nbody`r`n"
+$twiceText = ((Get-TextFromBytes -Bytes ([System.Text.Encoding]::ASCII.GetBytes($twice)) -FileName 't.eml').Parts.ToArray() | ForEach-Object { $_.Text }) -join ' '
+Assert-Equal $true (@(Find-PiiInText $twiceText | ForEach-Object { $_.Detector }) -contains 'SSN') 'EML: a header given twice keeps both values'
+$described = "Content-Type: multipart/mixed; boundary=`"D`"`r`n`r`n--D`r`nContent-Description: SSN $($Sample.Ssn)`r`nContent-Type: text/plain`r`n`r`nbody`r`n--D--`r`n"
+$describedText = ((Get-TextFromBytes -Bytes ([System.Text.Encoding]::ASCII.GetBytes($described)) -FileName 'c.eml').Parts.ToArray() | ForEach-Object { $_.Text }) -join ' '
+Assert-Equal $true (@(Find-PiiInText $describedText | ForEach-Object { $_.Detector }) -contains 'SSN') 'EML: Content-Description is read as text'
+# Fourth review of PR 19: many repeated headers stay fast; conflicting Content headers give a reason; a second
+# Content-Description is read.
+$clock.Restart()
+$repeated = ((1..20000 | ForEach-Object { 'X: ' + ('a' * 39) }) -join "`r`n") + "`r`n`r`nbody`r`n"
+$null = Get-TextFromBytes -Bytes ([System.Text.Encoding]::ASCII.GetBytes($repeated)) -FileName 'r.eml'
+Assert-Equal $true ($clock.Elapsed.TotalSeconds -lt 10) 'EML: 20,000 repeated headers are read in bounded time'
+$conflicting = "Content-Type: text/plain`r`nContent-Type: multipart/mixed; boundary=`"B`"`r`n`r`n--B`r`nContent-Transfer-Encoding: base64`r`n`r`nU1NO`r`n--B--`r`n"
+$conflictParts = (Get-TextFromBytes -Bytes ([System.Text.Encoding]::ASCII.GetBytes($conflicting)) -FileName 'cf.eml').Parts.ToArray()
+Assert-Equal 1 @($conflictParts | Where-Object { $_.Reason -match 'conflicting Content headers' }).Count 'EML: conflicting Content headers give a reason'
+$twoDesc = "Content-Description: first`r`nContent-Description: SSN $($Sample.Ssn)`r`n`r`nbody`r`n"
+$twoDescText = ((Get-TextFromBytes -Bytes ([System.Text.Encoding]::ASCII.GetBytes($twoDesc)) -FileName 'd2.eml').Parts.ToArray() | ForEach-Object { $_.Text }) -join ' '
+Assert-Equal $true (@(Find-PiiInText $twoDescText | ForEach-Object { $_.Detector }) -contains 'SSN') 'EML: a second Content-Description is read'
+# The same Content-Type twice, written with other spacing or quotes, is no conflict.
+$sameType = "Content-Type: text/plain; charset=utf-8`r`nContent-Type: text/plain;charset=`"utf-8`"`r`n`r`nbody`r`n"
+$sameParts = (Get-TextFromBytes -Bytes ([System.Text.Encoding]::ASCII.GetBytes($sameType)) -FileName 's.eml').Parts.ToArray()
+Assert-Equal 0 @($sameParts | Where-Object { $_.Reason -match 'conflicting' }).Count 'EML: the same Content-Type in another spelling is no conflict'

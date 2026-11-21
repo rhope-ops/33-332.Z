@@ -9,7 +9,8 @@ TextExtract.psm1 - turns file bytes into plain text, in memory.
   Outputs:     an object with Status ('OK' or 'NOT SCANNED'), Reason, Text, Note and Parts (Get-TextFromBytes).
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
   Depends on:  PdfText.psm1 (Get-PdfText), OcrText.psm1 (Get-ImageText), OleText.psm1 (Get-OleText) and
-               ContainerText.psm1 (Get-ArchiveParts, Get-EmailParts), imported first by Find-ChannelPII.ps1.
+               ContainerText.psm1 (Get-ArchiveParts, Get-EmailParts, Read-LimitedStream), imported first by
+               Find-ChannelPII.ps1.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7); .NET System.IO.Compression only.
   Network:     none.
   Writes:      none. Bytes stay in memory; nothing is saved to disk.
@@ -32,6 +33,9 @@ $script:HtmlExtensions = @('.html', '.htm')
 # Office Open XML types (a zip of XML parts, ECMA-376) and the parts that hold their text:
 # body, headers, footers, comments, notes; worksheets and cell comments; slides and speaker notes.
 # A worksheet is read cell by cell (Convert-SheetXmlToText), with its shared strings put back into their cells.
+# The most one part of an Office, OpenDocument or Visio file may unpack to (its stated size; a zip bomb is refused).
+$script:MaxZipEntryBytes = 64MB
+
 $script:OfficeParts = @{
     '.docx' = '^word/(document|header\d*|footer\d*|comments|footnotes|endnotes)\.xml$'
     '.docm' = '^word/(document|header\d*|footer\d*|comments|footnotes|endnotes)\.xml$'
@@ -147,10 +151,35 @@ function Convert-HtmlToText {
 # Reading bytes
 # =====================================================================================
 
+function Get-OdfEncryptedReason {
+    <#
+    .SYNOPSIS
+      Why an OpenDocument file cannot be read: saved with a password (its manifest lists encryption-data, and
+      its content is scrambled); empty when it is not (review of PR 19).
+    .PARAMETER Bytes
+      The file bytes (a zip).
+    .OUTPUTS
+      [string]
+    #>
+    param([byte[]]$Bytes)
+    $memory = New-Object System.IO.MemoryStream(, $Bytes)
+    $zip = New-Object System.IO.Compression.ZipArchive($memory, [System.IO.Compression.ZipArchiveMode]::Read)
+    try {
+        $manifest = $zip.GetEntry('META-INF/manifest.xml')
+        if ($manifest -and (Read-ZipEntry $manifest) -match 'encryption-data') { return 'Encrypted (password-protected): check by hand' }
+        return ''
+    }
+    finally { $zip.Dispose(); $memory.Dispose() }
+}
+
 function Read-ZipEntry {
-    # The text of one zip entry (UTF-8, as Office writes its XML).
+    # The text of one zip entry (UTF-8, as Office writes its XML), at most $MaxZipEntryBytes (a zip bomb throws).
     param($Entry)
-    $reader = New-Object System.IO.StreamReader($Entry.Open())
+    # Read through the bounded reader: a zip can state a false size, and .NET Framework unpacks past it.
+    $bytes = $null
+    if ($Entry.Length -le $script:MaxZipEntryBytes) { $bytes = Read-LimitedStream $Entry.Open() $script:MaxZipEntryBytes }
+    if ($null -eq $bytes) { throw 'A part of this file is too large to unpack in memory' }
+    $reader = New-Object System.IO.StreamReader((New-Object System.IO.MemoryStream(, $bytes)), [System.Text.Encoding]::UTF8, $true)   # a BOM wins
     try { return $reader.ReadToEnd() } finally { $reader.Dispose() }
 }
 
@@ -324,6 +353,7 @@ function Get-TextFromBytes {
         elseif ($script:ContainerExtensions -contains $extension) { Add-ContainerParts $result $Bytes $extension $Depth }
         elseif ($script:OfficeParts.ContainsKey($extension)) {
             $notZip = Get-NotZipReason $Bytes
+            if (-not $notZip -and $extension -like '.od?') { $notZip = Get-OdfEncryptedReason $Bytes }
             if ($notZip) { $result.Status = 'NOT SCANNED'; $result.Reason = $notZip }
             else { $result.Text = Get-ZipPartText $Bytes $script:OfficeParts[$extension] }
         }
