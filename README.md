@@ -75,6 +75,7 @@ The steps to run it are at the top of the script.
 | Images and scanned PDFs on a computer without Windows OCR | Listed as NOT SCANNED: check them by hand |
 | Scanned PDF pages not stored as JPEG images, and the scanned pages of a PDF that also has text | Not read with OCR: check them by hand |
 | Symbols in picture fonts (Wingdings, Webdings, Dingbats, Marlett, Symbol) in a PDF | Not read as text, so not checked for PII |
+| Text in a PDF font with no character map and made-up glyph names (such as g12) | Not read; the file gets the note "A font in this PDF could not be read": check it by hand |
 | Old .doc .xls .ppt and Outlook .msg | Read in part (numbers in an old .xls are not read): check these files by hand |
 
 ---
