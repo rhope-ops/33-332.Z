@@ -34,7 +34,7 @@
     src/Report.psm1, sha256 4c5c871cb5c5
     src/ScanMeter.psm1, sha256 2c2a5a750104
     src/ScanQueue.psm1, sha256 1ec233b97fc7
-    src/Accountability.psm1, sha256 3498d3d7744d
+    src/Accountability.psm1, sha256 ea667d5a11a4
     src/ChannelScan.psm1, sha256 0a32b46dcc63
     src/DriveScan.psm1, sha256 27925138f3c7
     src/Find-ChannelPII.ps1, sha256 b2d6bfd7a72b
@@ -66,10 +66,10 @@
     line  4650  Module ScanMeter.psm1
     line  4915  Module ScanQueue.psm1
     line  5131  Module Accountability.psm1
-    line  5292  Module ChannelScan.psm1
-    line  5847  Module DriveScan.psm1
-    line  6077  Body of Find-ChannelPII.ps1
-    line  6186  Clean-up
+    line  5395  Module ChannelScan.psm1
+    line  5950  Module DriveScan.psm1
+    line  6180  Body of Find-ChannelPII.ps1
+    line  6289  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -5152,6 +5152,8 @@ Accountability.psm1 - who made and changed a file with PII, and who put the PII 
 # Old versions read per file with a hit, oldest first (a file with more is dated from the oldest ones read).
 $script:MaxVersionsRead = 30
 $script:NoHistory = 'Not recorded (no version history)'
+# Put-backs named per hit in "PII added by" (the rest are counted).
+$script:MaxPutBacks = 3
 $script:MaybeEarlier = ' (an older version could not be read: it may have been added earlier)'
 $script:PartHistory = "Not recorded (not in the old versions read; check the file's version history by hand)"
 $script:DriveNoHistory = 'Not recorded (a drive keeps no file history)'
@@ -5201,10 +5203,116 @@ function Get-HitKey {
     return ([string]$Hit.Detector + '|' + [string]$Hit.MaskedValue)
 }
 
+function Complete-CurrentVersion {
+    <#
+    .SYNOPSIS
+      The current version's part: a hit missing from the newest old version (all of them read) was put back now; a
+      hit in no old version came with the current one (with no old version: the file's maker) - only when every old
+      version was read; else who added it is not known, and the report says so (review of PR 20).
+    .PARAMETER ByHit
+      Hit key -> @{ AddedOn; AddedBy }.
+    .PARAMETER Back
+      Hit key -> put-back texts.
+    .PARAMETER Present
+      Hit key -> in the newest old version read.
+    .PARAMETER Keys
+      The hit keys.
+    .PARAMETER Who
+      Get-SharePointWho of the file, with Modified.
+    .PARAMETER Read
+      @{ AllRead; Complete; Versions }: how much of the history was read.
+    #>
+    param([hashtable]$ByHit, [hashtable]$Back, [hashtable]$Present, [object[]]$Keys, [hashtable]$Who, [hashtable]$Read)
+    if ($Read.AllRead) {
+        foreach ($key in @($Keys | Where-Object { $ByHit.ContainsKey($_) -and $Present.ContainsKey($_) -and $Present[$_] -eq $false })) {
+            Add-PutBack $Back $key $Who.ModifiedBy $Who.Modified
+        }
+    }
+    foreach ($key in @($Keys | Where-Object { -not $ByHit.ContainsKey($_) })) {
+        if (-not $Read.Complete) { $ByHit[$key] = @{ AddedOn = $script:PartHistory; AddedBy = $script:PartHistory } }
+        elseif ($Read.Versions -eq 0) { $ByHit[$key] = @{ AddedOn = $Who.Created; AddedBy = $Who.CreatedBy } }
+        else { $ByHit[$key] = @{ AddedOn = $Who.Modified; AddedBy = $Who.ModifiedBy } }
+    }
+}
+
+function Get-OldVersions {
+    <#
+    .SYNOPSIS
+      A file's old versions, oldest first (at most $MaxVersionsRead), with who saved each (read-only); $null when
+      the history cannot be read.
+    .PARAMETER Ref
+      The file's server-relative path.
+    .OUTPUTS
+      [hashtable] Versions, All (how many there are), Context; or $null.
+    #>
+    param([string]$Ref)
+    try {
+        $all = @(Get-PnPFileVersion -Url $Ref -ErrorAction Stop | Sort-Object Created)
+        $versions = @($all | Select-Object -First $script:MaxVersionsRead)
+        $context = Get-PnPContext
+        foreach ($version in $versions) { $context.Load($version.CreatedBy) }
+        if ($versions.Count -gt 0) { $context.ExecuteQuery() }
+        return @{ Versions = $versions; All = $all.Count; Context = $context }
+    }
+    catch { return $null }
+}
+
+function Read-VersionText {
+    <#
+    .SYNOPSIS
+      The text of one old version of a file (read-only, in memory), or $null when it cannot be read or read in full.
+    .PARAMETER Version
+      A FileVersion of Get-PnPFileVersion.
+    .PARAMETER Context
+      The PnP client context.
+    .PARAMETER Name
+      The file name (for its reader).
+    .OUTPUTS
+      Output of Get-TextFromBytes, or $null.
+    #>
+    param($Version, $Context, [string]$Name)
+    try {
+        $stream = $Version.OpenBinaryStream(); $Context.ExecuteQuery()
+        $memory = New-Object System.IO.MemoryStream
+        try { $stream.Value.CopyTo($memory); $bytes = $memory.ToArray() } finally { $memory.Dispose() }
+        $text = Get-TextFromBytes -Bytes $bytes -FileName $Name
+    }
+    catch { return $null }
+    if ($text.Status -ne 'OK') { return $null }
+    return $text
+}
+
+function Add-PutBackText {
+    <#
+    .SYNOPSIS
+      Adds the put-backs to "PII added by": "first adder; put back by X on D" (at most $MaxPutBacks named, the rest
+      counted).
+    .PARAMETER ByHit
+      Hit key -> @{ AddedOn; AddedBy }.
+    .PARAMETER Back
+      Hit key -> the put-back texts (Add-PutBack).
+    #>
+    param([hashtable]$ByHit, [hashtable]$Back)
+    foreach ($key in $Back.Keys) {
+        $list = $Back[$key]
+        $text = @($list | Select-Object -First $script:MaxPutBacks) -join '; '
+        if ($list.Count -gt $script:MaxPutBacks) { $text += ('; and {0} more times' -f ($list.Count - $script:MaxPutBacks)) }
+        $ByHit[$key].AddedBy = $ByHit[$key].AddedBy + '; ' + $text
+    }
+}
+
+function Add-PutBack {
+    # Notes that a hit was put back (in a version after one without it): who saved that version and when.
+    param([hashtable]$Back, [string]$Key, [string]$By, [string]$On)
+    if (-not $Back.ContainsKey($Key)) { $Back[$Key] = New-Object System.Collections.Generic.List[string] }
+    $Back[$Key].Add(('put back by {0} on {1}' -f $By, $On))
+}
+
 function Find-PiiAddedVersion {
     <#
     .SYNOPSIS
-      For each hit of a SharePoint file, the first version that holds it: who saved that version and when. A hit
+      For each hit of a SharePoint file, the first version that holds it (who saved it and when), and each time it
+      was put back after a version without it (the PAM, 2026-11-21). A hit
       in no older version came with the current one (the last modifier). Read-only; versions stay in memory.
     .PARAMETER Ref
       The file's server-relative path.
@@ -5220,45 +5328,40 @@ function Find-PiiAddedVersion {
     param([string]$Ref, [string]$Name, [object[]]$Hits, [hashtable]$Who)
     $byHit = @{}
     $open = @($Hits | ForEach-Object { Get-HitKey $_ } | Sort-Object -Unique)
-    try {
-        $all = @(Get-PnPFileVersion -Url $Ref -ErrorAction Stop | Sort-Object Created)
-        $versions = @($all | Select-Object -First $script:MaxVersionsRead)
-        $context = Get-PnPContext
-        foreach ($version in $versions) { $context.Load($version.CreatedBy) }
-        if ($versions.Count -gt 0) { $context.ExecuteQuery() }
-    }
-    catch { $versions = $null }
-    if ($null -eq $versions) {
+    $history = Get-OldVersions $Ref
+    if ($null -eq $history) {
         foreach ($key in $open) { $byHit[$key] = @{ AddedOn = $script:NoHistory; AddedBy = $script:NoHistory } }
         return $byHit
     }
-    $complete = $all.Count -le $script:MaxVersionsRead   # every older version is read (else a later one may add a hit)
-    foreach ($version in $versions) {
-        if ($open.Count -eq 0) { break }
-        try {
-            $stream = $version.OpenBinaryStream(); $context.ExecuteQuery()
-            $memory = New-Object System.IO.MemoryStream
-            try { $stream.Value.CopyTo($memory); $bytes = $memory.ToArray() } finally { $memory.Dispose() }
-            $text = Get-TextFromBytes -Bytes $bytes -FileName $Name
+    $versions = $history.Versions; $context = $history.Context
+    $complete = $history.All -le $script:MaxVersionsRead   # every older version is read (else a later one may add a hit)
+    $allRead = $complete
+    $readFailed = $false   # a version before this one could not be read (the cap only leaves newer ones unread)
+    $keys = $open
+    $present = @{}   # per hit: in the last version read ($true/$false), or not known after a version not read ($null)
+    $back = @{}      # per hit: when it was put back after a version without it (the PAM, 2026-11-21)
+    foreach ($version in $versions) {   # every version read (not only to the first with each hit): put-backs count too
+        $text = Read-VersionText $version $context $Name
+        if ($null -eq $text) {   # not read: later versions can neither be first nor a put-back for sure
+            $complete = $false; $readFailed = $true
+            foreach ($key in $keys) { $present[$key] = $null }
+            continue
         }
-        catch { $complete = $false; continue }   # a version that cannot be read: a later one can only date the hit if it is in
-        if ($text.Status -ne 'OK') { $complete = $false; continue }
         $found = @(Find-PiiInText $text.Text | ForEach-Object { Get-HitKey $_ })
-        foreach ($key in @($open | Where-Object { $found -contains $_ })) {
-            $on = Get-DateText $version.Created; $by = Get-PersonText $version.CreatedBy
-            # After a version that could not be read, this may not be the first one with the hit (review of PR 20).
-            if (-not $complete) { $on = 'by ' + $on; $by = $by + $script:MaybeEarlier }
-            $byHit[$key] = @{ AddedOn = $on; AddedBy = $by }
+        $on = Get-DateText $version.Created; $by = Get-PersonText $version.CreatedBy
+        foreach ($key in $keys) {
+            $has = $found -contains $key
+            if ($has -and -not $byHit.ContainsKey($key)) {
+                # After a version that could not be read, this may not be the first one with the hit (review of PR 20).
+                if (-not $readFailed) { $byHit[$key] = @{ AddedOn = $on; AddedBy = $by } }
+                else { $byHit[$key] = @{ AddedOn = 'by ' + $on; AddedBy = $by + $script:MaybeEarlier } }
+            }
+            elseif ($has -and $present.ContainsKey($key) -and $present[$key] -eq $false) { Add-PutBack $back $key $by $on }
+            $present[$key] = $has
         }
-        $open = @($open | Where-Object { -not $byHit.ContainsKey($_) })
     }
-    # In no older version: the current version added it (with no older version: the file's maker) - but only when
-    # every older version was read; else who added it is not known, and the report says so (review of PR 20).
-    foreach ($key in $open) {
-        if (-not $complete) { $byHit[$key] = @{ AddedOn = $script:PartHistory; AddedBy = $script:PartHistory } }
-        elseif ($versions.Count -eq 0) { $byHit[$key] = @{ AddedOn = $Who.Created; AddedBy = $Who.CreatedBy } }
-        else { $byHit[$key] = @{ AddedOn = $Who.Modified; AddedBy = $Who.ModifiedBy } }
-    }
+    Complete-CurrentVersion $byHit $back $present $keys $Who @{ AllRead = $allRead; Complete = $complete; Versions = $versions.Count }
+    Add-PutBackText $byHit $back
     return $byHit
 }
 
