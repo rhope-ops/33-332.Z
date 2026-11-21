@@ -51,6 +51,12 @@ $script:OpenDirectStream = {
     return $fileType::OpenBinaryDirect((Get-PnPContext), $ServerRelativeUrl).Stream
 }
 
+# What Ion can scan, for the first question and after a wrong paste (the PAM, 2026-11-21: one short block, not one long line).
+$script:TargetHelp = "Paste one of these, or press Enter to exit:`n" +
+    "  - a Teams link: in Teams, ... next to the team or channel > Copy link`n" +
+    "  - a SharePoint site address: https://usaf.dps.mil/teams/<team-site> (or /sites/)`n" +
+    "  - a drive folder: X:\<folder> or \\<server>\<share>\<folder>"
+
 # How the report and the screen name the files at the top of the library (in no folder).
 $script:RootGroupName = '(top of the library)'
 # A drive folder: X:\<folder> (a mapped drive) or \\<server>\<share>\<folder> (UNC), with or without quotes.
@@ -105,7 +111,7 @@ function Test-TeamSiteUrl {
     param([string]$Url)
     $match = [regex]::Match((Add-UrlScheme $Url), $script:SiteUrlPattern, 'IgnoreCase')
     if (-not $match.Success) {
-        throw "Not a team site address: '$Url'. Expected https://usaf.dps.mil/teams/<team-site> or /sites/<team-site>."
+        throw "'$Url' is not a SharePoint site address (https://usaf.dps.mil/teams/<team-site> or /sites/<team-site>)."
     }
     return $match.Groups['host'].Value + '/' + $match.Groups['site'].Value
 }
@@ -172,8 +178,9 @@ function ConvertTo-FriendlyError {
 function Read-ScanTarget {
     <#
     .SYNOPSIS
-      Asks for a Teams link or site address until it is a valid one, or until the person presses Enter (exit).
-      A wrong paste is explained and asked again; nothing is signed in until the address is valid.
+      Asks for a Teams link, site address or drive folder until it is a valid one, or until the person presses Enter
+      (exit); what can be pasted is listed first ($TargetHelp). A wrong paste is explained and asked again; nothing is
+      signed in until the address is valid.
     .PARAMETER Given
       An address given up front (the -SiteUrl setting); used first, without asking.
     .PARAMETER Prompt
@@ -183,13 +190,14 @@ function Read-ScanTarget {
     #>
     param([string]$Given, [string]$Prompt)
     $answer = $Given
+    if (-not $answer) { Write-Ui $script:TargetHelp 'Muted' }
     while ($true) {
         if (-not $answer) { $answer = Read-Host $Prompt }
         if (-not $answer -or -not $answer.Trim()) { return $null }
         try { return Get-ScanTarget $answer.Trim() }
         catch {
-            Write-Ui ('That is not a Teams link or a site address: ' + (Protect-PiiText $_.Exception.Message)) 'Alert'
-            Write-Ui 'Paste it again (Teams: ... > Copy link; or the SharePoint address), or press Enter to exit.' 'Muted'
+            Write-Ui ('Not read: ' + (Protect-PiiText $_.Exception.Message)) 'Alert'
+            Write-Ui $script:TargetHelp 'Muted'
             $answer = ''
         }
     }
@@ -201,7 +209,7 @@ function Read-TeamSiteAddress {
         $typed = Read-Host 'Team site address (https://usaf.dps.mil/teams/<team-site>), or Enter to go back'
         if (-not $typed -or -not $typed.Trim()) { throw 'No site address given.' }
         try { return Test-TeamSiteUrl $typed }
-        catch { Write-Ui ('Not a site address: ' + (Protect-PiiText $_.Exception.Message)) 'Alert' }
+        catch { Write-Ui (Protect-PiiText $_.Exception.Message) 'Alert' }
     }
 }
 
@@ -489,7 +497,7 @@ function Invoke-OneFileScan {
 function Get-ScanTiming {
     # The time of the last file scan spent downloading and spent reading, as minutes:seconds text.
     $format = { param($t) '{0:00}:{1:00}' -f [int][Math]::Floor($t.TotalMinutes), $t.Seconds }
-    [ordered]@{ 'Time downloading' = (& $format $script:Timing.Download); 'Time reading (all workers)' = (& $format $script:Timing.Check) }
+    [ordered]@{ 'Time downloading' = (& $format $script:Timing.Download); 'Time reading files (all readers)' = (& $format $script:Timing.Check) }
 }
 
 function Get-ScanGroups {

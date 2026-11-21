@@ -103,3 +103,14 @@ Add-IncompleteRow -Rows $doneRows -Finished $true
 Assert-Equal 0 $doneRows.Count 'Finished run gets no INCOMPLETE row'
 
 Remove-Item -LiteralPath $reportFolder -Recurse -Force
+
+# ---- Screen polish (the PAM, 2026-11-21): a stopped scan says so first; tables fit the window; the confidence key ----
+$stopRows = @((New-ReportRow 'Scan' '(all)' '(scan)' '' '' 'INCOMPLETE' '' '' 'Stopped early'))
+$stopText = @(Get-ScanSummaryText -Rows $stopRows -ItemsScanned 7 -Header ([ordered]@{ Site = 'x' }) -FolderLabel 'Folder')
+Assert-Equal 'Alert|INCOMPLETE: the scan stopped before the end. These results cover only the 7 files read; scan again for the rest.' `
+    ($stopText[2].Kind + '|' + $stopText[2].Text) 'Stopped scan: a red line right under the Results heading'
+$wide = @(& (Get-Module Report) { Format-BoxTable @('Worst', 'File') @(, @('SSN', ('a' * 200))) 60 })
+Assert-Equal 60 ($wide | ForEach-Object { $_.Length } | Measure-Object -Maximum).Maximum 'Table: no line wider than the window'
+Assert-Equal $true ($wide[3] -match '\.\.\. \|$') 'Table: the cut file path ends in ...'
+$keyText = (@(Get-ScanSummaryText -Rows $reportRows -ItemsScanned 2 -Header $header -FolderLabel 'Channel') | ForEach-Object { $_.Text }) -join "`n"
+Assert-Equal $true ($keyText -match '(?m)^High = labelled') 'Summary: the key to High, Medium and Low is under the type table'

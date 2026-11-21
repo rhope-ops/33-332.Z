@@ -144,11 +144,15 @@ function Open-ScanResult {
 
 Write-Ui '==== Ion - DoD365 PII Reporter ====' 'Title'
 Write-Ui 'Read-only. Every PII value found is masked on screen and in the results.' 'Muted'
+# What it scans and how to stop early (the PAM, 2026-11-21): a cancel still saves the results so far ('finally').
+Write-Ui ('Scans the files of one Teams team, SharePoint site or drive folder. Files over {0} MB are listed, not read.' -f $MaxFileMB) 'Muted'
+Write-Ui 'To stop early: Ctrl+C (in ISE: the red Stop button). The results so far are still saved.' 'Muted'
+$signedIn = $false   # the closing line says "nothing stays signed in" only after a site scan (a drive needs no sign-in)
 
 # ---- Ask for a site, sign in, scan, save; then offer another site, until the person presses Enter ----
 # A wrong paste is explained and asked again (Read-ScanTarget); a site the person cannot open is reported as
 # "no access" and nothing is saved for it (Connect-TeamSite); only the one site given is touched each time.
-$target = Read-ScanTarget $SiteUrl 'Teams link, SharePoint site address (https://usaf.dps.mil/teams/<team-site>) or folder (X:\<folder>), or Enter to exit'
+$target = Read-ScanTarget $SiteUrl 'What to scan'
 while ($null -ne $target) {
     $site = $null
     if ($target.DrivePath) {
@@ -156,9 +160,10 @@ while ($null -ne $target) {
         try { Open-ScanResult (Invoke-DriveScan -Path $target.DrivePath -OutputFolder $OutputFolder -MaxFileMB $MaxFileMB -Init $IonWorkerInit) }
         catch { Write-Ui ('The results could not be saved: ' + (Protect-PiiText $_.Exception.Message)) 'Alert' }
         Write-Ui ''
-        $target = Read-ScanTarget '' 'Scan another? Paste a Teams link, a site address or a folder (X:\<folder>), or press Enter to exit'
+        $target = Read-ScanTarget '' 'Scan another (or Enter to exit)'
         continue
     }
+    $signedIn = $true   # a sign-in is tried (Connect-TeamSite signs out again on every path)
     try { $site = Connect-TeamSite $target }
     catch { Write-Ui $_.Exception.Message 'Alert' }
     if ($site) {
@@ -167,6 +172,6 @@ while ($null -ne $target) {
         catch { Write-Ui ('The results could not be saved: ' + (Protect-PiiText $_.Exception.Message)) 'Alert' }
     }
     Write-Ui ''
-    $target = Read-ScanTarget '' 'Scan another? Paste a Teams link, a site address or a folder (X:\<folder>), or press Enter to exit'
+    $target = Read-ScanTarget '' 'Scan another (or Enter to exit)'
 }
-Write-Ui 'Ion is done: nothing stays signed in.' 'Good'
+if ($signedIn) { Write-Ui 'Ion is done: nothing stays signed in.' 'Good' } else { Write-Ui 'Ion is done.' 'Good' }

@@ -64,7 +64,9 @@ Reset-FakePnP @{ "$library/General/notes.txt" = $Txt }
 Set-FakeSiteAnswer -TypedSite @('not a link', $Sample.Site)
 $retryFolder = Join-Path $runFolder 'retry'
 $shown = (& $script -OutputFolder $retryFolder 6>&1 | ForEach-Object { [string]$_ }) -join ' '
-Assert-Equal $true ($shown -match 'That is not a Teams link or a site address') 'Wrong paste: explained'
+Assert-Equal $true ($shown -match "Not read: 'not a link' is not a SharePoint site address") 'Wrong paste: explained'
+Assert-Equal $true ($shown -match 'a drive folder: X:') 'Wrong paste: what can be pasted is listed'
+Assert-Equal $true ($shown -match 'To stop early: Ctrl\+C' -and $shown -match 'Ion is done: nothing stays signed in') 'Start: how to stop; end: signed out after a site'
 Assert-Equal 1 @(Get-ResultFiles $retryFolder).Count 'Wrong paste: asked again, then the right one scanned'
 Assert-Equal 3 (Get-FakeCallCount 'Read-Host') 'Wrong paste, right paste, then Enter to exit'
 

@@ -174,8 +174,8 @@ function Get-DriveHeader {
     $header['Folders'] = ($Groups | ForEach-Object { Protect-PiiName $_.Name }) -join ', '
     $header['Run'] = Get-Date -Format 'yyyy-MM-dd HH:mm'
     $header['Time used'] = & $format $Used
-    $header['Time reading (all workers)'] = & $format $Reading
-    $header['Files read at once (at the end)'] = [string]$Workers
+    $header['Time reading files (all readers)'] = & $format $Reading
+    $header['Files read at the same time (at the end)'] = [string]$Workers
     return $header
 }
 

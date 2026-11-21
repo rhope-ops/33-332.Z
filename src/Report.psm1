@@ -37,6 +37,13 @@ $script:SeverityOrder = @('SSN', 'Date of birth', 'Passport', 'Payment card', 'D
 # How many files the screen summary lists (the workbook lists all).
 $script:TopItems = 10
 
+# Screen tables fit the window: under 60 characters or unknown = 120; the last column keeps 12 (the author's choice, 2026-11-21).
+$script:DefaultScreenWidth = 120
+$script:MinScreenWidth = 60
+$script:MinLastColumn = 12
+# Under the table of types: what High, Medium and Low mean (the PAM, 2026-11-21: plain words for a unit member).
+$script:ConfidenceKey = 'High = labelled (for example "SSN:") or a sure pattern. Medium = the right form, no label. Low = a weak match: often not PII.'
+
 # Screen colours (the PAM, 2026-11-20: less grey, more format). Write-Host has only the 16 console colours:
 # Cyan = headings and labels, White = values, Green = clean or done, Yellow = check by hand and Medium,
 # Red = possible PII, High and errors, Gray = hints and the labels of the folder rows, DarkGray = rules and table
@@ -264,19 +271,25 @@ function Format-BoxTable {
       The header texts.
     .PARAMETER Rows
       The rows, each an array of cells.
+    .PARAMETER MaxWidth
+      The widest a line may be (0: no limit); the last column is cut to fit.
     .OUTPUTS
       [string[]] the border line, the header, the border, one line per row, the border.
     #>
-    param([string[]]$Columns, [object[]]$Rows)
-    $widths = for ($i = 0; $i -lt $Columns.Count; $i++) {
+    param([string[]]$Columns, [object[]]$Rows, [int]$MaxWidth = 0)
+    $widths = @(for ($i = 0; $i -lt $Columns.Count; $i++) {
         [Math]::Max($Columns[$i].Length, (@($Rows | ForEach-Object { ([string]$_[$i]).Length }) + 0 | Measure-Object -Maximum).Maximum)
-    }
+    })
+    # Too wide for the screen: the last column (a file path) is cut, with '...', so no line wraps (the PAM, 2026-11-21).
+    $total = ($widths | Measure-Object -Sum).Sum + 3 * $widths.Count + 1
+    if ($MaxWidth -gt 0 -and $total -gt $MaxWidth) { $widths[-1] = [Math]::Max($script:MinLastColumn, $widths[-1] - ($total - $MaxWidth)) }
     $border = '+' + ((@($widths) | ForEach-Object { '-' * ($_ + 2) }) -join '+') + '+'
     # One table line: each cell padded to its column width, numbers to the right.
     $line = {
         param($cells)
         $parts = for ($i = 0; $i -lt $Columns.Count; $i++) {
             $cell = [string]$cells[$i]
+            if ($cell.Length -gt $widths[$i]) { $cell = $cell.Substring(0, $widths[$i] - 3) + '...' }
             if ($cells[$i] -is [int]) { ' ' + $cell.PadLeft($widths[$i]) + ' ' } else { ' ' + $cell.PadRight($widths[$i]) + ' ' }
         }
         '|' + ($parts -join '|') + '|'
@@ -286,6 +299,13 @@ function Format-BoxTable {
     $border
     foreach ($row in $Rows) { & $line $row }
     $border
+}
+
+function Get-ScreenWidth {
+    # The width of the console or ISE pane in characters, less one (a full line would wrap); $DefaultScreenWidth when unknown.
+    try { $width = [int]$Host.UI.RawUI.WindowSize.Width } catch { $width = 0 }   # no window size: the default below
+    if ($width -lt $script:MinScreenWidth) { $width = $script:DefaultScreenWidth }
+    return $width - 1
 }
 
 function Get-TableLines {
@@ -302,7 +322,7 @@ function Get-TableLines {
       [pscustomobject] Text, Kind, LabelLength (0), one per line.
     #>
     param([string[]]$Columns, [object[]]$Rows, [string[]]$Kinds)
-    $table = @(Format-BoxTable $Columns $Rows)
+    $table = @(Format-BoxTable $Columns $Rows (Get-ScreenWidth))
     for ($i = 0; $i -lt $table.Count; $i++) {
         $kind = 'Rule'
         if ($i -eq 1) { $kind = 'Label' } elseif ($i -ge 3 -and $i -lt $table.Count - 1) { $kind = $Kinds[$i - 3] }
@@ -332,6 +352,10 @@ function Get-ScanSummaryText {
     # Adds one screen line with its colour; the first LabelLength characters are written in the label colour.
     $add = { param($text, $kind, $labelLength = 0) $out.Add([pscustomobject]@{ Text = $text; Kind = $kind; LabelLength = $labelLength }) }
     & $add '' 'Text'; & $add '==== Results ====' 'Title'
+    # A scan that stopped early says so first, in red: its results cover only the files read so far.
+    if (@($Rows | Where-Object { $_.Detector -eq 'INCOMPLETE' }).Count -gt 0) {
+        & $add ('INCOMPLETE: the scan stopped before the end. These results cover only the {0} files read; scan again for the rest.' -f $ItemsScanned) 'Alert'
+    }
     # The values start in one column, after the longest label (labels differ: site, drive, timing lines).
     $pairs = @($Header.GetEnumerator()) + @((Get-ScanMetrics $Rows $ItemsScanned).GetEnumerator())
     $labelWidth = ($pairs | ForEach-Object { ([string]$_.Key).Length + 1 } | Measure-Object -Maximum).Maximum
@@ -346,6 +370,7 @@ function Get-ScanSummaryText {
         $kinds = @($types | ForEach-Object { if ($_.High -gt 0) { 'Alert' } elseif ($_.Medium -gt 0) { 'Accent' } else { 'Text' } })
         Get-TableLines @('Type', 'High', 'Medium', 'Low', 'Total') @($types | ForEach-Object { , @($_.Type, $_.High, $_.Medium, $_.Low, $_.Total) }) $kinds |
             ForEach-Object { $out.Add($_) }
+        & $add $script:ConfidenceKey 'Muted'
         $top = @(Get-ReportSummary $Rows | Select-Object -First $script:TopItems)
         & $add '' 'Text'; & $add ('FILES WITH THE MOST SERIOUS HITS (first {0}; all are in the workbook)' -f $script:TopItems) 'Title'
         $kinds = @($top | ForEach-Object { if ($_.Highest -eq 'High') { 'Alert' } else { 'Accent' } })
@@ -358,9 +383,6 @@ function Get-ScanSummaryText {
         Get-TableLines @('Reason', 'Files') @($skipped | ForEach-Object { , @($_.Reason, $_.Count) }) @($skipped | ForEach-Object { 'Accent' }) |
             ForEach-Object { $out.Add($_) }
     }
-    & $add '' 'Text'
-    & $add 'Confidence is a pattern guess, not proof: open each item and check it before you act.' 'Muted'
-    & $add $script:BreachAdvice 'Accent'
     return $out.ToArray()
 }
 
@@ -536,6 +558,10 @@ function Publish-ScanReport {
     Write-Ui ''
     Write-Ui "Saved (values masked): $path" 'Good'
     Write-Ui 'Handle this file as CUI: it shows where PII is.' 'Accent'
+    # After the path, so the path is not lost under the long advice (the PAM, 2026-11-21).
+    Write-Ui ''
+    Write-Ui 'Confidence is a pattern guess, not proof: open each item and check it before you act.' 'Muted'
+    Write-Ui $script:BreachAdvice 'Accent'
     return $path
 }
 

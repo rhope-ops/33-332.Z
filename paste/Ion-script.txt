@@ -25,19 +25,19 @@
     src/ContainerText.psm1, sha256 7378569bd7e6
     src/PdfCore.psm1, sha256 da11bdba883c
     src/PdfObjects.psm1, sha256 4479101a8f3e
-    src/PdfFonts.psm1, sha256 8ad00db84c87
+    src/PdfFonts.psm1, sha256 f88c366cf09e
     src/PdfLayout.psm1, sha256 feafecd946b7
     src/PdfText.psm1, sha256 312351e30b87
     src/TextExtract.psm1, sha256 3b52ab6462e5
     src/ReaderPool.psm1, sha256 8f8f73fda166
     src/XlsxWriter.psm1, sha256 e29becdc6a65
-    src/Report.psm1, sha256 0f10bf11fed0
+    src/Report.psm1, sha256 67d1f3010c3c
     src/ScanMeter.psm1, sha256 739747d75471
     src/ScanQueue.psm1, sha256 37e83cec1fd9
     src/Accountability.psm1, sha256 15472f8fab6e
-    src/ChannelScan.psm1, sha256 b0c58f9fd643
-    src/DriveScan.psm1, sha256 59ea6a456910
-    src/Find-ChannelPII.ps1, sha256 b2d6bfd7a72b
+    src/ChannelScan.psm1, sha256 2d31bc25c26c
+    src/DriveScan.psm1, sha256 9d9539409ff4
+    src/Find-ChannelPII.ps1, sha256 43f43297103f
 
   Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.
   Run target: Windows PowerShell 5.1 with PnP.PowerShell 1.12.0; no admin rights, no file to unblock.
@@ -56,20 +56,20 @@
     line  1420  Module PdfCore.psm1
     line  1779  Module PdfObjects.psm1
     line  2137  Module PdfFonts.psm1
-    line  2684  Module PdfLayout.psm1
-    line  2824  Module PdfText.psm1
-    line  3317  Module TextExtract.psm1
-    line  3730  Module ReaderPool.psm1
-    line  3982  Reader block end
-    line  3986  Module XlsxWriter.psm1
-    line  4257  Module Report.psm1
-    line  4828  Module ScanMeter.psm1
-    line  5151  Module ScanQueue.psm1
-    line  5389  Module Accountability.psm1
-    line  5683  Module ChannelScan.psm1
-    line  6271  Module DriveScan.psm1
-    line  6513  Body of Find-ChannelPII.ps1
-    line  6622  Clean-up
+    line  2685  Module PdfLayout.psm1
+    line  2825  Module PdfText.psm1
+    line  3318  Module TextExtract.psm1
+    line  3731  Module ReaderPool.psm1
+    line  3983  Reader block end
+    line  3987  Module XlsxWriter.psm1
+    line  4258  Module Report.psm1
+    line  4855  Module ScanMeter.psm1
+    line  5178  Module ScanQueue.psm1
+    line  5416  Module Accountability.psm1
+    line  5710  Module ChannelScan.psm1
+    line  6306  Module DriveScan.psm1
+    line  6548  Body of Find-ChannelPII.ps1
+    line  6662  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -2181,7 +2181,8 @@ $script:GlyphMarks = @{ acute = 0x301; grave = 0x300; circumflex = 0x302; dieres
 # A made-up glyph name: up to 5 letters, then a number (g12, a3, G1, cid34, glyph7, index5), with an optional suffix.
 # Not the Adobe names that are letters and a number too: afii (Cyrillic and other letters), uni and u (code points),
 # SF and H (box drawing and shapes).
-$script:MadeUpGlyphName = '^(?!afii|uni|u\d|SF\d|H\d)[A-Za-z]{1,5}\d+(?:\..*)?$'
+# Case-sensitive (?-i): Adobe names are case-exact, so h12 or sf1 stay made-up names (review of PR 34).
+$script:MadeUpGlyphName = '(?-i)^(?!afii|uni[0-9A-F]{4}|u[0-9A-F]{4,6}$|SF\d|H\d)[A-Za-z]{1,5}\d+(?:\..*)?$'
 
 $script:PictureFontPattern = '(?i)wingdings|webdings|dingbats|marlett|(?:^|\+)symbol(?:mt)?(?:$|[,-])'
 
@@ -4293,6 +4294,13 @@ $script:SeverityOrder = @('SSN', 'Date of birth', 'Passport', 'Payment card', 'D
 # How many files the screen summary lists (the workbook lists all).
 $script:TopItems = 10
 
+# Screen tables fit the window: under 60 characters or unknown = 120; the last column keeps 12 (the author's choice, 2026-11-21).
+$script:DefaultScreenWidth = 120
+$script:MinScreenWidth = 60
+$script:MinLastColumn = 12
+# Under the table of types: what High, Medium and Low mean (the PAM, 2026-11-21: plain words for a unit member).
+$script:ConfidenceKey = 'High = labelled (for example "SSN:") or a sure pattern. Medium = the right form, no label. Low = a weak match: often not PII.'
+
 # Screen colours (the PAM, 2026-11-20: less grey, more format). Write-Host has only the 16 console colours:
 # Cyan = headings and labels, White = values, Green = clean or done, Yellow = check by hand and Medium,
 # Red = possible PII, High and errors, Gray = hints and the labels of the folder rows, DarkGray = rules and table
@@ -4520,19 +4528,25 @@ function Format-BoxTable {
       The header texts.
     .PARAMETER Rows
       The rows, each an array of cells.
+    .PARAMETER MaxWidth
+      The widest a line may be (0: no limit); the last column is cut to fit.
     .OUTPUTS
       [string[]] the border line, the header, the border, one line per row, the border.
     #>
-    param([string[]]$Columns, [object[]]$Rows)
-    $widths = for ($i = 0; $i -lt $Columns.Count; $i++) {
+    param([string[]]$Columns, [object[]]$Rows, [int]$MaxWidth = 0)
+    $widths = @(for ($i = 0; $i -lt $Columns.Count; $i++) {
         [Math]::Max($Columns[$i].Length, (@($Rows | ForEach-Object { ([string]$_[$i]).Length }) + 0 | Measure-Object -Maximum).Maximum)
-    }
+    })
+    # Too wide for the screen: the last column (a file path) is cut, with '...', so no line wraps (the PAM, 2026-11-21).
+    $total = ($widths | Measure-Object -Sum).Sum + 3 * $widths.Count + 1
+    if ($MaxWidth -gt 0 -and $total -gt $MaxWidth) { $widths[-1] = [Math]::Max($script:MinLastColumn, $widths[-1] - ($total - $MaxWidth)) }
     $border = '+' + ((@($widths) | ForEach-Object { '-' * ($_ + 2) }) -join '+') + '+'
     # One table line: each cell padded to its column width, numbers to the right.
     $line = {
         param($cells)
         $parts = for ($i = 0; $i -lt $Columns.Count; $i++) {
             $cell = [string]$cells[$i]
+            if ($cell.Length -gt $widths[$i]) { $cell = $cell.Substring(0, $widths[$i] - 3) + '...' }
             if ($cells[$i] -is [int]) { ' ' + $cell.PadLeft($widths[$i]) + ' ' } else { ' ' + $cell.PadRight($widths[$i]) + ' ' }
         }
         '|' + ($parts -join '|') + '|'
@@ -4542,6 +4556,13 @@ function Format-BoxTable {
     $border
     foreach ($row in $Rows) { & $line $row }
     $border
+}
+
+function Get-ScreenWidth {
+    # The width of the console or ISE pane in characters, less one (a full line would wrap); $DefaultScreenWidth when unknown.
+    try { $width = [int]$Host.UI.RawUI.WindowSize.Width } catch { $width = 0 }   # no window size: the default below
+    if ($width -lt $script:MinScreenWidth) { $width = $script:DefaultScreenWidth }
+    return $width - 1
 }
 
 function Get-TableLines {
@@ -4558,7 +4579,7 @@ function Get-TableLines {
       [pscustomobject] Text, Kind, LabelLength (0), one per line.
     #>
     param([string[]]$Columns, [object[]]$Rows, [string[]]$Kinds)
-    $table = @(Format-BoxTable $Columns $Rows)
+    $table = @(Format-BoxTable $Columns $Rows (Get-ScreenWidth))
     for ($i = 0; $i -lt $table.Count; $i++) {
         $kind = 'Rule'
         if ($i -eq 1) { $kind = 'Label' } elseif ($i -ge 3 -and $i -lt $table.Count - 1) { $kind = $Kinds[$i - 3] }
@@ -4588,6 +4609,10 @@ function Get-ScanSummaryText {
     # Adds one screen line with its colour; the first LabelLength characters are written in the label colour.
     $add = { param($text, $kind, $labelLength = 0) $out.Add([pscustomobject]@{ Text = $text; Kind = $kind; LabelLength = $labelLength }) }
     & $add '' 'Text'; & $add '==== Results ====' 'Title'
+    # A scan that stopped early says so first, in red: its results cover only the files read so far.
+    if (@($Rows | Where-Object { $_.Detector -eq 'INCOMPLETE' }).Count -gt 0) {
+        & $add ('INCOMPLETE: the scan stopped before the end. These results cover only the {0} files read; scan again for the rest.' -f $ItemsScanned) 'Alert'
+    }
     # The values start in one column, after the longest label (labels differ: site, drive, timing lines).
     $pairs = @($Header.GetEnumerator()) + @((Get-ScanMetrics $Rows $ItemsScanned).GetEnumerator())
     $labelWidth = ($pairs | ForEach-Object { ([string]$_.Key).Length + 1 } | Measure-Object -Maximum).Maximum
@@ -4602,6 +4627,7 @@ function Get-ScanSummaryText {
         $kinds = @($types | ForEach-Object { if ($_.High -gt 0) { 'Alert' } elseif ($_.Medium -gt 0) { 'Accent' } else { 'Text' } })
         Get-TableLines @('Type', 'High', 'Medium', 'Low', 'Total') @($types | ForEach-Object { , @($_.Type, $_.High, $_.Medium, $_.Low, $_.Total) }) $kinds |
             ForEach-Object { $out.Add($_) }
+        & $add $script:ConfidenceKey 'Muted'
         $top = @(Get-ReportSummary $Rows | Select-Object -First $script:TopItems)
         & $add '' 'Text'; & $add ('FILES WITH THE MOST SERIOUS HITS (first {0}; all are in the workbook)' -f $script:TopItems) 'Title'
         $kinds = @($top | ForEach-Object { if ($_.Highest -eq 'High') { 'Alert' } else { 'Accent' } })
@@ -4614,9 +4640,6 @@ function Get-ScanSummaryText {
         Get-TableLines @('Reason', 'Files') @($skipped | ForEach-Object { , @($_.Reason, $_.Count) }) @($skipped | ForEach-Object { 'Accent' }) |
             ForEach-Object { $out.Add($_) }
     }
-    & $add '' 'Text'
-    & $add 'Confidence is a pattern guess, not proof: open each item and check it before you act.' 'Muted'
-    & $add $script:BreachAdvice 'Accent'
     return $out.ToArray()
 }
 
@@ -4792,6 +4815,10 @@ function Publish-ScanReport {
     Write-Ui ''
     Write-Ui "Saved (values masked): $path" 'Good'
     Write-Ui 'Handle this file as CUI: it shows where PII is.' 'Accent'
+    # After the path, so the path is not lost under the long advice (the PAM, 2026-11-21).
+    Write-Ui ''
+    Write-Ui 'Confidence is a pattern guess, not proof: open each item and check it before you act.' 'Muted'
+    Write-Ui $script:BreachAdvice 'Accent'
     return $path
 }
 
@@ -5733,6 +5760,12 @@ $script:OpenDirectStream = {
     return $fileType::OpenBinaryDirect((Get-PnPContext), $ServerRelativeUrl).Stream
 }
 
+# What Ion can scan, for the first question and after a wrong paste (the PAM, 2026-11-21: one short block, not one long line).
+$script:TargetHelp = "Paste one of these, or press Enter to exit:`n" +
+    "  - a Teams link: in Teams, ... next to the team or channel > Copy link`n" +
+    "  - a SharePoint site address: https://usaf.dps.mil/teams/<team-site> (or /sites/)`n" +
+    "  - a drive folder: X:\<folder> or \\<server>\<share>\<folder>"
+
 # How the report and the screen name the files at the top of the library (in no folder).
 $script:RootGroupName = '(top of the library)'
 # A drive folder: X:\<folder> (a mapped drive) or \\<server>\<share>\<folder> (UNC), with or without quotes.
@@ -5787,7 +5820,7 @@ function Test-TeamSiteUrl {
     param([string]$Url)
     $match = [regex]::Match((Add-UrlScheme $Url), $script:SiteUrlPattern, 'IgnoreCase')
     if (-not $match.Success) {
-        throw "Not a team site address: '$Url'. Expected https://usaf.dps.mil/teams/<team-site> or /sites/<team-site>."
+        throw "'$Url' is not a SharePoint site address (https://usaf.dps.mil/teams/<team-site> or /sites/<team-site>)."
     }
     return $match.Groups['host'].Value + '/' + $match.Groups['site'].Value
 }
@@ -5854,8 +5887,9 @@ function ConvertTo-FriendlyError {
 function Read-ScanTarget {
     <#
     .SYNOPSIS
-      Asks for a Teams link or site address until it is a valid one, or until the person presses Enter (exit).
-      A wrong paste is explained and asked again; nothing is signed in until the address is valid.
+      Asks for a Teams link, site address or drive folder until it is a valid one, or until the person presses Enter
+      (exit); what can be pasted is listed first ($TargetHelp). A wrong paste is explained and asked again; nothing is
+      signed in until the address is valid.
     .PARAMETER Given
       An address given up front (the -SiteUrl setting); used first, without asking.
     .PARAMETER Prompt
@@ -5865,13 +5899,14 @@ function Read-ScanTarget {
     #>
     param([string]$Given, [string]$Prompt)
     $answer = $Given
+    if (-not $answer) { Write-Ui $script:TargetHelp 'Muted' }
     while ($true) {
         if (-not $answer) { $answer = Read-Host $Prompt }
         if (-not $answer -or -not $answer.Trim()) { return $null }
         try { return Get-ScanTarget $answer.Trim() }
         catch {
-            Write-Ui ('That is not a Teams link or a site address: ' + (Protect-PiiText $_.Exception.Message)) 'Alert'
-            Write-Ui 'Paste it again (Teams: ... > Copy link; or the SharePoint address), or press Enter to exit.' 'Muted'
+            Write-Ui ('Not read: ' + (Protect-PiiText $_.Exception.Message)) 'Alert'
+            Write-Ui $script:TargetHelp 'Muted'
             $answer = ''
         }
     }
@@ -5883,7 +5918,7 @@ function Read-TeamSiteAddress {
         $typed = Read-Host 'Team site address (https://usaf.dps.mil/teams/<team-site>), or Enter to go back'
         if (-not $typed -or -not $typed.Trim()) { throw 'No site address given.' }
         try { return Test-TeamSiteUrl $typed }
-        catch { Write-Ui ('Not a site address: ' + (Protect-PiiText $_.Exception.Message)) 'Alert' }
+        catch { Write-Ui (Protect-PiiText $_.Exception.Message) 'Alert' }
     }
 }
 
@@ -6171,7 +6206,7 @@ function Invoke-OneFileScan {
 function Get-ScanTiming {
     # The time of the last file scan spent downloading and spent reading, as minutes:seconds text.
     $format = { param($t) '{0:00}:{1:00}' -f [int][Math]::Floor($t.TotalMinutes), $t.Seconds }
-    [ordered]@{ 'Time downloading' = (& $format $script:Timing.Download); 'Time reading (all workers)' = (& $format $script:Timing.Check) }
+    [ordered]@{ 'Time downloading' = (& $format $script:Timing.Download); 'Time reading files (all readers)' = (& $format $script:Timing.Check) }
 }
 
 function Get-ScanGroups {
@@ -6444,8 +6479,8 @@ function Get-DriveHeader {
     $header['Folders'] = ($Groups | ForEach-Object { Protect-PiiName $_.Name }) -join ', '
     $header['Run'] = Get-Date -Format 'yyyy-MM-dd HH:mm'
     $header['Time used'] = & $format $Used
-    $header['Time reading (all workers)'] = & $format $Reading
-    $header['Files read at once (at the end)'] = [string]$Workers
+    $header['Time reading files (all readers)'] = & $format $Reading
+    $header['Files read at the same time (at the end)'] = [string]$Workers
     return $header
 }
 
@@ -6592,11 +6627,15 @@ function Open-ScanResult {
 
 Write-Ui '==== Ion - DoD365 PII Reporter ====' 'Title'
 Write-Ui 'Read-only. Every PII value found is masked on screen and in the results.' 'Muted'
+# What it scans and how to stop early (the PAM, 2026-11-21): a cancel still saves the results so far ('finally').
+Write-Ui ('Scans the files of one Teams team, SharePoint site or drive folder. Files over {0} MB are listed, not read.' -f $MaxFileMB) 'Muted'
+Write-Ui 'To stop early: Ctrl+C (in ISE: the red Stop button). The results so far are still saved.' 'Muted'
+$signedIn = $false   # the closing line says "nothing stays signed in" only after a site scan (a drive needs no sign-in)
 
 # ---- Ask for a site, sign in, scan, save; then offer another site, until the person presses Enter ----
 # A wrong paste is explained and asked again (Read-ScanTarget); a site the person cannot open is reported as
 # "no access" and nothing is saved for it (Connect-TeamSite); only the one site given is touched each time.
-$target = Read-ScanTarget $SiteUrl 'Teams link, SharePoint site address (https://usaf.dps.mil/teams/<team-site>) or folder (X:\<folder>), or Enter to exit'
+$target = Read-ScanTarget $SiteUrl 'What to scan'
 while ($null -ne $target) {
     $site = $null
     if ($target.DrivePath) {
@@ -6604,9 +6643,10 @@ while ($null -ne $target) {
         try { Open-ScanResult (Invoke-DriveScan -Path $target.DrivePath -OutputFolder $OutputFolder -MaxFileMB $MaxFileMB -Init $IonWorkerInit) }
         catch { Write-Ui ('The results could not be saved: ' + (Protect-PiiText $_.Exception.Message)) 'Alert' }
         Write-Ui ''
-        $target = Read-ScanTarget '' 'Scan another? Paste a Teams link, a site address or a folder (X:\<folder>), or press Enter to exit'
+        $target = Read-ScanTarget '' 'Scan another (or Enter to exit)'
         continue
     }
+    $signedIn = $true   # a sign-in is tried (Connect-TeamSite signs out again on every path)
     try { $site = Connect-TeamSite $target }
     catch { Write-Ui $_.Exception.Message 'Alert' }
     if ($site) {
@@ -6615,9 +6655,9 @@ while ($null -ne $target) {
         catch { Write-Ui ('The results could not be saved: ' + (Protect-PiiText $_.Exception.Message)) 'Alert' }
     }
     Write-Ui ''
-    $target = Read-ScanTarget '' 'Scan another? Paste a Teams link, a site address or a folder (X:\<folder>), or press Enter to exit'
+    $target = Read-ScanTarget '' 'Scan another (or Enter to exit)'
 }
-Write-Ui 'Ion is done: nothing stays signed in.' 'Good'
+if ($signedIn) { Write-Ui 'Ion is done: nothing stays signed in.' 'Good' } else { Write-Ui 'Ion is done.' 'Good' }
 
 # ==== Clean-up ====
 } finally {
