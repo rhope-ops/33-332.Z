@@ -177,7 +177,8 @@ function Invoke-DriveScan {
     <#
     .SYNOPSIS
       Scans one drive folder and all its subfolders with the reader workers, then saves the workbook (also after an
-      error or a cancel: the results so far are saved and say INCOMPLETE). Returns the workbook path.
+      error or a cancel: the results so far are saved and say INCOMPLETE). Returns the workbook path; $null when the
+      person answered no (or cancelled) at "Scan now?".
     .PARAMETER Path
       The folder (X:\<folder> or \\<server>\<share>\<folder>).
     .PARAMETER OutputFolder

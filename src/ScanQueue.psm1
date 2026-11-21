@@ -291,6 +291,7 @@ function Confirm-ScanStart {
             if (-not (Test-SupportedFile $name) -or [long]$size -gt $MaxFileMB * 1MB) { $skipped++ }
         }
     }
+    if ($count -eq 0) { return $true }   # nothing to read: no question
     Write-Ui ('Found {0} files ({1:N1} MB) in {2} folders; {3} will be listed but not read (file type, or over {4} MB).' -f
         $count, ($bytes / 1MB), $Groups.Count, $skipped, $MaxFileMB) 'Text'
     $answer = Read-Host 'Scan now? [Y/n]'
@@ -325,7 +326,8 @@ function Invoke-ScanRun {
     $total = 0
     foreach ($group in $Groups) { $total += $group.Files.Count }
     $Run.Meter = New-ScanMeter 0; $Run.Reading = [TimeSpan]::Zero; $Run.Workers = 0; $Run.Declined = $false
-    if ($Facts -and -not (Confirm-ScanStart $Groups $Facts $MaxFileMB)) { $Run.Declined = $true; return }
+    # Declined until a yes: a cancel (Ctrl+C) at the question saves nothing either, as nothing was read (review of PR 37).
+    if ($Facts) { $Run.Declined = $true; if (-not (Confirm-ScanStart $Groups $Facts $MaxFileMB)) { return }; $Run.Declined = $false }
     Write-Ui ('==== Scanning {0} files in {1} folders ====' -f $total, $Groups.Count) 'Title'
     $meter = New-ScanMeter $total
     $meter.NameWidth = Get-NameWidth @($Groups | ForEach-Object { Protect-PiiName $_.Name })

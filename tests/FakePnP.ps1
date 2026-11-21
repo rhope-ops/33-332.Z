@@ -69,7 +69,7 @@ function Set-FakeSiteAnswer {
     .PARAMETER SiteGroupId
       The group ID of the connected site (Get-PnPSite).
     .PARAMETER ScanAnswer
-      The answer to "Scan now?" ('' = Enter = yes).
+      The answer to "Scan now?" ('' = Enter = yes; 'cancel' = the prompt fails).
     .OUTPUTS
       None (changes $global:FakePnP).
     #>
@@ -250,7 +250,11 @@ function global:Read-Host {
     [CmdletBinding()] param($Prompt)
     # The open-the-workbook question has its own answer (Enter = open), so the queued addresses stay in order.
     if ([string]$Prompt -like 'Open the workbook*') { $global:FakePnP.Calls.Add('Open question'); return $global:FakePnP.OpenAnswer }
-    if ([string]$Prompt -like 'Scan now*') { $global:FakePnP.Calls.Add('Scan question'); return $global:FakePnP.ScanAnswer }
+    if ([string]$Prompt -like 'Scan now*') {
+        $global:FakePnP.Calls.Add('Scan question')
+        if ($global:FakePnP.ScanAnswer -eq 'cancel') { throw 'FAKE: prompt cancelled' }   # as a cancel at the question
+        return $global:FakePnP.ScanAnswer
+    }
     $global:FakePnP.Calls.Add('Read-Host')
     # A real cancel stops the whole pipeline (the test run too); an error leaves through the same 'finally'.
     if ($global:FakePnP.TypedSite.Count -eq 0) { return '' }

@@ -19,5 +19,11 @@ Title: 33-332.Z · <task> · <date>. Read AGENTS.md first.
    Teams-link lookup and OCR wait on the PAM's test snippet results.
 13. README rework 2026-11-21: on main at the PAM's request (no wait for network-drives).
     Steps and open items: docs/reviews/2026-11-21-readme-rework.md.
-14. 2026-11-21: PR 30 (moving per-file bar by MB, wait bar, summary labels): lane C, waits on the PAM. The PAM to test the
-    streamed download on DoD365 (falls back if the sign-in cookie is not sent). Audit list: docs/reviews/2026-11-21-ion-polish-audit.md.
+14. 2026-11-21 (this session): PRs 30, 31, 34, 36, 37 merged: moving download bar (streamed, MB/s), wait bar, Wingdings and
+    picture-font hits gone, PDF glyph names (/Differences), Low-hit noise guard, workbook "Last saved"/"History note",
+    screen polish B1-B6, cleanup A1-A5, "Scan now? [Y/n]" (C1). Audit list: docs/reviews/2026-11-21-ion-polish-audit.md.
+15. The PAM to test on the gov device: the streamed download bar (falls back if the CAC cookie is not sent); a re-run on
+    the "Wingdings" PDF; Ctrl+C during a scan (the last lines); the window-width cut in ISE; the Teams-link test
+    (docs/reviews/2026-11-21-teams-lookup-test.md, results A and B).
+16. Open: C2, C4-C6 of the audit list (each needs a plan the PAM approves). Review MINORs carried: WinAnsi C1 quotes and
+    packed guillemets in the noise guard (PR 31 review).

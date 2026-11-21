@@ -33,11 +33,11 @@
     src/XlsxWriter.psm1, sha256 e29becdc6a65
     src/Report.psm1, sha256 fb6dd1862a31
     src/ScanMeter.psm1, sha256 88a95c795335
-    src/ScanQueue.psm1, sha256 9ec2ae15fa3c
+    src/ScanQueue.psm1, sha256 78b864629542
     src/Accountability.psm1, sha256 15472f8fab6e
-    src/ChannelScan.psm1, sha256 7c06a0c235ee
-    src/DriveScan.psm1, sha256 c164f659c74d
-    src/Find-ChannelPII.ps1, sha256 a44ed116cea2
+    src/ChannelScan.psm1, sha256 47e209d2186f
+    src/DriveScan.psm1, sha256 f307e810f8f5
+    src/Find-ChannelPII.ps1, sha256 968f052f3e55
 
   Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.
   Run target: Windows PowerShell 5.1 with PnP.PowerShell 1.12.0; no admin rights, no file to unblock.
@@ -65,11 +65,11 @@
     line  4258  Module Report.psm1
     line  4855  Module ScanMeter.psm1
     line  5178  Module ScanQueue.psm1
-    line  5518  Module Accountability.psm1
-    line  5812  Module ChannelScan.psm1
-    line  6397  Module DriveScan.psm1
-    line  6628  Body of Find-ChannelPII.ps1
-    line  6769  Clean-up
+    line  5520  Module Accountability.psm1
+    line  5814  Module ChannelScan.psm1
+    line  6406  Module DriveScan.psm1
+    line  6638  Body of Find-ChannelPII.ps1
+    line  6779  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -5468,6 +5468,7 @@ function Confirm-ScanStart {
             if (-not (Test-SupportedFile $name) -or [long]$size -gt $MaxFileMB * 1MB) { $skipped++ }
         }
     }
+    if ($count -eq 0) { return $true }   # nothing to read: no question
     Write-Ui ('Found {0} files ({1:N1} MB) in {2} folders; {3} will be listed but not read (file type, or over {4} MB).' -f
         $count, ($bytes / 1MB), $Groups.Count, $skipped, $MaxFileMB) 'Text'
     $answer = Read-Host 'Scan now? [Y/n]'
@@ -5502,7 +5503,8 @@ function Invoke-ScanRun {
     $total = 0
     foreach ($group in $Groups) { $total += $group.Files.Count }
     $Run.Meter = New-ScanMeter 0; $Run.Reading = [TimeSpan]::Zero; $Run.Workers = 0; $Run.Declined = $false
-    if ($Facts -and -not (Confirm-ScanStart $Groups $Facts $MaxFileMB)) { $Run.Declined = $true; return }
+    # Declined until a yes: a cancel (Ctrl+C) at the question saves nothing either, as nothing was read (review of PR 37).
+    if ($Facts) { $Run.Declined = $true; if (-not (Confirm-ScanStart $Groups $Facts $MaxFileMB)) { return }; $Run.Declined = $false }
     Write-Ui ('==== Scanning {0} files in {1} folders ====' -f $total, $Groups.Count) 'Title'
     $meter = New-ScanMeter $total
     $meter.NameWidth = Get-NameWidth @($Groups | ForEach-Object { Protect-PiiName $_.Name })
@@ -6013,7 +6015,13 @@ function Read-ScanTarget {
 }
 
 function Read-TeamSiteAddress {
-    # For a Teams link: asks for the team's site address until it is valid; Enter gives up (an error the caller reports).
+    <#
+    .SYNOPSIS
+      For a Teams link: asks for the team's site address until it is a valid one; Enter gives up (an error the caller
+      reports). Nothing is signed in here.
+    .OUTPUTS
+      [string] the site address, cut to the site.
+    #>
     while ($true) {
         $typed = Read-Host 'Team site address (https://usaf.dps.mil/teams/<team-site>), or Enter to go back'
         if (-not $typed -or -not $typed.Trim()) { throw 'No site address given.' }
@@ -6348,7 +6356,8 @@ function Invoke-FileScan {
     .PARAMETER Init
       How the reader workers load their code (New-ReaderPool).
     .PARAMETER Progress
-      Optional; gets the live meter (Progress.Meter), so a scan stopped part way can still say how many files were read.
+      Optional; gets Meter, Reading, Workers and Declined (Invoke-ScanRun), so a scan stopped part way can still say how
+      many files were read, and a "no" to "Scan now?" saves nothing.
     .OUTPUTS
       [int] the number of files whose text was scanned.
     #>
@@ -6372,7 +6381,7 @@ function Invoke-FileScan {
     $shown = { param($group, $file) Get-ShownItem $group.Name ((Get-FieldValue $file 'FileRef').Substring($group.Prefix.Length)) }
     $run = $Progress; if (-not $run) { $run = @{} }
     # A file's name and size, for the question before the scan.
-    $facts = { param($file) (Get-FieldValue $file 'FileLeafRef'), [long](Get-FieldValue $file 'File_x0020_Size') }
+    $facts = { param($file) $size = 0L; [void][long]::TryParse((Get-FieldValue $file 'File_x0020_Size'), [ref]$size); (Get-FieldValue $file 'FileLeafRef'), $size }
     try { Invoke-ScanRun $Init $Rows $groups $start $shown $run $facts $MaxFileMB }
     finally { if ($run.ContainsKey('Reading')) { $script:Timing.Check = $run.Reading } }
     return $run.Meter.Read
@@ -6573,7 +6582,8 @@ function Invoke-DriveScan {
     <#
     .SYNOPSIS
       Scans one drive folder and all its subfolders with the reader workers, then saves the workbook (also after an
-      error or a cancel: the results so far are saved and say INCOMPLETE). Returns the workbook path.
+      error or a cancel: the results so far are saved and say INCOMPLETE). Returns the workbook path; $null when the
+      person answered no (or cancelled) at "Scan now?".
     .PARAMETER Path
       The folder (X:\<folder> or \\<server>\<share>\<folder>).
     .PARAMETER OutputFolder
@@ -6631,8 +6641,8 @@ function Invoke-DriveScan {
 function Invoke-SiteFiles {
     <#
     .SYNOPSIS
-      Scans one signed-in site: its folders and files, then saves the workbook and signs out (also after an error or
-      a cancel: the results so far are saved and say INCOMPLETE). Returns the workbook path.
+      Scans one signed-in site, saves the workbook and signs out (after an error or cancel too: the results so far say
+      INCOMPLETE). Returns the workbook path; $null after no (or a cancel) at "Scan now?": nothing read or saved.
     .PARAMETER SiteUrl
       The signed-in site.
     .PARAMETER OutputFolder
