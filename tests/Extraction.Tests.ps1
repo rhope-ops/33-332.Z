@@ -531,3 +531,15 @@ Assert-Equal $true (@(Find-PiiInText $twiceText | ForEach-Object { $_.Detector }
 $described = "Content-Type: multipart/mixed; boundary=`"D`"`r`n`r`n--D`r`nContent-Description: SSN $($Sample.Ssn)`r`nContent-Type: text/plain`r`n`r`nbody`r`n--D--`r`n"
 $describedText = ((Get-TextFromBytes -Bytes ([System.Text.Encoding]::ASCII.GetBytes($described)) -FileName 'c.eml').Parts.ToArray() | ForEach-Object { $_.Text }) -join ' '
 Assert-Equal $true (@(Find-PiiInText $describedText | ForEach-Object { $_.Detector }) -contains 'SSN') 'EML: Content-Description is read as text'
+# Fourth review of PR 19: many repeated headers stay fast; conflicting Content headers give a reason; a second
+# Content-Description is read.
+$clock.Restart()
+$repeated = ((1..20000 | ForEach-Object { 'X: ' + ('a' * 39) }) -join "`r`n") + "`r`n`r`nbody`r`n"
+$null = Get-TextFromBytes -Bytes ([System.Text.Encoding]::ASCII.GetBytes($repeated)) -FileName 'r.eml'
+Assert-Equal $true ($clock.Elapsed.TotalSeconds -lt 10) 'EML: 20,000 repeated headers are read in bounded time'
+$conflicting = "Content-Type: text/plain`r`nContent-Type: multipart/mixed; boundary=`"B`"`r`n`r`n--B`r`nContent-Transfer-Encoding: base64`r`n`r`nU1NO`r`n--B--`r`n"
+$conflictParts = (Get-TextFromBytes -Bytes ([System.Text.Encoding]::ASCII.GetBytes($conflicting)) -FileName 'cf.eml').Parts.ToArray()
+Assert-Equal 1 @($conflictParts | Where-Object { $_.Reason -match 'conflicting Content headers' }).Count 'EML: conflicting Content headers give a reason'
+$twoDesc = "Content-Description: first`r`nContent-Description: SSN $($Sample.Ssn)`r`n`r`nbody`r`n"
+$twoDescText = ((Get-TextFromBytes -Bytes ([System.Text.Encoding]::ASCII.GetBytes($twoDesc)) -FileName 'd2.eml').Parts.ToArray() | ForEach-Object { $_.Text }) -join ' '
+Assert-Equal $true (@(Find-PiiInText $twoDescText | ForEach-Object { $_.Detector }) -contains 'SSN') 'EML: a second Content-Description is read'

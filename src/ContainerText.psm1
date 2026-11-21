@@ -26,6 +26,8 @@ $script:MaxArchiveBytes = 200MB
 $script:MaxMimeDepth = 5
 # Parts read from one e-mail (a hostile message can hold hundreds of thousands); the count of the one in work.
 $script:MaxMimeParts = 500
+# Headers that decide how a part is read: one value each (a second, different one is a conflict, Split-MimeEntity).
+$script:DecidingHeaders = @('content-type', 'content-transfer-encoding', 'content-disposition')
 # Headers that hold no message text (how a part is coded, and mail-server stamps and signatures): not read as text.
 $script:NoTextHeaders = @('content-type', 'content-transfer-encoding', 'content-disposition', 'content-id', 'mime-version',
     'received', 'dkim-signature', 'authentication-results', 'received-spf')
@@ -86,7 +88,8 @@ function Get-ZipEncryptedFlags {
     if ($end -lt 0) { return $null }
     [long]$count = [BitConverter]::ToUInt16($Bytes, $end + 10)
     [long]$offset = [BitConverter]::ToUInt32($Bytes, $end + 16)
-    if (($count -eq 65535 -or $offset -eq 4294967295) -and $end -ge 20) {   # decimal: 0xFFFFFFFF would read as -1   # Zip64: the locator before the end record
+        # Zip64: the locator before the end record; the full fields compared as decimals (0xFFFFFFFF would read as -1).
+    if (($count -eq 65535 -or $offset -eq 4294967295) -and $end -ge 20) {
         $locator = $end - 20
         if ($Bytes[$locator] -ne 0x50 -or $Bytes[$locator + 1] -ne 0x4B -or $Bytes[$locator + 2] -ne 6 -or $Bytes[$locator + 3] -ne 7) { return $null }
         $zip64 = [BitConverter]::ToInt64($Bytes, $locator + 8)
@@ -163,17 +166,25 @@ function Split-MimeEntity {
     $end = [regex]::Match($Text, '\A(?:[!-9;-~]+:[^\r\n]*(?:\r?\n[ \t][^\r\n]*)*(?:\r?\n|\z))*')
     $head = $end.Value
     $body = $Text.Substring($end.Length) -replace '\A\r?\n', ''
-    $headers = @{}
+    # Values per name in a list, joined once (a header given thousands of times stays linear). A name given twice
+    # keeps both values, except the headers that decide how the part is read: they keep their first, and a second,
+    # different value marks the part Conflict (it is read one way, and gets a "check by hand" reason).
+    $values = @{}
+    $conflict = $false
     foreach ($line in (($head -replace '\r?\n[ \t]+', ' ') -split '\r?\n')) {
         $colon = $line.IndexOf(':')
         if ($colon -le 0) { continue }
         $name = $line.Substring(0, $colon).Trim().ToLower(); $value = $line.Substring($colon + 1).Trim()
-        # A name given twice keeps both values (a second Comments: line must not hide the first); a content header
-        # keeps its first, which decides how the part is read.
-        if (-not $headers.ContainsKey($name)) { $headers[$name] = $value }
-        elseif ($name -notlike 'content-*') { $headers[$name] = $headers[$name] + "`n" + $value }
+        if (-not $values.ContainsKey($name)) { $values[$name] = New-Object System.Collections.Generic.List[string] }
+        elseif ($script:DecidingHeaders -contains $name) {
+            if ($values[$name][0] -ne $value) { $conflict = $true }
+            continue
+        }
+        $values[$name].Add($value)
     }
-    return @{ Headers = $headers; Body = $body }
+    $headers = @{}
+    foreach ($name in $values.Keys) { $headers[$name] = $values[$name] -join "`n" }
+    return @{ Headers = $headers; Body = $body; Conflict = $conflict }
 }
 
 function Get-HeaderParameter {
@@ -263,6 +274,7 @@ function Get-MimeParts {
     #>
     param([string]$Text, [int]$Depth)
     $entity = Split-MimeEntity $Text
+    if ($entity.Conflict) { New-Part '(message part)' -Reason 'An e-mail part with conflicting Content headers (it may be read another way): check by hand' }
     if ($Depth -gt 0) {   # a part's own headers other than its content ones (a line such as "Note: ..." is kept)
         $own = @(Get-HeaderLines $entity.Headers)
         if ($own.Count -gt 0) { New-Part '(part headers)' -Text ($own -join "`n") }
