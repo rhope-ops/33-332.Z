@@ -3,7 +3,8 @@ XlsxWriter.psm1 - writes a small Excel workbook (.xlsx) with .NET only: no Excel
 
   Purpose:     The results file of Ion: one workbook with tabs (the PAM, 2026-11-20: a CSV cannot have tabs).
                Each tab has a bold header row; a list tab also has the header frozen and filter buttons on, and its
-               link column holds clickable links (the PAM, 2026-11-20).
+               link column holds clickable links (the PAM, 2026-11-20); chosen columns wrap their text, and columns the
+               person fills in can have a dropdown list of fixed words (the PAM, 2026-11-21).
   Inputs:      the tabs to write (New-XlsxSheet), each with its columns and rows of cells (text or whole numbers).
   Outputs:     one .xlsx file (Office Open XML, ECMA-376: a zip of XML parts).
   Depends on:  .NET System.IO.Compression (loaded here).
@@ -31,7 +32,8 @@ $script:MainNs = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
 $script:RelNs = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
 $script:PackageRelNs = 'http://schemas.openxmlformats.org/package/2006/relationships'
 
-# Three cell styles: 0 = normal, 1 = bold (the header row and the Summary labels), 2 = a link (blue, underlined).
+# Four cell styles: 0 = normal, 1 = bold (the header row and the Summary labels), 2 = a link (blue, underlined),
+# 3 = wrapped text, top-aligned (long prose, for example the Method tab; the PAM, 2026-11-21).
 $script:StylesXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
     '<fonts count="3"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font>' +
@@ -39,9 +41,10 @@ $script:StylesXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     '<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>' +
     '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>' +
     '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
-    '<cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
+    '<cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
     '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>' +
-    '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs>' +
+    '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>' +
+    '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf></cellXfs>' +
     '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>' +
     '</styleSheet>'
 
@@ -61,11 +64,18 @@ function New-XlsxSheet {
       Freeze the header row and turn the filter buttons on (a list of hits); off for the Summary tab.
     .PARAMETER LinkColumn
       The column (0-based) whose https:// cells become clickable links; -1 for none.
+    .PARAMETER WrapColumns
+      Columns (0-based) whose text wraps in the cell (style 3).
+    .PARAMETER Choices
+      Column (0-based) -> the values its cells may hold: a dropdown list in Excel (data validation, a fixed list of words;
+      never a formula from scanned text). For columns the person fills in.
     .OUTPUTS
       [pscustomobject]
     #>
-    param([string]$Name, [string[]]$Columns, [object[]]$Rows, [int[]]$Widths, [switch]$List, [int]$LinkColumn = -1)
-    [pscustomobject]@{ Name = $Name; Columns = $Columns; Rows = @($Rows); Widths = $Widths; List = [bool]$List; LinkColumn = $LinkColumn }
+    param([string]$Name, [string[]]$Columns, [object[]]$Rows, [int[]]$Widths, [switch]$List, [int]$LinkColumn = -1,
+          [int[]]$WrapColumns = @(), [hashtable]$Choices = @{})
+    [pscustomobject]@{ Name = $Name; Columns = $Columns; Rows = @($Rows); Widths = $Widths; List = [bool]$List; LinkColumn = $LinkColumn
+        WrapColumns = $WrapColumns; Choices = $Choices }
 }
 
 function ConvertTo-XmlText {
@@ -167,6 +177,7 @@ function ConvertTo-SheetXml {
             $style = 0
             $ref = (Get-ColumnLetter ($i + 1)) + $rowNumber
             if (-not $Sheet.List -and $i -eq 0) { $style = 1 }   # Summary tab: the label column is bold
+            if ($Sheet.WrapColumns -contains $i) { $style = 3 }
             if ($linked.ContainsKey($ref)) { $style = 2 }
             [void]$xml.Append((ConvertTo-CellXml $ref $cells[$i] $style))
         }
@@ -176,6 +187,7 @@ function ConvertTo-SheetXml {
     if ($Sheet.List -and $Sheet.Columns.Count -gt 0) {
         [void]$xml.Append(('<autoFilter ref="A1:{0}{1}"/>' -f (Get-ColumnLetter $Sheet.Columns.Count), [Math]::Max(2, $rowNumber)))
     }
+    [void]$xml.Append((ConvertTo-ChoicesXml $Sheet ([Math]::Max(2, $rowNumber))))
     if ($Links.Count -gt 0) {
         [void]$xml.Append('<hyperlinks>')
         foreach ($link in $Links) { [void]$xml.Append(('<hyperlink ref="{0}" r:id="{1}"/>' -f $link.Ref, $link.Id)) }
@@ -183,6 +195,30 @@ function ConvertTo-SheetXml {
     }
     [void]$xml.Append('</worksheet>')
     return $xml.ToString()
+}
+
+function ConvertTo-ChoicesXml {
+    <#
+    .SYNOPSIS
+      The dropdown lists of one tab (ECMA-376 dataValidations, after autoFilter and before hyperlinks): one list per column
+      in Choices, for rows 2 to the last row; blank cells are allowed.
+    .PARAMETER Sheet
+      Output of New-XlsxSheet.
+    .PARAMETER LastRow
+      The last row number.
+    .OUTPUTS
+      [string] empty when the tab has no choices.
+    #>
+    param($Sheet, [int]$LastRow)
+    if (-not $Sheet.Choices -or $Sheet.Choices.Count -eq 0) { return '' }
+    $xml = '<dataValidations count="' + $Sheet.Choices.Count + '">'
+    foreach ($column in @($Sheet.Choices.Keys | Sort-Object)) {
+        $letter = Get-ColumnLetter ([int]$column + 1)
+        $list = (@($Sheet.Choices[$column]) | ForEach-Object { ([string]$_) -replace '[",]', '' }) -join ','
+        $xml += '<dataValidation type="list" allowBlank="1" showErrorMessage="1" sqref="{0}2:{0}{1}"><formula1>"{2}"</formula1></dataValidation>' -f
+            $letter, $LastRow, (ConvertTo-XmlText $list)
+    }
+    return $xml + '</dataValidations>'
 }
 
 function Get-SafeSheetNames {

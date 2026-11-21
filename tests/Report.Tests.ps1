@@ -30,7 +30,8 @@ Assert-Equal 'TeamA' (Split-Path (Split-Path $path -Parent) -Leaf) 'Saved in <si
 Assert-Equal $true ((Split-Path $path -Leaf) -match ('^Ion TeamA ' + (Get-Date -Format 'yyyy-MM-dd') + ' \d{4}( \(\d+\))?\.xlsx$')) 'Named Ion <site> <date time>.xlsx'
 $book = Get-XlsxSheets $path
 Assert-Equal 'Summary|SSN|Date of birth|Low confidence|Not scanned|Method' (@($book.Keys) -join '|') 'Tabs: Summary, types worst first, Low, Not scanned, Method last'
-$hitHeader = 'Confidence|Channel|File|Masked value|Context|Last saved|Link|Found in|Created|Created by|Last saved by|PII first saved|PII first saved by|History note'
+$hitHeader = 'Confidence|Channel|File|Masked value|Context|Last saved|Link|Found in|Created|Created by|Last saved by|PII first saved|PII first saved by|History note|' +
+    'Reviewed by|Review date|Is it PII?|Action taken|Reported to Privacy Manager'
 Assert-Equal $hitHeader ($book['SSN'][0] -join '|') 'Hit tab header, folder column named Channel for a team'
 Assert-Equal 'High|General|Roster.docx|***-**-6789' (($book['SSN'][1] | Select-Object -First 4) -join '|') 'SSN tab row'
 Assert-Equal 'Phone' $book['Low confidence'][1][0] 'Low hit in the Low confidence tab, with its type'
@@ -44,6 +45,8 @@ $zipBook = New-Object System.IO.Compression.ZipArchive($zipStream, [System.IO.Co
 try {
     $relsEntry = $zipBook.GetEntry('xl/worksheets/_rels/sheet2.xml.rels')
     $reader = New-Object System.IO.StreamReader($zipBook.GetEntry('xl/worksheets/sheet2.xml').Open()); $sheetXml = $reader.ReadToEnd(); $reader.Dispose()
+    $sheetCount = @($zipBook.Entries | Where-Object { $_.FullName -match '^xl/worksheets/sheet\d+\.xml$' }).Count
+    $reader = New-Object System.IO.StreamReader($zipBook.GetEntry(('xl/worksheets/sheet{0}.xml' -f $sheetCount)).Open()); $methodXml = $reader.ReadToEnd(); $reader.Dispose()
     $rels = ''
     if ($relsEntry) { $reader = New-Object System.IO.StreamReader($relsEntry.Open()); $rels = $reader.ReadToEnd(); $reader.Dispose() }
 }
@@ -108,12 +111,12 @@ $stopRows = @((New-ReportRow 'Scan' '(all)' '(scan)' '' '' 'INCOMPLETE' '' '' 'S
 $stopText = @(Get-ScanSummaryText -Rows $stopRows -ItemsScanned 7 -Header ([ordered]@{ Site = 'x' }) -FolderLabel 'Folder')
 Assert-Equal 'Alert|INCOMPLETE: the scan stopped early. Only the 7 files read are in these results; scan again.' `
     ($stopText[2].Kind + '|' + $stopText[2].Text) 'Stopped scan: a red line right under the Results heading'
-$wide = @(& (Get-Module Report) { Format-BoxTable @('Worst', 'File') @(, @('SSN', ('a' * 200))) 60 })
+$wide = @(& (Get-Module ScanMeter) { Format-BoxTable @('Worst', 'File') @(, @('SSN', ('a' * 200))) 60 })
 Assert-Equal 60 ($wide | ForEach-Object { $_.Length } | Measure-Object -Maximum).Maximum 'Table: no line wider than the window'
 Assert-Equal $true ($wide[3] -match '\.\.\. \|$') 'Table: the cut file path ends in ...'
 $keyText = (@(Get-ScanSummaryText -Rows $reportRows -ItemsScanned 2 -Header $header -FolderLabel 'Channel') | ForEach-Object { $_.Text }) -join "`n"
 Assert-Equal $true ($keyText -match '(?m)^High = labelled') 'Summary: the key to High, Medium and Low is under the type table'
-$narrow = @(& (Get-Module Report) { Format-BoxTable @('Reason', 'Files') @(, @(('r' * 115), 1)) 119 })
+$narrow = @(& (Get-Module ScanMeter) { Format-BoxTable @('Reason', 'Files') @(, @(('r' * 115), 1)) 119 })
 Assert-Equal $true (($narrow | ForEach-Object { $_.Length } | Measure-Object -Maximum).Maximum -le 127) 'Table: a narrow last column is never widened'
 Assert-Equal 0 @(& (Get-Module Report) { $script:ConfidenceKey } | Where-Object { $_.Length -gt 79 }).Count 'Summary: each confidence key line fits 80 characters'
 # The AFI reference of the breach advice is its own line on screen and its own row on the Summary tab (the PAM, 2026-11-21).
@@ -131,3 +134,16 @@ Assert-Equal $true $methodOk 'Method tab: how the columns are worked out, and th
 # A long site name is cut so the workbook path stays under 260 characters (review of PR 41).
 $longPath = & (Get-Module Report) { param($f) Get-ResultPath $f ('https://tenant.example.com/sites/' + ('a' * 150)) } $reportFolder
 Assert-Equal $true ((Split-Path $longPath -Leaf).Length -lt 70 -and $longPath.Length -lt ($reportFolder.Length + 120)) 'Long site name: cut in the folder and the file name'
+# C6 (the PAM, 2026-11-21): the review columns have dropdowns; the Method tab wraps its text; By account counts per account.
+$piiChoice = $sheetXml -match '<dataValidation type="list" allowBlank="1" showErrorMessage="1" sqref="Q2:Q\d+"><formula1>"Yes,No,Not sure"</formula1>'
+Assert-Equal $true $piiChoice `
+    'Review columns: "Is it PII?" has a Yes/No/Not sure dropdown'
+Assert-Equal $true ($sheetXml -match 'sqref="R2:R\d+"><formula1>"Removed,Moved,Access limited,Left \(not PII\),Other"') 'Review columns: "Action taken" has its dropdown'
+Assert-Equal $true ($methodXml -match '<c r="B2" s="3"') 'Method tab: the text column wraps (style 3)'
+$accountHits = @(
+    [pscustomobject]@{ AddedBy = 'a.one'; Channel = 'Ops'; Item = 'x.docx'; Confidence = 'High' },
+    [pscustomobject]@{ AddedBy = 'a.one'; Channel = 'Ops'; Item = 'x.docx'; Confidence = 'Low' },
+    [pscustomobject]@{ AddedBy = 'b.two'; Channel = 'Ops'; Item = 'y.docx'; Confidence = 'Medium' },
+    [pscustomobject]@{ AddedBy = 'Not recorded'; Channel = 'Ops'; Item = 'z.docx'; Confidence = 'High' })
+$accountRows = @(Get-AccountRows $accountHits)
+Assert-Equal 'a.one 1 1 0 1|b.two 1 0 1 0' (($accountRows | ForEach-Object { $_ -join ' ' }) -join '|') 'By account: files once per account, hits per confidence, most first, Not recorded left out'

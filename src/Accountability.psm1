@@ -295,6 +295,32 @@ function Get-DriveWho {
         HistoryNote = $script:DriveNoHistory }
 }
 
+function Get-AccountRows {
+    <#
+    .SYNOPSIS
+      The By account tab (C6, the PAM, 2026-11-21): one row per "PII first saved by" account, most hits first, with how
+      many files and how many High, Medium and Low hits it first saved. Each file counts once per account; "Not
+      recorded" and empty cells are left out. The same limits as the column apply (see the Method tab).
+    .PARAMETER Hits
+      The hit rows (High, Medium, Low).
+    .OUTPUTS
+      [object[]] rows: account, files, High, Medium, Low.
+    #>
+    param([object[]]$Hits)
+    $byAccount = @{}
+    foreach ($hit in $Hits) {
+        $account = ([string]$hit.AddedBy).Trim()
+        if (-not $account -or $account -eq $script:NotRecorded) { continue }
+        if (-not $byAccount.ContainsKey($account)) { $byAccount[$account] = @{ Files = @{}; High = 0; Medium = 0; Low = 0 } }
+        $entry = $byAccount[$account]
+        $entry.Files[$hit.Channel + '/' + $hit.Item] = $true
+        $entry[$hit.Confidence]++
+    }
+    $byAccount.GetEnumerator() | Sort-Object { $_.Value.High + $_.Value.Medium + $_.Value.Low } -Descending | ForEach-Object {
+        , @($_.Key, [int]$_.Value.Files.Count, [int]$_.Value.High, [int]$_.Value.Medium, [int]$_.Value.Low)
+    }
+}
+
 function Get-MethodRows {
     <#
     .SYNOPSIS
@@ -309,12 +335,15 @@ function Get-MethodRows {
     , @('SSN', ('Numbers the SSA never issues (000, 666 or 9xx first; 00 in the middle; 0000 last) are skipped. High: "SSN", "SSAN", ' +
         '"social security" or "soc sec" just before it. Medium: 3-2-4 digits with dashes or spaces. Low: 9 digits in a row.'))
     , @('DoD ID', 'A 10-digit number, found only with a label just before it ("DoD ID", "DODID", "EDIPI", "CAC", "DoD #", "DoD number"): always High.')
-    , @('Date of birth', 'A date, found only with a label just before it ("DOB", "D.O.B.", "date of birth", "birth date", "birthdate", "born"): always High.')
-    , @('Payment card', ('Medium: 13 to 19 digits with a card network''s first digits that pass the card check digit (Luhn). ' +
+    , @('Date of birth', ('A date written as 1/2/1990, 01-02-90, 1990-01-02, 2 Jan 1990, 02JAN1990 or January 2, 1990, found only with a label ' +
+        'just before it ("DOB", "D.O.B.", "date of birth", "birth date", "birthdate", "born"): always High. Other date forms are not found.'))
+    , @('Payment card', ('Medium: 13 to 19 digits (the length each card network uses), starting with that network''s digits, and the whole ' +
+        'number passes the card check digit (Luhn). ' +
         'High: the same with a card word ("card", "Visa", "Amex", "GTC", "GPC" ...) before it.'))
     , @('Passport', 'Found only with "passport" just before it: always Medium.')
     , @('Phone', ('A US number written with separators: (###) ###-####, ###-###-####, ###.###.#### or ### ### ####; 10 digits in a row ' +
-        'are not found. Low: no label (office numbers are common). Medium: "cell", "mobile", "home", "personal" or "my number" just before it.'))
+        'are not found; a +1 in front is allowed. Low: no label (office numbers are common). Medium: "cell", "mobile", "home", "personal", ' +
+        '"my number" or "my phone" just before it.'))
     , @('Personal e-mail', 'Low: an address that does not end in .gov or .mil. Medium: a personal mail service (Gmail, Yahoo and the like).')
     , @('Home address', 'Low: number, street name and street type. Medium: it ends with a state and ZIP code. High: "home address" or similar before it.')
     , @('Name', 'Low: a name after "Name:", "Member:", "Spouse:" and the like. High: the same, with an SSN, DoD ID, date of birth, passport or card number close by.')
@@ -326,8 +355,8 @@ function Get-MethodRows {
     , @('PII first saved, PII first saved by', (('Ion reads the file''s SharePoint version history, oldest first (at most {0} versions), and finds ' +
         'the first version whose text holds the same type and masked value. These columns name the account that saved that version, and when. ' +
         'If every older version was read and none holds the value, they name the current version (the same as Last saved). If the file has no ' +
-        'older versions at all (version history off or never used), they name the file''s creator. If not every version could be read, they ' +
-        'say "Not recorded".') -f $script:MaxVersionsRead))
+        'older versions at all (version history off or never used), they name the file''s creator. If not every version could be read and none ' +
+        'read holds the value, they say "Not recorded"; if a later version holds it, that version is named with a note that it may be earlier.') -f $script:MaxVersionsRead))
     , @('What that shows', ('SharePoint records which account saved each version. So these columns show which account first saved a version ' +
         'that holds the value: strong evidence, not proof of who typed it.'))
     , @('Why it can be wrong', ('The person who saves or uploads a file is not always the one who wrote the text: it may be pasted from an e-mail, ' +
@@ -335,10 +364,15 @@ function Get-MethodRows {
         'been deleted. Two different values can look the same once masked (for example the same last 4 digits). A file copied in starts a new ' +
         'history. A drive keeps no history at all.'))
     , @('History note', ('Says how sure the two columns are: no version history; not in the versions read; a version that could not be read; ' +
-        'a value removed and put back; more versions than were read; "No older version: the file''s creator is named"; or "In no older ' +
-        'version: the current version is named".'))
+        'a value removed and put back; more versions than were read; "No older version: the file''s creator is named"; "In no older ' +
+        'version: the current version is named"; or, on a drive, "A drive keeps no file history".'))
     , @('Before you name a person', ('Open the file in SharePoint > Version history. Open the version Ion names and the one before it, and check ' +
         'that the full value first appears in that version.'))
+    , @('By account tab', ('How many files and hits each "PII first saved by" account first saved, most first: a list of whom to contact first. ' +
+        'It has the same limits as that column: evidence, not proof.'))
+    , @('')
+    , @('Review columns', ('Reviewed by, Review date, Is it PII?, Action taken and Reported to Privacy Manager are for you to fill in as you ' +
+        'check each hit. Ion leaves them empty. The last three have a dropdown list.'))
 }
 
-Export-ModuleMember -Function Get-PersonText, Get-SharePointWho, Find-PiiAddedVersion, Get-DriveWho, Get-MethodRows
+Export-ModuleMember -Function Get-PersonText, Get-SharePointWho, Find-PiiAddedVersion, Get-DriveWho, Get-AccountRows, Get-MethodRows
