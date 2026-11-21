@@ -161,6 +161,8 @@ Reset-FakePnP @{ "$library/General/large.txt" = $largeFile }
 $failRows = New-Object System.Collections.Generic.List[object]
 Assert-Equal 1 (Invoke-FileScan -Library $lib -Channels @('General') -SiteUrl $Sample.Site -MaxFileMB 25 -Rows $failRows 6>$null) 'Stream fails: the normal download is used'
 Assert-Equal $true ((Get-FakeProgressText) -match 'no byte count') 'Stream fails: the bar says it has no byte count'
+Assert-Equal 1 @($failRows | Where-Object { $_.Detector -eq 'Phone' }).Count 'Stream fails: the PII is still found'
+Assert-Equal $false (& $channelScan { $script:DirectDownload }) 'Stream fails: no more streamed downloads in this scan'
 # A '#' in the path: the normal download, the stream stays on for other files.
 & $channelScan { $script:OpenDirectStream = { param($url) Get-FakeFileStream $url } }
 Reset-FakePnP @{ "$library/General/a #1.txt" = $largeFile }
@@ -173,7 +175,6 @@ Reset-FakePnP @{}
 $waitQueue = @{ Activity = 'Scanning files - folder 1 of 1'; Meter = (New-ScanMeter 4) }
 & (Get-Module ScanQueue) { param($q) Write-WaitBar $q 3 } $waitQueue
 Assert-Equal $true ((Get-FakeProgressText) -match 'Reading 3 files') 'Workers busy: the scan bar says how many files are being read'
-
 
 # A file named after an SSN: reported as a hit, and neither the item nor the link shows the SSN.
 $nameRows = @($rows | Where-Object { $_.Source -eq 'File name' })

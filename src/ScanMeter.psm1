@@ -10,8 +10,8 @@ ScanMeter.psm1 - the progress bars and the per-folder lines of a scan: counts on
   Depends on:  PiiMasking.psm1 (Protect-PiiName), Report.psm1 (Write-Ui), imported first by Find-ChannelPII.ps1.
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7).
-  Network:     none.
-  Writes:      none (screen only; a download it is handed is read into memory).
+  Network:     none of its own: it reads a download stream that ChannelScan.psm1 opens.
+  Writes:      none (screen only).
   Credentials: none.
 #>
 

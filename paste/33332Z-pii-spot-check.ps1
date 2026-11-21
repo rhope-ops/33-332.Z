@@ -32,10 +32,10 @@
     src/ReaderPool.psm1, sha256 8f8f73fda166
     src/XlsxWriter.psm1, sha256 e29becdc6a65
     src/Report.psm1, sha256 9a6fbc1c5935
-    src/ScanMeter.psm1, sha256 861bfca4b440
+    src/ScanMeter.psm1, sha256 739747d75471
     src/ScanQueue.psm1, sha256 37e83cec1fd9
     src/Accountability.psm1, sha256 6a1d334dbbe3
-    src/ChannelScan.psm1, sha256 8560dc75b285
+    src/ChannelScan.psm1, sha256 b0c58f9fd643
     src/DriveScan.psm1, sha256 59ea6a456910
     src/Find-ChannelPII.ps1, sha256 b2d6bfd7a72b
 
@@ -4668,8 +4668,8 @@ ScanMeter.psm1 - the progress bars and the per-folder lines of a scan: counts on
   Depends on:  PiiMasking.psm1 (Protect-PiiName), Report.psm1 (Write-Ui), imported first by Find-ChannelPII.ps1.
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7).
-  Network:     none.
-  Writes:      none (screen only; a download it is handed is read into memory).
+  Network:     none of its own: it reads a download stream that ChannelScan.psm1 opens.
+  Writes:      none (screen only).
   Credentials: none.
 #>
 
@@ -5855,9 +5855,9 @@ function Get-FileBytes {
       Downloads one file into memory (never to disk).
     .DESCRIPTION
       A file large enough for the per-file bar is read from SharePoint as a stream (a read: HTTP GET of the file on the
-      signed-in connection, same site, same rights), a chunk at a time, so the bar shows the MB done. If that fails, or for a small file, Get-PnPFile -AsMemoryStream gives the
-      whole file in one call; if this PnP version has no such switch, the SharePoint client call OpenBinaryStream on
-      the same connection does.
+      signed-in connection, same site, same rights), a chunk at a time, so the bar shows the MB done. If that fails,
+      or for a small file, Get-PnPFile -AsMemoryStream gives the whole file in one call; if this PnP version has no
+      such switch, the SharePoint client call OpenBinaryStream on the same connection does.
     .PARAMETER ServerRelativeUrl
       /sites/<name>/<library>/<folder>/<file>
     .PARAMETER Size

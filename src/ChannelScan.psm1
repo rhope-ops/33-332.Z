@@ -359,9 +359,9 @@ function Get-FileBytes {
       Downloads one file into memory (never to disk).
     .DESCRIPTION
       A file large enough for the per-file bar is read from SharePoint as a stream (a read: HTTP GET of the file on the
-      signed-in connection, same site, same rights), a chunk at a time, so the bar shows the MB done. If that fails, or for a small file, Get-PnPFile -AsMemoryStream gives the
-      whole file in one call; if this PnP version has no such switch, the SharePoint client call OpenBinaryStream on
-      the same connection does.
+      signed-in connection, same site, same rights), a chunk at a time, so the bar shows the MB done. If that fails,
+      or for a small file, Get-PnPFile -AsMemoryStream gives the whole file in one call; if this PnP version has no
+      such switch, the SharePoint client call OpenBinaryStream on the same connection does.
     .PARAMETER ServerRelativeUrl
       /sites/<name>/<library>/<folder>/<file>
     .PARAMETER Size
