@@ -356,6 +356,16 @@ $madeUpRead = Get-TextFromBytes -Bytes $madeUp -FileName 'm.pdf'
 Assert-Equal 'end|True' ($madeUpRead.Text.Trim() + '|' + ($madeUpRead.Note -match 'could not be read')) `
     'PDF: made-up glyph names (in an encoding object) read as spaces with a check-by-hand note; other codes as before'
 
+# Review of PR 34: a picture font with glyph names still reads as spaces; real names this table lacks read as before.
+$pictureNamed = New-PdfBytes "BT /F1 12 Tf ($digits) Tj ET" -Plain -FontDict '<< /Type /Font /Subtype /Type1 /BaseFont /ZapfDingbats /Encoding << /Differences [32 /space] >> >>'
+Assert-Equal '' (Get-TextFromBytes -Bytes $pictureNamed -FileName 'pn.pdf').Text.Trim() 'PDF: a picture font with glyph names still reads as spaces'
+$latin1 = [System.Text.Encoding]::GetEncoding(28591)
+$signs = New-PdfBytes ('BT /F1 12 Tf (Acme' + $latin1.GetString([byte[]]@(169)) + ' 5' + $latin1.GetString([byte[]]@(177)) + '1 ' + $latin1.GetString([byte[]]@(161)) + ') Tj ET') -Plain `
+    -FontDict '<< /Type /Font /Subtype /Type1 /BaseFont /X /Encoding << /BaseEncoding /WinAnsiEncoding /Differences [161 /Aogonek 169 /copyright 177 /plusminus] >> >>'
+$signsRead = Get-TextFromBytes -Bytes $signs -FileName 'sg.pdf'
+Assert-Equal ('Acme' + [char]0xA9 + ' 5' + [char]0xB1 + '1 ' + [char]0x104 + '|') ($signsRead.Text.Trim() + '|' + $signsRead.Note) `
+    'PDF: real glyph names the table lacks read as before, accents with ogonek read, no note'
+
 # ---- PDF review round 9 (2026-11-21): gaps decided per text block ----
 # Places text glyph by glyph as a PDF writer does: each move is the glyph's real Helvetica width at 12 pt plus the
 # letter spacing (in points).

@@ -40,7 +40,11 @@ foreach ($pair in @(@('AE', 0xC6), @('ae', 0xE6), @('Oslash', 0xD8), @('oslash',
 }
 
 # The combining marks of accented glyph names (eacute = e + U+0301).
-$script:GlyphMarks = @{ acute = 0x301; grave = 0x300; circumflex = 0x302; dieresis = 0x308; tilde = 0x303; ring = 0x30A; cedilla = 0x327; caron = 0x30C }
+$script:GlyphMarks = @{ acute = 0x301; grave = 0x300; circumflex = 0x302; dieresis = 0x308; tilde = 0x303; ring = 0x30A; cedilla = 0x327; caron = 0x30C
+    macron = 0x304; breve = 0x306; ogonek = 0x328; dotaccent = 0x307; hungarumlaut = 0x30B; commaaccent = 0x326 }
+# A made-up glyph name: up to 5 letters, then a number (g12, a3, G1, cid34, glyph7, index5), with an optional suffix.
+# Not afii plus a number: the Adobe names of Cyrillic and other letters.
+$script:MadeUpGlyphName = '^(?!afii)[A-Za-z]{1,5}\d+(?:\..*)?$'
 
 $script:PictureFontPattern = '(?i)wingdings|webdings|dingbats|marlett|(?:^|\+)symbol(?:mt)?(?:$|[,-])'
 
@@ -173,8 +177,8 @@ function Get-PdfDifferences {
     <#
     .SYNOPSIS
       The /Differences of a simple font's /Encoding (in the font, or in an encoding object of its own): code -> text by
-      glyph name. A name that is not a standard one (a made-up name such as /g12 or /a3, as subset and Type3 fonts use)
-      maps to $null: its glyph cannot be read. Without them, codes were read as Latin-1 and gave nonsense letters and
+      glyph name. A made-up name (letters and a number, such as /g12, /a3 or /cid34, as subset and Type3 fonts use) maps
+      to $null: its glyph cannot be read. Any other name this table does not know is left out: its code reads as before. Without them, codes were read as Latin-1 and gave nonsense letters and
       signs (the PAM, 2026-11-21: "Wingdings"-like text from a PDF with no Wingdings font).
     .PARAMETER Dict
       The font dictionary.
@@ -193,7 +197,15 @@ function Get-PdfDifferences {
     $code = 0
     foreach ($token in [regex]::Matches($array, '(\d+)|/([^\s/\[\]()<>]+)')) {
         if ($token.Groups[1].Success) { $code = [int]$token.Groups[1].Value; continue }
-        if ($code -le 255) { $glyphs[$code] = Get-PdfGlyphNameText $token.Groups[2].Value }
+        # A name can hold #xx escapes (/a#20b = "a b", ISO 32000-1, 7.3.5).
+        $name = [regex]::Replace($token.Groups[2].Value, '#([0-9A-Fa-f]{2})',
+            [System.Text.RegularExpressions.MatchEvaluator] { param($m) [string][char][Convert]::ToInt32($m.Groups[1].Value, 16) })
+        if ($code -le 255) {
+            $text = Get-PdfGlyphNameText $name
+            if ($null -ne $text) { $glyphs[$code] = $text }
+            elseif ($name -match $script:MadeUpGlyphName) { $glyphs[$code] = $null }
+            else { [void]$glyphs.Remove($code) }   # a real name this table does not know: the code reads as Latin-1
+        }
         $code++
     }
     return $glyphs
@@ -202,8 +214,8 @@ function Get-PdfDifferences {
 function Get-PdfGlyphNameText {
     <#
     .SYNOPSIS
-      The text of a standard glyph name (Adobe Glyph List names for the letters, digits and common signs; uniXXXX and
-      uXXXX; a suffix such as .sc is dropped); $null for any other name.
+      The text of a standard glyph name (Adobe Glyph List names for the letters, digits and common signs; accented
+      letters; uniXXXX and uXXXX; a suffix such as .sc is dropped); $null for a name this table does not know.
     .PARAMETER Name
       The glyph name, without its slash.
     .OUTPUTS
@@ -214,7 +226,7 @@ function Get-PdfGlyphNameText {
     if ($base -cmatch '^[A-Za-z]$') { return $base }
     if ($script:GlyphNames.ContainsKey($base)) { return $script:GlyphNames[$base] }
     # An accented letter: the letter and its mark (eacute = e + acute), joined into one character.
-    $accent = [regex]::Match($base, '^([A-Za-z])(acute|grave|circumflex|dieresis|tilde|ring|cedilla|caron)$')
+    $accent = [regex]::Match($base, '^([A-Za-z])(acute|grave|circumflex|dieresis|tilde|ring|cedilla|caron|macron|breve|ogonek|dotaccent|hungarumlaut|commaaccent)$')
     if ($accent.Success) { return ($accent.Groups[1].Value + [string][char]$script:GlyphMarks[$accent.Groups[2].Value]).Normalize() }
     if ($base -match '^uni([0-9A-Fa-f]{4})$' -or $base -match '^u([0-9A-Fa-f]{4,5})$') {
         $value = [Convert]::ToInt32($Matches[1], 16)
@@ -320,9 +332,10 @@ function ConvertFrom-PdfGlyphs {
       A font record, or $null.
     #>
     param([string]$Raw, $Font)
-    if ($Font -and -not $Font.CMap -and $Font.ContainsKey('Glyphs') -and $Font.Glyphs) { return ConvertFrom-PdfNamedGlyphs $Raw $Font }
     # A picture font (Wingdings and the like): one space per glyph, so its symbols never read as PII (the PAM, 2026-11-21).
+    # First, before its glyph names: a picture font's codes are never letters.
     if ($Font -and $Font.ContainsKey('Picture') -and $Font.Picture) { return ' ' * [int][Math]::Ceiling($Raw.Length / [Math]::Max(1, [int]$Font.Bytes)) }
+    if ($Font -and -not $Font.CMap -and $Font.ContainsKey('Glyphs') -and $Font.Glyphs) { return ConvertFrom-PdfNamedGlyphs $Raw $Font }
     if (-not $Font -or -not $Font.CMap) { return $Raw }
     $cmap = $Font.CMap
     if ($cmap.ContainsKey('Unreadable')) {
