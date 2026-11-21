@@ -27,8 +27,8 @@ Assert-Equal 0 (Get-HitSummary "tracking $($Sample.DodId) shipped").Count '10 di
 # A CAC name in a digital signature block is a DoD ID, never an SSN, also when the digits are drawn with gaps (the PAM, 2026-11-21).
 $cacName = 'DOE' + '.' + 'JANE' + '.Q.'
 $spacedId = ($Sample.DodId.Substring(0, 3) + ' ' + $Sample.DodId.Substring(3, 2) + ' ' + $Sample.DodId.Substring(5, 4) + ' ' + $Sample.DodId.Substring(9))
-Assert-Equal 'DoD ID/High/******7890' ((Get-HitSummary "Digitally signed by $cacName$($Sample.DodId)") -join ',') 'CAC name: the DoD ID, no SSN'
-Assert-Equal 'DoD ID/High/******7890' ((Get-HitSummary "Digitally signed by $cacName$spacedId Date: 2026.11.20") -join ',') 'CAC name, digits with gaps: the DoD ID, no SSN'
+Assert-Equal 'DoD ID/Low/******7890' ((Get-HitSummary "Digitally signed by $cacName$($Sample.DodId)") -join ',') 'CAC name: the DoD ID, no SSN'
+Assert-Equal 'DoD ID/Low/******7890' ((Get-HitSummary "Digitally signed by $cacName$spacedId Date: 2026.11.20") -join ',') 'CAC name, digits with gaps: the DoD ID, no SSN'
 Assert-Equal 0 (Get-HitSummary ('Digitally signed by ' + $Sample.DodId.Substring(0, 9) + ' ' + $Sample.DodId.Substring(9) + ' Date')).Count 'Signature: 9 digits then one more after a space: no SSN'
 Assert-Equal 'SSN/High/***-**-6789' ((Get-HitSummary "SSN: $($Sample.Ssn) 2 copies") -join ',') 'A labelled SSN with a number after it is still found'
 $bareSsnX = $Sample.Ssn -replace '-', ''
@@ -39,7 +39,7 @@ foreach ($case in @("assigned $bareSsnX 1 slot", "Unsigned $($Sample.Ssn -replac
 foreach ($word in @('Acct.No.', 'Ref.No.', 'REF.NO.', 'backup.config.', 'Ph.No.')) {
     Assert-Equal 0 @(Get-HitSummary ($word + $Sample.DodId) | Where-Object { $_ -like 'DoD ID/*' }).Count "No CAC name: $word"
 }
-Assert-Equal 'DoD ID/High/******7890' ((Get-HitSummary ('DOE' + '.J.' + $Sample.DodId)) -join ',') 'CAC name with a one-letter first name'
+Assert-Equal 'DoD ID/Low/******7890' ((Get-HitSummary ('DOE' + '.J.' + $Sample.DodId)) -join ',') 'CAC name with a one-letter first name'
 # Review of PR 49: an unlabelled SSN next to a row number, a date, initials or an abbreviation is still found.
 $bareSsn = $Sample.Ssn -replace '-', ''
 foreach ($case in @("Row 12 $($Sample.Ssn) DOE JANE", "1 $($Sample.Ssn)", "$($Sample.Ssn) 05/12/1990", "SMITH, J.A. $($Sample.Ssn)",

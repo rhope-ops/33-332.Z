@@ -18,6 +18,9 @@ ScanQueue.psm1 - turns the reader pool's results into report rows, in the order 
 
 Set-StrictMode -Version 2.0
 
+# The "PII first saved" cells of a hit whose version history is not read (an e-signature DoD ID).
+$script:NotLookedUp = 'Not looked up'
+
 function New-ScanQueue {
     <#
     .SYNOPSIS
@@ -177,10 +180,35 @@ function Add-WhoToRows {
     if ($Info.ContainsKey('DrivePath')) { $who = Get-DriveWho $Info.DrivePath $props }
     elseif ($Info.ContainsKey('Who')) {
         $who = $Info.Who.Clone()
-        if ($Info.ContainsKey('Added') -and $Result.Hits.Count -gt 0) { $who.ByHit = (& $Info.Added $Result.Hits) }
+        if ($Info.ContainsKey('Added') -and $Result.Hits.Count -gt 0) { $who.ByHit = Get-AddedByHit $Info $Result.Hits }
     }
     else { return }
     Set-RowAccountability $FileRows $who
+}
+
+function Get-AddedByHit {
+    <#
+    .SYNOPSIS
+      Who first saved each hit, from the version history, except for a DoD ID in an e-signature (the only Low DoD ID):
+      its history is not read, so a file with only such hits costs no version reads (the PAM, 2026-11-21).
+    .PARAMETER Info
+      The file's queue info (Added: the version-history lookup).
+    .PARAMETER Hits
+      The file's hits.
+    .OUTPUTS
+      [hashtable] "type|masked value" -> @{ AddedOn; AddedBy; Note }.
+    #>
+    param([hashtable]$Info, [object[]]$Hits)
+    # True for an e-signature DoD ID (the only Low DoD ID).
+    $signature = { param($hit) $hit.Detector -eq 'DoD ID' -and $hit.Confidence -eq 'Low' }
+    $looked = @($Hits | Where-Object { -not (& $signature $_) })
+    $byHit = @{}
+    if ($looked.Count -gt 0) { $byHit = & $Info.Added $looked }
+    foreach ($hit in @($Hits | Where-Object { & $signature $_ })) {
+        $byHit[[string]$hit.Detector + '|' + [string]$hit.MaskedValue] = @{ AddedOn = $script:NotLookedUp; AddedBy = $script:NotLookedUp
+            Note = 'A DoD ID in an e-signature: the version history is not read for it' }
+    }
+    return $byHit
 }
 
 function Wait-ScanQueue {

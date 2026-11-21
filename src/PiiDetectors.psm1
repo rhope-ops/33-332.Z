@@ -257,7 +257,7 @@ function Find-DodIdHits {
     .PARAMETER Text
       The text to search.
     .OUTPUTS
-      Hit objects (New-PiiHit), always High.
+      Hit objects (New-PiiHit): High with a label; Low at the end of a CAC name (an e-signature).
     #>
     param([string]$Text)
     $labels = 'DoD\s*ID|DODID|EDIPI|\bCAC\b|DoD\s*(?:ID\s*)?(?:#|no\.?|number)'
@@ -265,11 +265,12 @@ function Find-DodIdHits {
         if (Test-KeywordBefore $Text $m.Index $labels) { New-PiiHit 'DoD ID' 'High' $m.Index $m.Value }
     }
     # A CAC name, as a digital signature shows it: LAST.FIRST.MIDDLE. then the DoD ID (the digits may be drawn with single
-    # spaces between them). The name itself is the label (the PAM's gov run, 2026-11-21).
+    # spaces between them): Low, the only Low DoD ID, so the scan reads no version history for it (the PAM, 2026-11-21:
+    # "Low tab, no history").
     foreach ($m in [regex]::Matches($Text, $script:CacNamePattern)) {
         $digits = $m.Groups['id']
         if (Test-KeywordBefore $Text $digits.Index $labels) { continue }   # already found above, with its label
-        New-PiiHit 'DoD ID' 'High' $digits.Index $digits.Value
+        New-PiiHit 'DoD ID' 'Low' $digits.Index $digits.Value
     }
 }
 
