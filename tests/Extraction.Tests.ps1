@@ -514,3 +514,20 @@ for ($z = 0; $z + 3 -lt $oddName.Length; $z++) {
 for ($z = 0; $z + 1 -lt $oddName.Length; $z++) { if ($oddName[$z] -eq [byte][char]'X' -and $oddName[$z + 1] -eq [byte][char]'s') { $oddName[$z] = 0x82 } }
 $oddPart = (Get-TextFromBytes -Bytes $oddName -FileName 'o.zip').Parts.ToArray()[0]
 Assert-Equal $true ($oddPart.Reason -match '^Encrypted') 'Zip: an encrypted entry with a non-UTF-8 name is named encrypted'
+# Third review of PR 19: past the entry limit an encrypted file still gives the "more files" reason.
+$limitZip = New-ZipBytes ([ordered]@{ 'a.txt' = 'plain'; 'secret.txt' = $ssnLine })
+$seen = 0
+for ($z = 0; $z + 3 -lt $limitZip.Length; $z++) {
+    if ($limitZip[$z] -eq 0x50 -and $limitZip[$z + 1] -eq 0x4B -and $limitZip[$z + 2] -eq 1 -and $limitZip[$z + 3] -eq 2) { if ((++$seen) -eq 2) { $limitZip[$z + 8] = $limitZip[$z + 8] -bor 1 } }
+}
+& (Get-Module ContainerText) { $script:MaxArchiveEntries = 1 }
+$limitParts = (Get-TextFromBytes -Bytes $limitZip -FileName 'lim.zip').Parts.ToArray()
+& (Get-Module ContainerText) { $script:MaxArchiveEntries = 2000 }
+Assert-Equal 1 @($limitParts | Where-Object { $_.Reason -match '^More than 1 files' }).Count 'Zip: an encrypted file past the limit gives the more-files reason'
+# A header given twice keeps both values; Content-Description is read as text.
+$twice = "Comments: SSN $($Sample.Ssn)`r`nComments: second`r`nSubject: s`r`n`r`nbody`r`n"
+$twiceText = ((Get-TextFromBytes -Bytes ([System.Text.Encoding]::ASCII.GetBytes($twice)) -FileName 't.eml').Parts.ToArray() | ForEach-Object { $_.Text }) -join ' '
+Assert-Equal $true (@(Find-PiiInText $twiceText | ForEach-Object { $_.Detector }) -contains 'SSN') 'EML: a header given twice keeps both values'
+$described = "Content-Type: multipart/mixed; boundary=`"D`"`r`n`r`n--D`r`nContent-Description: SSN $($Sample.Ssn)`r`nContent-Type: text/plain`r`n`r`nbody`r`n--D--`r`n"
+$describedText = ((Get-TextFromBytes -Bytes ([System.Text.Encoding]::ASCII.GetBytes($described)) -FileName 'c.eml').Parts.ToArray() | ForEach-Object { $_.Text }) -join ' '
+Assert-Equal $true (@(Find-PiiInText $describedText | ForEach-Object { $_.Detector }) -contains 'SSN') 'EML: Content-Description is read as text'

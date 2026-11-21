@@ -21,7 +21,7 @@
     src/PiiMasking.psm1, sha256 752c251a94b2
     src/OcrText.psm1, sha256 a39acab441d4
     src/OleText.psm1, sha256 84041f86a020
-    src/ContainerText.psm1, sha256 45d2b7bccb22
+    src/ContainerText.psm1, sha256 70040fc21445
     src/PdfCore.psm1, sha256 da11bdba883c
     src/PdfObjects.psm1, sha256 4479101a8f3e
     src/PdfFonts.psm1, sha256 604c4d61b80a
@@ -47,18 +47,18 @@
     line   763  Module OcrText.psm1
     line   916  Module OleText.psm1
     line  1025  Module ContainerText.psm1
-    line  1341  Module PdfCore.psm1
-    line  1700  Module PdfObjects.psm1
-    line  2058  Module PdfFonts.psm1
-    line  2479  Module PdfLayout.psm1
-    line  2619  Module PdfText.psm1
-    line  3112  Module TextExtract.psm1
-    line  3495  Module XlsxWriter.psm1
-    line  3766  Module Report.psm1
-    line  4300  Module ScanMeter.psm1
-    line  4565  Module ChannelScan.psm1
-    line  5153  Body of Find-ChannelPII.ps1
-    line  5254  Clean-up
+    line  1346  Module PdfCore.psm1
+    line  1705  Module PdfObjects.psm1
+    line  2063  Module PdfFonts.psm1
+    line  2484  Module PdfLayout.psm1
+    line  2624  Module PdfText.psm1
+    line  3117  Module TextExtract.psm1
+    line  3500  Module XlsxWriter.psm1
+    line  3771  Module Report.psm1
+    line  4305  Module ScanMeter.psm1
+    line  4570  Module ChannelScan.psm1
+    line  5158  Body of Find-ChannelPII.ps1
+    line  5259  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -1050,6 +1050,9 @@ $script:MaxArchiveBytes = 200MB
 $script:MaxMimeDepth = 5
 # Parts read from one e-mail (a hostile message can hold hundreds of thousands); the count of the one in work.
 $script:MaxMimeParts = 500
+# Headers that hold no message text (how a part is coded, and mail-server stamps and signatures): not read as text.
+$script:NoTextHeaders = @('content-type', 'content-transfer-encoding', 'content-disposition', 'content-id', 'mime-version',
+    'received', 'dkim-signature', 'authentication-results', 'received-spf')
 $script:MimeParts = 0
 
 # Bytes as characters one to one, so a message can be cut with string functions and decoded part by part.
@@ -1107,11 +1110,11 @@ function Get-ZipEncryptedFlags {
     if ($end -lt 0) { return $null }
     [long]$count = [BitConverter]::ToUInt16($Bytes, $end + 10)
     [long]$offset = [BitConverter]::ToUInt32($Bytes, $end + 16)
-    if (($count -eq 0xFFFF -or $offset -eq 0xFFFFFFFF) -and $end -ge 20) {   # Zip64: the locator before the end record
+    if (($count -eq 65535 -or $offset -eq 4294967295) -and $end -ge 20) {   # decimal: 0xFFFFFFFF would read as -1   # Zip64: the locator before the end record
         $locator = $end - 20
         if ($Bytes[$locator] -ne 0x50 -or $Bytes[$locator + 1] -ne 0x4B -or $Bytes[$locator + 2] -ne 6 -or $Bytes[$locator + 3] -ne 7) { return $null }
         $zip64 = [BitConverter]::ToInt64($Bytes, $locator + 8)
-        if ($zip64 -lt 0 -or $zip64 + 56 -gt $Bytes.Length) { return $null }
+        if ($zip64 -lt 0 -or $zip64 + 56 -gt $Bytes.Length -or [BitConverter]::ToUInt32($Bytes, [int]$zip64) -ne 0x06064B50) { return $null }
         $count = [BitConverter]::ToInt64($Bytes, $zip64 + 32); $offset = [BitConverter]::ToInt64($Bytes, $zip64 + 48)
     }
     $flags = New-Object System.Collections.Generic.List[bool]
@@ -1149,14 +1152,11 @@ function Get-ArchiveParts {
             $index++
             if (-not $entry.Name) { continue }   # a folder
             $count++
-            if ($null -ne $encrypted -and $encrypted[$index]) {
-                if ($count -le $script:MaxArchiveEntries) { New-Part $entry.FullName -Reason 'Encrypted (password-protected) in the archive: check by hand' }
-                continue
-            }
             if ($count -gt $script:MaxArchiveEntries) {
                 New-Part '(more files)' -Reason "More than $script:MaxArchiveEntries files in this archive: the rest is not scanned: check by hand"
                 break
             }
+            if ($null -ne $encrypted -and $encrypted[$index]) { New-Part $entry.FullName -Reason 'Encrypted (password-protected) in the archive: check by hand'; continue }
             if ($entry.Length -gt $script:MaxEntryBytes -or $total + $entry.Length -gt $script:MaxArchiveBytes) {
                 New-Part $entry.FullName -Reason 'Too large to unpack in memory: check by hand'
                 continue
@@ -1190,7 +1190,12 @@ function Split-MimeEntity {
     $headers = @{}
     foreach ($line in (($head -replace '\r?\n[ \t]+', ' ') -split '\r?\n')) {
         $colon = $line.IndexOf(':')
-        if ($colon -gt 0) { $headers[$line.Substring(0, $colon).Trim().ToLower()] = $line.Substring($colon + 1).Trim() }
+        if ($colon -le 0) { continue }
+        $name = $line.Substring(0, $colon).Trim().ToLower(); $value = $line.Substring($colon + 1).Trim()
+        # A name given twice keeps both values (a second Comments: line must not hide the first); a content header
+        # keeps its first, which decides how the part is read.
+        if (-not $headers.ContainsKey($name)) { $headers[$name] = $value }
+        elseif ($name -notlike 'content-*') { $headers[$name] = $headers[$name] + "`n" + $value }
     }
     return @{ Headers = $headers; Body = $body }
 }
@@ -1254,8 +1259,8 @@ function ConvertFrom-EncodedWords {
 function Get-HeaderLines {
     <#
     .SYNOPSIS
-      The headers of a message or part as "Name: value" lines, encoded words decoded; the content headers (type,
-      encoding, disposition, ID) and MIME-Version left out, as they hold no text of the message.
+      The headers of a message or part as "Name: value" lines, encoded words decoded; the headers in $NoTextHeaders
+      and ARC-* left out, as they hold no text of the message (Content-Description is kept: it is free text).
     .PARAMETER Headers
       The headers of Split-MimeEntity (names in lower case).
     .OUTPUTS
@@ -1263,7 +1268,7 @@ function Get-HeaderLines {
     #>
     param([hashtable]$Headers)
     foreach ($name in @($Headers.Keys | Sort-Object)) {
-        if ($name -like 'content-*' -or $name -eq 'mime-version') { continue }
+        if ($script:NoTextHeaders -contains $name -or $name -like 'arc-*') { continue }
         (Get-Culture).TextInfo.ToTitleCase($name) + ': ' + (ConvertFrom-EncodedWords $Headers[$name])
     }
 }
