@@ -40,7 +40,7 @@ READERS = ('src/PiiDetectors.psm1', 'src/PiiMasking.psm1', 'src/OcrText.psm1', '
            'src/PdfCore.psm1', 'src/PdfObjects.psm1', 'src/PdfFonts.psm1', 'src/PdfLayout.psm1', 'src/PdfText.psm1', 'src/TextExtract.psm1',
            'src/ReaderPool.psm1')
 MODULES = READERS + ('src/XlsxWriter.psm1', 'src/Report.psm1', 'src/ScanMeter.psm1', 'src/ScanQueue.psm1', 'src/Accountability.psm1',
-                     'src/ChannelScan.psm1', 'src/DriveScan.psm1')
+                     'src/SiteTarget.psm1', 'src/ChannelScan.psm1', 'src/DriveScan.psm1')
 READER_START = """# ==== Reader modules ==== (one script block: this script loads it as an in-memory module, and each reader
 # worker loads the same text; nothing is read from a file)
 $IonReaderBlock = {

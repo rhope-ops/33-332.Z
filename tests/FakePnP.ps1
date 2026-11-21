@@ -41,6 +41,7 @@ function Reset-FakePnP {
         NoAccess    = $false                                      # the site refuses the signed-in person (403)
         StopInFolder2 = $false                                    # the scan stops (as at Ctrl+C) when it reaches folder 2
         SiteGroupId = [guid]'11111111-2222-3333-4444-555555555555'
+        LookupSite  = ''                                          # the tenant root's answer for a Teams link's group ('' = none; 'fail' = refused)
         OpenAnswer  = ''                                          # the answer to "Open the workbook now?" ('' = Enter = yes)
         ScanAnswer  = ''                                          # the answer to "Scan now?" ('' = Enter = yes)
         Calls       = New-Object System.Collections.Generic.List[string]
@@ -52,6 +53,12 @@ function Set-FakePnPOption {
     # Changes one switch of the fake site: ListFails, ConnectFails, SiteFails or NoAccess.
     param([ValidateSet('ListFails', 'ConnectFails', 'SiteFails', 'NoAccess', 'StopInFolder2')][string]$Name, [bool]$Value)
     $global:FakePnP[$Name] = $Value
+}
+
+function Set-FakeLookupSite {
+    # Sets the tenant root's answer to the group-site lookup of a Teams link ('' = no site; 'fail' = refused).
+    param([string]$Site)
+    $global:FakePnP.LookupSite = $Site
 }
 
 function Set-FakeFolders {
@@ -218,6 +225,15 @@ function global:Connect-PnPOnline {
     $global:FakePnP.Calls.Add('Connect ' + $Url)
     if ($PSBoundParameters['WarningAction'] -eq 'SilentlyContinue') { $global:FakePnP.Calls.Add('Quiet sign-in ' + $Url) }
     if ($UseWebLogin -and $global:FakePnP.ConnectFails) { throw 'FAKE: sign-in refused' }
+}
+
+function global:Invoke-PnPSPRestMethod {
+    # Fake: the tenant root's group-site lookup (GetSiteStatus): LookupSite, nothing, or a refusal.
+    [CmdletBinding()] param($Method, $Url, $Content)
+    $global:FakePnP.Calls.Add('Lookup ' + $Url + ' ' + $Content.groupId)
+    if ($global:FakePnP.LookupSite -eq 'fail') { throw 'FAKE: lookup refused' }
+    if (-not $global:FakePnP.LookupSite) { return $null }
+    [pscustomobject]@{ SiteUrl = $global:FakePnP.LookupSite; SiteStatus = 2 }
 }
 
 function global:Disconnect-PnPOnline {

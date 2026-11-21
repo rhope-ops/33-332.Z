@@ -40,9 +40,34 @@ Assert-Equal $true $refused 'Teams link without groupId refused'
 Reset-FakePnP @{}
 Set-FakeSiteAnswer -TypedSite 'https://tenant.example.com/teams/TeamA/Shared%20Documents'
 Assert-Equal 'https://tenant.example.com/teams/TeamA' (Connect-TeamSite (Get-ScanTarget $teamLink) 6>$null) 'Teams link: the typed address, cut to the site'
-Assert-Equal $true (Test-FakePnPCall 'Read-Host') 'Teams link: the site address is asked for'
-Assert-Equal 'https://tenant.example.com/teams/TeamA' ((Get-FakePnPConnection) -join ' ') 'Teams link: one sign-in, to the team site only (no tenant root)'
+Assert-Equal $true (Test-FakePnPCall 'Read-Host') 'Teams link, lookup gives no site: the site address is asked for'
+Assert-Equal 'https://usaf.dps.mil https://tenant.example.com/teams/TeamA' ((Get-FakePnPConnection) -join ' ') 'Teams link: the tenant root for the lookup, then the team site'
+Assert-Equal $true (Test-FakePnPCall ('Lookup /_api/GroupSiteManager/GetSiteStatus ' + $groupId)) 'Teams link: one lookup, of the group in the link'
 Assert-Equal $true (Test-FakePnPCall 'Quiet sign-in https://tenant.example.com/teams/TeamA') 'Sign-in warnings hidden'
+# The lookup answers (the PAM's test 2, 2026-11-21): a team or channel link alone is enough, no question.
+$siteTargetModule = Get-Module SiteTarget
+& $siteTargetModule { $script:TenantRoot = 'https://tenant.example.com' }
+foreach ($link in @($teamLink, $channelLink)) {
+    Reset-FakePnP @{}; Set-FakeLookupSite 'https://tenant.example.com/teams/TeamA'
+    Assert-Equal 'https://tenant.example.com/teams/TeamA' (Connect-TeamSite (Get-ScanTarget $link) 6>$null) 'Teams link alone: the looked-up site'
+    Assert-Equal $false (Test-FakePnPCall 'Read-Host') 'Teams link alone: no address question'
+}
+# A looked-up site on another host is never used (Data boundary): the address is asked for instead.
+Reset-FakePnP @{}; Set-FakeLookupSite 'https://other.example.org/teams/TeamA'
+Set-FakeSiteAnswer -TypedSite 'https://tenant.example.com/teams/TeamA'
+Assert-Equal 'https://tenant.example.com/teams/TeamA' (Connect-TeamSite (Get-ScanTarget $teamLink) 6>$null) 'Lookup on another host: the typed address'
+Assert-Equal $false ((Get-FakePnPConnection) -contains 'https://other.example.org/teams/TeamA') 'Lookup on another host: never signed in there'
+# A refused lookup: the address is asked for.
+Reset-FakePnP @{}; Set-FakeLookupSite 'fail'
+Set-FakeSiteAnswer -TypedSite 'https://tenant.example.com/teams/TeamA'
+Assert-Equal 'https://tenant.example.com/teams/TeamA' (Connect-TeamSite (Get-ScanTarget $teamLink) 6>$null) 'Lookup refused: the typed address'
+# The looked-up site of another team is refused by the group check, as a typed one is.
+Reset-FakePnP @{}; Set-FakeLookupSite 'https://tenant.example.com/teams/TeamB'
+Set-FakeSiteAnswer -SiteGroupId '99999999-2222-3333-4444-555555555555'
+$refused = $false
+try { Connect-TeamSite (Get-ScanTarget $teamLink) 6>$null | Out-Null } catch { $refused = $true }  # expected: another team's site
+Assert-Equal $true $refused 'Looked-up site of another team refused'
+& $siteTargetModule { $script:TenantRoot = 'https://usaf.dps.mil' }
 Reset-FakePnP @{}
 Set-FakeSiteAnswer -TypedSite 'https://tenant.example.com/teams/TeamB' -SiteGroupId '99999999-2222-3333-4444-555555555555'
 $refused = $false
@@ -54,7 +79,7 @@ Set-FakeSiteAnswer -TypedSite 'not an address'
 $refused = $false
 try { Connect-TeamSite (Get-ScanTarget $teamLink) 6>$null | Out-Null } catch { $refused = $true }  # expected: bad typed address
 Assert-Equal $true $refused 'Bad typed address refused'
-Assert-Equal 0 @(Get-FakePnPConnection).Count 'Bad typed address: no sign-in'
+Assert-Equal 'https://usaf.dps.mil' ((Get-FakePnPConnection) -join ' ') 'Bad typed address: no sign-in to a site (only the lookup at the tenant root)'
 Assert-Equal $true (Get-ScanTarget $channelLink).IsChannel 'Channel link marked as a channel'
 Assert-Equal $groupId (Get-ScanTarget ('https://teams.example.com/l/channel/19%3aabc/My Channel?groupId=' + $groupId)).GroupId `
     'Channel link with a raw space read'
@@ -123,7 +148,7 @@ Assert-Equal 'https://tenant.example.com/sites/TeamA/Shared%20Documents/General/
     ($rows | Where-Object { $_.Item -eq 'Roster.docx' } | Select-Object -First 1).Link 'Link built'
 Assert-Equal 'https://tenant.example.com/sites/TeamA/Shared%20Documents/Ops/scan%20%23A.pdf' `
     ($rows | Where-Object { $_.Item -eq 'scan #A.pdf' }).Link 'Link escapes #'
-Assert-Equal $true ((Get-FakeProgressText) -match "\nFile: Roster\.docx") 'Progress bar names the file in work, on a line of its own'
+Assert-Equal $true ((Get-FakeProgressText) -match 'File: Roster\.docx') 'Progress bar names the file in work'
 
 # A plain SharePoint site: files at the top of the library are scanned too, also when there is no folder.
 Reset-FakePnP @{ "$library/top.txt" = $Txt; "$library/General/notes.txt" = $Txt; "$library/Forms/AllItems.txt" = $Txt }
@@ -133,11 +158,11 @@ $rootRows = New-Object System.Collections.Generic.List[object]
 Assert-Equal 1 (Invoke-FileScan -Library $lib -Channels @() -SiteUrl $Sample.Site -MaxFileMB 25 -Rows $rootRows 6>$null) 'Top-of-library file scanned'
 Assert-Equal '(top of the library)' (($rootRows | Select-Object -ExpandProperty Channel -Unique) -join ',') 'Top-of-library files named as such'
 Assert-Equal 'top.txt' (($rootRows | Select-Object -ExpandProperty Item -Unique) -join ',') 'Only the top file, not the folder file'
-Write-FileStep (6MB) 'Downloading...' (3MB) ([TimeSpan]::FromSeconds(2))
-Assert-Equal $true ((Get-FakeProgressText) -match 'Downloading\.\.\. 3\.0 of 6\.0 MB \(50%\) \| 1\.5 MB/s \| about 00:02 left') `
+Write-FileStep (6MB) 'Downloading..' (3MB) ([TimeSpan]::FromSeconds(2))
+Assert-Equal $true ((Get-FakeProgressText) -match 'Downloading\.\. 3\.0 of 6\.0 MB \(50%\) \| 1\.5 MB/s \| about 00:02 left') `
     'Per-file bar: MB done of the size, percent, speed and time left'
-Write-FileStep (6MB) 'Downloading...'
-Assert-Equal $true ((Get-FakeProgressText) -match 'Downloading\.\.\. 6\.0 MB - SharePoint gives no byte count') 'Per-file bar: says when the download gives no byte count'
+Write-FileStep (6MB) 'Downloading..'
+Assert-Equal $true ((Get-FakeProgressText) -match 'Downloading\.\. 6\.0 MB - SharePoint gives no byte count') 'Per-file bar: says when the download gives no byte count'
 
 # ---- The streamed download of a large file: the bar counts the bytes ----
 $chunked = New-Object System.IO.MemoryStream(, [byte[]](1..200 | ForEach-Object { [byte]$_ }))
@@ -153,7 +178,7 @@ Reset-FakePnP @{ "$library/General/large.txt" = $largeFile }
 $streamRows = New-Object System.Collections.Generic.List[object]
 Assert-Equal 1 (Invoke-FileScan -Library $lib -Channels @('General') -SiteUrl $Sample.Site -MaxFileMB 25 -Rows $streamRows 6>$null) 'Streamed: the large file is read'
 Assert-Equal 1 @($streamRows | Where-Object { $_.Detector -eq 'Phone' }).Count 'Streamed: its PII is found'
-Assert-Equal $true ((Get-FakeProgressText) -match 'Downloading\.\.\. 2\.0 of 2\.0 MB \(100%\)') 'Streamed: the bar reaches the full size'
+Assert-Equal $true ((Get-FakeProgressText) -match 'Downloading\.\. 2\.0 of 2\.0 MB \(100%\)') 'Streamed: the bar reaches the full size'
 # Now the opener gives two bytes of a web page: not the size the list gives.
 & $channelScan { $script:OpenDirectStream = { param($url) Get-FakeFileStream $url -Short } }
 Reset-FakePnP @{ "$library/General/large.txt" = $largeFile; "$library/General/large2.txt" = $largeFile }

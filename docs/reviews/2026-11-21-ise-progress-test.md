@@ -40,6 +40,46 @@ foreach ($layout in $layouts) {
 Write-Host 'Layout test done.'
 ```
 
-## Result
+## Result of test 1 (the PAM, 2026-11-21)
 
-- Waiting on the PAM. When the answer is in, Ion's scan bar (src/ScanQueue.psm1 Write-ScanBar) and download bar (src/ChannelScan.psm1 $DownloadStep) take the layout that matches.
+- "e looks right, the others don't put 'file' on its own 3rd line. the break doesn't work."
+- So ISE adds a "." after a bar's first line: the download bar now says "Downloading.." and shows "Downloading..." (src/ChannelScan.psm1 $DownloadStep).
+- A line break in the text does not show in ISE. The scan bar keeps the file as CurrentOperation until test 2 decides.
+
+## Test 2: the file on a line of its own
+
+The same steps as test 1: paste, F5, about 24 seconds. This time each layout uses a second bar for the file. Tell the agent the letter that looks right (F to I), and whether its folder line still ends in a ".".
+
+```powershell
+# Ion ISE progress-bar layout test 2: invented text only, no sign-in, no network, no files. About 24 seconds.
+$stats = '12 of 40 files (30%) | read 10 | not scanned 2 | possible PII 3 in 2 files | 00:42 elapsed, about 01:48 left'
+$path = 'General/Roster.docx'
+$layouts = @(
+    @{ Name = 'F (second bar: the file as its heading, status one space)'; FileActivity = ('File: ' + $path); FileStatus = ' ' },
+    @{ Name = 'G (second bar: heading "File", the path below it)'; FileActivity = 'File'; FileStatus = $path },
+    @{ Name = 'H (second bar: the file as its heading, no status given)'; FileActivity = ('File: ' + $path); FileStatus = $null },
+    @{ Name = 'I (one bar: folder and counts on line 1, the file on line 2)'; FileActivity = $null; FileStatus = $null }
+)
+foreach ($layout in $layouts) {
+    Write-Host ('Layout ' + $layout.Name + ' now')
+    for ($step = 0; $step -lt 6; $step++) {
+        $percent = 20 + 10 * $step
+        if ($layout.Name.StartsWith('I')) {
+            Write-Progress -Id 1 -Activity ('Folder 1 of 2: General | ' + $stats) -Status ('File: ' + $path) -PercentComplete $percent
+        }
+        else {
+            Write-Progress -Id 1 -Activity 'Folder 1 of 2: General' -Status $stats -PercentComplete $percent
+            if ($null -ne $layout.FileStatus) { Write-Progress -Id 3 -Activity $layout.FileActivity -Status $layout.FileStatus }
+            else { Write-Progress -Id 3 -Activity $layout.FileActivity }
+        }
+        Start-Sleep -Seconds 1
+    }
+    Write-Progress -Id 3 -Activity 'File' -Completed
+    Write-Progress -Id 1 -Activity 'Folder' -Completed
+}
+Write-Host 'Layout test 2 done.'
+```
+
+## Result of test 2
+
+- Waiting on the PAM.

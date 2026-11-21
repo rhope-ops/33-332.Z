@@ -51,6 +51,13 @@ $script:GarbledChar = [regex]'[\p{Co}\uFFFD\x01-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F\u
 
 # Overlap priority: when two hits cover the same characters, the type earlier in this list wins.
 # Specific identifiers first, broad patterns (phone, address, name) last.
+# A CAC name as certificates and digital signatures write it: 2 to 4 name parts, each ending in a dot, then the 10-digit
+# DoD ID (single spaces allowed between digits: PDF signature blocks are often drawn with gaps). $CacNameEnd is the
+# same name part alone, at the end of the text before an SSN-shaped match; $CacNameChars is how far back it is looked for.
+$script:CacNamePattern = "(?<![\w.])(?:[A-Za-z][A-Za-z'-]*\.){2,4}(?<id>\d(?: ?\d){9})(?![\w-]| \d)"
+$script:CacNameEnd = "(?<![\w.])(?:[A-Za-z][A-Za-z'-]*\.){2,4}\d?\s?$"
+$script:CacNameChars = 120
+
 $script:DetectorOrder = @('SSN', 'DoD ID', 'Payment card', 'Date of birth', 'Passport', 'Phone',
     'Personal e-mail', 'Home address', 'Name')
 
@@ -180,6 +187,26 @@ function New-PiiHit {
 # Detectors: one per PII type. Each returns zero or more hits (New-PiiHit).
 # =====================================================================================
 
+function Test-SsnPartOfLonger {
+    <#
+    .SYNOPSIS
+      True when an SSN-shaped match is part of a longer number: a digit one space (or none) before or after it, or a
+      CAC name ("LAST.FIRST." or "LAST.FIRST.M.") right before it.
+    .PARAMETER Text
+      The text searched.
+    .PARAMETER Match
+      The SSN regex match.
+    .OUTPUTS
+      [bool]
+    #>
+    param([string]$Text, [System.Text.RegularExpressions.Match]$Match)
+    $end = $Match.Index + $Match.Length
+    if ($end + 1 -lt $Text.Length -and $Text[$end] -eq ' ' -and [char]::IsDigit($Text[$end + 1])) { return $true }
+    if ($Match.Index -ge 2 -and $Text[$Match.Index - 1] -eq ' ' -and [char]::IsDigit($Text[$Match.Index - 2])) { return $true }
+    $start = [Math]::Max(0, $Match.Index - $script:CacNameChars)
+    return [regex]::IsMatch($Text.Substring($start, $Match.Index - $start), $script:CacNameEnd)
+}
+
 function Find-SsnHits {
     <#
     .SYNOPSIS
@@ -201,9 +228,14 @@ function Find-SsnHits {
     $pattern = '(?<![\w-])(\d{3})([- ]?)(\d{2})\2(\d{4})(?![\w-])'
     foreach ($m in [regex]::Matches($Text, $pattern)) {
         if (-not (Test-SsnValid $m.Groups[1].Value $m.Groups[3].Value $m.Groups[4].Value)) { continue }
+        $labelled = Test-KeywordBefore $Text $m.Index $labels
+        # Without a label, 9 digits that are part of a longer number are no SSN: a digit one space before or after
+        # (a 10-digit DoD ID drawn with gaps, as e-signature blocks are), or a CAC name just before ("LAST.FIRST.M."
+        # then the DoD ID). The PAM's gov run, 2026-11-21: DoD IDs in PDF signature blocks were shown as SSNs.
+        if (-not $labelled -and (Test-SsnPartOfLonger $Text $m)) { continue }
         $confidence = 'Low'
         if ($m.Groups[2].Value -ne '') { $confidence = 'Medium' }
-        if (Test-KeywordBefore $Text $m.Index $labels) { $confidence = 'High' }
+        if ($labelled) { $confidence = 'High' }
         New-PiiHit 'SSN' $confidence $m.Index $m.Value
     }
 }
@@ -222,6 +254,13 @@ function Find-DodIdHits {
     $labels = 'DoD\s*ID|DODID|EDIPI|\bCAC\b|DoD\s*(?:ID\s*)?(?:#|no\.?|number)'
     foreach ($m in [regex]::Matches($Text, '(?<!\w)\d{10}(?!\w)')) {
         if (Test-KeywordBefore $Text $m.Index $labels) { New-PiiHit 'DoD ID' 'High' $m.Index $m.Value }
+    }
+    # A CAC name, as a digital signature shows it: LAST.FIRST.MIDDLE. then the DoD ID (the digits may be drawn with single
+    # spaces between them). The name itself is the label (the PAM's gov run, 2026-11-21).
+    foreach ($m in [regex]::Matches($Text, $script:CacNamePattern)) {
+        $digits = $m.Groups['id']
+        if (Test-KeywordBefore $Text $digits.Index $labels) { continue }   # already found above, with its label
+        New-PiiHit 'DoD ID' 'High' $digits.Index $digits.Value
     }
 }
 

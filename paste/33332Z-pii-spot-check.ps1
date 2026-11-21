@@ -18,7 +18,7 @@
   the files at each library's top), or the drive folder and all its subfolders. Channel posts are not read.
 
   Built from these files; to change it, change them and rebuild with: python3 scripts/build_paste.py
-    src/PiiDetectors.psm1, sha256 0c1ea11519a9
+    src/PiiDetectors.psm1, sha256 ec28dcce6b55
     src/PiiMasking.psm1, sha256 752c251a94b2
     src/OcrText.psm1, sha256 a39acab441d4
     src/OleText.psm1, sha256 2f5d0a036e97
@@ -33,11 +33,12 @@
     src/XlsxWriter.psm1, sha256 0d8b1a3e1de1
     src/Report.psm1, sha256 fbda0ca47111
     src/ScanMeter.psm1, sha256 18c82f0b37c3
-    src/ScanQueue.psm1, sha256 09fb4ac8713b
-    src/Accountability.psm1, sha256 c83be234edd1
-    src/ChannelScan.psm1, sha256 56a0cf108e7f
+    src/ScanQueue.psm1, sha256 b5f06a023aaf
+    src/Accountability.psm1, sha256 3d2b527a9444
+    src/SiteTarget.psm1, sha256 80c9a1ecd1ca
+    src/ChannelScan.psm1, sha256 44a91d2641e1
     src/DriveScan.psm1, sha256 f307e810f8f5
-    src/Find-ChannelPII.ps1, sha256 6c8ed16119d0
+    src/Find-ChannelPII.ps1, sha256 f1309e2c3404
 
   Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.
   Run target: Windows PowerShell 5.1 with PnP.PowerShell 1.12.0; no admin rights, no file to unblock.
@@ -46,30 +47,31 @@
   Credentials: your own CAC sign-in in the PnP sign-in window (a drive folder: your Windows logon); nothing is stored.
 
   Contents (line numbers of this file):
-    line    75  Settings
-    line    86  Reader block
-    line    92  Module PiiDetectors.psm1
-    line   619  Module PiiMasking.psm1
-    line   819  Module OcrText.psm1
-    line   972  Module OleText.psm1
-    line  1111  Module ContainerText.psm1
-    line  1450  Module PdfCore.psm1
-    line  1812  Module PdfObjects.psm1
-    line  2170  Module PdfFonts.psm1
-    line  2718  Module PdfLayout.psm1
-    line  2858  Module PdfText.psm1
-    line  3360  Module TextExtract.psm1
-    line  3778  Module ReaderPool.psm1
-    line  4030  Reader block end
-    line  4034  Module XlsxWriter.psm1
-    line  4341  Module Report.psm1
-    line  4901  Module ScanMeter.psm1
-    line  5298  Module ScanQueue.psm1
-    line  5656  Module Accountability.psm1
-    line  6034  Module ChannelScan.psm1
-    line  6630  Module DriveScan.psm1
-    line  6862  Body of Find-ChannelPII.ps1
-    line  7003  Clean-up
+    line    77  Settings
+    line    88  Reader block
+    line    94  Module PiiDetectors.psm1
+    line   660  Module PiiMasking.psm1
+    line   860  Module OcrText.psm1
+    line  1013  Module OleText.psm1
+    line  1152  Module ContainerText.psm1
+    line  1491  Module PdfCore.psm1
+    line  1853  Module PdfObjects.psm1
+    line  2211  Module PdfFonts.psm1
+    line  2759  Module PdfLayout.psm1
+    line  2899  Module PdfText.psm1
+    line  3401  Module TextExtract.psm1
+    line  3819  Module ReaderPool.psm1
+    line  4071  Reader block end
+    line  4075  Module XlsxWriter.psm1
+    line  4382  Module Report.psm1
+    line  4942  Module ScanMeter.psm1
+    line  5339  Module ScanQueue.psm1
+    line  5697  Module Accountability.psm1
+    line  6079  Module SiteTarget.psm1
+    line  6328  Module ChannelScan.psm1
+    line  6730  Module DriveScan.psm1
+    line  6962  Body of Find-ChannelPII.ps1
+    line  7103  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -142,6 +144,13 @@ $script:GarbledChar = [regex]'[\p{Co}\uFFFD\x01-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F\u
 
 # Overlap priority: when two hits cover the same characters, the type earlier in this list wins.
 # Specific identifiers first, broad patterns (phone, address, name) last.
+# A CAC name as certificates and digital signatures write it: 2 to 4 name parts, each ending in a dot, then the 10-digit
+# DoD ID (single spaces allowed between digits: PDF signature blocks are often drawn with gaps). $CacNameEnd is the
+# same name part alone, at the end of the text before an SSN-shaped match; $CacNameChars is how far back it is looked for.
+$script:CacNamePattern = "(?<![\w.])(?:[A-Za-z][A-Za-z'-]*\.){2,4}(?<id>\d(?: ?\d){9})(?![\w-]| \d)"
+$script:CacNameEnd = "(?<![\w.])(?:[A-Za-z][A-Za-z'-]*\.){2,4}\d?\s?$"
+$script:CacNameChars = 120
+
 $script:DetectorOrder = @('SSN', 'DoD ID', 'Payment card', 'Date of birth', 'Passport', 'Phone',
     'Personal e-mail', 'Home address', 'Name')
 
@@ -271,6 +280,26 @@ function New-PiiHit {
 # Detectors: one per PII type. Each returns zero or more hits (New-PiiHit).
 # =====================================================================================
 
+function Test-SsnPartOfLonger {
+    <#
+    .SYNOPSIS
+      True when an SSN-shaped match is part of a longer number: a digit one space (or none) before or after it, or a
+      CAC name ("LAST.FIRST." or "LAST.FIRST.M.") right before it.
+    .PARAMETER Text
+      The text searched.
+    .PARAMETER Match
+      The SSN regex match.
+    .OUTPUTS
+      [bool]
+    #>
+    param([string]$Text, [System.Text.RegularExpressions.Match]$Match)
+    $end = $Match.Index + $Match.Length
+    if ($end + 1 -lt $Text.Length -and $Text[$end] -eq ' ' -and [char]::IsDigit($Text[$end + 1])) { return $true }
+    if ($Match.Index -ge 2 -and $Text[$Match.Index - 1] -eq ' ' -and [char]::IsDigit($Text[$Match.Index - 2])) { return $true }
+    $start = [Math]::Max(0, $Match.Index - $script:CacNameChars)
+    return [regex]::IsMatch($Text.Substring($start, $Match.Index - $start), $script:CacNameEnd)
+}
+
 function Find-SsnHits {
     <#
     .SYNOPSIS
@@ -292,9 +321,14 @@ function Find-SsnHits {
     $pattern = '(?<![\w-])(\d{3})([- ]?)(\d{2})\2(\d{4})(?![\w-])'
     foreach ($m in [regex]::Matches($Text, $pattern)) {
         if (-not (Test-SsnValid $m.Groups[1].Value $m.Groups[3].Value $m.Groups[4].Value)) { continue }
+        $labelled = Test-KeywordBefore $Text $m.Index $labels
+        # Without a label, 9 digits that are part of a longer number are no SSN: a digit one space before or after
+        # (a 10-digit DoD ID drawn with gaps, as e-signature blocks are), or a CAC name just before ("LAST.FIRST.M."
+        # then the DoD ID). The PAM's gov run, 2026-11-21: DoD IDs in PDF signature blocks were shown as SSNs.
+        if (-not $labelled -and (Test-SsnPartOfLonger $Text $m)) { continue }
         $confidence = 'Low'
         if ($m.Groups[2].Value -ne '') { $confidence = 'Medium' }
-        if (Test-KeywordBefore $Text $m.Index $labels) { $confidence = 'High' }
+        if ($labelled) { $confidence = 'High' }
         New-PiiHit 'SSN' $confidence $m.Index $m.Value
     }
 }
@@ -313,6 +347,13 @@ function Find-DodIdHits {
     $labels = 'DoD\s*ID|DODID|EDIPI|\bCAC\b|DoD\s*(?:ID\s*)?(?:#|no\.?|number)'
     foreach ($m in [regex]::Matches($Text, '(?<!\w)\d{10}(?!\w)')) {
         if (Test-KeywordBefore $Text $m.Index $labels) { New-PiiHit 'DoD ID' 'High' $m.Index $m.Value }
+    }
+    # A CAC name, as a digital signature shows it: LAST.FIRST.MIDDLE. then the DoD ID (the digits may be drawn with single
+    # spaces between them). The name itself is the label (the PAM's gov run, 2026-11-21).
+    foreach ($m in [regex]::Matches($Text, $script:CacNamePattern)) {
+        $digits = $m.Groups['id']
+        if (Test-KeywordBefore $Text $digits.Index $labels) { continue }   # already found above, with its label
+        New-PiiHit 'DoD ID' 'High' $digits.Index $digits.Value
     }
 }
 
@@ -5514,17 +5555,17 @@ function Write-WaitBar {
 function Write-ScanBar {
     <#
     .SYNOPSIS
-      The scan bar's 3 lines (the PAM, 2026-11-21): the folder, the run so far, then the file in work on a line of its
-      own. Windows PowerShell ISE puts CurrentOperation after the status on the same line, so the third line is a
-      line break in the status text, not CurrentOperation (the PAM's gov run, 2026-11-21).
+      The scan bar: the folder, the run so far, then the file in work (CurrentOperation). ISE shows CurrentOperation
+      after the status, and a line break in the status does not show (the PAM's layout test, 2026-11-21); layout
+      test 2 (docs/reviews/2026-11-21-ise-progress-test.md) decides how the file gets a line of its own.
     .PARAMETER Queue
       Output of New-ScanQueue (Activity: the folder line; Meter).
     .PARAMETER Third
       The third line: the file in work, or what the scan waits for.
     #>
     param([hashtable]$Queue, [string]$Third)
-    $status = (Get-ScanMeterText $Queue.Meter 'file') + "`n" + $Third
-    Write-Progress -Id 1 -Activity $Queue.Activity -Status $status -PercentComplete (Get-MeterPercent $Queue.Meter)
+    Write-Progress -Id 1 -Activity $Queue.Activity -Status (Get-ScanMeterText $Queue.Meter 'file') -PercentComplete (Get-MeterPercent $Queue.Meter) `
+        -CurrentOperation $Third
 }
 
 function Close-ScanQueue {
@@ -5989,8 +6030,12 @@ function Get-MethodRows {
     , @('How Ion finds possible PII', ('Ion reads the text of each file in memory and looks for patterns. A match is a lead, not proof: ' +
         'open each file and check it. The confidence (High, Medium, Low) depends on the type, as below.'))
     , @('SSN', ('Numbers the SSA never issues (000, 666 or 9xx first; 00 in the middle; 0000 last) are skipped. High: "SSN", "SSAN", ' +
-        '"social security" or "soc sec" just before it. Medium: 3-2-4 digits with dashes or spaces. Low: 9 digits in a row.'))
-    , @('DoD ID', 'A 10-digit number, found only with a label just before it ("DoD ID", "DODID", "EDIPI", "CAC", "DoD #", "DoD number"): always High.')
+        '"social security" or "soc sec" just before it. Medium: 3-2-4 digits with dashes or spaces. Low: 9 digits in a row. ' +
+        'Without a label, 9 digits that go on into a longer number (a digit one space away, ' +
+        'or a CAC name such as LAST.FIRST.M. just before) are not an SSN.'))
+    , @('DoD ID', ('A 10-digit number, found only with a label just before it ("DoD ID", "DODID", "EDIPI", "CAC", "DoD #", "DoD number"), ' +
+        'or at the end of a CAC name (LAST.FIRST.M. then the 10 digits, as digital signatures show it): ' +
+        'always High.'))
     , @('Date of birth', ('A date written as 1/2/1990, 01-02-90, 1990-01-02, 2 Jan 1990, 02JAN1990 or January 2, 1990, found only with a label ' +
         'just before it ("DOB", "D.O.B.", "date of birth", "birth date", "birthdate", "born"): always High. Other date forms are not found.'))
     , @('Payment card', ('Medium: 13 to 19 digits (the length each card network uses), starting with that network''s digits, and the whole ' +
@@ -6031,90 +6076,46 @@ function Get-MethodRows {
         'check each hit. Ion leaves them empty. The last three have a dropdown list.'))
 }
 
-# ==== Module ChannelScan.psm1 ====
+# ==== Module SiteTarget.psm1 ====
 <#
-ChannelScan.psm1 - reads one team's or site's files and turns them into report rows.
+SiteTarget.psm1 - what the person gives Ion to scan, and the sign-in to that one site.
 
-  Purpose:     The SharePoint and Teams steps of Find-ChannelPII.ps1, one function per step: read the
-               Teams link or site address, sign in to the team's site, find the library, list the channel
-               folders, scan each file with a progress bar and live counts. Posts are not read (the PAM,
-               2026-11-20: one sign-in only; reading posts needs an admin-approved Graph permission).
-  Inputs:      the Teams link or site address the person gives.
-  Outputs:     report rows (Report.psm1 New-ReportRow) added to the list the caller passes in.
-  Depends on:  PnP.PowerShell 1.12.0; PiiDetectors.psm1, PiiMasking.psm1, TextExtract.psm1, Report.psm1,
-               ScanMeter.psm1 (all imported first by Find-ChannelPII.ps1).
+  Purpose:     Reads a Teams link (a team's or a channel's), a SharePoint site address or a drive folder; turns a
+               Teams link alone into its team's site (a lookup at the tenant root, about that one group); signs in
+               to the site with the person's own CAC and checks that it belongs to the team in the link.
+  Inputs:      the text the person pastes.
+  Outputs:     a scan target (Get-ScanTarget) and the signed-in site address (Connect-TeamSite).
+  Depends on:  PnP.PowerShell 1.12.0; PiiMasking.psm1 (Protect-PiiText), Report.psm1 (Write-Ui), imported first.
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7).
-  Network:     only the one SharePoint site the person gives. Nothing lists other sites or teams (no network
-               reconnaissance).
-  Writes:      none in SharePoint or Teams: read calls only. Rows go to an in-memory list.
+  Network:     the tenant root (one group-site lookup for a Teams link) and the one site; nothing lists other
+               sites, teams or users ("No reconnaissance").
+  Writes:      none.
   Credentials: the person's own CAC sign-in (PnP web login). Nothing is stored.
 #>
 
-
-# =====================================================================================
-# Settings
-# =====================================================================================
-
-# A team site's file library: Teams names it "Documents" (URL "Shared Documents"). It is scanned first.
-$script:LibraryNames = @('Shared Documents', 'Documents')
-
-# A document library is list template 101 (SharePoint ListTemplateType.DocumentLibrary).
-$script:DocumentLibraryTemplate = 101
-
-# Visible libraries that hold SharePoint's own files, not people's files: not scanned (the PAM, 2026-11-20: Site Assets,
-# Preservation Hold Library and Site Collection Documents are scanned).
-$script:NotScannedLibraries = @('Style Library', 'Form Templates')
-
-# Teams makes one top-level folder per standard channel. "Forms" is SharePoint's own folder, not a channel.
-$script:NotChannelFolders = @('Forms')
-
-# Time spent downloading and spent reading, for the summary (it shows where a slow scan loses its time).
-# The per-file bar's heading while a file comes down from SharePoint into memory (never to disk), with "..." (the PAM, 2026-11-21).
-$script:DownloadStep = 'Downloading...'
-
-$script:Timing = @{ Download = [TimeSpan]::Zero; Check = [TimeSpan]::Zero }
-
-# Streamed download (Get-FileBytes, the PAM 2026-11-21): File.OpenBinaryDirect on the signed-in connection, so the bar
-# counts bytes; $false for the rest of a scan after one failure. Tests replace the opener.
-$script:DirectDownload = $true
-# Opens the file as a stream on the signed-in PnP connection.
-$script:OpenDirectStream = {
-    param([string]$ServerRelativeUrl)
-    if (-not ($fileType = 'Microsoft.SharePoint.Client.File' -as [type])) { throw 'The SharePoint client library is not loaded.' }
-    return $fileType::OpenBinaryDirect((Get-PnPContext), $ServerRelativeUrl).Stream
-}
 
 # What Ion can scan, for the first question and after a wrong paste (the PAM, 2026-11-21: one short block, not one long line).
 $script:TargetHelp = "Paste one of these, or press Enter to exit:`n  - a Teams link: in Teams, ... next to the team or channel > Copy link`n" +
     "  - a SharePoint site address: https://usaf.dps.mil/teams/<team-site> (or /sites/)`n  - a drive folder: X:\<folder> or \\<server>\<share>\<folder>"
 
-# How the report and the screen name the files at the top of the library (in no folder).
-$script:RootGroupName = '(top of the library)'
 # A drive folder: X:\<folder> (a mapped drive) or \\<server>\<share>\<folder> (UNC), with or without quotes.
 $script:DrivePathPattern = '^"?(?:[A-Za-z]:\\|\\\\[^\\/\s]+\\[^\\/]+)'
-
-# Office types that SharePoint opens by file ID (Doc.aspx?sourcedoc=): the link for a file whose path holds PII.
-$script:IdLinkExtensions = @('.docx', '.docm', '.doc', '.xlsx', '.xlsm', '.xls', '.pptx', '.pptm', '.ppt')
-
-# Items per request when listing the library. SharePoint refuses views over 5,000 items
-# (list view threshold); 500 keeps each request small.
-$script:ListPageSize = 500
 
 # Accepted site address: https://<host>/sites/<name> or /teams/<name>, also as a file's "Copy link"
 # (https://<host>/:w:/r/teams/<name>/...). Anything after the site name is cut off, so the scan can only
 # touch that one site. Other sharing links (/:w:/s/, /:w:/t/) are refused: they do not name the site.
 $script:SiteUrlPattern = '^(?<host>https://[A-Za-z0-9.-]+)/(?::[a-z]:/r/)?(?<site>(?:sites|teams)/[^/?#\s]+)'
 
+# The tenant root of DoD365: a Teams link alone is turned into its team's site here (GroupSiteManager GetSiteStatus, a
+# read about the one group in the link; the PAM's test 2 of 2026-11-21 works). Only a site on this host is used.
+$script:TenantRoot = 'https://usaf.dps.mil'
+
 # Accepted Teams link: a team's or a channel's "Copy link" (https://<teams-host>/l/team/... or /l/channel/...).
 # Only its groupId (the team's Microsoft 365 group) is used; the host is not, so any Teams cloud's link works.
 # The path may hold spaces (a channel name) but not a second address ('://' or '/l/'), so text pasted after the link is not read.
 $script:TeamsLinkPattern = '^https://[A-Za-z0-9.-]+/l/(?<kind>team|channel)/(?:(?!://|/l/)[^?#\r\n])+\?(?:[^#\s]*&)?groupId=' +
                            '(?<id>[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})(?![0-9A-Fa-f-])'
-
-# =====================================================================================
-# Site, library and channels
-# =====================================================================================
 
 function Add-UrlScheme {
     <#
@@ -6253,12 +6254,39 @@ function Read-TeamSiteAddress {
     }
 }
 
+function Find-TeamSiteByGroup {
+    <#
+    .SYNOPSIS
+      The site of the one team in a Teams link: signs in at the tenant root (own CAC, web login) and asks SharePoint
+      for that group's site (GroupSiteManager GetSiteStatus, a read; nothing is listed: "No reconnaissance"). Returns
+      '' when the sign-in or the lookup fails, gives no site, or gives a site on another host (Data boundary): the
+      caller then asks for the site address, as before.
+    .PARAMETER GroupId
+      The group ID from the Teams link.
+    .OUTPUTS
+      [string] https://<tenant root host>/sites/<name> or /teams/<name>, or ''.
+    #>
+    param([guid]$GroupId)
+    Write-Ui "Teams link: looking up this team's site (a sign-in window may open; if you do not see it, press Alt+Tab) ..." 'Muted'
+    try {
+        Connect-PnPOnline -Url $script:TenantRoot -UseWebLogin -WarningAction SilentlyContinue
+        $answer = Invoke-PnPSPRestMethod -Method Post -Url '/_api/GroupSiteManager/GetSiteStatus' -Content @{ groupId = [string]$GroupId } -ErrorAction Stop
+    }
+    catch { Write-Verbose ('Team site lookup not possible: ' + $_.Exception.Message); return '' }
+    $url = ''
+    if ($answer -and $answer.PSObject.Properties['SiteUrl']) { $url = [string]$answer.SiteUrl }
+    if (-not $url) { return '' }
+    try { $site = Test-TeamSiteUrl $url } catch { return '' }   # not a site address: ask instead
+    if (-not $site.StartsWith($script:TenantRoot + '/', [StringComparison]::OrdinalIgnoreCase)) { return '' }
+    return $site
+}
+
 function Connect-TeamSite {
     <#
     .SYNOPSIS
-      Signs in (own CAC, PnP web login) to the site and returns its address. For a Teams link it asks for the site
-      address (a lookup at the tenant root hung on DoD365: the PAM, 2026-11-20), then checks that the site belongs to
-      the team in the link. It then checks that the person can open the site. On any error or cancel it signs out
+      Signs in (own CAC, PnP web login) to the site and returns its address. For a Teams link (a team's or a
+      channel's) it looks the site up at the tenant root (Find-TeamSiteByGroup), and asks for the site address only
+      when that fails; it then checks that the site belongs to the team in the link. It then checks that the person can open the site. On any error or cancel it signs out
       and throws a message a person can act on (ConvertTo-FriendlyError).
     .PARAMETER Target
       Output of Get-ScanTarget.
@@ -6273,8 +6301,11 @@ function Connect-TeamSite {
             if ($Target.IsChannel) {
                 Write-Ui 'Channel link: the scan covers the standard channels of its team. A private or shared channel has its own site: give that site address instead.' 'Accent'
             }
-            Write-Ui "Teams link: the script needs this team's site address. In Teams: the team's Shared tab > ... > Open in SharePoint, then copy the address." 'Accent'
-            $site = Read-TeamSiteAddress
+            $site = Find-TeamSiteByGroup $Target.GroupId
+            if (-not $site) {
+                Write-Ui "The team's site could not be looked up: the script needs its address. In Teams: the team's Shared tab > ... > Open in SharePoint, then copy the address." 'Accent'
+                $site = Read-TeamSiteAddress
+            }
         }
         Write-Ui "Signing in to $site ..." 'Muted'
         Write-Ui '  A sign-in window opens (if you do not see it, press Alt+Tab). If it says you have no access, close it.' 'Muted'
@@ -6293,6 +6324,75 @@ function Connect-TeamSite {
         }
     }
 }
+
+# ==== Module ChannelScan.psm1 ====
+<#
+ChannelScan.psm1 - reads one team's or site's files and turns them into report rows.
+
+  Purpose:     The SharePoint and Teams steps of Find-ChannelPII.ps1 after the sign-in (SiteTarget.psm1), one
+               function per step: find the library, list the channel folders, scan each file with a progress bar
+               and live counts. Posts are not read (the PAM,
+               2026-11-20: one sign-in only; reading posts needs an admin-approved Graph permission).
+  Inputs:      the signed-in site (SiteTarget.psm1 Connect-TeamSite).
+  Outputs:     report rows (Report.psm1 New-ReportRow) added to the list the caller passes in.
+  Depends on:  PnP.PowerShell 1.12.0; PiiDetectors.psm1, PiiMasking.psm1, TextExtract.psm1, Report.psm1,
+               ScanMeter.psm1, SiteTarget.psm1 (all imported first by Find-ChannelPII.ps1).
+  How to run:  imported by Find-ChannelPII.ps1; not run on its own.
+  Run target:  Windows PowerShell 5.1 (also PowerShell 7).
+  Network:     only the one SharePoint site the person gives. Nothing lists other sites or teams (no network
+               reconnaissance).
+  Writes:      none in SharePoint or Teams: read calls only. Rows go to an in-memory list.
+  Credentials: the person's own CAC sign-in (PnP web login). Nothing is stored.
+#>
+
+
+# =====================================================================================
+# Settings
+# =====================================================================================
+
+# A team site's file library: Teams names it "Documents" (URL "Shared Documents"). It is scanned first.
+$script:LibraryNames = @('Shared Documents', 'Documents')
+
+# A document library is list template 101 (SharePoint ListTemplateType.DocumentLibrary).
+$script:DocumentLibraryTemplate = 101
+
+# Visible libraries that hold SharePoint's own files, not people's files: not scanned (the PAM, 2026-11-20: Site Assets,
+# Preservation Hold Library and Site Collection Documents are scanned).
+$script:NotScannedLibraries = @('Style Library', 'Form Templates')
+
+# Teams makes one top-level folder per standard channel. "Forms" is SharePoint's own folder, not a channel.
+$script:NotChannelFolders = @('Forms')
+
+# Time spent downloading and spent reading, for the summary (it shows where a slow scan loses its time).
+# The per-file bar's heading while a file comes down from SharePoint into memory (never to disk). ISE adds a "." after a
+# bar's heading, so two here show as "..." (the PAM's layout test E, 2026-11-21).
+$script:DownloadStep = 'Downloading..'
+
+$script:Timing = @{ Download = [TimeSpan]::Zero; Check = [TimeSpan]::Zero }
+
+# Streamed download (Get-FileBytes, the PAM 2026-11-21): File.OpenBinaryDirect on the signed-in connection, so the bar
+# counts bytes; $false for the rest of a scan after one failure. Tests replace the opener.
+$script:DirectDownload = $true
+# Opens the file as a stream on the signed-in PnP connection.
+$script:OpenDirectStream = {
+    param([string]$ServerRelativeUrl)
+    if (-not ($fileType = 'Microsoft.SharePoint.Client.File' -as [type])) { throw 'The SharePoint client library is not loaded.' }
+    return $fileType::OpenBinaryDirect((Get-PnPContext), $ServerRelativeUrl).Stream
+}
+
+# How the report and the screen name the files at the top of the library (in no folder).
+$script:RootGroupName = '(top of the library)'
+
+# Office types that SharePoint opens by file ID (Doc.aspx?sourcedoc=): the link for a file whose path holds PII.
+$script:IdLinkExtensions = @('.docx', '.docm', '.doc', '.xlsx', '.xlsm', '.xls', '.pptx', '.pptm', '.ppt')
+
+# Items per request when listing the library. SharePoint refuses views over 5,000 items
+# (list view threshold); 500 keeps each request small.
+$script:ListPageSize = 500
+
+# =====================================================================================
+# Site, library and channels
+# =====================================================================================
 
 function Get-SiteDocumentLibraries {
     <#

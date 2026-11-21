@@ -48,7 +48,7 @@ The steps to run it are at the top of the script.
 | Type | Found when | Shown as |
 |---|---|---|
 | SSN | 3-2-4 digits the SSA could issue | `***-**-1234` |
-| DoD ID | 10 digits after "DoD ID", "DODID", "EDIPI" or "CAC" | `******7890` |
+| DoD ID | 10 digits after "DoD ID", "DODID", "EDIPI" or "CAC", or at the end of a CAC name (LAST.FIRST.M. then 10 digits, as in e-signatures) | `******7890` |
 | Date of birth | A date after "DOB", "date of birth" or "born" | `[date masked]` |
 | Payment card | 13 to 19 digits with a card network's prefix that pass the card check | `************1111` |
 | Passport | 6 to 9 letters and digits after "passport" | `*****567` |
@@ -118,7 +118,8 @@ Each file starts with a header: purpose, inputs, outputs, how to run, run target
 | File | What it does |
 |---|---|
 | `src/Find-ChannelPII.ps1` | Entry point: address or folder, sign-in for cloud sites, folders, files, results |
-| `src/ChannelScan.psm1` | SharePoint and Teams steps: check the address, team or plain site, list folders, read files |
+| `src/SiteTarget.psm1` | What you paste (Teams link, site address or drive folder), the lookup of a team's site from a Teams link, and the sign-in to that one site |
+| `src/ChannelScan.psm1` | SharePoint and Teams steps after the sign-in: libraries, folders, read files |
 | `src/DriveScan.psm1` | Scans a folder on a mapped or network drive (`X:\folder` or `\\server\share\folder`) |
 | `src/ReaderPool.psm1` | Reads several files at once in PowerShell runspaces, and each identical file only once per run |
 | `src/ScanQueue.psm1` | Turns the reader pool's results into report rows, in the order files finish; the steps both scans share, and the "Scan now?" question |
