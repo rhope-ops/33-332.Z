@@ -96,7 +96,7 @@ The steps to run it are at the top of the script.
 - **No stored credentials:** you sign in with your CAC each run; no password or token is saved.
 - **Masked output:** every found value is masked on screen and in the workbook; links open the file or folder without showing PII.
 - **Formula-safe workbook:** all text is stored as plain text, so scanned content cannot run as an Excel formula.
-- **Fails safe:** on an error or Ctrl+C, the workbook is still saved and marked INCOMPLETE, and Ion signs out.
+- **Fails safe:** on an error or Ctrl+C, the workbook is still saved and marked INCOMPLETE, and Ion signs out of SharePoint.
 - **Handle the workbook as CUI:** file names and masked fragments still show where PII is.
 
 ---
@@ -107,7 +107,7 @@ Each file starts with a header: purpose, inputs, outputs, how to run, run target
 
 | File | What it does |
 |---|---|
-| `src/Find-ChannelPII.ps1` | Entry point: the five steps (address, sign-in, folders, files, results) |
+| `src/Find-ChannelPII.ps1` | Entry point: address or folder, sign-in for cloud sites, folders, files, results |
 | `src/ChannelScan.psm1` | SharePoint and Teams steps: check the address, team or plain site, list folders, read files |
 | `src/DriveScan.psm1` | Scans a folder on a mapped or network drive (`X:\folder` or `\\server\share\folder`) |
 | `src/ReaderPool.psm1` | Reads several files at once in PowerShell runspaces, and each identical file only once per run |
