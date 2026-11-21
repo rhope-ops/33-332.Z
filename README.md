@@ -66,7 +66,7 @@ The steps to run it are at the top of the script.
 | Private and shared channels | Each has its own SharePoint site: run Ion again with that site's link |
 | Subsites | Run Ion again with the subsite's link |
 | A link to another folder inside a scanned drive folder | Listed as NOT SCANNED (a link can lead outside the folder): check it by hand |
-| A file link inside a scanned drive folder | Followed: Ion reads the file it points to |
+| A file link inside a scanned drive folder, including OneDrive online-only files and files on deduplicated or Azure File Sync shares | Listed as NOT SCANNED (a link can lead outside the folder): check it by hand |
 | Style Library and Form Templates | SharePoint's own files, not people's: skipped on purpose |
 | Encrypted or password-protected files | Listed as NOT SCANNED: check them by hand |
 | Files over 25 MB | Listed as NOT SCANNED: check them by hand (the limit is a setting) |
