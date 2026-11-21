@@ -33,7 +33,7 @@ Assert-Equal 0 (Get-HitSummary ('Digitally signed by ' + $Sample.DodId.Substring
 Assert-Equal 'SSN/High/***-**-6789' ((Get-HitSummary "SSN: $($Sample.Ssn) 2 copies") -join ',') 'A labelled SSN with a number after it is still found'
 $bareSsnX = $Sample.Ssn -replace '-', ''
 # Second review of PR 49: a count after an SSN, words that are no CAC name, and a one-letter first name.
-foreach ($case in @("$bareSsnX 3 pages", "$($Sample.Ssn -replace '-', ' ') 2 copies")) {
+foreach ($case in @("assigned $bareSsnX 1 slot", "Unsigned $($Sample.Ssn -replace '-', ' ') 2", "$bareSsnX 3 pages", "$($Sample.Ssn -replace '-', ' ') 2 copies")) {
     Assert-Equal 1 @(Get-HitSummary $case | Where-Object { $_ -like 'SSN/*' }).Count "SSN with a count after it still found: $($case -replace '\d', '#')"
 }
 foreach ($word in @('Acct.No.', 'Ref.No.', 'REF.NO.', 'backup.config.', 'Ph.No.')) {
