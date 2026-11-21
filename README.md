@@ -39,7 +39,7 @@ The steps to run it are at the top of the script.
 <kbd>Sign in</kbd> → <kbd>List and confirm</kbd> → <kbd>Read files in memory</kbd> → <kbd>Find PII</kbd> → <kbd><b>Mask it</b></kbd> → <kbd>Report</kbd>
 
 - **List and confirm:** Ion lists the files first and shows how many it found, their size, and how many it will list but not read. When it finds files, it asks "Scan now? [Y/n]"; Enter starts the scan, and "n" saves nothing.
-- **Progress:** one bar shows the folder, the run so far (files done, read, not scanned, possible PII, time elapsed and left) and the file in work; for a SharePoint or Teams file of 1 MB or more, a second bar shows the MB downloaded.
+- **Progress:** one bar shows 3 lines: the folder, the run so far (files done, read, not scanned, possible PII, time elapsed and left), and the file in work. For a SharePoint or Teams file of 1 MB or more, a second bar, "Downloading...", shows the MB downloaded. A download goes into memory only, never to disk, and is gone when the file is read.
 - **Report:** one Excel workbook per run, in `Documents\Ion\<site>\Ion <site> <yyyy-MM-dd HHmm>.xlsx` (a drive folder gets a folder of its own name; a site or folder name longer than 40 characters is cut to 40 in the path). It has a Summary tab, one tab per PII type (worst first), Low confidence, Not scanned, By account (when an account is named) and, last, Method. Each hit row shows when the file was created and by whom, when it was last saved and by whom, which account first saved a version with the PII and when, and a History note when the file's history cannot show that. Five empty columns are for the reviewer to fill in: Reviewed by, Review date, Is it PII? (Yes, No, Not sure), Action taken (Removed, Moved, Access limited, Left (not PII), Other) and Reported to Privacy Manager (Yes, No, Not needed). The By account tab counts files and High, Medium and Low hits per "first saved by" account. The Method tab explains, for each PII type, when a match is Low, Medium or High, and how each column is worked out: the "first saved by" account is evidence, not proof of who typed the PII.
 
 #### What it looks for
@@ -71,7 +71,10 @@ The steps to run it are at the top of the script.
 | A link to another folder inside a scanned drive folder | Listed as NOT SCANNED (a link can lead outside the folder): check it by hand |
 | A file link inside a scanned drive folder, including OneDrive online-only files and files on deduplicated or Azure File Sync shares | Listed as NOT SCANNED (a link can lead outside the folder): check it by hand |
 | Style Library and Form Templates | SharePoint's own files, not people's: skipped on purpose |
-| Encrypted or password-protected files | Listed as NOT SCANNED: check them by hand |
+| Files with a sensitivity label that encrypts them (Microsoft Purview) | Listed as NOT SCANNED, in a group of their own: open them and check by hand |
+| Encrypted or password-protected files, and PDFs with limits set by their author | Listed as NOT SCANNED, in a group of their own: check them by hand |
+| A PDF that takes more than 2 minutes to read (large or complex; the file is usually fine) | Listed as NOT SCANNED ("PDF time limit reached"): check it by hand |
+| Parts of a PDF written in a way the reader does not follow (the file may still open fine) | Listed as NOT SCANNED ("PDF parts not read"); the rest of the file is still checked |
 | Files over 25 MB | Listed as NOT SCANNED: check them by hand (the limit is a setting) |
 | Scripts, programs, audio, video and other file types Ion does not read | Listed as NOT SCANNED: check them by hand |
 | An archive or e-mail nested more than two levels deep | Listed as NOT SCANNED: open it and check by hand |

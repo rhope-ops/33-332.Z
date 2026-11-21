@@ -142,7 +142,7 @@ function Split-PdfStreamBody {
     if ($Body[$start] -eq "`r") { $start++ }
     if ($start -lt $Body.Length -and $Body[$start] -eq "`n") { $start++ }
     $end = $Body.LastIndexOf('endstream', [StringComparison]::Ordinal)
-    if ($end -lt $start) { Add-PdfNote 'Part of this PDF is damaged: check by hand'; return $null }   # cut short
+    if ($end -lt $start) { Add-PdfNote 'Part of this PDF is not well formed (the file may still open fine): check by hand'; return $null }   # cut short
     $stop = $end
     if ($stop -gt $start -and $Body[$stop - 1] -eq "`n") { $stop-- }
     if ($stop -gt $start -and $Body[$stop - 1] -eq "`r") { $stop-- }
@@ -161,20 +161,20 @@ function Add-PackedObjects {
     param($Objects, $Packed)
     $count = [int][regex]::Match($Packed.Dict, '/N\s+(\d+)').Groups[1].Value
     $first = [int][regex]::Match($Packed.Dict, '/First\s+(\d+)').Groups[1].Value
-    if ($first -le 0 -or $first -gt $Packed.Stream.Length) { Add-PdfNote 'Part of this PDF is damaged: check by hand'; return }
+    if ($first -le 0 -or $first -gt $Packed.Stream.Length) { Add-PdfNote 'Part of this PDF is not well formed (the file may still open fine): check by hand'; return }
     if ($first -gt $script:MaxPackedHeader -or $count -gt $script:MaxPackedObjects) { Add-PdfNote 'Part of this PDF is too large to unpack: check by hand'; return }
     $pairs = @($Packed.Stream.Substring(0, $first).Trim() -split '\s+')
     $number = 0
     for ($k = 0; $k -lt $pairs.Count; $k++) {
         if (($k % 2000) -eq 0) { Assert-PdfTime }
-        if (-not [int]::TryParse($pairs[$k], [ref]$number)) { Add-PdfNote 'Part of this PDF is damaged: check by hand'; return }
+        if (-not [int]::TryParse($pairs[$k], [ref]$number)) { Add-PdfNote 'Part of this PDF is not well formed (the file may still open fine): check by hand'; return }
     }
     for ($k = 0; $k -lt $count -and 2 * $k + 1 -lt $pairs.Count; $k++) {
         if (($k % 2000) -eq 0) { Assert-PdfTime }
         $start = $first + [int]$pairs[2 * $k + 1]
         $end = $Packed.Stream.Length
         if (2 * $k + 3 -lt $pairs.Count) { $end = $first + [int]$pairs[2 * $k + 3] }
-        if ($start -ge $end -or $end -gt $Packed.Stream.Length) { Add-PdfNote 'Part of this PDF is damaged: check by hand'; continue }
+        if ($start -ge $end -or $end -gt $Packed.Stream.Length) { Add-PdfNote 'Part of this PDF is not well formed (the file may still open fine): check by hand'; continue }
         $dict = $Packed.Stream.Substring($start, $end - $start)
         $number = $pairs[2 * $k]
         # The later definition in the file wins (an incremental update); the other one's text is kept too.

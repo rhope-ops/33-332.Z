@@ -31,6 +31,13 @@ $script:AnsiRunPattern = '[\x09\x0A\x0D\x20-\x7E]{6,}'
 # encrypted PowerPoint 97-2003 file.
 $script:EncryptedStreamNames = @('EncryptedPackage', 'EncryptedSummary')
 
+# Names that only a file protected by rights management has (MS-OFFCRYPTO 2.2.11, IRM: a Microsoft Purview sensitivity
+# label with encryption uses it); a password-protected file has StrongEncryptionDataSpace instead (the PAM, 2026-11-21:
+# tell labels from passwords).
+$script:LabelStreamNames = @('DRMEncryptedDataSpace', 'DRMEncryptedTransform')
+$script:LabelReason = 'Sensitivity label with encryption (Microsoft Purview): open it and check by hand'
+$script:PasswordReason = 'Encrypted (password-protected): check by hand'
+
 # An old .xls keeps numbers as binary values, not text: a number typed into a cell (an SSN without dashes) is not
 # read, so every .xls gets this note. Old .doc, .ppt and .msg files keep their text as text.
 $script:XlsNote = 'Old Excel file: numbers stored as values are not read: check by hand'
@@ -59,10 +66,7 @@ function Test-OleEncrypted {
       [bool]
     #>
     param([string]$Text, [byte[]]$Bytes)
-    foreach ($name in $script:EncryptedStreamNames) {
-        $utf16 = -join @($name.ToCharArray() | ForEach-Object { [string]$_ + [char]0 })
-        if ($Text.IndexOf($utf16, [StringComparison]::Ordinal) -ge 0) { return $true }
-    }
+    if (Test-OleName $Text $script:EncryptedStreamNames) { return $true }
     # Streams start on 512-byte sectors. Word: the FIB starts with wIdent 0xA5EC; flag bit 0x0100 at offset 0x0A.
     # Excel: a BIFF8 BOF record (09 08 10 00) followed by FILEPASS (2F 00).
     for ($at = 512; $at + 32 -le $Bytes.Length; $at += 512) {
@@ -73,6 +77,32 @@ function Test-OleEncrypted {
         }
     }
     return $false
+}
+
+function Test-OleName {
+    # True when the OLE directory (bytes as Latin-1 text) holds one of the names, as UTF-16LE.
+    param([string]$Text, [string[]]$Names)
+    foreach ($name in $Names) {
+        $utf16 = -join @($name.ToCharArray() | ForEach-Object { [string]$_ + [char]0 })
+        if ($Text.IndexOf($utf16, [StringComparison]::Ordinal) -ge 0) { return $true }
+    }
+    return $false
+}
+
+function Get-OleLockReason {
+    <#
+    .SYNOPSIS
+      Why an OLE file cannot be read: a sensitivity label with encryption, a password, or '' when it is not encrypted.
+    .PARAMETER Bytes
+      The file bytes.
+    .OUTPUTS
+      [string]
+    #>
+    param([byte[]]$Bytes)
+    $text = $script:OleLatin1.GetString($Bytes)
+    if (Test-OleName $text $script:LabelStreamNames) { return $script:LabelReason }
+    if (Test-OleEncrypted $text $Bytes) { return $script:PasswordReason }
+    return ''
 }
 
 function Get-OleText {
@@ -91,10 +121,9 @@ function Get-OleText {
     if (-not (Test-OleSignature $Bytes)) {
         return @{ Text = ''; Reason = 'Not a valid old Office or Outlook file (damaged, or another type with its name): check by hand'; Note = '' }
     }
+    $lock = Get-OleLockReason $Bytes
+    if ($lock) { return @{ Text = ''; Reason = $lock; Note = '' } }
     $text = $script:OleLatin1.GetString($Bytes)
-    if (Test-OleEncrypted $text $Bytes) {
-        return @{ Text = ''; Reason = 'Encrypted, password-protected or labelled with encryption: check by hand'; Note = '' }
-    }
     $runs = New-Object System.Collections.Generic.List[string]
     foreach ($run in [regex]::Matches($text, $script:Utf16RunPattern)) {
         $runs.Add([System.Text.Encoding]::Unicode.GetString($script:OleLatin1.GetBytes($run.Value)))
@@ -107,4 +136,4 @@ function Get-OleText {
     return @{ Text = ($runs -join "`n"); Reason = ''; Note = $note }
 }
 
-Export-ModuleMember -Function Get-OleText, Test-OleSignature
+Export-ModuleMember -Function Get-OleText, Test-OleSignature, Get-OleLockReason

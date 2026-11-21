@@ -21,23 +21,23 @@
     src/PiiDetectors.psm1, sha256 0c1ea11519a9
     src/PiiMasking.psm1, sha256 752c251a94b2
     src/OcrText.psm1, sha256 a39acab441d4
-    src/OleText.psm1, sha256 84041f86a020
+    src/OleText.psm1, sha256 fc909b00dd5e
     src/ContainerText.psm1, sha256 7378569bd7e6
-    src/PdfCore.psm1, sha256 da11bdba883c
-    src/PdfObjects.psm1, sha256 4479101a8f3e
+    src/PdfCore.psm1, sha256 2911c3a19ab3
+    src/PdfObjects.psm1, sha256 085efef3e4fb
     src/PdfFonts.psm1, sha256 f88c366cf09e
     src/PdfLayout.psm1, sha256 feafecd946b7
-    src/PdfText.psm1, sha256 312351e30b87
-    src/TextExtract.psm1, sha256 3b52ab6462e5
+    src/PdfText.psm1, sha256 72a237fd9599
+    src/TextExtract.psm1, sha256 5e02d07ddf10
     src/ReaderPool.psm1, sha256 8f8f73fda166
     src/XlsxWriter.psm1, sha256 0d8b1a3e1de1
-    src/Report.psm1, sha256 b963dc89d086
-    src/ScanMeter.psm1, sha256 c2aab2de3385
-    src/ScanQueue.psm1, sha256 eb3232e30d71
+    src/Report.psm1, sha256 aae9cfcefa60
+    src/ScanMeter.psm1, sha256 18c82f0b37c3
+    src/ScanQueue.psm1, sha256 09fb4ac8713b
     src/Accountability.psm1, sha256 c83be234edd1
-    src/ChannelScan.psm1, sha256 4eec88ad8ca9
+    src/ChannelScan.psm1, sha256 56a0cf108e7f
     src/DriveScan.psm1, sha256 f307e810f8f5
-    src/Find-ChannelPII.ps1, sha256 e9602ae72ea3
+    src/Find-ChannelPII.ps1, sha256 6c8ed16119d0
 
   Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.
   Run target: Windows PowerShell 5.1 with PnP.PowerShell 1.12.0; no admin rights, no file to unblock.
@@ -52,24 +52,24 @@
     line   619  Module PiiMasking.psm1
     line   819  Module OcrText.psm1
     line   972  Module OleText.psm1
-    line  1081  Module ContainerText.psm1
-    line  1420  Module PdfCore.psm1
-    line  1779  Module PdfObjects.psm1
-    line  2137  Module PdfFonts.psm1
-    line  2685  Module PdfLayout.psm1
-    line  2825  Module PdfText.psm1
-    line  3318  Module TextExtract.psm1
-    line  3731  Module ReaderPool.psm1
-    line  3983  Reader block end
-    line  3987  Module XlsxWriter.psm1
-    line  4294  Module Report.psm1
-    line  4847  Module ScanMeter.psm1
-    line  5244  Module ScanQueue.psm1
-    line  5589  Module Accountability.psm1
-    line  5967  Module ChannelScan.psm1
-    line  6560  Module DriveScan.psm1
-    line  6792  Body of Find-ChannelPII.ps1
-    line  6933  Clean-up
+    line  1110  Module ContainerText.psm1
+    line  1449  Module PdfCore.psm1
+    line  1811  Module PdfObjects.psm1
+    line  2169  Module PdfFonts.psm1
+    line  2717  Module PdfLayout.psm1
+    line  2857  Module PdfText.psm1
+    line  3359  Module TextExtract.psm1
+    line  3777  Module ReaderPool.psm1
+    line  4029  Reader block end
+    line  4033  Module XlsxWriter.psm1
+    line  4340  Module Report.psm1
+    line  4899  Module ScanMeter.psm1
+    line  5296  Module ScanQueue.psm1
+    line  5654  Module Accountability.psm1
+    line  6032  Module ChannelScan.psm1
+    line  6628  Module DriveScan.psm1
+    line  6860  Body of Find-ChannelPII.ps1
+    line  7001  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -1002,6 +1002,13 @@ $script:AnsiRunPattern = '[\x09\x0A\x0D\x20-\x7E]{6,}'
 # encrypted PowerPoint 97-2003 file.
 $script:EncryptedStreamNames = @('EncryptedPackage', 'EncryptedSummary')
 
+# Names that only a file protected by rights management has (MS-OFFCRYPTO 2.2.11, IRM: a Microsoft Purview sensitivity
+# label with encryption uses it); a password-protected file has StrongEncryptionDataSpace instead (the PAM, 2026-11-21:
+# tell labels from passwords).
+$script:LabelStreamNames = @('DRMEncryptedDataSpace', 'DRMEncryptedTransform')
+$script:LabelReason = 'Sensitivity label with encryption (Microsoft Purview): open it and check by hand'
+$script:PasswordReason = 'Encrypted (password-protected): check by hand'
+
 # An old .xls keeps numbers as binary values, not text: a number typed into a cell (an SSN without dashes) is not
 # read, so every .xls gets this note. Old .doc, .ppt and .msg files keep their text as text.
 $script:XlsNote = 'Old Excel file: numbers stored as values are not read: check by hand'
@@ -1030,10 +1037,7 @@ function Test-OleEncrypted {
       [bool]
     #>
     param([string]$Text, [byte[]]$Bytes)
-    foreach ($name in $script:EncryptedStreamNames) {
-        $utf16 = -join @($name.ToCharArray() | ForEach-Object { [string]$_ + [char]0 })
-        if ($Text.IndexOf($utf16, [StringComparison]::Ordinal) -ge 0) { return $true }
-    }
+    if (Test-OleName $Text $script:EncryptedStreamNames) { return $true }
     # Streams start on 512-byte sectors. Word: the FIB starts with wIdent 0xA5EC; flag bit 0x0100 at offset 0x0A.
     # Excel: a BIFF8 BOF record (09 08 10 00) followed by FILEPASS (2F 00).
     for ($at = 512; $at + 32 -le $Bytes.Length; $at += 512) {
@@ -1044,6 +1048,32 @@ function Test-OleEncrypted {
         }
     }
     return $false
+}
+
+function Test-OleName {
+    # True when the OLE directory (bytes as Latin-1 text) holds one of the names, as UTF-16LE.
+    param([string]$Text, [string[]]$Names)
+    foreach ($name in $Names) {
+        $utf16 = -join @($name.ToCharArray() | ForEach-Object { [string]$_ + [char]0 })
+        if ($Text.IndexOf($utf16, [StringComparison]::Ordinal) -ge 0) { return $true }
+    }
+    return $false
+}
+
+function Get-OleLockReason {
+    <#
+    .SYNOPSIS
+      Why an OLE file cannot be read: a sensitivity label with encryption, a password, or '' when it is not encrypted.
+    .PARAMETER Bytes
+      The file bytes.
+    .OUTPUTS
+      [string]
+    #>
+    param([byte[]]$Bytes)
+    $text = $script:OleLatin1.GetString($Bytes)
+    if (Test-OleName $text $script:LabelStreamNames) { return $script:LabelReason }
+    if (Test-OleEncrypted $text $Bytes) { return $script:PasswordReason }
+    return ''
 }
 
 function Get-OleText {
@@ -1062,10 +1092,9 @@ function Get-OleText {
     if (-not (Test-OleSignature $Bytes)) {
         return @{ Text = ''; Reason = 'Not a valid old Office or Outlook file (damaged, or another type with its name): check by hand'; Note = '' }
     }
+    $lock = Get-OleLockReason $Bytes
+    if ($lock) { return @{ Text = ''; Reason = $lock; Note = '' } }
     $text = $script:OleLatin1.GetString($Bytes)
-    if (Test-OleEncrypted $text $Bytes) {
-        return @{ Text = ''; Reason = 'Encrypted, password-protected or labelled with encryption: check by hand'; Note = '' }
-    }
     $runs = New-Object System.Collections.Generic.List[string]
     foreach ($run in [regex]::Matches($text, $script:Utf16RunPattern)) {
         $runs.Add([System.Text.Encoding]::Unicode.GetString($script:OleLatin1.GetBytes($run.Value)))
@@ -1516,7 +1545,10 @@ function Expand-PdfStream {
     #>
     param([string]$Raw)
     $bytes = $script:Latin1.GetBytes($Raw)
-    $skip = 0; if ($bytes.Length -ge 2 -and $bytes[0] -eq 0x78) { $skip = 2 }
+    # The zlib header (RFC 1950): method 8 in the low 4 bits, and the two bytes a multiple of 31. Any window size, not
+    # only 0x78: a header read as deflate data made good PDFs look damaged (the PAM's gov run, 2026-11-21).
+    $skip = 0
+    if ($bytes.Length -ge 2 -and ($bytes[0] -band 0x0F) -eq 8 -and (($bytes[0] * 256 + $bytes[1]) % 31) -eq 0) { $skip = 2 }
     $source = New-Object System.IO.MemoryStream -ArgumentList $bytes, $skip, ($bytes.Length - $skip)
     $inflate = New-Object System.IO.Compression.DeflateStream($source, [System.IO.Compression.CompressionMode]::Decompress)
     $output = New-Object System.IO.MemoryStream
@@ -1535,7 +1567,7 @@ function Expand-PdfStream {
             $script:PdfBudget.Inflated += $read
         }
     }
-    catch { Add-PdfNote 'Part of this PDF is damaged: check by hand' }   # the text read before the damage is kept
+    catch { Add-PdfNote 'Part of this PDF is not well formed (the file may still open fine): check by hand' }   # the text read before the damage is kept
     finally { $inflate.Dispose(); $source.Dispose() }
     return $script:Latin1.GetString($output.ToArray())
 }
@@ -1595,7 +1627,7 @@ function Expand-LzwStream {
             if ($code -eq 257) { return (Close-PdfUnpack $out -Whole) }
             if ($code -lt $table.Count) { $entry = $table[$code] }
             elseif ($code -eq $table.Count -and $null -ne $previous) { $entry = $previous + $previous[0] }
-            else { Add-PdfNote 'Part of this PDF is damaged: check by hand'; return (Close-PdfUnpack $out -Whole) }
+            else { Add-PdfNote 'Part of this PDF is not well formed (the file may still open fine): check by hand'; return (Close-PdfUnpack $out -Whole) }
             [void]$out.Append($entry)
             if (Test-PdfUnpackCap $out.Length) { return (Close-PdfUnpack $out) }
             if ($null -ne $previous -and $table.Count -lt 4096) { $table.Add($previous + $entry[0]) }
@@ -1920,7 +1952,7 @@ function Split-PdfStreamBody {
     if ($Body[$start] -eq "`r") { $start++ }
     if ($start -lt $Body.Length -and $Body[$start] -eq "`n") { $start++ }
     $end = $Body.LastIndexOf('endstream', [StringComparison]::Ordinal)
-    if ($end -lt $start) { Add-PdfNote 'Part of this PDF is damaged: check by hand'; return $null }   # cut short
+    if ($end -lt $start) { Add-PdfNote 'Part of this PDF is not well formed (the file may still open fine): check by hand'; return $null }   # cut short
     $stop = $end
     if ($stop -gt $start -and $Body[$stop - 1] -eq "`n") { $stop-- }
     if ($stop -gt $start -and $Body[$stop - 1] -eq "`r") { $stop-- }
@@ -1939,20 +1971,20 @@ function Add-PackedObjects {
     param($Objects, $Packed)
     $count = [int][regex]::Match($Packed.Dict, '/N\s+(\d+)').Groups[1].Value
     $first = [int][regex]::Match($Packed.Dict, '/First\s+(\d+)').Groups[1].Value
-    if ($first -le 0 -or $first -gt $Packed.Stream.Length) { Add-PdfNote 'Part of this PDF is damaged: check by hand'; return }
+    if ($first -le 0 -or $first -gt $Packed.Stream.Length) { Add-PdfNote 'Part of this PDF is not well formed (the file may still open fine): check by hand'; return }
     if ($first -gt $script:MaxPackedHeader -or $count -gt $script:MaxPackedObjects) { Add-PdfNote 'Part of this PDF is too large to unpack: check by hand'; return }
     $pairs = @($Packed.Stream.Substring(0, $first).Trim() -split '\s+')
     $number = 0
     for ($k = 0; $k -lt $pairs.Count; $k++) {
         if (($k % 2000) -eq 0) { Assert-PdfTime }
-        if (-not [int]::TryParse($pairs[$k], [ref]$number)) { Add-PdfNote 'Part of this PDF is damaged: check by hand'; return }
+        if (-not [int]::TryParse($pairs[$k], [ref]$number)) { Add-PdfNote 'Part of this PDF is not well formed (the file may still open fine): check by hand'; return }
     }
     for ($k = 0; $k -lt $count -and 2 * $k + 1 -lt $pairs.Count; $k++) {
         if (($k % 2000) -eq 0) { Assert-PdfTime }
         $start = $first + [int]$pairs[2 * $k + 1]
         $end = $Packed.Stream.Length
         if (2 * $k + 3 -lt $pairs.Count) { $end = $first + [int]$pairs[2 * $k + 3] }
-        if ($start -ge $end -or $end -gt $Packed.Stream.Length) { Add-PdfNote 'Part of this PDF is damaged: check by hand'; continue }
+        if ($start -ge $end -or $end -gt $Packed.Stream.Length) { Add-PdfNote 'Part of this PDF is not well formed (the file may still open fine): check by hand'; continue }
         $dict = $Packed.Stream.Substring($start, $end - $start)
         $number = $pairs[2 * $k]
         # The later definition in the file wins (an incremental update); the other one's text is kept too.
@@ -2877,9 +2909,16 @@ $script:InlineImageEnd = '\sEI(?=[\s/\[<(%]|$)'
 $script:PdfNoTextReason = 'No text in this PDF (a scanned image?): check by hand'
 # A scanned PDF's JPEG page images, found by Get-PdfAllText: read with Windows OCR when the PDF has no text.
 $script:PdfScanImages = @()
-$script:PdfSlowReason = 'This PDF is too large or damaged to read in time: check by hand'
-$script:PdfPartReason = 'Part of this PDF could not be read (a damaged or unusual string): check by hand'
-$script:PdfEncryptedReason = 'Encrypted PDF (password or label): check by hand'
+# Not-scanned reasons, each its own group on the Not scanned tab (the PAM, 2026-11-21: tell labels from passwords, and
+# a time limit from damage: many PDFs called damaged open fine). The limits are $PdfSecondsLimit and $PdfRegexTimeout of PdfCore.psm1.
+$script:PdfSlowReason = 'This PDF took longer than the time limit to read (2 minutes; the file may be fine): check by hand'
+$script:PdfSearchSlowReason = 'One search in this PDF took longer than its time limit (2 seconds; the file may be fine): check by hand'
+$script:PdfPartReason = 'Part of this PDF could not be read (an unusual string; the file may still open fine): check by hand'
+$script:PdfEncryptedReason = 'Encrypted PDF (a password, or limits set by its author; it may open without one): check by hand'
+# Microsoft Purview protection: an encrypted PDF whose security handler is Microsoft's, or a wrapper PDF that holds the
+# protected document as an encrypted payload (ISO 32000-2; its own pages only say the file is protected).
+$script:PdfLabelReason = 'Sensitivity label with encryption (Microsoft Purview): open it and check by hand'
+$script:PdfLabelPattern = '/Filter\s*/MicrosoftIRMServices\b|/EncryptedPayload\b'
 
 function Convert-PdfContentToText {
     <#
@@ -2987,7 +3026,7 @@ function Complete-PdfOpenArray {
     $strings = $false
     foreach ($item in $Array) { if ($item[0] -eq '(' -or $item[0] -eq '<') { $strings = $true; break } }
     if (-not $strings) { return }   # no strings: nothing lost
-    Add-PdfNote 'Part of this PDF is damaged (an unclosed [ ]): check by hand'
+    Add-PdfNote 'Part of this PDF is not well formed (the file may still open fine; an unclosed [ ]): check by hand'
     Add-PdfArrayPieces $Array $State
 }
 
@@ -3015,7 +3054,7 @@ function Add-PdfStackText {
     if ($texts.Count -eq 0) { return $false }
     $usual = $texts.Count -eq 1 -and [object]::ReferenceEquals($texts[0], $Stack[$Stack.Count - 1]) -and (($Operator -ceq 'TJ') -eq ($texts[0] -is [System.Collections.Generic.List[string]]))
     if ($usual) { return $false }
-    Add-PdfNote 'Part of this PDF is damaged (text with stray operands): check by hand'
+    Add-PdfNote 'Part of this PDF is not well formed (the file may still open fine; text with stray operands): check by hand'
     $gap = $false
     foreach ($text in $texts) {
         Assert-PdfTime   # up to $MaxArrayItems operands: the clock is checked for each (review r19)
@@ -3122,7 +3161,7 @@ function Skip-PdfInlineImage {
     param([string]$Content, [int]$From, $ImageEnd)
     $end = $ImageEnd.Match($Content, [Math]::Min($Content.Length, $From + 1))   # ID is followed by one white-space byte
     if ($end.Success) { return ($end.Index + $end.Length) }
-    Add-PdfNote 'Part of this PDF is damaged: check by hand'
+    Add-PdfNote 'Part of this PDF is not well formed (the file may still open fine): check by hand'
     return $Content.Length
 }
 
@@ -3181,6 +3220,7 @@ function Get-PdfText {
     if ($text.IndexOf('%PDF') -lt 0 -or $text.IndexOf('%PDF') -gt 1024) {
         return @{ Text = ''; Reason = 'Not a valid PDF (damaged, or another type with a .pdf name): check by hand' }
     }
+    if ($text -match $script:PdfLabelPattern) { return @{ Text = ''; Reason = $script:PdfLabelReason } }
     if ($text -match '/Encrypt\s*(?:\d+\s+\d+\s+R|<<)') { return @{ Text = ''; Reason = $script:PdfEncryptedReason } }
     Reset-PdfOldObjects   # this PDF's own older versions only
     $script:PdfScanImages = @()   # and its own scanned pages
@@ -3189,7 +3229,8 @@ function Get-PdfText {
     catch {
         # A limit or an unread string can arrive wrapped (a .NET call, the pipeline): look through the whole chain.
         for ($e = $_.Exception; $e; $e = $e.InnerException) {
-            if ($e -is [System.TimeoutException] -or $e -is [System.Text.RegularExpressions.RegexMatchTimeoutException]) { return @{ Text = ''; Reason = $script:PdfSlowReason } }
+            if ($e -is [System.Text.RegularExpressions.RegexMatchTimeoutException]) { return @{ Text = ''; Reason = $script:PdfSearchSlowReason } }
+            if ($e -is [System.TimeoutException]) { return @{ Text = ''; Reason = $script:PdfSlowReason } }
             if ($e -is [System.FormatException] -and $e.Message -eq (Get-PdfStringError)) { return @{ Text = ''; Reason = $script:PdfPartReason } }
         }
         throw   # any other error is the caller's (Get-TextFromBytes reports the file)
@@ -3375,11 +3416,12 @@ $script:ContainerExtensions = @('.zip', '.eml')
 $script:MaxContainerDepth = 2
 
 # First bytes of a zip (every .docx/.xlsx/.pptx) and of an OLE compound file. Office saves a file in OLE form when it
-# is encrypted: a password, or a sensitivity label (CUI) with encryption; an old .doc/.xls/.ppt renamed is OLE too.
-# The text of an encrypted file cannot be read without the Microsoft Information Protection SDK (not on the gov device).
+# is encrypted: a password, or a sensitivity label (CUI) with encryption (Get-OleLockReason tells them apart); an old
+# .doc/.xls/.ppt renamed is OLE too. The text of an encrypted file cannot be read without the Microsoft Information
+# Protection SDK (not on the gov device).
 $script:ZipMagic = '504B'
 $script:OleMagic = 'D0CF11E0A1B11AE1'
-$script:EncryptedReason = 'Encrypted, password-protected or labelled with encryption (or an old Office format with a new name): check by hand'
+$script:OldFormatReason = 'An old Office file (97-2003 format) with a new-style name: open it and check by hand'
 
 # =====================================================================================
 # Markup to text
@@ -3625,7 +3667,11 @@ function Get-NotZipReason {
     if ($null -eq $Bytes -or $Bytes.Length -eq 0) { return 'Empty file (0 bytes)' }
     $head = ($Bytes[0..([Math]::Min(7, $Bytes.Length - 1))] | ForEach-Object { $_.ToString('X2') }) -join ''
     if ($head.StartsWith($script:ZipMagic)) { return '' }
-    if ($head.StartsWith($script:OleMagic)) { return $script:EncryptedReason }
+    if ($head.StartsWith($script:OleMagic)) {
+        $lock = Get-OleLockReason $Bytes
+        if ($lock) { return $lock }
+        return $script:OldFormatReason
+    }
     # Decoded with its byte order mark, if any (UTF-8 or UTF-16), so a web page with a mark is still seen.
     $start = (Get-PlainText ([byte[]]$Bytes[0..([Math]::Min(255, $Bytes.Length - 1))])).TrimStart([char]0xFEFF, ' ', "`t", "`r", "`n")
     if ($start.StartsWith('<')) { return 'The download gave a web page, not the file: open it in SharePoint and check by hand' }
@@ -4345,13 +4391,18 @@ $script:ScreenColors = @{ Title = 'Cyan'; Label = 'Cyan'; Text = 'White'; Good =
 # Not-scanned reasons in groups for the counts on screen and on the Summary tab: a pattern on the reason, its group.
 # A file type that is not read is counted per extension (Get-NotScannedGroup).
 $script:NotScannedGroups = [ordered]@{
-    '^Encrypted' = 'Encrypted or labelled with encryption'
+    '^Sensitivity label' = 'Sensitivity label with encryption'
+    '^Encrypted' = 'Encrypted (password or author limits)'
+    '^An old Office file' = 'Old Office format with a new name'
     '^Larger than' = 'Too large'
     '^Empty file' = 'Empty file'
     '^No text in this PDF' = 'PDF without text (scanned image?)'
     'web page' = 'Download gave a web page'
     '^Download failed' = 'Download failed'
-    '^Not a valid (Office file|PDF)|^Could not read|too large or damaged to read in time|^Part of this PDF' = 'Damaged or not readable'
+    'longer than the time limit|longer than its time limit' = 'PDF time limit reached (file may be fine)'
+    '^Part of this PDF is not well formed|^Part of this PDF could not be read' = 'PDF parts not read (file may open fine)'
+    '^Part of this PDF' = 'PDF parts not unpacked'
+    '^Not a valid (Office file|PDF)|^Could not read' = 'Not a valid file (damaged or wrong name)'
     'could not be fully read|^A font in this PDF|^Some characters in this PDF' = 'PDF fonts not fully readable'
     '^Files attached inside this PDF' = 'PDF attachments'
     '^Image: Windows OCR|^Scanned PDF: Image: Windows OCR' = 'Images: OCR not available'
@@ -4452,8 +4503,10 @@ function Get-IonMark {
 }
 
 function Write-Banner {
-    # A heading line "==== <mark> <text> ====", the mark in the mark's eye colour (yellow), the rest in the title colour (the PAM, 2026-11-21).
-    param([string]$Text)
+    # A heading line "==== <text> ====" in the title colour. With -Mark (the start line next to "Ion" only; the PAM,
+    # 2026-11-21): "==== <mark> <text> ====", the mark in the mark's eye colour (yellow).
+    param([string]$Text, [switch]$Mark)
+    if (-not $Mark) { Write-Ui ('==== ' + $Text + ' ====') 'Title'; return }
     Write-Ui '==== ' 'Title' -NoNewline; Write-Ui (Get-IonMark) 'Accent' -NoNewline; Write-Ui (' ' + $Text + ' ====') 'Title'
 }
 
@@ -4586,7 +4639,7 @@ function Get-ScanSummaryText {
     $out = New-Object System.Collections.Generic.List[object]
     # Adds one screen line with its colour; the first LabelLength characters are written in the label colour.
     $add = { param($text, $kind, $labelLength = 0) $out.Add([pscustomobject]@{ Text = $text; Kind = $kind; LabelLength = $labelLength }) }
-    & $add '' 'Text'; & $add ('==== ' + (Get-IonMark) + ' Results ====') 'Title'
+    & $add '' 'Text'; & $add '==== Results ====' 'Title'
     # A scan that stopped early says so first, in red: its results cover only the files read so far.
     if (@($Rows | Where-Object { $_.Detector -eq 'INCOMPLETE' }).Count -gt 0) {
         & $add ('INCOMPLETE: the scan stopped early. Only the {0} {1} read are in these results; scan again.' -f $ItemsScanned, @('files', 'file')[[int]($ItemsScanned -eq 1)]) 'Alert'
@@ -4797,8 +4850,7 @@ function Publish-ScanReport {
     param([object[]]$Rows, [int]$ItemsScanned, [System.Collections.IDictionary]$Header, [string]$OutputFolder, [string]$SiteUrl,
           [string]$FolderLabel = 'Folder')
     foreach ($line in @(Get-ScanSummaryText -Rows $Rows -ItemsScanned $ItemsScanned -Header $Header -FolderLabel $FolderLabel)) {
-        if ($line.Kind -eq 'Title' -and $line.Text -match '^==== . (.+) ====$') { Write-Banner $Matches[1] }   # the mark in yellow
-        elseif ($line.LabelLength -gt 0) { Write-Ui $line.Text.Substring(0, $line.LabelLength) 'Label' -NoNewline; Write-Ui $line.Text.Substring($line.LabelLength) $line.Kind }
+        if ($line.LabelLength -gt 0) { Write-Ui $line.Text.Substring(0, $line.LabelLength) 'Label' -NoNewline; Write-Ui $line.Text.Substring($line.LabelLength) $line.Kind }
         else { Write-Ui $line.Text $line.Kind }
     }
     # The advice comes after the saved path (the PAM, 2026-11-21), and also when the save fails ('finally').
@@ -5047,7 +5099,7 @@ function Write-MeterLine {
     Write-Ui ('  ' + (Format-Name $script:TotalName (Get-RowWidth $Meter))) 'Text' -NoNewline
     Write-Ui ' | ' 'Rule' -NoNewline
     Write-Ui ($Noun + 's ') 'Muted' -NoNewline
-    Write-Ui ('{0}/{1} {2,3}%' -f (Format-Count $Meter.Done), (Format-Count $Meter.Total), (Get-MeterPercent $Meter)) 'Text' -NoNewline
+    Write-Ui ('{0} / {1} {2,3}%' -f (Format-Count $Meter.Done), (Format-Count $Meter.Total), (Get-MeterPercent $Meter)) 'Text' -NoNewline
     Write-CountPart 'read' $Meter.Read 'Text'
     Write-CountPart 'not scanned' $Meter.Skipped (Get-CountKind $Meter.Skipped 'Accent')
     Write-CountPart 'possible PII' $Meter.Hits (Get-CountKind $Meter.Hits 'Alert')
@@ -5078,7 +5130,7 @@ function Write-FileStep {
     .PARAMETER Size
       The file size in bytes.
     .PARAMETER Step
-      What is being done now, for example 'Downloading'.
+      What is being done now, for example 'Downloading...'.
     .PARAMETER Done
       The bytes done so far; -1 when the download method gives no byte count (the bar then says so and does not move).
     .PARAMETER Elapsed
@@ -5102,7 +5154,7 @@ function Write-FileStep {
         }
     }
     # No -ParentId: Windows PowerShell ISE indents a child bar; the PAM wants both bars aligned (2026-11-20).
-    Write-Progress -Id 2 -Activity ((Get-IonMark) + ' ' + $Step) -Status $status -PercentComplete $percent
+    Write-Progress -Id 2 -Activity $Step -Status $status -PercentComplete $percent
 }
 
 function Copy-StreamWithProgress {
@@ -5115,7 +5167,7 @@ function Copy-StreamWithProgress {
     .PARAMETER Size
       The expected size (the bar's 100%, and the first buffer size); 0 when not known.
     .PARAMETER Step
-      The bar's step text, for example 'Downloading'.
+      The bar's step text, for example 'Downloading...'.
     .OUTPUTS
       [byte[]]
     #>
@@ -5228,8 +5280,8 @@ function Write-ChannelLine {
     Write-Ui ('  ' + (Format-Name (Protect-PiiName $Channel) (Get-RowWidth $Meter))) 'Folder' -NoNewline
     Write-Ui ' | ' 'Rule' -NoNewline
     Write-Ui ($Noun + 's ') 'Muted' -NoNewline
-    # Padded to the width of the total row's "done/total percent", so the next columns line up.
-    Write-Ui ((Format-Count ($Meter.Done - $Before.Done)).PadRight($script:CountWidth * 2 + 6)) 'Text' -NoNewline
+    # Padded to the width of the total row's "done / total percent", so the next columns line up.
+    Write-Ui ((Format-Count ($Meter.Done - $Before.Done)).PadRight($script:CountWidth * 2 + 8)) 'Text' -NoNewline
     Write-CountPart 'read' ($Meter.Read - $Before.Read) 'Text'
     Write-CountPart 'not scanned' $skipped (Get-CountKind $skipped 'Accent')
     Write-CountPart 'possible PII' $hits (Get-CountKind $hits 'Alert')
@@ -5389,10 +5441,8 @@ function Invoke-GroupScan {
         $before = $meter.Clone()
         foreach ($file in $group.Files) {
             # The file in work, with PII masked (the PAM, 2026-11-20: a slow file is then visible).
-            # The scan bar's 3 lines (the PAM, 2026-11-21): the folder, the run so far, the file.
-            $Queue.Activity = '{0} Folder {1} of {2}: {3}' -f (Get-IonMark), ($c + 1), $Groups.Count, (Protect-PiiName $group.Name)
-            Write-Progress -Id 1 -Activity $Queue.Activity -Status (Get-ScanMeterText $meter 'file') -PercentComplete (Get-MeterPercent $meter) `
-                -CurrentOperation ('File: ' + (& $ShownFile $group $file))
+            $Queue.Activity = 'Folder {0} of {1}: {2}' -f ($c + 1), $Groups.Count, (Protect-PiiName $group.Name)
+            Write-ScanBar $Queue ('File: ' + (& $ShownFile $group $file))
             $firstRow = $Queue.Rows.Count
             if (-not (& $StartFile $Queue $group $file)) {
                 Update-ScanMeter $meter $Queue.Rows $firstRow 0
@@ -5456,8 +5506,23 @@ function Write-WaitBar {
     param([hashtable]$Queue, [int]$Busy)
     if (-not $Queue.Activity) { return }
     $noun = 'files'; if ($Busy -eq 1) { $noun = 'file' }
-    Write-Progress -Id 1 -Activity $Queue.Activity -Status (Get-ScanMeterText $Queue.Meter 'file') -PercentComplete (Get-MeterPercent $Queue.Meter) `
-        -CurrentOperation ('Reading {0} {1} (a large or long file takes longer) ...' -f $Busy, $noun)
+    Write-ScanBar $Queue ('Reading {0} {1} (a large or long file takes longer)...' -f $Busy, $noun)
+}
+
+function Write-ScanBar {
+    <#
+    .SYNOPSIS
+      The scan bar's 3 lines (the PAM, 2026-11-21): the folder, the run so far, then the file in work on a line of its
+      own. Windows PowerShell ISE puts CurrentOperation after the status on the same line, so the third line is a
+      line break in the status text, not CurrentOperation (the PAM's gov run, 2026-11-21).
+    .PARAMETER Queue
+      Output of New-ScanQueue (Activity: the folder line; Meter).
+    .PARAMETER Third
+      The third line: the file in work, or what the scan waits for.
+    #>
+    param([hashtable]$Queue, [string]$Third)
+    $status = (Get-ScanMeterText $Queue.Meter 'file') + "`n" + $Third
+    Write-Progress -Id 1 -Activity $Queue.Activity -Status $status -PercentComplete (Get-MeterPercent $Queue.Meter)
 }
 
 function Close-ScanQueue {
@@ -6003,6 +6068,9 @@ $script:NotScannedLibraries = @('Style Library', 'Form Templates')
 $script:NotChannelFolders = @('Forms')
 
 # Time spent downloading and spent reading, for the summary (it shows where a slow scan loses its time).
+# The per-file bar's heading while a file comes down from SharePoint into memory (never to disk), with "..." (the PAM, 2026-11-21).
+$script:DownloadStep = 'Downloading...'
+
 $script:Timing = @{ Download = [TimeSpan]::Zero; Check = [TimeSpan]::Zero }
 
 # Streamed download (Get-FileBytes, the PAM 2026-11-21): File.OpenBinaryDirect on the signed-in connection, so the bar
@@ -6353,7 +6421,7 @@ function Get-FileBytes {
     if ($script:DirectDownload -and (Test-FileBarSize $Size) -and $ServerRelativeUrl.IndexOfAny([char[]]'#%') -lt 0) {
         try {
             $stream = & $script:OpenDirectStream $ServerRelativeUrl
-            try { $bytes = Copy-StreamWithProgress $stream $Size 'Downloading' } finally { $stream.Dispose() }
+            try { $bytes = Copy-StreamWithProgress $stream $Size $script:DownloadStep } finally { $stream.Dispose() }
             if ($bytes.LongLength -eq $Size) { return , $bytes }
             # Not the size the list gives (a sign-in page, for example): the normal download decides.
             throw ('the stream gave {0} bytes, the list says {1}' -f $bytes.LongLength, $Size)
@@ -6364,7 +6432,7 @@ function Get-FileBytes {
             Write-Verbose ('Streamed download not possible, normal download used: ' + $_.Exception.Message)
         }
     }
-    Write-FileStep $Size 'Downloading'   # no byte count: the bar says so
+    Write-FileStep $Size $script:DownloadStep   # no byte count: the bar says so
     # The leading commas keep the byte array whole: PowerShell would otherwise unroll it, byte by byte (slow).
     try {
         $stream = Get-PnPFile -Url $ServerRelativeUrl -AsMemoryStream -ErrorAction Stop
@@ -6449,7 +6517,7 @@ function Invoke-OneFileScan {
         $reason = Protect-PiiText ('Download failed: ' + $_.Exception.Message)
         $rows.Add((New-ReportRow 'File' $Channel $item $link $modified 'NOT SCANNED' '' '' $reason)); return $false
     }
-    finally { $script:Timing.Download += $clock.Elapsed; Write-Progress -Id 2 -Activity 'Downloading' -Completed }
+    finally { $script:Timing.Download += $clock.Elapsed; Write-Progress -Id 2 -Activity $script:DownloadStep -Completed }
     # The main thread downloads the next file while workers read this one (speed, the PAM 2026-11-21).
     # Accountability: who made and changed the file; for a file with a hit, who added each hit (version history).
     $who = Get-SharePointWho $File
@@ -6896,7 +6964,7 @@ function Open-ScanResult {
     catch { Write-Ui ('The workbook could not be opened: ' + (Protect-PiiText $_.Exception.Message) + '. Open it from the folder above.') 'Accent' }
 }
 
-Write-Banner 'Ion - DoD365 PII Reporter'
+Write-Banner 'Ion - DoD365 PII Reporter' -Mark
 Write-Ui 'Read-only. Every PII value found is masked on screen and in the results.' 'Muted'
 # What it scans and how to stop early (the PAM, 2026-11-21): a cancel still saves the results so far ('finally').
 Write-Ui ('Scans the files of one Teams team, SharePoint site or drive folder. Files over {0} MB are listed, not read.' -f $MaxFileMB) 'Muted'

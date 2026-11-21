@@ -147,11 +147,20 @@ $accountHits = @(
     [pscustomobject]@{ AddedBy = 'Not recorded'; Channel = 'Ops'; Item = 'z.docx'; Confidence = 'High' })
 $accountRows = @(Get-AccountRows $accountHits)
 Assert-Equal 'a.one 1 1 0 1|b.two 1 0 1 0' (($accountRows | ForEach-Object { $_ -join ' ' }) -join '|') 'By account: files once per account, hits per confidence, most first, Not recorded left out'
-# The app's mark (gamma, Logo Studies) on the heading lines and the scan bar (the PAM, 2026-11-21).
+# The app's mark (gamma, Logo Studies) only on the start line next to "Ion" (the PAM, 2026-11-21).
 $mark = [string][char]0x3B3
+$bannerShown = (& (Get-Module Report) { Write-Banner 'Ion' -Mark } 6>&1 | ForEach-Object { [string]$_ }) -join ''
+Assert-Equal ('==== ' + $mark + ' Ion ====') $bannerShown 'Start banner: the mark between the rules'
 $bannerShown = (& (Get-Module Report) { Write-Banner 'Results' } 6>&1 | ForEach-Object { [string]$_ }) -join ''
-Assert-Equal ('==== ' + $mark + ' Results ====') $bannerShown 'Banner: the mark between the rules'
+Assert-Equal '==== Results ====' $bannerShown 'Other banners: no mark'
 $tieHits = @([pscustomobject]@{ AddedBy = 'b.two'; Channel = 'Ops'; Item = 'y'; Confidence = 'Low' },
     [pscustomobject]@{ AddedBy = 'a.one'; Channel = 'Ops'; Item = 'x'; Confidence = 'Low' })
 $tieRows = @(Get-AccountRows $tieHits)
 Assert-Equal 'a.one|b.two' (($tieRows | ForEach-Object { $_[0] }) -join '|') 'By account: equal totals in name order'
+# Not-scanned groups keep a sensitivity label, a password, the PDF time limit and a part not read apart (the PAM, 2026-11-21).
+$groupOf = { param($reason) & (Get-Module Report) { param($r) Get-NotScannedGroup ([pscustomobject]@{ Detector = 'NOT SCANNED'; Item = 'a.pdf'; Context = $r }) } $reason }
+Assert-Equal 'Sensitivity label with encryption' (& $groupOf 'Sensitivity label with encryption (Microsoft Purview): open it and check by hand') 'Groups: a sensitivity label'
+Assert-Equal 'Encrypted (password or author limits)' (& $groupOf 'Encrypted (password-protected): check by hand') 'Groups: a password'
+Assert-Equal 'PDF time limit reached (file may be fine)' (& $groupOf 'This PDF took longer than the time limit to read (2 minutes; the file may be fine): check by hand') 'Groups: the PDF time limit'
+Assert-Equal 'PDF parts not read (file may open fine)' (& $groupOf 'Part of this PDF is not well formed (the file may still open fine): check by hand') 'Groups: a PDF part not read'
+Assert-Equal 'Not a valid file (damaged or wrong name)' (& $groupOf 'Not a valid PDF (damaged, or another type with a .pdf name): check by hand') 'Groups: not a valid file'

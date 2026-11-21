@@ -146,10 +146,8 @@ function Invoke-GroupScan {
         $before = $meter.Clone()
         foreach ($file in $group.Files) {
             # The file in work, with PII masked (the PAM, 2026-11-20: a slow file is then visible).
-            # The scan bar's 3 lines (the PAM, 2026-11-21): the folder, the run so far, the file.
-            $Queue.Activity = '{0} Folder {1} of {2}: {3}' -f (Get-IonMark), ($c + 1), $Groups.Count, (Protect-PiiName $group.Name)
-            Write-Progress -Id 1 -Activity $Queue.Activity -Status (Get-ScanMeterText $meter 'file') -PercentComplete (Get-MeterPercent $meter) `
-                -CurrentOperation ('File: ' + (& $ShownFile $group $file))
+            $Queue.Activity = 'Folder {0} of {1}: {2}' -f ($c + 1), $Groups.Count, (Protect-PiiName $group.Name)
+            Write-ScanBar $Queue ('File: ' + (& $ShownFile $group $file))
             $firstRow = $Queue.Rows.Count
             if (-not (& $StartFile $Queue $group $file)) {
                 Update-ScanMeter $meter $Queue.Rows $firstRow 0
@@ -213,8 +211,23 @@ function Write-WaitBar {
     param([hashtable]$Queue, [int]$Busy)
     if (-not $Queue.Activity) { return }
     $noun = 'files'; if ($Busy -eq 1) { $noun = 'file' }
-    Write-Progress -Id 1 -Activity $Queue.Activity -Status (Get-ScanMeterText $Queue.Meter 'file') -PercentComplete (Get-MeterPercent $Queue.Meter) `
-        -CurrentOperation ('Reading {0} {1} (a large or long file takes longer) ...' -f $Busy, $noun)
+    Write-ScanBar $Queue ('Reading {0} {1} (a large or long file takes longer)...' -f $Busy, $noun)
+}
+
+function Write-ScanBar {
+    <#
+    .SYNOPSIS
+      The scan bar's 3 lines (the PAM, 2026-11-21): the folder, the run so far, then the file in work on a line of its
+      own. Windows PowerShell ISE puts CurrentOperation after the status on the same line, so the third line is a
+      line break in the status text, not CurrentOperation (the PAM's gov run, 2026-11-21).
+    .PARAMETER Queue
+      Output of New-ScanQueue (Activity: the folder line; Meter).
+    .PARAMETER Third
+      The third line: the file in work, or what the scan waits for.
+    #>
+    param([hashtable]$Queue, [string]$Third)
+    $status = (Get-ScanMeterText $Queue.Meter 'file') + "`n" + $Third
+    Write-Progress -Id 1 -Activity $Queue.Activity -Status $status -PercentComplete (Get-MeterPercent $Queue.Meter)
 }
 
 function Close-ScanQueue {
