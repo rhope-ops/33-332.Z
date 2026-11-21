@@ -11,7 +11,7 @@ ChannelScan.psm1 - reads one team's or site's files and turns them into report r
                ScanMeter.psm1, SiteTarget.psm1 (all imported first by Find-ChannelPII.ps1).
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7).
-  Network:     only the one SharePoint site the person gives. Nothing lists other sites or teams (no network
+  Network:     only the one signed-in SharePoint site (SiteTarget.psm1 signs in). Nothing lists other sites or teams (no network
                reconnaissance).
   Writes:      none in SharePoint or Teams: read calls only. Rows go to an in-memory list.
   Credentials: the person's own CAC sign-in (PnP web login). Nothing is stored.

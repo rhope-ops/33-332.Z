@@ -31,6 +31,12 @@ Assert-Equal 'DoD ID/High/******7890' ((Get-HitSummary "Digitally signed by $cac
 Assert-Equal 'DoD ID/High/******7890' ((Get-HitSummary "Digitally signed by $cacName$spacedId Date: 2026.11.20") -join ',') 'CAC name, digits with gaps: the DoD ID, no SSN'
 Assert-Equal 0 (Get-HitSummary ('ref ' + $Sample.DodId.Substring(0, 9) + ' ' + $Sample.DodId.Substring(9) + ' shipped')).Count '9 digits then one more after a space: no SSN'
 Assert-Equal 'SSN/High/***-**-6789' ((Get-HitSummary "SSN: $($Sample.Ssn) 2 copies") -join ',') 'A labelled SSN with a number after it is still found'
+# Review of PR 49: an unlabelled SSN next to a row number, a date, initials or an abbreviation is still found.
+$bareSsn = $Sample.Ssn -replace '-', ''
+foreach ($case in @("Row 12 $($Sample.Ssn) DOE JANE", "1 $($Sample.Ssn)", "$($Sample.Ssn) 05/12/1990", "SMITH, J.A. $($Sample.Ssn)",
+        "see e.g. $($Sample.Ssn)", "U.S. $bareSsn", "($($Sample.Ssn -replace '-', ' ')) 05/12/1990")) {
+    Assert-Equal 1 @(Get-HitSummary $case | Where-Object { $_ -like 'SSN/*' }).Count "Unlabelled SSN still found: $($case -replace '\d', '#')"
+}
 
 # ---- Payment card ----
 Assert-Equal 'Payment card/High/************1111' (Get-HitSummary 'GTC card 4111 1111 1111 1111 exp') 'Card with label'

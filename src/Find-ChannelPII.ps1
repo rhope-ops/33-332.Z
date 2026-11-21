@@ -15,7 +15,8 @@
   Outputs:     progress and the summary on screen; <OutputFolder>\<site>\Ion <site> <yyyy-MM-dd HHmm>.xlsx.
   How to run:  .\Find-ChannelPII.ps1   (README.md "Run it" gives every step)
   Run target:  Windows PowerShell 5.1 (also PowerShell 7) with PnP.PowerShell 1.12.0. No other modules.
-  Network:     only the one SharePoint site, or the one drive folder's server, given. Channel posts are not read (the PAM, 2026-11-20).
+  Network:     only the one SharePoint site, or the one drive folder's server, given; for a Teams link also the tenant
+               root, for one lookup of that team's site (SiteTarget.psm1). Channel posts are not read (the PAM, 2026-11-20).
   Writes:      only the workbook in -OutputFolder (default Documents\Ion); nothing in Teams or SharePoint.
   Credentials: the person's own CAC sign-in in the PnP sign-in window (a drive folder: the Windows logon); nothing is stored.
 

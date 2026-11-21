@@ -54,8 +54,10 @@ $script:GarbledChar = [regex]'[\p{Co}\uFFFD\x01-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F\u
 # A CAC name as certificates and digital signatures write it: 2 to 4 name parts, each ending in a dot, then the 10-digit
 # DoD ID (single spaces allowed between digits: PDF signature blocks are often drawn with gaps). $CacNameEnd is the
 # same name part alone, at the end of the text before an SSN-shaped match; $CacNameChars is how far back it is looked for.
-$script:CacNamePattern = "(?<![\w.])(?:[A-Za-z][A-Za-z'-]*\.){2,4}(?<id>\d(?: ?\d){9})(?![\w-]| \d)"
-$script:CacNameEnd = "(?<![\w.])(?:[A-Za-z][A-Za-z'-]*\.){2,4}\d?\s?$"
+# The first two name parts have 2 letters or more, so initials and abbreviations ("J.A.", "U.S.", "e.g.") are no CAC name.
+$script:CacNamePrefix = "(?<![\w.])[A-Za-z][A-Za-z'-]+\.[A-Za-z][A-Za-z'-]+\.(?:[A-Za-z][A-Za-z'-]*\.){0,2}"
+$script:CacNamePattern = $script:CacNamePrefix + '(?<id>\d(?: ?\d){9})(?![\w-]| \d)'
+$script:CacNameEnd = $script:CacNamePrefix + '$'
 $script:CacNameChars = 120
 
 $script:DetectorOrder = @('SSN', 'DoD ID', 'Payment card', 'Date of birth', 'Passport', 'Phone',
@@ -190,8 +192,9 @@ function New-PiiHit {
 function Test-SsnPartOfLonger {
     <#
     .SYNOPSIS
-      True when an SSN-shaped match is part of a longer number: a digit one space (or none) before or after it, or a
-      CAC name ("LAST.FIRST." or "LAST.FIRST.M.") right before it.
+      True when an SSN-shaped match without dashes is part of a gapped 10-digit DoD ID: one more digit alone after one
+      space ("123 45 6789 0"), or a CAC name ("LAST.FIRST." or "LAST.FIRST.M.") right before it, with no space.
+      A dashed SSN, and one followed by a longer number (a date, a count), stays an SSN (review of PR 49).
     .PARAMETER Text
       The text searched.
     .PARAMETER Match
@@ -200,9 +203,11 @@ function Test-SsnPartOfLonger {
       [bool]
     #>
     param([string]$Text, [System.Text.RegularExpressions.Match]$Match)
+    if ($Match.Groups[2].Value -eq '-') { return $false }
     $end = $Match.Index + $Match.Length
-    if ($end + 1 -lt $Text.Length -and $Text[$end] -eq ' ' -and [char]::IsDigit($Text[$end + 1])) { return $true }
-    if ($Match.Index -ge 2 -and $Text[$Match.Index - 1] -eq ' ' -and [char]::IsDigit($Text[$Match.Index - 2])) { return $true }
+    $loneDigit = $end + 1 -lt $Text.Length -and $Text[$end] -eq ' ' -and [char]::IsDigit($Text[$end + 1]) -and
+        ($end + 2 -ge $Text.Length -or -not [char]::IsLetterOrDigit($Text[$end + 2]))
+    if ($loneDigit) { return $true }
     $start = [Math]::Max(0, $Match.Index - $script:CacNameChars)
     return [regex]::IsMatch($Text.Substring($start, $Match.Index - $start), $script:CacNameEnd)
 }
@@ -229,9 +234,8 @@ function Find-SsnHits {
     foreach ($m in [regex]::Matches($Text, $pattern)) {
         if (-not (Test-SsnValid $m.Groups[1].Value $m.Groups[3].Value $m.Groups[4].Value)) { continue }
         $labelled = Test-KeywordBefore $Text $m.Index $labels
-        # Without a label, 9 digits that are part of a longer number are no SSN: a digit one space before or after
-        # (a 10-digit DoD ID drawn with gaps, as e-signature blocks are), or a CAC name just before ("LAST.FIRST.M."
-        # then the DoD ID). The PAM's gov run, 2026-11-21: DoD IDs in PDF signature blocks were shown as SSNs.
+        # Without a label, 9 digits that are part of a gapped DoD ID are no SSN (Test-SsnPartOfLonger). The PAM's
+        # gov run, 2026-11-21: DoD IDs in PDF signature blocks were shown as SSNs.
         if (-not $labelled -and (Test-SsnPartOfLonger $Text $m)) { continue }
         $confidence = 'Low'
         if ($m.Groups[2].Value -ne '') { $confidence = 'Medium' }

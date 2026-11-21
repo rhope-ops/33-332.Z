@@ -31,6 +31,8 @@ $script:SiteUrlPattern = '^(?<host>https://[A-Za-z0-9.-]+)/(?::[a-z]:/r/)?(?<sit
 
 # The tenant root of DoD365: a Teams link alone is turned into its team's site here (GroupSiteManager GetSiteStatus, a
 # read about the one group in the link; the PAM's test 2 of 2026-11-21 works). Only a site on this host is used.
+# GetSiteStatus reports whether the group's site exists (0 not found, 1 being made, 2 ready); it is not the call that
+# creates one (CreateGroupEx). Microsoft documents no write for it; not proven on DoD365 (review of PR 49).
 $script:TenantRoot = 'https://usaf.dps.mil'
 
 # Accepted Teams link: a team's or a channel's "Copy link" (https://<teams-host>/l/team/... or /l/channel/...).
@@ -189,7 +191,8 @@ function Find-TeamSiteByGroup {
       [string] https://<tenant root host>/sites/<name> or /teams/<name>, or ''.
     #>
     param([guid]$GroupId)
-    Write-Ui "Teams link: looking up this team's site (a sign-in window may open; if you do not see it, press Alt+Tab) ..." 'Muted'
+    Write-Ui "Teams link: looking up this team's site ..." 'Muted'
+    Write-Ui '  A sign-in window opens now, and a second one for the team site after it (if you do not see one, press Alt+Tab).' 'Muted'
     try {
         Connect-PnPOnline -Url $script:TenantRoot -UseWebLogin -WarningAction SilentlyContinue
         $answer = Invoke-PnPSPRestMethod -Method Post -Url '/_api/GroupSiteManager/GetSiteStatus' -Content @{ groupId = [string]$GroupId } -ErrorAction Stop

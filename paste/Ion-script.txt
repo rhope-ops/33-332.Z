@@ -18,7 +18,7 @@
   the files at each library's top), or the drive folder and all its subfolders. Channel posts are not read.
 
   Built from these files; to change it, change them and rebuild with: python3 scripts/build_paste.py
-    src/PiiDetectors.psm1, sha256 ec28dcce6b55
+    src/PiiDetectors.psm1, sha256 0e5c0bd40f7e
     src/PiiMasking.psm1, sha256 752c251a94b2
     src/OcrText.psm1, sha256 a39acab441d4
     src/OleText.psm1, sha256 2f5d0a036e97
@@ -35,10 +35,10 @@
     src/ScanMeter.psm1, sha256 18c82f0b37c3
     src/ScanQueue.psm1, sha256 b5f06a023aaf
     src/Accountability.psm1, sha256 3d2b527a9444
-    src/SiteTarget.psm1, sha256 80c9a1ecd1ca
-    src/ChannelScan.psm1, sha256 44a91d2641e1
+    src/SiteTarget.psm1, sha256 339a273b6fb2
+    src/ChannelScan.psm1, sha256 0cd4894c7c7b
     src/DriveScan.psm1, sha256 f307e810f8f5
-    src/Find-ChannelPII.ps1, sha256 f1309e2c3404
+    src/Find-ChannelPII.ps1, sha256 5dbc5d6e0879
 
   Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.
   Run target: Windows PowerShell 5.1 with PnP.PowerShell 1.12.0; no admin rights, no file to unblock.
@@ -50,28 +50,28 @@
     line    77  Settings
     line    88  Reader block
     line    94  Module PiiDetectors.psm1
-    line   660  Module PiiMasking.psm1
-    line   860  Module OcrText.psm1
-    line  1013  Module OleText.psm1
-    line  1152  Module ContainerText.psm1
-    line  1491  Module PdfCore.psm1
-    line  1853  Module PdfObjects.psm1
-    line  2211  Module PdfFonts.psm1
-    line  2759  Module PdfLayout.psm1
-    line  2899  Module PdfText.psm1
-    line  3401  Module TextExtract.psm1
-    line  3819  Module ReaderPool.psm1
-    line  4071  Reader block end
-    line  4075  Module XlsxWriter.psm1
-    line  4382  Module Report.psm1
-    line  4942  Module ScanMeter.psm1
-    line  5339  Module ScanQueue.psm1
-    line  5697  Module Accountability.psm1
-    line  6079  Module SiteTarget.psm1
-    line  6328  Module ChannelScan.psm1
-    line  6730  Module DriveScan.psm1
-    line  6962  Body of Find-ChannelPII.ps1
-    line  7103  Clean-up
+    line   664  Module PiiMasking.psm1
+    line   864  Module OcrText.psm1
+    line  1017  Module OleText.psm1
+    line  1156  Module ContainerText.psm1
+    line  1495  Module PdfCore.psm1
+    line  1857  Module PdfObjects.psm1
+    line  2215  Module PdfFonts.psm1
+    line  2763  Module PdfLayout.psm1
+    line  2903  Module PdfText.psm1
+    line  3405  Module TextExtract.psm1
+    line  3823  Module ReaderPool.psm1
+    line  4075  Reader block end
+    line  4079  Module XlsxWriter.psm1
+    line  4386  Module Report.psm1
+    line  4946  Module ScanMeter.psm1
+    line  5343  Module ScanQueue.psm1
+    line  5701  Module Accountability.psm1
+    line  6083  Module SiteTarget.psm1
+    line  6335  Module ChannelScan.psm1
+    line  6737  Module DriveScan.psm1
+    line  6969  Body of Find-ChannelPII.ps1
+    line  7110  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -147,8 +147,10 @@ $script:GarbledChar = [regex]'[\p{Co}\uFFFD\x01-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F\u
 # A CAC name as certificates and digital signatures write it: 2 to 4 name parts, each ending in a dot, then the 10-digit
 # DoD ID (single spaces allowed between digits: PDF signature blocks are often drawn with gaps). $CacNameEnd is the
 # same name part alone, at the end of the text before an SSN-shaped match; $CacNameChars is how far back it is looked for.
-$script:CacNamePattern = "(?<![\w.])(?:[A-Za-z][A-Za-z'-]*\.){2,4}(?<id>\d(?: ?\d){9})(?![\w-]| \d)"
-$script:CacNameEnd = "(?<![\w.])(?:[A-Za-z][A-Za-z'-]*\.){2,4}\d?\s?$"
+# The first two name parts have 2 letters or more, so initials and abbreviations ("J.A.", "U.S.", "e.g.") are no CAC name.
+$script:CacNamePrefix = "(?<![\w.])[A-Za-z][A-Za-z'-]+\.[A-Za-z][A-Za-z'-]+\.(?:[A-Za-z][A-Za-z'-]*\.){0,2}"
+$script:CacNamePattern = $script:CacNamePrefix + '(?<id>\d(?: ?\d){9})(?![\w-]| \d)'
+$script:CacNameEnd = $script:CacNamePrefix + '$'
 $script:CacNameChars = 120
 
 $script:DetectorOrder = @('SSN', 'DoD ID', 'Payment card', 'Date of birth', 'Passport', 'Phone',
@@ -283,8 +285,9 @@ function New-PiiHit {
 function Test-SsnPartOfLonger {
     <#
     .SYNOPSIS
-      True when an SSN-shaped match is part of a longer number: a digit one space (or none) before or after it, or a
-      CAC name ("LAST.FIRST." or "LAST.FIRST.M.") right before it.
+      True when an SSN-shaped match without dashes is part of a gapped 10-digit DoD ID: one more digit alone after one
+      space ("123 45 6789 0"), or a CAC name ("LAST.FIRST." or "LAST.FIRST.M.") right before it, with no space.
+      A dashed SSN, and one followed by a longer number (a date, a count), stays an SSN (review of PR 49).
     .PARAMETER Text
       The text searched.
     .PARAMETER Match
@@ -293,9 +296,11 @@ function Test-SsnPartOfLonger {
       [bool]
     #>
     param([string]$Text, [System.Text.RegularExpressions.Match]$Match)
+    if ($Match.Groups[2].Value -eq '-') { return $false }
     $end = $Match.Index + $Match.Length
-    if ($end + 1 -lt $Text.Length -and $Text[$end] -eq ' ' -and [char]::IsDigit($Text[$end + 1])) { return $true }
-    if ($Match.Index -ge 2 -and $Text[$Match.Index - 1] -eq ' ' -and [char]::IsDigit($Text[$Match.Index - 2])) { return $true }
+    $loneDigit = $end + 1 -lt $Text.Length -and $Text[$end] -eq ' ' -and [char]::IsDigit($Text[$end + 1]) -and
+        ($end + 2 -ge $Text.Length -or -not [char]::IsLetterOrDigit($Text[$end + 2]))
+    if ($loneDigit) { return $true }
     $start = [Math]::Max(0, $Match.Index - $script:CacNameChars)
     return [regex]::IsMatch($Text.Substring($start, $Match.Index - $start), $script:CacNameEnd)
 }
@@ -322,9 +327,8 @@ function Find-SsnHits {
     foreach ($m in [regex]::Matches($Text, $pattern)) {
         if (-not (Test-SsnValid $m.Groups[1].Value $m.Groups[3].Value $m.Groups[4].Value)) { continue }
         $labelled = Test-KeywordBefore $Text $m.Index $labels
-        # Without a label, 9 digits that are part of a longer number are no SSN: a digit one space before or after
-        # (a 10-digit DoD ID drawn with gaps, as e-signature blocks are), or a CAC name just before ("LAST.FIRST.M."
-        # then the DoD ID). The PAM's gov run, 2026-11-21: DoD IDs in PDF signature blocks were shown as SSNs.
+        # Without a label, 9 digits that are part of a gapped DoD ID are no SSN (Test-SsnPartOfLonger). The PAM's
+        # gov run, 2026-11-21: DoD IDs in PDF signature blocks were shown as SSNs.
         if (-not $labelled -and (Test-SsnPartOfLonger $Text $m)) { continue }
         $confidence = 'Low'
         if ($m.Groups[2].Value -ne '') { $confidence = 'Medium' }
@@ -6109,6 +6113,8 @@ $script:SiteUrlPattern = '^(?<host>https://[A-Za-z0-9.-]+)/(?::[a-z]:/r/)?(?<sit
 
 # The tenant root of DoD365: a Teams link alone is turned into its team's site here (GroupSiteManager GetSiteStatus, a
 # read about the one group in the link; the PAM's test 2 of 2026-11-21 works). Only a site on this host is used.
+# GetSiteStatus reports whether the group's site exists (0 not found, 1 being made, 2 ready); it is not the call that
+# creates one (CreateGroupEx). Microsoft documents no write for it; not proven on DoD365 (review of PR 49).
 $script:TenantRoot = 'https://usaf.dps.mil'
 
 # Accepted Teams link: a team's or a channel's "Copy link" (https://<teams-host>/l/team/... or /l/channel/...).
@@ -6267,7 +6273,8 @@ function Find-TeamSiteByGroup {
       [string] https://<tenant root host>/sites/<name> or /teams/<name>, or ''.
     #>
     param([guid]$GroupId)
-    Write-Ui "Teams link: looking up this team's site (a sign-in window may open; if you do not see it, press Alt+Tab) ..." 'Muted'
+    Write-Ui "Teams link: looking up this team's site ..." 'Muted'
+    Write-Ui '  A sign-in window opens now, and a second one for the team site after it (if you do not see one, press Alt+Tab).' 'Muted'
     try {
         Connect-PnPOnline -Url $script:TenantRoot -UseWebLogin -WarningAction SilentlyContinue
         $answer = Invoke-PnPSPRestMethod -Method Post -Url '/_api/GroupSiteManager/GetSiteStatus' -Content @{ groupId = [string]$GroupId } -ErrorAction Stop
@@ -6339,7 +6346,7 @@ ChannelScan.psm1 - reads one team's or site's files and turns them into report r
                ScanMeter.psm1, SiteTarget.psm1 (all imported first by Find-ChannelPII.ps1).
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7).
-  Network:     only the one SharePoint site the person gives. Nothing lists other sites or teams (no network
+  Network:     only the one signed-in SharePoint site (SiteTarget.psm1 signs in). Nothing lists other sites or teams (no network
                reconnaissance).
   Writes:      none in SharePoint or Teams: read calls only. Rows go to an in-memory list.
   Credentials: the person's own CAC sign-in (PnP web login). Nothing is stored.
