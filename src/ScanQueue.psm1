@@ -55,6 +55,7 @@ function Submit-ScanFile {
     $id = $Queue.NextId
     $Queue.Info[$id] = $Info
     $job = @{ Id = $id; Name = $Name; Bytes = $Bytes; Path = $Path }
+    # Keeps the scan bar moving while every worker is busy.
     $onWait = { param($busy) Write-WaitBar $Queue $busy }
     foreach ($result in @(Add-PoolJob $Queue.Pool $job $onWait)) { Resolve-ScanResult $Queue $result }
 }
@@ -190,6 +191,7 @@ function Wait-ScanQueue {
       Output of New-ScanQueue.
     #>
     param([hashtable]$Queue)
+    # Keeps the scan bar moving while the last files are read.
     $onWait = { param($busy) Write-WaitBar $Queue $busy }
     while ($Queue.Pool.Jobs.Count -gt 0) {
         foreach ($result in @(Receive-PoolResult $Queue.Pool -Wait -OnWait $onWait)) { Resolve-ScanResult $Queue $result }

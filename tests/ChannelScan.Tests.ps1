@@ -135,9 +135,8 @@ Assert-Equal $true ((Get-FakeProgressText) -match 'Downloading 6\.0 MB - no byte
 
 # ---- The streamed download of a large file: the bar counts the bytes ----
 $chunked = New-Object System.IO.MemoryStream(, [byte[]](1..200 | ForEach-Object { [byte]$_ }))
-$seen = New-Object System.Collections.Generic.List[long]
-$copied = Copy-StreamWithProgress $chunked 200 { param($done) $seen.Add($done) }
-Assert-Equal '200|0|200' ('{0}|{1}|{2}' -f $copied.Length, $seen[0], $seen[$seen.Count - 1]) 'Stream copy: all bytes, progress from 0 to the end'
+$copied = Copy-StreamWithProgress $chunked 200 'Downloading'
+Assert-Equal '200|200' ('{0}|{1}' -f $copied.Length, $copied[199]) 'Stream copy: all bytes, in order'
 Assert-Equal $true ($copied -is [byte[]]) 'Stream copy: a byte array, not unrolled'
 $largeFile = New-Object byte[] (2MB); [System.Text.Encoding]::UTF8.GetBytes('Call ' + $Sample.Phone).CopyTo($largeFile, 0)
 $channelScan = Get-Module ChannelScan
@@ -149,6 +148,7 @@ $streamRows = New-Object System.Collections.Generic.List[object]
 Assert-Equal 1 (Invoke-FileScan -Library $lib -Channels @('General') -SiteUrl $Sample.Site -MaxFileMB 25 -Rows $streamRows 6>$null) 'Streamed: the large file is read'
 Assert-Equal 1 @($streamRows | Where-Object { $_.Detector -eq 'Phone' }).Count 'Streamed: its PII is found'
 Assert-Equal $true ((Get-FakeProgressText) -match 'Downloading   2\.0 of 2\.0 MB 100%') 'Streamed: the bar reaches the full size'
+# Now the opener gives two bytes of a web page: not the size the list gives.
 & $channelScan { $script:OpenDirectStream = { param($url) Get-FakeFileStream $url -Short } }
 Reset-FakePnP @{ "$library/General/large.txt" = $largeFile; "$library/General/large2.txt" = $largeFile }
 $shortRows = New-Object System.Collections.Generic.List[object]

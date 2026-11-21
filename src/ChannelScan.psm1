@@ -39,19 +39,17 @@ $script:NotChannelFolders = @('Forms')
 # Time spent downloading and spent reading, for the summary (it shows where a slow scan loses its time).
 $script:Timing = @{ Download = [TimeSpan]::Zero; Check = [TimeSpan]::Zero }
 
-# The streamed download of a large file (Read-DirectFileBytes): the SharePoint client call File.OpenBinaryDirect on the
+# The streamed download of a large file (Get-FileBytes): the SharePoint client call File.OpenBinaryDirect on the
 # signed-in connection gives the file as a stream, so the per-file bar can count the bytes (the PAM, 2026-11-21).
 # Set to $false for the rest of a scan when it fails once; tests replace the opener.
 $script:DirectDownload = $true
+# Opens the file as a stream on the signed-in PnP connection.
 $script:OpenDirectStream = {
     param([string]$ServerRelativeUrl)
     $fileType = 'Microsoft.SharePoint.Client.File' -as [type]
     if (-not $fileType) { throw 'The SharePoint client library is not loaded.' }
     return $fileType::OpenBinaryDirect((Get-PnPContext), $ServerRelativeUrl).Stream
 }
-# Bytes read at a time (256 KB), and the shortest time between two bar updates (4 a second).
-$script:ChunkBytes = 256KB
-$script:BarRefreshMs = 250
 
 # How the report and the screen name the files at the top of the library (in no folder).
 $script:RootGroupName = '(top of the library)'
@@ -360,8 +358,8 @@ function Get-FileBytes {
     .SYNOPSIS
       Downloads one file into memory (never to disk).
     .DESCRIPTION
-      A file large enough for the per-file bar is read from SharePoint as a stream, a chunk at a time, so the bar shows
-      the MB done (Read-DirectFileBytes). If that fails, or for a small file, Get-PnPFile -AsMemoryStream gives the
+      A file large enough for the per-file bar is read from SharePoint as a stream (a read: HTTP GET of the file on the
+      signed-in connection, same site, same rights), a chunk at a time, so the bar shows the MB done. If that fails, or for a small file, Get-PnPFile -AsMemoryStream gives the
       whole file in one call; if this PnP version has no such switch, the SharePoint client call OpenBinaryStream on
       the same connection does.
     .PARAMETER ServerRelativeUrl
@@ -375,7 +373,8 @@ function Get-FileBytes {
     # '#' and '%' in a path break the stream call's address: such a file takes the normal download.
     if ($script:DirectDownload -and (Test-FileBarSize $Size) -and $ServerRelativeUrl.IndexOfAny([char[]]'#%') -lt 0) {
         try {
-            $bytes = Read-DirectFileBytes $ServerRelativeUrl $Size
+            $stream = & $script:OpenDirectStream $ServerRelativeUrl
+            try { $bytes = Copy-StreamWithProgress $stream $Size 'Downloading' } finally { $stream.Dispose() }
             if ($bytes.LongLength -eq $Size) { return , $bytes }
             # Not the size the list gives (a sign-in page, for example): the normal download decides.
             throw ('the stream gave {0} bytes, the list says {1}' -f $bytes.LongLength, $Size)
@@ -400,59 +399,6 @@ function Get-FileBytes {
         $memory = New-Object System.IO.MemoryStream
         try { $binary.Value.CopyTo($memory); return , $memory.ToArray() } finally { $memory.Dispose() }
     }
-}
-
-function Read-DirectFileBytes {
-    <#
-    .SYNOPSIS
-      Downloads one file as a stream on the signed-in connection (a read: HTTP GET of the file, same site, same rights)
-      and moves the per-file bar as the bytes arrive.
-    .PARAMETER ServerRelativeUrl
-      /sites/<name>/<library>/<folder>/<file>
-    .PARAMETER Size
-      The file size from the list.
-    .OUTPUTS
-      [byte[]]
-    #>
-    param([string]$ServerRelativeUrl, [long]$Size)
-    $stream = & $script:OpenDirectStream $ServerRelativeUrl
-    try {
-        $clock = [Diagnostics.Stopwatch]::StartNew()
-        $onProgress = { param($done) Write-FileStep $Size 'Downloading' $done $clock.Elapsed }.GetNewClosure()
-        return , (Copy-StreamWithProgress $stream $Size $onProgress)
-    }
-    finally { $stream.Dispose() }
-}
-
-function Copy-StreamWithProgress {
-    <#
-    .SYNOPSIS
-      Reads a stream to its end into memory, a chunk at a time, and reports the bytes done at most every
-      $BarRefreshMs (each bar update costs time in Windows PowerShell 5.1) and once at the end.
-    .PARAMETER Stream
-      The stream to read.
-    .PARAMETER Size
-      The expected size (the first buffer size); 0 when not known.
-    .PARAMETER OnProgress
-      { param($done) } called with the bytes read so far.
-    .OUTPUTS
-      [byte[]]
-    #>
-    param([System.IO.Stream]$Stream, [long]$Size, [scriptblock]$OnProgress)
-    $memory = New-Object System.IO.MemoryStream([int][Math]::Min([long][int]::MaxValue, [Math]::Max(0L, $Size)))
-    try {
-        $buffer = New-Object byte[] $script:ChunkBytes
-        $clock = [Diagnostics.Stopwatch]::StartNew()
-        $last = -1L
-        & $OnProgress 0L
-        while (($count = $Stream.Read($buffer, 0, $buffer.Length)) -gt 0) {
-            $memory.Write($buffer, 0, $count)
-            if ($clock.ElapsedMilliseconds - $last -ge $script:BarRefreshMs) { $last = $clock.ElapsedMilliseconds; & $OnProgress $memory.Length }
-        }
-        & $OnProgress $memory.Length
-        return , $memory.ToArray()
-    }
-    finally { $memory.Dispose() }
 }
 
 function Get-ChannelFiles {
@@ -641,4 +587,4 @@ function Test-TeamSite {
 }
 
 Export-ModuleMember -Function Test-TeamSiteUrl, Get-ScanTarget, Read-ScanTarget, ConvertTo-FriendlyError, Connect-TeamSite, Get-SiteDocumentLibraries, Get-ChannelFolderNames,
-Invoke-FileScan, Get-ScanTiming, Copy-StreamWithProgress, Test-TeamSite, Get-ShownItem
+Invoke-FileScan, Get-ScanTiming, Test-TeamSite, Get-ShownItem

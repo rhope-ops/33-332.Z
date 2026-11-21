@@ -11,7 +11,7 @@ ScanMeter.psm1 - the progress bars and the per-folder lines of a scan: counts on
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7).
   Network:     none.
-  Writes:      none (screen only).
+  Writes:      none (screen only; a download it is handed is read into memory).
   Credentials: none.
 #>
 
@@ -23,6 +23,10 @@ $script:FileBarBytes = 1MB
 
 # The per-file bar shows a speed and a time left only after this many seconds (before that the speed jumps about).
 $script:RateAfterSeconds = 1
+
+# A streamed download is read this much at a time (256 KB); the bar is updated at most this often (4 a second).
+$script:ChunkBytes = 256KB
+$script:BarRefreshMs = 250
 
 # A coloured line of live counts is printed under the progress bar at most this often (and after each folder).
 $script:LiveLineSeconds = 10
@@ -249,6 +253,40 @@ function Write-FileStep {
     Write-Progress -Id 2 -Activity 'Downloading this file' -Status $status -PercentComplete $percent
 }
 
+function Copy-StreamWithProgress {
+    <#
+    .SYNOPSIS
+      Reads a stream (a download) to its end into memory, a chunk at a time, and moves the per-file bar at most every
+      $BarRefreshMs (each bar update costs time in Windows PowerShell 5.1) and once at the end.
+    .PARAMETER Stream
+      The stream to read.
+    .PARAMETER Size
+      The expected size (the bar's 100%, and the first buffer size); 0 when not known.
+    .PARAMETER Step
+      The bar's step text, for example 'Downloading'.
+    .OUTPUTS
+      [byte[]]
+    #>
+    param([System.IO.Stream]$Stream, [long]$Size, [string]$Step)
+    $memory = New-Object System.IO.MemoryStream([int][Math]::Min([long][int]::MaxValue, [Math]::Max(0L, $Size)))
+    try {
+        $buffer = New-Object byte[] $script:ChunkBytes
+        $clock = [Diagnostics.Stopwatch]::StartNew()
+        $last = 0L
+        Write-FileStep $Size $Step 0 $clock.Elapsed
+        while (($count = $Stream.Read($buffer, 0, $buffer.Length)) -gt 0) {
+            $memory.Write($buffer, 0, $count)
+            if ($clock.ElapsedMilliseconds - $last -lt $script:BarRefreshMs) { continue }
+            $last = $clock.ElapsedMilliseconds
+            Write-FileStep $Size $Step $memory.Length $clock.Elapsed
+        }
+        Write-FileStep $Size $Step $memory.Length $clock.Elapsed
+        # The leading comma keeps the byte array whole: PowerShell would otherwise unroll it, byte by byte (slow).
+        return , $memory.ToArray()
+    }
+    finally { $memory.Dispose() }
+}
+
 function Write-ChannelLine {
     <#
     .SYNOPSIS
@@ -283,4 +321,4 @@ function Write-RuleLine {
     Write-Ui ('  ' + ('-' * $script:RuleWidth)) 'Rule'
 }
 
-Export-ModuleMember -Function New-ScanMeter, Update-ScanMeter, Get-ScanMeterText, Get-MeterPercent, Get-NameWidth, Write-MeterLine, Test-FileBarSize, Write-FileStep, Write-ChannelLine, Write-RuleLine
+Export-ModuleMember -Function New-ScanMeter, Update-ScanMeter, Get-ScanMeterText, Get-MeterPercent, Get-NameWidth, Write-MeterLine, Test-FileBarSize, Write-FileStep, Copy-StreamWithProgress, Write-ChannelLine, Write-RuleLine

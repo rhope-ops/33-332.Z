@@ -32,10 +32,10 @@
     src/ReaderPool.psm1, sha256 8f8f73fda166
     src/XlsxWriter.psm1, sha256 e29becdc6a65
     src/Report.psm1, sha256 9a6fbc1c5935
-    src/ScanMeter.psm1, sha256 b6322e030a9d
-    src/ScanQueue.psm1, sha256 15022d820d1a
+    src/ScanMeter.psm1, sha256 8538c6fd8575
+    src/ScanQueue.psm1, sha256 37e83cec1fd9
     src/Accountability.psm1, sha256 6a1d334dbbe3
-    src/ChannelScan.psm1, sha256 bad92da8f11e
+    src/ChannelScan.psm1, sha256 8560dc75b285
     src/DriveScan.psm1, sha256 803bef724c37
     src/Find-ChannelPII.ps1, sha256 b2d6bfd7a72b
 
@@ -64,12 +64,12 @@
     line  3821  Module XlsxWriter.psm1
     line  4092  Module Report.psm1
     line  4658  Module ScanMeter.psm1
-    line  4943  Module ScanQueue.psm1
-    line  5179  Module Accountability.psm1
-    line  5457  Module ChannelScan.psm1
-    line  6099  Module DriveScan.psm1
-    line  6341  Body of Find-ChannelPII.ps1
-    line  6450  Clean-up
+    line  4981  Module ScanQueue.psm1
+    line  5219  Module Accountability.psm1
+    line  5497  Module ChannelScan.psm1
+    line  6085  Module DriveScan.psm1
+    line  6327  Body of Find-ChannelPII.ps1
+    line  6436  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -4669,7 +4669,7 @@ ScanMeter.psm1 - the progress bars and the per-folder lines of a scan: counts on
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7).
   Network:     none.
-  Writes:      none (screen only).
+  Writes:      none (screen only; a download it is handed is read into memory).
   Credentials: none.
 #>
 
@@ -4680,6 +4680,10 @@ $script:FileBarBytes = 1MB
 
 # The per-file bar shows a speed and a time left only after this many seconds (before that the speed jumps about).
 $script:RateAfterSeconds = 1
+
+# A streamed download is read this much at a time (256 KB); the bar is updated at most this often (4 a second).
+$script:ChunkBytes = 256KB
+$script:BarRefreshMs = 250
 
 # A coloured line of live counts is printed under the progress bar at most this often (and after each folder).
 $script:LiveLineSeconds = 10
@@ -4906,6 +4910,40 @@ function Write-FileStep {
     Write-Progress -Id 2 -Activity 'Downloading this file' -Status $status -PercentComplete $percent
 }
 
+function Copy-StreamWithProgress {
+    <#
+    .SYNOPSIS
+      Reads a stream (a download) to its end into memory, a chunk at a time, and moves the per-file bar at most every
+      $BarRefreshMs (each bar update costs time in Windows PowerShell 5.1) and once at the end.
+    .PARAMETER Stream
+      The stream to read.
+    .PARAMETER Size
+      The expected size (the bar's 100%, and the first buffer size); 0 when not known.
+    .PARAMETER Step
+      The bar's step text, for example 'Downloading'.
+    .OUTPUTS
+      [byte[]]
+    #>
+    param([System.IO.Stream]$Stream, [long]$Size, [string]$Step)
+    $memory = New-Object System.IO.MemoryStream([int][Math]::Min([long][int]::MaxValue, [Math]::Max(0L, $Size)))
+    try {
+        $buffer = New-Object byte[] $script:ChunkBytes
+        $clock = [Diagnostics.Stopwatch]::StartNew()
+        $last = 0L
+        Write-FileStep $Size $Step 0 $clock.Elapsed
+        while (($count = $Stream.Read($buffer, 0, $buffer.Length)) -gt 0) {
+            $memory.Write($buffer, 0, $count)
+            if ($clock.ElapsedMilliseconds - $last -lt $script:BarRefreshMs) { continue }
+            $last = $clock.ElapsedMilliseconds
+            Write-FileStep $Size $Step $memory.Length $clock.Elapsed
+        }
+        Write-FileStep $Size $Step $memory.Length $clock.Elapsed
+        # The leading comma keeps the byte array whole: PowerShell would otherwise unroll it, byte by byte (slow).
+        return , $memory.ToArray()
+    }
+    finally { $memory.Dispose() }
+}
+
 function Write-ChannelLine {
     <#
     .SYNOPSIS
@@ -4997,6 +5035,7 @@ function Submit-ScanFile {
     $id = $Queue.NextId
     $Queue.Info[$id] = $Info
     $job = @{ Id = $id; Name = $Name; Bytes = $Bytes; Path = $Path }
+    # Keeps the scan bar moving while every worker is busy.
     $onWait = { param($busy) Write-WaitBar $Queue $busy }
     foreach ($result in @(Add-PoolJob $Queue.Pool $job $onWait)) { Resolve-ScanResult $Queue $result }
 }
@@ -5132,6 +5171,7 @@ function Wait-ScanQueue {
       Output of New-ScanQueue.
     #>
     param([hashtable]$Queue)
+    # Keeps the scan bar moving while the last files are read.
     $onWait = { param($busy) Write-WaitBar $Queue $busy }
     while ($Queue.Pool.Jobs.Count -gt 0) {
         foreach ($result in @(Receive-PoolResult $Queue.Pool -Wait -OnWait $onWait)) { Resolve-ScanResult $Queue $result }
@@ -5495,19 +5535,17 @@ $script:NotChannelFolders = @('Forms')
 # Time spent downloading and spent reading, for the summary (it shows where a slow scan loses its time).
 $script:Timing = @{ Download = [TimeSpan]::Zero; Check = [TimeSpan]::Zero }
 
-# The streamed download of a large file (Read-DirectFileBytes): the SharePoint client call File.OpenBinaryDirect on the
+# The streamed download of a large file (Get-FileBytes): the SharePoint client call File.OpenBinaryDirect on the
 # signed-in connection gives the file as a stream, so the per-file bar can count the bytes (the PAM, 2026-11-21).
 # Set to $false for the rest of a scan when it fails once; tests replace the opener.
 $script:DirectDownload = $true
+# Opens the file as a stream on the signed-in PnP connection.
 $script:OpenDirectStream = {
     param([string]$ServerRelativeUrl)
     $fileType = 'Microsoft.SharePoint.Client.File' -as [type]
     if (-not $fileType) { throw 'The SharePoint client library is not loaded.' }
     return $fileType::OpenBinaryDirect((Get-PnPContext), $ServerRelativeUrl).Stream
 }
-# Bytes read at a time (256 KB), and the shortest time between two bar updates (4 a second).
-$script:ChunkBytes = 256KB
-$script:BarRefreshMs = 250
 
 # How the report and the screen name the files at the top of the library (in no folder).
 $script:RootGroupName = '(top of the library)'
@@ -5816,8 +5854,8 @@ function Get-FileBytes {
     .SYNOPSIS
       Downloads one file into memory (never to disk).
     .DESCRIPTION
-      A file large enough for the per-file bar is read from SharePoint as a stream, a chunk at a time, so the bar shows
-      the MB done (Read-DirectFileBytes). If that fails, or for a small file, Get-PnPFile -AsMemoryStream gives the
+      A file large enough for the per-file bar is read from SharePoint as a stream (a read: HTTP GET of the file on the
+      signed-in connection, same site, same rights), a chunk at a time, so the bar shows the MB done. If that fails, or for a small file, Get-PnPFile -AsMemoryStream gives the
       whole file in one call; if this PnP version has no such switch, the SharePoint client call OpenBinaryStream on
       the same connection does.
     .PARAMETER ServerRelativeUrl
@@ -5831,7 +5869,8 @@ function Get-FileBytes {
     # '#' and '%' in a path break the stream call's address: such a file takes the normal download.
     if ($script:DirectDownload -and (Test-FileBarSize $Size) -and $ServerRelativeUrl.IndexOfAny([char[]]'#%') -lt 0) {
         try {
-            $bytes = Read-DirectFileBytes $ServerRelativeUrl $Size
+            $stream = & $script:OpenDirectStream $ServerRelativeUrl
+            try { $bytes = Copy-StreamWithProgress $stream $Size 'Downloading' } finally { $stream.Dispose() }
             if ($bytes.LongLength -eq $Size) { return , $bytes }
             # Not the size the list gives (a sign-in page, for example): the normal download decides.
             throw ('the stream gave {0} bytes, the list says {1}' -f $bytes.LongLength, $Size)
@@ -5856,59 +5895,6 @@ function Get-FileBytes {
         $memory = New-Object System.IO.MemoryStream
         try { $binary.Value.CopyTo($memory); return , $memory.ToArray() } finally { $memory.Dispose() }
     }
-}
-
-function Read-DirectFileBytes {
-    <#
-    .SYNOPSIS
-      Downloads one file as a stream on the signed-in connection (a read: HTTP GET of the file, same site, same rights)
-      and moves the per-file bar as the bytes arrive.
-    .PARAMETER ServerRelativeUrl
-      /sites/<name>/<library>/<folder>/<file>
-    .PARAMETER Size
-      The file size from the list.
-    .OUTPUTS
-      [byte[]]
-    #>
-    param([string]$ServerRelativeUrl, [long]$Size)
-    $stream = & $script:OpenDirectStream $ServerRelativeUrl
-    try {
-        $clock = [Diagnostics.Stopwatch]::StartNew()
-        $onProgress = { param($done) Write-FileStep $Size 'Downloading' $done $clock.Elapsed }.GetNewClosure()
-        return , (Copy-StreamWithProgress $stream $Size $onProgress)
-    }
-    finally { $stream.Dispose() }
-}
-
-function Copy-StreamWithProgress {
-    <#
-    .SYNOPSIS
-      Reads a stream to its end into memory, a chunk at a time, and reports the bytes done at most every
-      $BarRefreshMs (each bar update costs time in Windows PowerShell 5.1) and once at the end.
-    .PARAMETER Stream
-      The stream to read.
-    .PARAMETER Size
-      The expected size (the first buffer size); 0 when not known.
-    .PARAMETER OnProgress
-      { param($done) } called with the bytes read so far.
-    .OUTPUTS
-      [byte[]]
-    #>
-    param([System.IO.Stream]$Stream, [long]$Size, [scriptblock]$OnProgress)
-    $memory = New-Object System.IO.MemoryStream([int][Math]::Min([long][int]::MaxValue, [Math]::Max(0L, $Size)))
-    try {
-        $buffer = New-Object byte[] $script:ChunkBytes
-        $clock = [Diagnostics.Stopwatch]::StartNew()
-        $last = -1L
-        & $OnProgress 0L
-        while (($count = $Stream.Read($buffer, 0, $buffer.Length)) -gt 0) {
-            $memory.Write($buffer, 0, $count)
-            if ($clock.ElapsedMilliseconds - $last -ge $script:BarRefreshMs) { $last = $clock.ElapsedMilliseconds; & $OnProgress $memory.Length }
-        }
-        & $OnProgress $memory.Length
-        return , $memory.ToArray()
-    }
-    finally { $memory.Dispose() }
 }
 
 function Get-ChannelFiles {
