@@ -147,3 +147,11 @@ $accountHits = @(
     [pscustomobject]@{ AddedBy = 'Not recorded'; Channel = 'Ops'; Item = 'z.docx'; Confidence = 'High' })
 $accountRows = @(Get-AccountRows $accountHits)
 Assert-Equal 'a.one 1 1 0 1|b.two 1 0 1 0' (($accountRows | ForEach-Object { $_ -join ' ' }) -join '|') 'By account: files once per account, hits per confidence, most first, Not recorded left out'
+# The app's mark (gamma, Logo Studies) on the heading lines and the scan bar (the PAM, 2026-11-21).
+$mark = [string][char]0x3B3
+$bannerShown = (& (Get-Module Report) { Write-Banner 'Results' } 6>&1 | ForEach-Object { [string]$_ }) -join ''
+Assert-Equal ('==== ' + $mark + ' Results ====') $bannerShown 'Banner: the mark between the rules'
+$tieHits = @([pscustomobject]@{ AddedBy = 'b.two'; Channel = 'Ops'; Item = 'y'; Confidence = 'Low' },
+    [pscustomobject]@{ AddedBy = 'a.one'; Channel = 'Ops'; Item = 'x'; Confidence = 'Low' })
+$tieRows = @(Get-AccountRows $tieHits)
+Assert-Equal 'a.one|b.two' (($tieRows | ForEach-Object { $_[0] }) -join '|') 'By account: equal totals in name order'

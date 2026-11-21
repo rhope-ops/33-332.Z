@@ -31,13 +31,13 @@
     src/TextExtract.psm1, sha256 3b52ab6462e5
     src/ReaderPool.psm1, sha256 8f8f73fda166
     src/XlsxWriter.psm1, sha256 0d8b1a3e1de1
-    src/Report.psm1, sha256 f81f9f69460b
-    src/ScanMeter.psm1, sha256 6c580158c6fe
-    src/ScanQueue.psm1, sha256 35234e3c58cc
-    src/Accountability.psm1, sha256 51ca5a2dd890
+    src/Report.psm1, sha256 b963dc89d086
+    src/ScanMeter.psm1, sha256 c2aab2de3385
+    src/ScanQueue.psm1, sha256 eb3232e30d71
+    src/Accountability.psm1, sha256 c83be234edd1
     src/ChannelScan.psm1, sha256 4eec88ad8ca9
     src/DriveScan.psm1, sha256 f307e810f8f5
-    src/Find-ChannelPII.ps1, sha256 12724f0b06d3
+    src/Find-ChannelPII.ps1, sha256 e9602ae72ea3
 
   Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.
   Run target: Windows PowerShell 5.1 with PnP.PowerShell 1.12.0; no admin rights, no file to unblock.
@@ -63,13 +63,13 @@
     line  3983  Reader block end
     line  3987  Module XlsxWriter.psm1
     line  4294  Module Report.psm1
-    line  4834  Module ScanMeter.psm1
-    line  5231  Module ScanQueue.psm1
-    line  5576  Module Accountability.psm1
-    line  5953  Module ChannelScan.psm1
-    line  6546  Module DriveScan.psm1
-    line  6778  Body of Find-ChannelPII.ps1
-    line  6919  Clean-up
+    line  4847  Module ScanMeter.psm1
+    line  5244  Module ScanQueue.psm1
+    line  5589  Module Accountability.psm1
+    line  5967  Module ChannelScan.psm1
+    line  6560  Module DriveScan.psm1
+    line  6792  Body of Find-ChannelPII.ps1
+    line  6933  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -4328,11 +4328,11 @@ $script:ToolTitle = 'Ion - DoD365 PII Reporter'
 $script:SeverityOrder = @('SSN', 'Date of birth', 'Passport', 'Payment card', 'DoD ID', 'Home address', 'Name', 'Phone', 'Personal e-mail')
 
 $script:TopItems = 10   # how many files the screen summary lists (the workbook lists all)
-$script:MaxNameInPath = 40
+$script:MaxNameInPath = 40   # the site name is in the path twice: at most 40 characters keeps it under 260 (review of PR 41)
 # C6, the review columns the person fills in (the PAM, 2026-11-21), each with its dropdown (empty = free text); Ion never fills them.
 $script:ReviewColumns = [ordered]@{ 'Reviewed by' = @(); 'Review date' = @(); 'Is it PII?' = @('Yes', 'No', 'Not sure')
     'Action taken' = @('Removed', 'Moved', 'Access limited', 'Left (not PII)', 'Other')
-    'Reported to Privacy Manager' = @('Yes', 'No', 'Not needed') }   # the site name is in the path twice: at most 40 characters keeps it under 260 (review of PR 41)
+    'Reported to Privacy Manager' = @('Yes', 'No', 'Not needed') }
 # Under the table of types: what High, Medium and Low mean (the PAM, 2026-11-21: plain words for a unit member).
 $script:ConfidenceKey = @('High = labelled ("SSN:") or a sure pattern. Medium = right form, no label.', 'Low = weak match, often not PII.')
 
@@ -4444,6 +4444,17 @@ function Write-Ui {
     param([AllowEmptyString()][string]$Text, [ValidateSet('Title', 'Label', 'Text', 'Good', 'Accent', 'Alert', 'Muted', 'Rule', 'Folder')][string]$Kind = 'Text',
           [switch]$NoNewline)
     Write-Host $Text -ForegroundColor $script:ScreenColors[$Kind] -NoNewline:$NoNewline
+}
+
+function Get-IonMark {
+    # The app's mark as text: the Greek letter gamma (Logo Studies, the PAM's choice of 2026-11-20), written as a code so the script stays ASCII.
+    return [string][char]0x3B3
+}
+
+function Write-Banner {
+    # A heading line "==== <mark> <text> ====", the mark in the mark's eye colour (yellow), the rest in the title colour (the PAM, 2026-11-21).
+    param([string]$Text)
+    Write-Ui '==== ' 'Title' -NoNewline; Write-Ui (Get-IonMark) 'Accent' -NoNewline; Write-Ui (' ' + $Text + ' ====') 'Title'
 }
 
 function Get-SeverityIndex {
@@ -4575,7 +4586,7 @@ function Get-ScanSummaryText {
     $out = New-Object System.Collections.Generic.List[object]
     # Adds one screen line with its colour; the first LabelLength characters are written in the label colour.
     $add = { param($text, $kind, $labelLength = 0) $out.Add([pscustomobject]@{ Text = $text; Kind = $kind; LabelLength = $labelLength }) }
-    & $add '' 'Text'; & $add '==== Results ====' 'Title'
+    & $add '' 'Text'; & $add ('==== ' + (Get-IonMark) + ' Results ====') 'Title'
     # A scan that stopped early says so first, in red: its results cover only the files read so far.
     if (@($Rows | Where-Object { $_.Detector -eq 'INCOMPLETE' }).Count -gt 0) {
         & $add ('INCOMPLETE: the scan stopped early. Only the {0} {1} read are in these results; scan again.' -f $ItemsScanned, @('files', 'file')[[int]($ItemsScanned -eq 1)]) 'Alert'
@@ -4724,7 +4735,8 @@ function Get-WorkbookSheets {
     if ($accounts.Count -gt 0) {
         $sheets.Add((New-XlsxSheet 'By account' @('PII first saved by', 'Files', 'High', 'Medium', 'Low') $accounts @(40, 9, 9, 9, 9) -List))
     }
-    $sheets.Add((New-XlsxSheet 'Method' @('Topic', 'How Ion works it out') @(Get-MethodRows) @(34, 110) -List -WrapColumns @(1)))   # the PAM, 2026-11-21
+    $method = @(Get-MethodRows | Where-Object { $accounts.Count -gt 0 -or $_[0] -ne 'By account tab' })   # no row for a tab that is not there
+    $sheets.Add((New-XlsxSheet 'Method' @('Topic', 'How Ion works it out') $method @(34, 110) -List -WrapColumns @(1)))   # the PAM, 2026-11-21
     return $sheets.ToArray()
 }
 
@@ -4785,7 +4797,8 @@ function Publish-ScanReport {
     param([object[]]$Rows, [int]$ItemsScanned, [System.Collections.IDictionary]$Header, [string]$OutputFolder, [string]$SiteUrl,
           [string]$FolderLabel = 'Folder')
     foreach ($line in @(Get-ScanSummaryText -Rows $Rows -ItemsScanned $ItemsScanned -Header $Header -FolderLabel $FolderLabel)) {
-        if ($line.LabelLength -gt 0) { Write-Ui $line.Text.Substring(0, $line.LabelLength) 'Label' -NoNewline; Write-Ui $line.Text.Substring($line.LabelLength) $line.Kind }
+        if ($line.Kind -eq 'Title' -and $line.Text -match '^==== . (.+) ====$') { Write-Banner $Matches[1] }   # the mark in yellow
+        elseif ($line.LabelLength -gt 0) { Write-Ui $line.Text.Substring(0, $line.LabelLength) 'Label' -NoNewline; Write-Ui $line.Text.Substring($line.LabelLength) $line.Kind }
         else { Write-Ui $line.Text $line.Kind }
     }
     # The advice comes after the saved path (the PAM, 2026-11-21), and also when the save fails ('finally').
@@ -5089,7 +5102,7 @@ function Write-FileStep {
         }
     }
     # No -ParentId: Windows PowerShell ISE indents a child bar; the PAM wants both bars aligned (2026-11-20).
-    Write-Progress -Id 2 -Activity $Step -Status $status -PercentComplete $percent
+    Write-Progress -Id 2 -Activity ((Get-IonMark) + ' ' + $Step) -Status $status -PercentComplete $percent
 }
 
 function Copy-StreamWithProgress {
@@ -5377,7 +5390,7 @@ function Invoke-GroupScan {
         foreach ($file in $group.Files) {
             # The file in work, with PII masked (the PAM, 2026-11-20: a slow file is then visible).
             # The scan bar's 3 lines (the PAM, 2026-11-21): the folder, the run so far, the file.
-            $Queue.Activity = 'Folder {0} of {1}: {2}' -f ($c + 1), $Groups.Count, (Protect-PiiName $group.Name)
+            $Queue.Activity = '{0} Folder {1} of {2}: {3}' -f (Get-IonMark), ($c + 1), $Groups.Count, (Protect-PiiName $group.Name)
             Write-Progress -Id 1 -Activity $Queue.Activity -Status (Get-ScanMeterText $meter 'file') -PercentComplete (Get-MeterPercent $meter) `
                 -CurrentOperation ('File: ' + (& $ShownFile $group $file))
             $firstRow = $Queue.Rows.Count
@@ -5561,7 +5574,7 @@ function Invoke-ScanRun {
     $Run.Meter = New-ScanMeter 0; $Run.Reading = [TimeSpan]::Zero; $Run.Workers = 0; $Run.Declined = $false
     # Declined until a yes: a cancel (Ctrl+C) at the question saves nothing either, as nothing was read (review of PR 37).
     if ($Facts) { $Run.Declined = $true; if (-not (Confirm-ScanStart $Groups $Facts $MaxFileMB)) { return }; $Run.Declined = $false }
-    Write-Ui ('==== Scanning {0} files in {1} folders ====' -f $total, $Groups.Count) 'Title'
+    Write-Banner ('Scanning {0} files in {1} folders' -f $total, $Groups.Count)
     $meter = New-ScanMeter $total
     $meter.NameWidth = Get-NameWidth @($Groups | ForEach-Object { Protect-PiiName $_.Name })
     $Run.Meter = $meter; $Run.Reading = [TimeSpan]::Zero; $Run.Workers = 0
@@ -5891,7 +5904,8 @@ function Get-AccountRows {
         $entry.Files[$hit.Channel + '/' + $hit.Item] = $true
         $entry[$hit.Confidence]++
     }
-    $byAccount.GetEnumerator() | Sort-Object { $_.Value.High + $_.Value.Medium + $_.Value.Low } -Descending | ForEach-Object {
+    $byTotal = @{ Expression = { $_.Value.High + $_.Value.Medium + $_.Value.Low }; Descending = $true }
+    $byAccount.GetEnumerator() | Sort-Object $byTotal, Key | ForEach-Object {   # most hits first; equal totals by name (stable)
         , @($_.Key, [int]$_.Value.Files.Count, [int]$_.Value.High, [int]$_.Value.Medium, [int]$_.Value.Low)
     }
 }
@@ -6882,7 +6896,7 @@ function Open-ScanResult {
     catch { Write-Ui ('The workbook could not be opened: ' + (Protect-PiiText $_.Exception.Message) + '. Open it from the folder above.') 'Accent' }
 }
 
-Write-Ui '==== Ion - DoD365 PII Reporter ====' 'Title'
+Write-Banner 'Ion - DoD365 PII Reporter'
 Write-Ui 'Read-only. Every PII value found is masked on screen and in the results.' 'Muted'
 # What it scans and how to stop early (the PAM, 2026-11-21): a cancel still saves the results so far ('finally').
 Write-Ui ('Scans the files of one Teams team, SharePoint site or drive folder. Files over {0} MB are listed, not read.' -f $MaxFileMB) 'Muted'

@@ -35,11 +35,11 @@ $script:ToolTitle = 'Ion - DoD365 PII Reporter'
 $script:SeverityOrder = @('SSN', 'Date of birth', 'Passport', 'Payment card', 'DoD ID', 'Home address', 'Name', 'Phone', 'Personal e-mail')
 
 $script:TopItems = 10   # how many files the screen summary lists (the workbook lists all)
-$script:MaxNameInPath = 40
+$script:MaxNameInPath = 40   # the site name is in the path twice: at most 40 characters keeps it under 260 (review of PR 41)
 # C6, the review columns the person fills in (the PAM, 2026-11-21), each with its dropdown (empty = free text); Ion never fills them.
 $script:ReviewColumns = [ordered]@{ 'Reviewed by' = @(); 'Review date' = @(); 'Is it PII?' = @('Yes', 'No', 'Not sure')
     'Action taken' = @('Removed', 'Moved', 'Access limited', 'Left (not PII)', 'Other')
-    'Reported to Privacy Manager' = @('Yes', 'No', 'Not needed') }   # the site name is in the path twice: at most 40 characters keeps it under 260 (review of PR 41)
+    'Reported to Privacy Manager' = @('Yes', 'No', 'Not needed') }
 # Under the table of types: what High, Medium and Low mean (the PAM, 2026-11-21: plain words for a unit member).
 $script:ConfidenceKey = @('High = labelled ("SSN:") or a sure pattern. Medium = right form, no label.', 'Low = weak match, often not PII.')
 
@@ -151,6 +151,17 @@ function Write-Ui {
     param([AllowEmptyString()][string]$Text, [ValidateSet('Title', 'Label', 'Text', 'Good', 'Accent', 'Alert', 'Muted', 'Rule', 'Folder')][string]$Kind = 'Text',
           [switch]$NoNewline)
     Write-Host $Text -ForegroundColor $script:ScreenColors[$Kind] -NoNewline:$NoNewline
+}
+
+function Get-IonMark {
+    # The app's mark as text: the Greek letter gamma (Logo Studies, the PAM's choice of 2026-11-20), written as a code so the script stays ASCII.
+    return [string][char]0x3B3
+}
+
+function Write-Banner {
+    # A heading line "==== <mark> <text> ====", the mark in the mark's eye colour (yellow), the rest in the title colour (the PAM, 2026-11-21).
+    param([string]$Text)
+    Write-Ui '==== ' 'Title' -NoNewline; Write-Ui (Get-IonMark) 'Accent' -NoNewline; Write-Ui (' ' + $Text + ' ====') 'Title'
 }
 
 function Get-SeverityIndex {
@@ -282,7 +293,7 @@ function Get-ScanSummaryText {
     $out = New-Object System.Collections.Generic.List[object]
     # Adds one screen line with its colour; the first LabelLength characters are written in the label colour.
     $add = { param($text, $kind, $labelLength = 0) $out.Add([pscustomobject]@{ Text = $text; Kind = $kind; LabelLength = $labelLength }) }
-    & $add '' 'Text'; & $add '==== Results ====' 'Title'
+    & $add '' 'Text'; & $add ('==== ' + (Get-IonMark) + ' Results ====') 'Title'
     # A scan that stopped early says so first, in red: its results cover only the files read so far.
     if (@($Rows | Where-Object { $_.Detector -eq 'INCOMPLETE' }).Count -gt 0) {
         & $add ('INCOMPLETE: the scan stopped early. Only the {0} {1} read are in these results; scan again.' -f $ItemsScanned, @('files', 'file')[[int]($ItemsScanned -eq 1)]) 'Alert'
@@ -431,7 +442,8 @@ function Get-WorkbookSheets {
     if ($accounts.Count -gt 0) {
         $sheets.Add((New-XlsxSheet 'By account' @('PII first saved by', 'Files', 'High', 'Medium', 'Low') $accounts @(40, 9, 9, 9, 9) -List))
     }
-    $sheets.Add((New-XlsxSheet 'Method' @('Topic', 'How Ion works it out') @(Get-MethodRows) @(34, 110) -List -WrapColumns @(1)))   # the PAM, 2026-11-21
+    $method = @(Get-MethodRows | Where-Object { $accounts.Count -gt 0 -or $_[0] -ne 'By account tab' })   # no row for a tab that is not there
+    $sheets.Add((New-XlsxSheet 'Method' @('Topic', 'How Ion works it out') $method @(34, 110) -List -WrapColumns @(1)))   # the PAM, 2026-11-21
     return $sheets.ToArray()
 }
 
@@ -492,7 +504,8 @@ function Publish-ScanReport {
     param([object[]]$Rows, [int]$ItemsScanned, [System.Collections.IDictionary]$Header, [string]$OutputFolder, [string]$SiteUrl,
           [string]$FolderLabel = 'Folder')
     foreach ($line in @(Get-ScanSummaryText -Rows $Rows -ItemsScanned $ItemsScanned -Header $Header -FolderLabel $FolderLabel)) {
-        if ($line.LabelLength -gt 0) { Write-Ui $line.Text.Substring(0, $line.LabelLength) 'Label' -NoNewline; Write-Ui $line.Text.Substring($line.LabelLength) $line.Kind }
+        if ($line.Kind -eq 'Title' -and $line.Text -match '^==== . (.+) ====$') { Write-Banner $Matches[1] }   # the mark in yellow
+        elseif ($line.LabelLength -gt 0) { Write-Ui $line.Text.Substring(0, $line.LabelLength) 'Label' -NoNewline; Write-Ui $line.Text.Substring($line.LabelLength) $line.Kind }
         else { Write-Ui $line.Text $line.Kind }
     }
     # The advice comes after the saved path (the PAM, 2026-11-21), and also when the save fails ('finally').
@@ -538,5 +551,6 @@ function Add-PartRows {
     }
 }
 
-Export-ModuleMember -Function Write-Ui, Get-SeverityIndex, New-ReportRow, Add-IncompleteRow, Get-ReportSummary, Get-TypeCounts, Get-NotScannedCounts, Get-ScanSummaryText, Get-WorkbookSheets,
+Export-ModuleMember -Function Write-Ui, Get-IonMark, Write-Banner,
+    Get-SeverityIndex, New-ReportRow, Add-IncompleteRow, Get-ReportSummary, Get-TypeCounts, Get-NotScannedCounts, Get-ScanSummaryText, Get-WorkbookSheets,
 Get-ResultPath, Publish-ScanReport, Add-PartRows, Set-RowAccountability

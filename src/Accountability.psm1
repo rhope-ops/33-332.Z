@@ -316,7 +316,8 @@ function Get-AccountRows {
         $entry.Files[$hit.Channel + '/' + $hit.Item] = $true
         $entry[$hit.Confidence]++
     }
-    $byAccount.GetEnumerator() | Sort-Object { $_.Value.High + $_.Value.Medium + $_.Value.Low } -Descending | ForEach-Object {
+    $byTotal = @{ Expression = { $_.Value.High + $_.Value.Medium + $_.Value.Low }; Descending = $true }
+    $byAccount.GetEnumerator() | Sort-Object $byTotal, Key | ForEach-Object {   # most hits first; equal totals by name (stable)
         , @($_.Key, [int]$_.Value.Files.Count, [int]$_.Value.High, [int]$_.Value.Medium, [int]$_.Value.Low)
     }
 }
