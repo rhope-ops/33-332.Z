@@ -10,20 +10,23 @@ ScanMeter.psm1 - the progress bars and the per-folder lines of a scan: counts on
   Depends on:  PiiMasking.psm1 (Protect-PiiName), Report.psm1 (Write-Ui), imported first by Find-ChannelPII.ps1.
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7).
-  Network:     none.
+  Network:     none of its own: it reads a download stream that ChannelScan.psm1 opens.
   Writes:      none (screen only).
   Credentials: none.
 #>
 
 Set-StrictMode -Version 2.0
 
-# From this size on, the per-file bar says the step can take a minute (5 MB: a slow download on a gov network
-# takes tens of seconds; the author's choice, 2026-11-20).
-$script:LargeFileBytes = 5MB
-
 # The per-file bar is shown only from this size on: a small file is done in a moment, and each bar update costs time in
 # Windows PowerShell 5.1 (the author's choice, 2026-11-20: faster scans of many small files).
 $script:FileBarBytes = 1MB
+
+# The per-file bar shows a speed and a time left only after this many seconds (before that the speed jumps about).
+$script:RateAfterSeconds = 1
+
+# A streamed download is read this much at a time (256 KB); the bar is updated at most this often (4 a second).
+$script:ChunkBytes = 256KB
+$script:BarRefreshMs = 250
 
 # A coloured line of live counts is printed under the progress bar at most this often (and after each folder).
 $script:LiveLineSeconds = 10
@@ -209,24 +212,79 @@ function Get-MeterPercent {
     return [int][Math]::Min(100, 100 * $Meter.Done / $Meter.Total)
 }
 
+function Test-FileBarSize {
+    # True when a file is large enough for the per-file bar (smaller files are done in a moment).
+    param([long]$Size)
+    return $Size -ge $script:FileBarBytes
+}
+
 function Write-FileStep {
     <#
     .SYNOPSIS
-      A second progress bar for the file in work: its size and its step, so a large file does not look hung.
-      PnP gives no byte count while it downloads, so the bar moves by step (download, read, check), not by byte.
+      The second progress bar: the download of the file in work, by byte (MB done of the size, speed, time left), so a
+      large file does not look hung (the PAM, 2026-11-21: the bar must move). Reading happens in the workers, after it.
     .PARAMETER Size
       The file size in bytes.
     .PARAMETER Step
-      What is being done now.
-    .PARAMETER Percent
-      How far through the file's steps (0-100).
+      What is being done now, for example 'Downloading'.
+    .PARAMETER Done
+      The bytes done so far; -1 when the download method gives no byte count (the bar then says so and does not move).
+    .PARAMETER Elapsed
+      The time the step has taken so far.
     #>
-    param([long]$Size, [string]$Step, [int]$Percent)
-    if ($Size -lt $script:FileBarBytes) { return }
-    $status = '{0} - {1:N1} MB' -f $Step, ($Size / 1MB)
-    if ($Size -ge $script:LargeFileBytes) { $status += ' (a large file: this step can take a minute)' }
+    param([long]$Size, [string]$Step, [long]$Done = -1, [TimeSpan]$Elapsed = [TimeSpan]::Zero)
+    if (-not (Test-FileBarSize $Size)) { return }
+    $sizeMB = $Size / 1MB
+    if ($Done -lt 0) {
+        $status = '{0} {1:N1} MB - no byte count from SharePoint for this file: please wait' -f $Step, $sizeMB
+        $percent = 0
+    }
+    else {
+        $percent = [int][Math]::Floor([Math]::Min(100, 100 * $Done / [Math]::Max(1, $Size)))
+        $status = '{0} {1,5:N1} of {2:N1} MB {3,3}%' -f $Step, ($Done / 1MB), $sizeMB, $percent
+        $seconds = $Elapsed.TotalSeconds
+        if ($Done -gt 0 -and $seconds -ge $script:RateAfterSeconds) {
+            $rate = $Done / $seconds
+            $status += ' | {0:N1} MB/s' -f ($rate / 1MB)
+            if ($Done -lt $Size) { $status += ', about {0} left' -f (Format-Duration ([TimeSpan]::FromSeconds(($Size - $Done) / $rate))) }
+        }
+    }
     # No -ParentId: Windows PowerShell ISE indents a child bar; the PAM wants both bars aligned (2026-11-20).
-    Write-Progress -Id 2 -Activity 'This file' -Status $status -PercentComplete $Percent
+    Write-Progress -Id 2 -Activity 'Downloading this file' -Status $status -PercentComplete $percent
+}
+
+function Copy-StreamWithProgress {
+    <#
+    .SYNOPSIS
+      Reads a stream (a download) to its end into memory, a chunk at a time, and moves the per-file bar at most every
+      $BarRefreshMs (each bar update costs time in Windows PowerShell 5.1) and once at the end.
+    .PARAMETER Stream
+      The stream to read.
+    .PARAMETER Size
+      The expected size (the bar's 100%, and the first buffer size); 0 when not known.
+    .PARAMETER Step
+      The bar's step text, for example 'Downloading'.
+    .OUTPUTS
+      [byte[]]
+    #>
+    param([System.IO.Stream]$Stream, [long]$Size, [string]$Step)
+    $memory = New-Object System.IO.MemoryStream([int][Math]::Min([long][int]::MaxValue, [Math]::Max(0L, $Size)))
+    try {
+        $buffer = New-Object byte[] $script:ChunkBytes
+        $clock = [Diagnostics.Stopwatch]::StartNew()
+        $last = 0L
+        Write-FileStep $Size $Step 0 $clock.Elapsed
+        while (($count = $Stream.Read($buffer, 0, $buffer.Length)) -gt 0) {
+            $memory.Write($buffer, 0, $count)
+            if ($clock.ElapsedMilliseconds - $last -lt $script:BarRefreshMs) { continue }
+            $last = $clock.ElapsedMilliseconds
+            Write-FileStep $Size $Step $memory.Length $clock.Elapsed
+        }
+        Write-FileStep $Size $Step $memory.Length $clock.Elapsed
+        # The leading comma keeps the byte array whole: PowerShell would otherwise unroll it, byte by byte (slow).
+        return , $memory.ToArray()
+    }
+    finally { $memory.Dispose() }
 }
 
 function Write-ChannelLine {
@@ -263,4 +321,5 @@ function Write-RuleLine {
     Write-Ui ('  ' + ('-' * $script:RuleWidth)) 'Rule'
 }
 
-Export-ModuleMember -Function New-ScanMeter, Update-ScanMeter, Get-ScanMeterText, Get-MeterPercent, Get-NameWidth, Write-MeterLine, Write-FileStep, Write-ChannelLine, Write-RuleLine
+Export-ModuleMember -Function New-ScanMeter, Update-ScanMeter, Get-ScanMeterText, Get-MeterPercent, Get-NameWidth, Write-MeterLine, Test-FileBarSize,
+    Write-FileStep, Copy-StreamWithProgress, Write-ChannelLine, Write-RuleLine

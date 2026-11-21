@@ -31,7 +31,7 @@ Assert-Equal $true ((Test-FakePnPCall 'Open question') -and (Test-FakePnPCall ('
 Assert-Equal 1 @(Get-FakePnPConnection).Count 'One sign-in only: no posts sign-in'
 Assert-Equal $true ((Get-FakeProgressText) -match '    2/    3 files \| read +\d+ \| not scanned +0 \| possible PII +\d+ in +\d+ files') 'Progress bar shows the file counts'
 Assert-Equal $true ((Get-FakeProgressText) -match "folder 2 of 2: 'Ops'") 'Progress bar names the folder and its number'
-Assert-Equal $false ((Get-FakeProgressText) -match 'This file (Downloading|Reading|Checking)') 'Small files: no per-file bar (it would only slow the scan)'
+Assert-Equal $false ((Get-FakeProgressText) -match 'Downloading this file Downloading') 'Small files: no per-file bar (it would only slow the scan)'
 
 # ---- A plain SharePoint site (no team): Folder column, top-of-library files ----
 Reset-FakePnP @{ "$library/top.txt" = $Txt }

@@ -36,8 +36,20 @@ $script:NotScannedLibraries = @('Style Library', 'Form Templates')
 # Teams makes one top-level folder per standard channel. "Forms" is SharePoint's own folder, not a channel.
 $script:NotChannelFolders = @('Forms')
 
-# Time spent downloading and spent reading and checking, for the summary (it shows where a slow scan loses its time).
+# Time spent downloading and spent reading, for the summary (it shows where a slow scan loses its time).
 $script:Timing = @{ Download = [TimeSpan]::Zero; Check = [TimeSpan]::Zero }
+
+# The streamed download of a large file (Get-FileBytes): the SharePoint client call File.OpenBinaryDirect on the
+# signed-in connection gives the file as a stream, so the per-file bar can count the bytes (the PAM, 2026-11-21).
+# Set to $false for the rest of a scan when it fails once; tests replace the opener.
+$script:DirectDownload = $true
+# Opens the file as a stream on the signed-in PnP connection.
+$script:OpenDirectStream = {
+    param([string]$ServerRelativeUrl)
+    $fileType = 'Microsoft.SharePoint.Client.File' -as [type]
+    if (-not $fileType) { throw 'The SharePoint client library is not loaded.' }
+    return $fileType::OpenBinaryDirect((Get-PnPContext), $ServerRelativeUrl).Stream
+}
 
 # How the report and the screen name the files at the top of the library (in no folder).
 $script:RootGroupName = '(top of the library)'
@@ -346,17 +358,38 @@ function Get-FileBytes {
     .SYNOPSIS
       Downloads one file into memory (never to disk).
     .DESCRIPTION
-      Tries Get-PnPFile -AsMemoryStream first. If this PnP version has no such switch, it uses the
-      SharePoint client call OpenBinaryStream on the same connection.
+      A file large enough for the per-file bar is read from SharePoint as a stream (a read: HTTP GET of the file on the
+      signed-in connection, same site, same rights), a chunk at a time, so the bar shows the MB done. If that fails,
+      or for a small file, Get-PnPFile -AsMemoryStream gives the whole file in one call; if this PnP version has no
+      such switch, the SharePoint client call OpenBinaryStream on the same connection does.
     .PARAMETER ServerRelativeUrl
       /sites/<name>/<library>/<folder>/<file>
+    .PARAMETER Size
+      The file size from the list (0 when not known).
     .OUTPUTS
       [byte[]]
     #>
-    param([string]$ServerRelativeUrl)
+    param([string]$ServerRelativeUrl, [long]$Size = 0)
+    # '#' and '%' in a path break the stream call's address: such a file takes the normal download.
+    if ($script:DirectDownload -and (Test-FileBarSize $Size) -and $ServerRelativeUrl.IndexOfAny([char[]]'#%') -lt 0) {
+        try {
+            $stream = & $script:OpenDirectStream $ServerRelativeUrl
+            try { $bytes = Copy-StreamWithProgress $stream $Size 'Downloading' } finally { $stream.Dispose() }
+            if ($bytes.LongLength -eq $Size) { return , $bytes }
+            # Not the size the list gives (a sign-in page, for example): the normal download decides.
+            throw ('the stream gave {0} bytes, the list says {1}' -f $bytes.LongLength, $Size)
+        }
+        catch {
+            # The streamed download does not work with this sign-in or PnP version: the normal one for the rest of the scan.
+            $script:DirectDownload = $false
+            Write-Verbose ('Streamed download not possible, normal download used: ' + $_.Exception.Message)
+        }
+    }
+    Write-FileStep $Size 'Downloading'   # no byte count: the bar says so
+    # The leading commas keep the byte array whole: PowerShell would otherwise unroll it, byte by byte (slow).
     try {
         $stream = Get-PnPFile -Url $ServerRelativeUrl -AsMemoryStream -ErrorAction Stop
-        return $stream.ToArray()
+        return , $stream.ToArray()
     }
     catch [System.Management.Automation.ParameterBindingException] {
         # This PnP version has no -AsMemoryStream: use the client call instead (same connection, same rights).
@@ -364,7 +397,7 @@ function Get-FileBytes {
         $binary = $context.Web.GetFileByServerRelativeUrl($ServerRelativeUrl).OpenBinaryStream()
         $context.ExecuteQuery()
         $memory = New-Object System.IO.MemoryStream
-        try { $binary.Value.CopyTo($memory); return $memory.ToArray() } finally { $memory.Dispose() }
+        try { $binary.Value.CopyTo($memory); return , $memory.ToArray() } finally { $memory.Dispose() }
     }
 }
 
@@ -437,14 +470,13 @@ function Invoke-OneFileScan {
     elseif ($size -gt ($MaxFileMB * 1MB)) { $skipReason = "Larger than $MaxFileMB MB: check by hand" }
     if ($skipReason) { $rows.Add((New-ReportRow 'File' $Channel $item $link $modified 'NOT SCANNED' '' '' $skipReason)); return $false }
     $clock = [Diagnostics.Stopwatch]::StartNew()
-    Write-FileStep $size 'Downloading' 30
-    try { $bytes = Get-FileBytes $ref }
+    try { $bytes = Get-FileBytes $ref $size }
     catch {
         # One file that cannot be downloaded must not stop the scan: note it and go on.
         $reason = Protect-PiiText ('Download failed: ' + $_.Exception.Message)
         $rows.Add((New-ReportRow 'File' $Channel $item $link $modified 'NOT SCANNED' '' '' $reason)); return $false
     }
-    finally { $script:Timing.Download += $clock.Elapsed; Write-Progress -Id 2 -Activity 'This file' -Completed }
+    finally { $script:Timing.Download += $clock.Elapsed; Write-Progress -Id 2 -Activity 'Downloading this file' -Completed }
     # The main thread downloads the next file while workers read this one (speed, the PAM 2026-11-21).
     # Accountability: who made and changed the file; for a file with a hit, who added each hit (version history).
     $who = Get-SharePointWho $File
@@ -455,9 +487,9 @@ function Invoke-OneFileScan {
 }
 
 function Get-ScanTiming {
-    # The time of the last file scan spent downloading and spent reading and checking, as minutes:seconds text.
+    # The time of the last file scan spent downloading and spent reading, as minutes:seconds text.
     $format = { param($t) '{0:00}:{1:00}' -f [int][Math]::Floor($t.TotalMinutes), $t.Seconds }
-    [ordered]@{ 'Time downloading' = (& $format $script:Timing.Download); 'Time reading and checking (all workers)' = (& $format $script:Timing.Check) }
+    [ordered]@{ 'Time downloading' = (& $format $script:Timing.Download); 'Time reading (all workers)' = (& $format $script:Timing.Check) }
 }
 
 function Get-ScanGroups {
@@ -509,6 +541,7 @@ function Invoke-FileScan {
     param($Library, [string[]]$Channels, [string]$SiteUrl, [int]$MaxFileMB, $Rows, [hashtable]$Init)
     $origin = ([uri]$SiteUrl).GetLeftPart([System.UriPartial]::Authority)
     $script:Timing = @{ Download = [TimeSpan]::Zero; Check = [TimeSpan]::Zero }
+    $script:DirectDownload = $true   # tried again on each site
     $libraries = @($Library)
     $groups = @(foreach ($one in $libraries) {
         if ($libraries.Count -eq 1) { Get-ScanGroups $one $Channels ''; continue }

@@ -32,7 +32,7 @@ function New-ScanQueue {
     #>
     param([hashtable]$Init, $Rows, [hashtable]$Meter)
     return @{ Pool = (New-ReaderPool $Init); Rows = $Rows; Meter = $Meter; Info = @{}; Results = @{}; Waiting = @{}; NextId = 0
-        Seconds = 0.0 }
+        Seconds = 0.0; Activity = '' }
 }
 
 function Submit-ScanFile {
@@ -55,7 +55,9 @@ function Submit-ScanFile {
     $id = $Queue.NextId
     $Queue.Info[$id] = $Info
     $job = @{ Id = $id; Name = $Name; Bytes = $Bytes; Path = $Path }
-    foreach ($result in @(Add-PoolJob $Queue.Pool $job)) { Resolve-ScanResult $Queue $result }
+    # Keeps the scan bar moving while every worker is busy.
+    $onWait = { param($busy) Write-WaitBar $Queue $busy }
+    foreach ($result in @(Add-PoolJob $Queue.Pool $job $onWait)) { Resolve-ScanResult $Queue $result }
 }
 
 function Resolve-ScanResult {
@@ -143,8 +145,9 @@ function Invoke-GroupScan {
         $before = $meter.Clone()
         foreach ($file in $group.Files) {
             # The file in work, with PII masked (the PAM, 2026-11-20: a slow file is then visible).
-            Write-Progress -Id 1 -Activity ("Scanning files - folder {0} of {1}: '{2}'" -f ($c + 1), $Groups.Count, (Protect-PiiName $group.Name)) `
-                -Status (Get-ScanMeterText $meter 'file') -PercentComplete (Get-MeterPercent $meter) -CurrentOperation ('Now: ' + (& $ShownFile $group $file))
+            $Queue.Activity = "Scanning files - folder {0} of {1}: '{2}'" -f ($c + 1), $Groups.Count, (Protect-PiiName $group.Name)
+            Write-Progress -Id 1 -Activity $Queue.Activity -Status (Get-ScanMeterText $meter 'file') -PercentComplete (Get-MeterPercent $meter) `
+                -CurrentOperation ('Now: ' + (& $ShownFile $group $file))
             $firstRow = $Queue.Rows.Count
             if (-not (& $StartFile $group $file)) {
                 Update-ScanMeter $meter $Queue.Rows $firstRow 0
@@ -188,9 +191,28 @@ function Wait-ScanQueue {
       Output of New-ScanQueue.
     #>
     param([hashtable]$Queue)
+    # Keeps the scan bar moving while the last files are read.
+    $onWait = { param($busy) Write-WaitBar $Queue $busy }
     while ($Queue.Pool.Jobs.Count -gt 0) {
-        foreach ($result in @(Receive-PoolResult $Queue.Pool -Wait)) { Resolve-ScanResult $Queue $result }
+        foreach ($result in @(Receive-PoolResult $Queue.Pool -Wait -OnWait $onWait)) { Resolve-ScanResult $Queue $result }
     }
+}
+
+function Write-WaitBar {
+    <#
+    .SYNOPSIS
+      The scan bar while every worker is busy or a folder waits for its last files: the time keeps moving and the bar
+      says what it waits for, so the scan does not look hung (the PAM, 2026-11-21).
+    .PARAMETER Queue
+      Output of New-ScanQueue.
+    .PARAMETER Busy
+      The number of files being read now.
+    #>
+    param([hashtable]$Queue, [int]$Busy)
+    if (-not $Queue.Activity) { return }
+    $noun = 'files'; if ($Busy -eq 1) { $noun = 'file' }
+    Write-Progress -Id 1 -Activity $Queue.Activity -Status (Get-ScanMeterText $Queue.Meter 'file') -PercentComplete (Get-MeterPercent $Queue.Meter) `
+        -CurrentOperation ('Reading {0} {1} (a large or long file takes longer) ...' -f $Busy, $noun)
 }
 
 function Close-ScanQueue {

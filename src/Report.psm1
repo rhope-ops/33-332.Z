@@ -330,9 +330,12 @@ function Get-ScanSummaryText {
     $out = New-Object System.Collections.Generic.List[object]
     # Adds one screen line with its colour; the first LabelLength characters are written in the label colour.
     $add = { param($text, $kind, $labelLength = 0) $out.Add([pscustomobject]@{ Text = $text; Kind = $kind; LabelLength = $labelLength }) }
-    & $add '' 'Text'; & $add ('==== ' + $script:ToolTitle + ' ====') 'Title'
-    foreach ($pair in @($Header.GetEnumerator()) + @((Get-ScanMetrics $Rows $ItemsScanned).GetEnumerator())) {
-        & $add ('{0,-26} {1}' -f ($pair.Key + ':'), $pair.Value) 'Text' 27
+    & $add '' 'Text'; & $add '==== Results ====' 'Title'
+    # The values start in one column, after the longest label (labels differ: site, drive, timing lines).
+    $pairs = @($Header.GetEnumerator()) + @((Get-ScanMetrics $Rows $ItemsScanned).GetEnumerator())
+    $labelWidth = ($pairs | ForEach-Object { ([string]$_.Key).Length + 1 } | Measure-Object -Maximum).Maximum
+    foreach ($pair in $pairs) {
+        & $add (($pair.Key + ':').PadRight($labelWidth) + ' ' + $pair.Value) 'Text' ($labelWidth + 1)
     }
     $hits = @($Rows | Where-Object { $script:Rank.ContainsKey($_.Confidence) })
     if ($hits.Count -eq 0) { & $add '' 'Text'; & $add 'No possible PII found in the files that were read.' 'Good' }

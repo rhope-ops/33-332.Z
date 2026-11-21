@@ -160,6 +160,13 @@ function global:Get-PnPFile {
     New-Object System.IO.MemoryStream(, $global:FakePnP.Files[$Url])
 }
 
+function Get-FakeFileStream {
+    # Fake of the streamed download (ChannelScan.psm1 OpenDirectStream): the file bytes, or with -Short two bytes of a web page.
+    param([string]$Url, [switch]$Short)
+    if ($Short) { return New-Object System.IO.MemoryStream(, [byte[]]@(60, 104)) }
+    New-Object System.IO.MemoryStream(, $global:FakePnP.Files[$Url])
+}
+
 function Remove-FakeMemoryStreamSwitch {
     # Redefines the fake Get-PnPFile without -AsMemoryStream, as in PnP versions that lack it.
     function global:Get-PnPFile { [CmdletBinding()] param($Url) throw 'FAKE: should not be called' }

@@ -122,7 +122,7 @@ Each file starts with a header: purpose, inputs, outputs, how to run, run target
 | `src/PiiMasking.psm1` | Masks every value and snippet; the only way results leave the detectors |
 | `src/Report.psm1` | Screen summary, the severity order, the workbook tabs and where the workbook is saved |
 | `src/XlsxWriter.psm1` | Writes the .xlsx workbook with .NET only (no Excel, no module) |
-| `src/ScanMeter.psm1` | The two progress bars and the line per folder: counts, sizes and steps only; folder names masked |
+| `src/ScanMeter.psm1` | The two progress bars and the line per folder: counts, and the MB downloaded of a large file; folder names masked |
 | `tests/Run-Tests.ps1` | Runs all tests (invented data, fake PnP cmdlets, no network) |
 | `tests/TestKit.ps1`, `tests/FakePnP.ps1` | The test assertion and samples; the fake PnP cmdlets |
 | `tests/*.Tests.ps1` | One test file per module, a start-to-end run, and a run of the paste text |

@@ -160,7 +160,7 @@ function Get-DriveHeader {
     .PARAMETER Used
       The whole run's time.
     .PARAMETER Reading
-      The time all workers spent reading and checking.
+      The time all workers spent reading.
     .PARAMETER Workers
       The number of files read at once at the end.
     .OUTPUTS
@@ -174,7 +174,7 @@ function Get-DriveHeader {
     $header['Folders'] = ($Groups | ForEach-Object { Protect-PiiName $_.Name }) -join ', '
     $header['Run'] = Get-Date -Format 'yyyy-MM-dd HH:mm'
     $header['Time used'] = & $format $Used
-    $header['Time reading and checking (all workers)'] = & $format $Reading
+    $header['Time reading (all workers)'] = & $format $Reading
     $header['Files read at once (at the end)'] = [string]$Workers
     return $header
 }

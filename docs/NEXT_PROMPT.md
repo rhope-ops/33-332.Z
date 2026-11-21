@@ -19,3 +19,5 @@ Title: 33-332.Z · <task> · <date>. Read AGENTS.md first.
    Teams-link lookup and OCR wait on the PAM's test snippet results.
 13. README rework 2026-11-21: on main at the PAM's request (no wait for network-drives).
     Steps and open items: docs/reviews/2026-11-21-readme-rework.md.
+14. 2026-11-21: PR 30 (moving per-file bar by MB, wait bar, summary labels): lane C, waits on the PAM. The PAM to test the
+    streamed download on DoD365 (falls back if the sign-in cookie is not sent). Audit list: docs/reviews/2026-11-21-ion-polish-audit.md.
