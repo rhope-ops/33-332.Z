@@ -36,7 +36,7 @@
     src/ScanQueue.psm1, sha256 1ec233b97fc7
     src/Accountability.psm1, sha256 6a1d334dbbe3
     src/ChannelScan.psm1, sha256 0a32b46dcc63
-    src/DriveScan.psm1, sha256 27925138f3c7
+    src/DriveScan.psm1, sha256 2d9c9820cfd1
     src/Find-ChannelPII.ps1, sha256 b2d6bfd7a72b
 
   Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.
@@ -68,8 +68,8 @@
     line  5131  Module Accountability.psm1
     line  5409  Module ChannelScan.psm1
     line  5964  Module DriveScan.psm1
-    line  6194  Body of Find-ChannelPII.ps1
-    line  6303  Clean-up
+    line  6202  Body of Find-ChannelPII.ps1
+    line  6311  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -5982,6 +5982,8 @@ DriveScan.psm1 - scans a folder on a mapped or network drive (X:\<folder> or \\<
 
 # Files directly in the pasted folder form this group (each subfolder is its own group).
 $script:DriveTopGroup = '(top of the folder)'
+# A file link in the folder is never read (the PAM, 2026-11-21: "No reconnaissance").
+$script:FileLinkReason = 'A link to another file is not followed (it can lead outside the folder): check by hand'
 
 function Get-DriveGroups {
     <#
@@ -5991,13 +5993,14 @@ function Get-DriveGroups {
     .PARAMETER Root
       The folder path.
     .OUTPUTS
-      [hashtable] Groups (each @{ Name; Files }), Blocked (each @{ Folder; Reason }), Links (folder paths).
+      [hashtable] Groups (each @{ Name; Files }), Blocked (each @{ Folder; Reason }), Links (folder link paths),
+      FileLinks (file link paths: never read, they can lead outside the folder; the PAM, 2026-11-21).
     #>
     param([string]$Root)
     $Root = $Root.TrimEnd('\', '/')
     $slashes = [char[]]@('\', '/')   # Windows uses \; the tests also run where / is the separator
     $result = @{ Groups = (New-Object System.Collections.Generic.List[object]); Blocked = (New-Object System.Collections.Generic.List[object])
-        Links = (New-Object System.Collections.Generic.List[string]) }
+        Links = (New-Object System.Collections.Generic.List[string]); FileLinks = (New-Object System.Collections.Generic.List[string]) }
     $byName = @{}
     $top = @{ Name = $script:DriveTopGroup; Files = (New-Object System.Collections.Generic.List[object]) }
     $stack = New-Object System.Collections.Generic.Stack[string]
@@ -6014,6 +6017,8 @@ function Get-DriveGroups {
                 $stack.Push($entry.FullName)
                 continue
             }
+            # A file link (any reparse point) is not followed: it can lead outside the folder ("No reconnaissance").
+            if ($entry.Attributes -band [System.IO.FileAttributes]::ReparsePoint) { $result.FileLinks.Add($rel); continue }
             $groupName = $script:DriveTopGroup
             $inner = $rel
             $cut = $rel.IndexOfAny($slashes)
@@ -6093,6 +6098,9 @@ function Add-DriveListRows {
     foreach ($blocked in $Found.Blocked) {
         $reason = 'Could not open this folder: ' + (Protect-PiiText $blocked.Reason)
         $Rows.Add((New-ReportRow 'Scan' (Protect-PiiName $blocked.Folder) '(folder)' '' '' 'BLOCKED' '' '' $reason))
+    }
+    foreach ($link in $Found.FileLinks) {
+        $Rows.Add((New-ReportRow 'Scan' (Protect-PiiName $link) '(file link)' '' '' 'NOT SCANNED' '' '' $script:FileLinkReason))
     }
     foreach ($link in $Found.Links) {
         $reason = 'A link to another folder is not followed (it can lead outside the folder): check by hand'

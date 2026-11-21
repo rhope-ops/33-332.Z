@@ -29,11 +29,18 @@ foreach ($folder in @('Ops', 'Ops\old', 'Admin')) { New-Item -ItemType Directory
 [System.IO.File]::WriteAllBytes((Join-Path $driveRoot 'Admin\Roster.docx'), $Docx)
 [System.IO.File]::WriteAllBytes((Join-Path $driveRoot 'Admin\scan.pdf'), $Txt)
 [System.IO.File]::WriteAllBytes((Join-Path $driveRoot 'top.txt'), $Txt)
+# A file link to a file outside the folder is never read (the PAM, 2026-11-21).
+$outside = Join-Path ([System.IO.Path]::GetTempPath()) ('piitest-outside-' + $letters + '.txt')
+[System.IO.File]::WriteAllText($outside, "SSN: $($Sample.Ssn)")
+New-Item -ItemType SymbolicLink -Path (Join-Path $driveRoot 'Admin\pointer.txt') -Target $outside | Out-Null
 try {
     $found = Get-DriveGroups $driveRoot
+    Assert-Equal 'Admin/pointer.txt' (@($found.FileLinks) -join '|').Replace('\', '/') 'Drive: a file link is listed, not read'
     Assert-Equal 'Admin=2|Ops=2|(top of the folder)=1' (@($found.Groups | ForEach-Object { $_.Name + '=' + $_.Files.Count }) -join '|') 'Drive: one group per top-level folder, then the top'
     $book = Invoke-DriveScan -Path $driveRoot -OutputFolder $driveOut -MaxFileMB 25 -Init $null 6>$null
     Assert-Equal 'NOT SCANNED Phone SSN' (Get-WorkbookTypes $book) 'Drive: every planted type found'
+    $linkRow = @((Get-XlsxSheets $book)['Not scanned'] | Where-Object { $_[3] -match '^A link to another file is not followed' })
+    Assert-Equal 1 $linkRow.Count 'Drive: a file link gets a NOT SCANNED row'
     $sheets = Get-XlsxSheets $book
     $phoneItems = @($sheets['Phone'] | Select-Object -Skip 1 | ForEach-Object { $_[2] } | Sort-Object -Unique)   # Confidence, Folder, File ...
     Assert-Equal 3 $phoneItems.Count 'Drive: a file with the same content as another still gets its own rows'
@@ -43,6 +50,7 @@ try {
 }
 finally {
     Remove-Item -LiteralPath $driveRoot -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $outside -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $driveOut -Recurse -Force -ErrorAction SilentlyContinue
 }
 

@@ -19,6 +19,8 @@ Set-StrictMode -Version 2.0
 
 # Files directly in the pasted folder form this group (each subfolder is its own group).
 $script:DriveTopGroup = '(top of the folder)'
+# A file link in the folder is never read (the PAM, 2026-11-21: "No reconnaissance").
+$script:FileLinkReason = 'A link to another file is not followed (it can lead outside the folder): check by hand'
 
 function Get-DriveGroups {
     <#
@@ -28,13 +30,14 @@ function Get-DriveGroups {
     .PARAMETER Root
       The folder path.
     .OUTPUTS
-      [hashtable] Groups (each @{ Name; Files }), Blocked (each @{ Folder; Reason }), Links (folder paths).
+      [hashtable] Groups (each @{ Name; Files }), Blocked (each @{ Folder; Reason }), Links (folder link paths),
+      FileLinks (file link paths: never read, they can lead outside the folder; the PAM, 2026-11-21).
     #>
     param([string]$Root)
     $Root = $Root.TrimEnd('\', '/')
     $slashes = [char[]]@('\', '/')   # Windows uses \; the tests also run where / is the separator
     $result = @{ Groups = (New-Object System.Collections.Generic.List[object]); Blocked = (New-Object System.Collections.Generic.List[object])
-        Links = (New-Object System.Collections.Generic.List[string]) }
+        Links = (New-Object System.Collections.Generic.List[string]); FileLinks = (New-Object System.Collections.Generic.List[string]) }
     $byName = @{}
     $top = @{ Name = $script:DriveTopGroup; Files = (New-Object System.Collections.Generic.List[object]) }
     $stack = New-Object System.Collections.Generic.Stack[string]
@@ -51,6 +54,8 @@ function Get-DriveGroups {
                 $stack.Push($entry.FullName)
                 continue
             }
+            # A file link (any reparse point) is not followed: it can lead outside the folder ("No reconnaissance").
+            if ($entry.Attributes -band [System.IO.FileAttributes]::ReparsePoint) { $result.FileLinks.Add($rel); continue }
             $groupName = $script:DriveTopGroup
             $inner = $rel
             $cut = $rel.IndexOfAny($slashes)
@@ -130,6 +135,9 @@ function Add-DriveListRows {
     foreach ($blocked in $Found.Blocked) {
         $reason = 'Could not open this folder: ' + (Protect-PiiText $blocked.Reason)
         $Rows.Add((New-ReportRow 'Scan' (Protect-PiiName $blocked.Folder) '(folder)' '' '' 'BLOCKED' '' '' $reason))
+    }
+    foreach ($link in $Found.FileLinks) {
+        $Rows.Add((New-ReportRow 'Scan' (Protect-PiiName $link) '(file link)' '' '' 'NOT SCANNED' '' '' $script:FileLinkReason))
     }
     foreach ($link in $Found.Links) {
         $reason = 'A link to another folder is not followed (it can lead outside the folder): check by hand'
