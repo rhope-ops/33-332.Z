@@ -32,6 +32,9 @@ $script:HtmlExtensions = @('.html', '.htm')
 # Office Open XML types (a zip of XML parts, ECMA-376) and the parts that hold their text:
 # body, headers, footers, comments, notes; worksheets and cell comments; slides and speaker notes.
 # A worksheet is read cell by cell (Convert-SheetXmlToText), with its shared strings put back into their cells.
+# The most one part of an Office, OpenDocument or Visio file may unpack to (its stated size; a zip bomb is refused).
+$script:MaxZipEntryBytes = 64MB
+
 $script:OfficeParts = @{
     '.docx' = '^word/(document|header\d*|footer\d*|comments|footnotes|endnotes)\.xml$'
     '.docm' = '^word/(document|header\d*|footer\d*|comments|footnotes|endnotes)\.xml$'
@@ -147,9 +150,31 @@ function Convert-HtmlToText {
 # Reading bytes
 # =====================================================================================
 
+function Get-OdfEncryptedReason {
+    <#
+    .SYNOPSIS
+      Why an OpenDocument file cannot be read: saved with a password (its manifest lists encryption-data, and
+      its content is scrambled); empty when it is not (review of PR 19).
+    .PARAMETER Bytes
+      The file bytes (a zip).
+    .OUTPUTS
+      [string]
+    #>
+    param([byte[]]$Bytes)
+    $memory = New-Object System.IO.MemoryStream(, $Bytes)
+    $zip = New-Object System.IO.Compression.ZipArchive($memory, [System.IO.Compression.ZipArchiveMode]::Read)
+    try {
+        $manifest = $zip.GetEntry('META-INF/manifest.xml')
+        if ($manifest -and (Read-ZipEntry $manifest) -match 'encryption-data') { return 'Encrypted (password-protected): check by hand' }
+        return ''
+    }
+    finally { $zip.Dispose(); $memory.Dispose() }
+}
+
 function Read-ZipEntry {
-    # The text of one zip entry (UTF-8, as Office writes its XML).
+    # The text of one zip entry (UTF-8, as Office writes its XML), at most $MaxZipEntryBytes (a zip bomb throws).
     param($Entry)
+    if ($Entry.Length -gt $script:MaxZipEntryBytes) { throw 'A part of this file is too large to unpack in memory' }
     $reader = New-Object System.IO.StreamReader($Entry.Open())
     try { return $reader.ReadToEnd() } finally { $reader.Dispose() }
 }
@@ -294,6 +319,7 @@ function Get-TextFromBytes {
         elseif ($script:ContainerExtensions -contains $extension) { Add-ContainerParts $result $Bytes $extension $Depth }
         elseif ($script:OfficeParts.ContainsKey($extension)) {
             $notZip = Get-NotZipReason $Bytes
+            if (-not $notZip -and $extension -like '.od?') { $notZip = Get-OdfEncryptedReason $Bytes }
             if ($notZip) { $result.Status = 'NOT SCANNED'; $result.Reason = $notZip }
             else { $result.Text = Get-ZipPartText $Bytes $script:OfficeParts[$extension] }
         }

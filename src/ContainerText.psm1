@@ -24,6 +24,9 @@ $script:MaxArchiveBytes = 200MB
 
 # An e-mail's MIME parts nest at most this deep (a hostile message cannot recurse without end).
 $script:MaxMimeDepth = 5
+# Parts read from one e-mail (a hostile message can hold hundreds of thousands); the count of the one in work.
+$script:MaxMimeParts = 500
+$script:MimeParts = 0
 
 # Bytes as characters one to one, so a message can be cut with string functions and decoded part by part.
 $script:MimeLatin1 = [System.Text.Encoding]::GetEncoding(28591)
@@ -61,6 +64,35 @@ function Read-LimitedStream {
     finally { $Stream.Dispose(); $memory.Dispose() }
 }
 
+function Get-EncryptedZipNames {
+    <#
+    .SYNOPSIS
+      The names of the encrypted files in a zip, from its central directory (bit 0 of each entry's flags): .NET
+      opens a stored (not compressed) encrypted entry without an error and would give its scrambled bytes (review).
+    .PARAMETER Bytes
+      The archive bytes.
+    .OUTPUTS
+      [System.Collections.Generic.HashSet[string]]
+    #>
+    param([byte[]]$Bytes)
+    $names = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
+    $at = 0
+    while ($at + 46 -le $Bytes.Length) {
+        $at = [Array]::IndexOf($Bytes, [byte]0x50, $at)
+        if ($at -lt 0 -or $at + 46 -gt $Bytes.Length) { break }
+        if ($Bytes[$at + 1] -eq 0x4B -and $Bytes[$at + 2] -eq 1 -and $Bytes[$at + 3] -eq 2) {   # PK 01 02: a central directory entry
+            $flags = [BitConverter]::ToUInt16($Bytes, $at + 8)
+            $nameLength = [BitConverter]::ToUInt16($Bytes, $at + 28)
+            if (($flags -band 1) -and $at + 46 + $nameLength -le $Bytes.Length) {
+                $encoding = $script:MimeLatin1; if ($flags -band 0x800) { $encoding = [System.Text.Encoding]::UTF8 }
+                [void]$names.Add($encoding.GetString($Bytes, $at + 46, $nameLength))
+            }
+        }
+        $at++
+    }
+    return , $names
+}
+
 function Get-ArchiveParts {
     <#
     .SYNOPSIS
@@ -77,8 +109,10 @@ function Get-ArchiveParts {
     try {
         $count = 0
         $total = 0L
+        $encrypted = Get-EncryptedZipNames $Bytes
         foreach ($entry in $zip.Entries) {
             if (-not $entry.Name) { continue }   # a folder
+            if ($encrypted.Contains($entry.FullName)) { New-Part $entry.FullName -Reason 'Encrypted (password-protected) in the archive: check by hand'; continue }
             $count++
             if ($count -gt $script:MaxArchiveEntries) {
                 New-Part '(more files)' -Reason "More than $script:MaxArchiveEntries files in this archive: the rest is not scanned: check by hand"
@@ -109,6 +143,8 @@ function Split-MimeEntity {
       [hashtable] Headers, Body.
     #>
     param([string]$Text)
+    # A part that starts with a blank line or with text (no "Name: value" first line) has no headers: all is body.
+    if ($Text -notmatch '\A[!-9;-~]+:') { return @{ Headers = @{}; Body = $Text } }
     $cut = [regex]::Match($Text, '\r?\n\r?\n')
     $head = $Text; $body = ''
     if ($cut.Success) { $head = $Text.Substring(0, $cut.Index); $body = $Text.Substring($cut.Index + $cut.Length) }
@@ -194,11 +230,16 @@ function Get-MimeParts {
     $encoding = [string]$entity.Headers['content-transfer-encoding']
     if ($type -match '(?i)^\s*multipart/') {
         $boundary = Get-HeaderParameter $type 'boundary'
-        if (-not $boundary -or $Depth -ge $script:MaxMimeDepth) { return }
+        if ($Depth -ge $script:MaxMimeDepth) { New-Part '(message part)' -Reason 'An e-mail part nested too deep to read: check by hand'; return }
+        if (-not $boundary) { New-Part '(message text)' -Text $entity.Body; return }   # damaged: the body is still read as text
         $pieces = $entity.Body -split ('(?m)^--' + [regex]::Escape($boundary) + '(?:--)?[ \t]*\r?$')
         for ($i = 1; $i -lt $pieces.Count; $i++) {   # piece 0 is the preamble
             $piece = $pieces[$i] -replace '^\r?\n', ''
-            if ($piece.Trim()) { Get-MimeParts $piece ($Depth + 1) }
+            if (-not $piece.Trim()) { continue }
+            if ((++$script:MimeParts) -gt $script:MaxMimeParts) {
+                New-Part '(more parts)' -Reason "More than $script:MaxMimeParts parts in this e-mail: the rest is not scanned: check by hand"; return
+            }
+            Get-MimeParts $piece ($Depth + 1)
         }
         return
     }
@@ -235,6 +276,7 @@ function Get-EmailParts {
         if ($entity.Headers.ContainsKey($name)) { (Get-Culture).TextInfo.ToTitleCase($name) + ': ' + (ConvertFrom-EncodedWords $entity.Headers[$name]) }
     }
     New-Part '(message headers)' -Text (@($lines) -join "`n")
+    $script:MimeParts = 0
     Get-MimeParts $text 0
 }
 

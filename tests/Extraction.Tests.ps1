@@ -470,3 +470,33 @@ foreach ($stray in @("[(SSN: $($Sample.Ssn))] (x) TJ", "(SSN: $($Sample.Ssn)) [(
 # A TJ whose array is its last operand is the usual case (no note), also with a stray number before it.
 $usualTj = Get-TextFromBytes -Bytes (New-PdfBytes "BT /F1 12 Tf 5 [(Stray) -50 (Num)] TJ ET" -Plain) -FileName 'ut.pdf'
 Assert-Equal '' $usualTj.Note 'PDF: a TJ with its array last is the usual case'
+
+# ---- Review of PR 19 (2026-11-21): no silent misses in containers ----
+# An encrypted zip entry (flag bit 0 in the central directory) is named, never read as clean.
+$lockedZip = New-ZipBytes @{ 'secret.txt' = $ssnLine }
+for ($z = 0; $z + 3 -lt $lockedZip.Length; $z++) {
+    if ($lockedZip[$z] -eq 0x50 -and $lockedZip[$z + 1] -eq 0x4B -and $lockedZip[$z + 2] -eq 1 -and $lockedZip[$z + 3] -eq 2) { $lockedZip[$z + 8] = $lockedZip[$z + 8] -bor 1 }
+}
+$lockedPart = (Get-TextFromBytes -Bytes $lockedZip -FileName 'l.zip').Parts.ToArray()[0]
+Assert-Equal $true ($lockedPart.Reason -match '^Encrypted') 'Zip: an encrypted entry is named, not read as clean'
+# MIME: nested too deep gives a reason; multipart without a boundary and a part without headers are still read.
+$deep = "SSN: $($Sample.Ssn)"
+for ($d = 0; $d -lt 7; $d++) { $deep = "Content-Type: multipart/mixed; boundary=`"B$d`"`r`n`r`n--B$d`r`n$deep`r`n--B$d--" }
+$deepParts = (Get-TextFromBytes -Bytes ([System.Text.Encoding]::ASCII.GetBytes($deep)) -FileName 'd.eml').Parts.ToArray()
+Assert-Equal $true (@($deepParts | Where-Object { $_.Reason -match 'nested too deep' }).Count -eq 1) 'EML: a part nested too deep gives a reason'
+$noBoundary = "Content-Type: multipart/mixed`r`n`r`nSSN: $($Sample.Ssn)`r`n"
+$noBoundaryText = ((Get-TextFromBytes -Bytes ([System.Text.Encoding]::ASCII.GetBytes($noBoundary)) -FileName 'n.eml').Parts.ToArray() | ForEach-Object { $_.Text }) -join ' '
+Assert-Equal $true (@(Find-PiiInText $noBoundaryText | ForEach-Object { $_.Detector }) -contains 'SSN') 'EML: multipart without a boundary is read as text'
+$bare = "Content-Type: multipart/mixed; boundary=`"XX`"`r`n`r`n--XX`r`n`r`nSSN: $($Sample.Ssn)`r`n`r`nmore`r`n--XX--`r`n"
+$bareText = ((Get-TextFromBytes -Bytes ([System.Text.Encoding]::ASCII.GetBytes($bare)) -FileName 'b.eml').Parts.ToArray() | ForEach-Object { $_.Text }) -join ' '
+Assert-Equal $true (@(Find-PiiInText $bareText | ForEach-Object { $_.Detector }) -contains 'SSN') 'EML: a part without headers keeps its first lines'
+# An encrypted OpenDocument file is named; an Outlook message with attachments gets a note.
+$lockedOdt = New-ZipBytes @{ 'content.xml' = 'x'; 'META-INF/manifest.xml' = '<manifest:file-entry><manifest:encryption-data/></manifest:file-entry>' }
+Assert-Equal $true ((Get-TextFromBytes -Bytes $lockedOdt -FileName 'l.odt').Reason -match '^Encrypted') 'ODT: a password-protected file is named'
+$attachMark = [System.Text.Encoding]::Unicode.GetBytes('__attach_version1.0_#00000000')
+$msgAttach = [byte[]]($oleHead + [System.Text.Encoding]::ASCII.GetBytes("Subject: roster $ssnLine") + $attachMark)
+Assert-Equal $true ((Get-TextFromBytes -Bytes $msgAttach -FileName 'm.msg').Note -match 'attachments') 'Outlook .msg: attachments get a note'
+# An e-mail with more parts than the limit: the rest gets a reason.
+$manyParts = "Content-Type: multipart/mixed; boundary=`"P`"`r`n`r`n" + ((1..600 | ForEach-Object { "--P`r`nContent-Type: text/plain`r`n`r`nline $_`r`n" }) -join '') + "--P--`r`n"
+$manyRead = (Get-TextFromBytes -Bytes ([System.Text.Encoding]::ASCII.GetBytes($manyParts)) -FileName 'p.eml').Parts.ToArray()
+Assert-Equal 1 @($manyRead | Where-Object { $_.Reason -match '^More than 500 parts' }).Count 'EML: past the part limit, the rest gets a reason'

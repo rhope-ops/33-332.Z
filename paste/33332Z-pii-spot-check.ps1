@@ -20,14 +20,14 @@
     src/PiiDetectors.psm1, sha256 ea19831b4d68
     src/PiiMasking.psm1, sha256 752c251a94b2
     src/OcrText.psm1, sha256 a39acab441d4
-    src/OleText.psm1, sha256 0b1924bcf524
-    src/ContainerText.psm1, sha256 12e3acaa974e
+    src/OleText.psm1, sha256 84041f86a020
+    src/ContainerText.psm1, sha256 99d9da9d9015
     src/PdfCore.psm1, sha256 da11bdba883c
     src/PdfObjects.psm1, sha256 4479101a8f3e
     src/PdfFonts.psm1, sha256 604c4d61b80a
     src/PdfLayout.psm1, sha256 feafecd946b7
     src/PdfText.psm1, sha256 312351e30b87
-    src/TextExtract.psm1, sha256 6e7fbfb4f688
+    src/TextExtract.psm1, sha256 8073f22b9095
     src/XlsxWriter.psm1, sha256 e29becdc6a65
     src/Report.psm1, sha256 abf11dbf3bd6
     src/ScanMeter.psm1, sha256 2c2a5a750104
@@ -46,19 +46,19 @@
     line   563  Module PiiMasking.psm1
     line   763  Module OcrText.psm1
     line   916  Module OleText.psm1
-    line  1020  Module ContainerText.psm1
-    line  1260  Module PdfCore.psm1
-    line  1619  Module PdfObjects.psm1
-    line  1977  Module PdfFonts.psm1
-    line  2398  Module PdfLayout.psm1
-    line  2538  Module PdfText.psm1
-    line  3031  Module TextExtract.psm1
-    line  3384  Module XlsxWriter.psm1
-    line  3655  Module Report.psm1
-    line  4189  Module ScanMeter.psm1
-    line  4454  Module ChannelScan.psm1
-    line  5042  Body of Find-ChannelPII.ps1
-    line  5143  Clean-up
+    line  1025  Module ContainerText.psm1
+    line  1307  Module PdfCore.psm1
+    line  1666  Module PdfObjects.psm1
+    line  2024  Module PdfFonts.psm1
+    line  2445  Module PdfLayout.psm1
+    line  2585  Module PdfText.psm1
+    line  3078  Module TextExtract.psm1
+    line  3457  Module XlsxWriter.psm1
+    line  3728  Module Report.psm1
+    line  4262  Module ScanMeter.psm1
+    line  4527  Module ChannelScan.psm1
+    line  5115  Body of Find-ChannelPII.ps1
+    line  5216  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -949,6 +949,9 @@ $script:EncryptedStreamNames = @('EncryptedPackage', 'EncryptedSummary')
 # An old .xls keeps numbers as binary values, not text: a number typed into a cell (an SSN without dashes) is not
 # read, so every .xls gets this note. Old .doc, .ppt and .msg files keep their text as text.
 $script:XlsNote = 'Old Excel file: numbers stored as values are not read: check by hand'
+$script:MsgAttachNote = 'This Outlook message has attachments, which are not read: open them and check by hand'
+# The stream name of an attachment, as UTF-16 in the file's directory (bytes as Latin-1 characters).
+$script:MsgAttachMark = -join ('__attach_version1.0_'.ToCharArray() | ForEach-Object { [string]$_ + [char]0 })
 
 function Test-OleSignature {
     # True when the bytes start like an OLE compound file.
@@ -1014,6 +1017,8 @@ function Get-OleText {
     foreach ($run in [regex]::Matches($text, $script:AnsiRunPattern)) { $runs.Add($run.Value) }
     if ($runs.Count -eq 0) { return @{ Text = ''; Reason = 'No readable text in this old Office or Outlook file: check by hand'; Note = '' } }
     $note = ''; if ($Extension -eq '.xls') { $note = $script:XlsNote }
+    # An Outlook message's attachments are stored as their own streams (__attach_version1.0_#n): not read here.
+    if ($Extension -eq '.msg' -and $text.Contains($script:MsgAttachMark)) { $note = $script:MsgAttachNote }
     return @{ Text = ($runs -join "`n"); Reason = ''; Note = $note }
 }
 
@@ -1043,6 +1048,9 @@ $script:MaxArchiveBytes = 200MB
 
 # An e-mail's MIME parts nest at most this deep (a hostile message cannot recurse without end).
 $script:MaxMimeDepth = 5
+# Parts read from one e-mail (a hostile message can hold hundreds of thousands); the count of the one in work.
+$script:MaxMimeParts = 500
+$script:MimeParts = 0
 
 # Bytes as characters one to one, so a message can be cut with string functions and decoded part by part.
 $script:MimeLatin1 = [System.Text.Encoding]::GetEncoding(28591)
@@ -1080,6 +1088,35 @@ function Read-LimitedStream {
     finally { $Stream.Dispose(); $memory.Dispose() }
 }
 
+function Get-EncryptedZipNames {
+    <#
+    .SYNOPSIS
+      The names of the encrypted files in a zip, from its central directory (bit 0 of each entry's flags): .NET
+      opens a stored (not compressed) encrypted entry without an error and would give its scrambled bytes (review).
+    .PARAMETER Bytes
+      The archive bytes.
+    .OUTPUTS
+      [System.Collections.Generic.HashSet[string]]
+    #>
+    param([byte[]]$Bytes)
+    $names = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
+    $at = 0
+    while ($at + 46 -le $Bytes.Length) {
+        $at = [Array]::IndexOf($Bytes, [byte]0x50, $at)
+        if ($at -lt 0 -or $at + 46 -gt $Bytes.Length) { break }
+        if ($Bytes[$at + 1] -eq 0x4B -and $Bytes[$at + 2] -eq 1 -and $Bytes[$at + 3] -eq 2) {   # PK 01 02: a central directory entry
+            $flags = [BitConverter]::ToUInt16($Bytes, $at + 8)
+            $nameLength = [BitConverter]::ToUInt16($Bytes, $at + 28)
+            if (($flags -band 1) -and $at + 46 + $nameLength -le $Bytes.Length) {
+                $encoding = $script:MimeLatin1; if ($flags -band 0x800) { $encoding = [System.Text.Encoding]::UTF8 }
+                [void]$names.Add($encoding.GetString($Bytes, $at + 46, $nameLength))
+            }
+        }
+        $at++
+    }
+    return , $names
+}
+
 function Get-ArchiveParts {
     <#
     .SYNOPSIS
@@ -1096,8 +1133,10 @@ function Get-ArchiveParts {
     try {
         $count = 0
         $total = 0L
+        $encrypted = Get-EncryptedZipNames $Bytes
         foreach ($entry in $zip.Entries) {
             if (-not $entry.Name) { continue }   # a folder
+            if ($encrypted.Contains($entry.FullName)) { New-Part $entry.FullName -Reason 'Encrypted (password-protected) in the archive: check by hand'; continue }
             $count++
             if ($count -gt $script:MaxArchiveEntries) {
                 New-Part '(more files)' -Reason "More than $script:MaxArchiveEntries files in this archive: the rest is not scanned: check by hand"
@@ -1128,6 +1167,8 @@ function Split-MimeEntity {
       [hashtable] Headers, Body.
     #>
     param([string]$Text)
+    # A part that starts with a blank line or with text (no "Name: value" first line) has no headers: all is body.
+    if ($Text -notmatch '\A[!-9;-~]+:') { return @{ Headers = @{}; Body = $Text } }
     $cut = [regex]::Match($Text, '\r?\n\r?\n')
     $head = $Text; $body = ''
     if ($cut.Success) { $head = $Text.Substring(0, $cut.Index); $body = $Text.Substring($cut.Index + $cut.Length) }
@@ -1213,11 +1254,16 @@ function Get-MimeParts {
     $encoding = [string]$entity.Headers['content-transfer-encoding']
     if ($type -match '(?i)^\s*multipart/') {
         $boundary = Get-HeaderParameter $type 'boundary'
-        if (-not $boundary -or $Depth -ge $script:MaxMimeDepth) { return }
+        if ($Depth -ge $script:MaxMimeDepth) { New-Part '(message part)' -Reason 'An e-mail part nested too deep to read: check by hand'; return }
+        if (-not $boundary) { New-Part '(message text)' -Text $entity.Body; return }   # damaged: the body is still read as text
         $pieces = $entity.Body -split ('(?m)^--' + [regex]::Escape($boundary) + '(?:--)?[ \t]*\r?$')
         for ($i = 1; $i -lt $pieces.Count; $i++) {   # piece 0 is the preamble
             $piece = $pieces[$i] -replace '^\r?\n', ''
-            if ($piece.Trim()) { Get-MimeParts $piece ($Depth + 1) }
+            if (-not $piece.Trim()) { continue }
+            if ((++$script:MimeParts) -gt $script:MaxMimeParts) {
+                New-Part '(more parts)' -Reason "More than $script:MaxMimeParts parts in this e-mail: the rest is not scanned: check by hand"; return
+            }
+            Get-MimeParts $piece ($Depth + 1)
         }
         return
     }
@@ -1254,6 +1300,7 @@ function Get-EmailParts {
         if ($entity.Headers.ContainsKey($name)) { (Get-Culture).TextInfo.ToTitleCase($name) + ': ' + (ConvertFrom-EncodedWords $entity.Headers[$name]) }
     }
     New-Part '(message headers)' -Text (@($lines) -join "`n")
+    $script:MimeParts = 0
     Get-MimeParts $text 0
 }
 
@@ -3062,6 +3109,9 @@ $script:HtmlExtensions = @('.html', '.htm')
 # Office Open XML types (a zip of XML parts, ECMA-376) and the parts that hold their text:
 # body, headers, footers, comments, notes; worksheets and cell comments; slides and speaker notes.
 # A worksheet is read cell by cell (Convert-SheetXmlToText), with its shared strings put back into their cells.
+# The most one part of an Office, OpenDocument or Visio file may unpack to (its stated size; a zip bomb is refused).
+$script:MaxZipEntryBytes = 64MB
+
 $script:OfficeParts = @{
     '.docx' = '^word/(document|header\d*|footer\d*|comments|footnotes|endnotes)\.xml$'
     '.docm' = '^word/(document|header\d*|footer\d*|comments|footnotes|endnotes)\.xml$'
@@ -3177,9 +3227,31 @@ function Convert-HtmlToText {
 # Reading bytes
 # =====================================================================================
 
+function Get-OdfEncryptedReason {
+    <#
+    .SYNOPSIS
+      Why an OpenDocument file cannot be read: saved with a password (its manifest lists encryption-data, and
+      its content is scrambled); empty when it is not (review of PR 19).
+    .PARAMETER Bytes
+      The file bytes (a zip).
+    .OUTPUTS
+      [string]
+    #>
+    param([byte[]]$Bytes)
+    $memory = New-Object System.IO.MemoryStream(, $Bytes)
+    $zip = New-Object System.IO.Compression.ZipArchive($memory, [System.IO.Compression.ZipArchiveMode]::Read)
+    try {
+        $manifest = $zip.GetEntry('META-INF/manifest.xml')
+        if ($manifest -and (Read-ZipEntry $manifest) -match 'encryption-data') { return 'Encrypted (password-protected): check by hand' }
+        return ''
+    }
+    finally { $zip.Dispose(); $memory.Dispose() }
+}
+
 function Read-ZipEntry {
-    # The text of one zip entry (UTF-8, as Office writes its XML).
+    # The text of one zip entry (UTF-8, as Office writes its XML), at most $MaxZipEntryBytes (a zip bomb throws).
     param($Entry)
+    if ($Entry.Length -gt $script:MaxZipEntryBytes) { throw 'A part of this file is too large to unpack in memory' }
     $reader = New-Object System.IO.StreamReader($Entry.Open())
     try { return $reader.ReadToEnd() } finally { $reader.Dispose() }
 }
@@ -3324,6 +3396,7 @@ function Get-TextFromBytes {
         elseif ($script:ContainerExtensions -contains $extension) { Add-ContainerParts $result $Bytes $extension $Depth }
         elseif ($script:OfficeParts.ContainsKey($extension)) {
             $notZip = Get-NotZipReason $Bytes
+            if (-not $notZip -and $extension -like '.od?') { $notZip = Get-OdfEncryptedReason $Bytes }
             if ($notZip) { $result.Status = 'NOT SCANNED'; $result.Reason = $notZip }
             else { $result.Text = Get-ZipPartText $Bytes $script:OfficeParts[$extension] }
         }
