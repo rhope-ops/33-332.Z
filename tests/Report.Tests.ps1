@@ -117,3 +117,9 @@ Assert-Equal $true ($keyText -match '(?m)^High = labelled') 'Summary: the key to
 $narrow = @(& (Get-Module Report) { Format-BoxTable @('Reason', 'Files') @(, @(('r' * 115), 1)) 119 })
 Assert-Equal $true (($narrow | ForEach-Object { $_.Length } | Measure-Object -Maximum).Maximum -le 127) 'Table: a narrow last column is never widened'
 Assert-Equal 0 @(& (Get-Module Report) { $script:ConfidenceKey } | Where-Object { $_.Length -gt 79 }).Count 'Summary: each confidence key line fits 80 characters'
+# The AFI reference of the breach advice is its own line on screen and its own row on the Summary tab (the PAM, 2026-11-21).
+$adviceShown = (Publish-ScanReport -Rows $reportRows -ItemsScanned 2 -Header $header -OutputFolder $reportFolder -SiteUrl $header.Site -FolderLabel 'Channel' 6>&1 |
+    Where-Object { $_ -isnot [string] } | ForEach-Object { [string]$_ })
+Assert-Equal $true (@($adviceShown | Where-Object { $_ -match '^Source: AFI 33-332 para 3\.1\.2' }).Count -eq 1) 'Advice: the AFI reference is its own line'
+$sourceBook = Get-XlsxSheets (@(Get-ResultFiles $reportFolder) | Sort-Object LastWriteTime | Select-Object -Last 1).FullName
+Assert-Equal 1 @($sourceBook['Summary'] | Where-Object { $_[0] -eq 'Source' -and $_[1] -match '^Source: AFI 33-332' }).Count 'Advice: the Summary tab has the reference as its own row'

@@ -29,9 +29,9 @@ Assert-Equal 'Channel' (Get-XlsxSheets $results[0].FullName)['SSN'][0][1] 'A tea
 Assert-Equal 1 (Get-FakeCallCount 'Read-Host') 'With the site given, one address question only (another site or exit); "Scan now?" and "Open" are their own'
 Assert-Equal $true ((Test-FakePnPCall 'Open question') -and (Test-FakePnPCall ('Open ' + $results[0].FullName))) 'Enter at the open question opens the workbook'
 Assert-Equal 1 @(Get-FakePnPConnection).Count 'One sign-in only: no posts sign-in'
-Assert-Equal $true ((Get-FakeProgressText) -match '    2/    3 files \| read +\d+ \| not scanned +0 \| possible PII +\d+ in +\d+ files') 'Progress bar shows the file counts'
-Assert-Equal $true ((Get-FakeProgressText) -match "folder 2 of 2: 'Ops'") 'Progress bar names the folder and its number'
-Assert-Equal $false ((Get-FakeProgressText) -match 'Downloading this file Downloading') 'Small files: no per-file bar (it would only slow the scan)'
+Assert-Equal $true ((Get-FakeProgressText) -match '2 of 3 files \(\d+%\) \| read \d+ \| not scanned 0 \| possible PII \d+ in \d+ files \| \d\d:\d\d elapsed') 'Progress bar shows the file counts'
+Assert-Equal $true ((Get-FakeProgressText) -match 'Folder 2 of 2: Ops \d+ of 3 files .* File: scan\.pdf') 'Progress bar names the folder and its number'
+Assert-Equal $false ((Get-FakeProgressText) -match 'Downloading [\d.]+ (of|MB)') 'Small files: no per-file bar (it would only slow the scan)'
 
 Assert-Equal $true (Test-FakePnPCall 'Scan question') 'Before the scan: "Scan now?" is asked'
 

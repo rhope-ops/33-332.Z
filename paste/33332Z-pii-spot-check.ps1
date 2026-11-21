@@ -31,11 +31,11 @@
     src/TextExtract.psm1, sha256 3b52ab6462e5
     src/ReaderPool.psm1, sha256 8f8f73fda166
     src/XlsxWriter.psm1, sha256 e29becdc6a65
-    src/Report.psm1, sha256 fb6dd1862a31
-    src/ScanMeter.psm1, sha256 88a95c795335
-    src/ScanQueue.psm1, sha256 78b864629542
+    src/Report.psm1, sha256 868b95b6c3ba
+    src/ScanMeter.psm1, sha256 21bf250fe3e1
+    src/ScanQueue.psm1, sha256 85cb65afb492
     src/Accountability.psm1, sha256 15472f8fab6e
-    src/ChannelScan.psm1, sha256 47e209d2186f
+    src/ChannelScan.psm1, sha256 4eec88ad8ca9
     src/DriveScan.psm1, sha256 f307e810f8f5
     src/Find-ChannelPII.ps1, sha256 968f052f3e55
 
@@ -65,11 +65,11 @@
     line  4258  Module Report.psm1
     line  4855  Module ScanMeter.psm1
     line  5178  Module ScanQueue.psm1
-    line  5520  Module Accountability.psm1
-    line  5814  Module ChannelScan.psm1
-    line  6406  Module DriveScan.psm1
-    line  6638  Body of Find-ChannelPII.ps1
-    line  6779  Clean-up
+    line  5521  Module Accountability.psm1
+    line  5815  Module ChannelScan.psm1
+    line  6408  Module DriveScan.psm1
+    line  6640  Body of Find-ChannelPII.ps1
+    line  6781  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -4279,8 +4279,7 @@ Report.psm1 - the scan results for a person: a summary on screen and one Excel w
 # Settings
 # =====================================================================================
 
-# Confidence labels as numbers, for sorting (High first). Rows with other labels are notes
-# (NOT SCANNED, BLOCKED, INCOMPLETE).
+# Confidence labels as numbers, for sorting (High first). Rows with other labels are notes (NOT SCANNED, BLOCKED, INCOMPLETE).
 $script:Rank = @{ 'High' = 3; 'Medium' = 2; 'Low' = 1 }
 
 # The tool's name on screen and in the workbook (the PAM, 2026-11-20).
@@ -4301,10 +4300,9 @@ $script:MinLastColumn = 12
 # Under the table of types: what High, Medium and Low mean (the PAM, 2026-11-21: plain words for a unit member).
 $script:ConfidenceKey = @('High = labelled ("SSN:") or a sure pattern. Medium = right form, no label.', 'Low = weak match, often not PII.')
 
-# Screen colours (the PAM, 2026-11-20: less grey, more format). Write-Host has only the 16 console colours:
-# Cyan = headings and labels, White = values, Green = clean or done, Yellow = check by hand and Medium,
-# Red = possible PII, High and errors, Gray = hints and the labels of the folder rows, DarkGray = rules and table
-# borders, DarkCyan (teal) = folder names on the folder rows (the PAM, 2026-11-20).
+# Screen colours (the PAM, 2026-11-20: less grey, more format), of the 16 console colours: Cyan = headings and labels,
+# White = values, Green = clean or done, Yellow = check by hand and Medium, Red = possible PII, High and errors,
+# Gray = hints and folder-row labels, DarkGray = rules and table borders, DarkCyan (teal) = folder names (the PAM, 2026-11-20).
 $script:ScreenColors = @{ Title = 'Cyan'; Label = 'Cyan'; Text = 'White'; Good = 'Green'; Accent = 'Yellow'; Alert = 'Red'
     Muted = 'Gray'; Rule = 'DarkGray'; Folder = 'DarkCyan' }
 
@@ -4327,13 +4325,13 @@ $script:NotScannedGroups = [ordered]@{
     '^An archive or e-mail inside another|in this archive|Too large to unpack|Could not unpack' = 'Archives: files not unpacked'
 }
 
-
-# What to do with PII found where it should not be: the breach steps of the rule source, AFI 33-332 para 3.1.2 as
-# changed by AFI33-332_DAFGM2026-01 (7 July 2026; edition: docs/DECISIONS.md).
-# The wording is the README's "If it finds PII" section; scripts/build_site.py --check fails when they differ (the PAM, 2026-11-20).
+# What to do with PII found where it should not be (rule source: AFI 33-332 para 3.1.2 as changed by AFI33-332_DAFGM2026-01,
+# 7 July 2026; edition: docs/DECISIONS.md). The wording is the README's "If it finds PII" section; scripts/build_site.py --check fails when they differ (the PAM, 2026-11-20).
 $script:BreachAdvice = 'PII where it should not be is a potential or actual breach; report it to your servicing Privacy ' +
                        'Manager/Monitor without delay (AFI 33-332 para 3.1.2, as changed by AFI33-332_DAFGM2026-01 (7 July 2026), ' +
                        'page 1, second paragraph).'
+# Shown as two lines, the advice and then its rule source (the PAM, 2026-11-21); the text stays README.md's, word for word.
+$script:BreachLines = @(($script:BreachAdvice -replace ' \(AFI .*$', '.'), ('Source: ' + ($script:BreachAdvice -replace '^.*\((AFI .*)\)\.$', '$1') + '.'))
 
 # =====================================================================================
 # Rows and summary
@@ -4781,7 +4779,8 @@ function Get-SummaryRows {
     , @('')
     , @('Tabs', 'One tab per type with High or Medium hits, worst type first; then Low confidence; then Not scanned.')
     , @('Confidence', 'A pattern guess, not proof: open each item and check it before you act.')
-    , @('If you find PII', $script:BreachAdvice)
+    , @('If you find PII', $script:BreachLines[0])
+    , @('Source', $script:BreachLines[1])
     , @('Handling', 'Handle this file as CUI: it shows where PII is. Every value in it is masked.')
 }
 
@@ -4817,7 +4816,8 @@ function Publish-ScanReport {
         Write-Ui ''; Write-Ui "Saved (values masked): $path" 'Good'; Write-Ui 'Handle this file as CUI: it shows where PII is.' 'Accent'
     }
     finally {
-        Write-Ui ''; Write-Ui 'Confidence is a pattern guess, not proof: open each item and check it before you act.' 'Muted'; Write-Ui $script:BreachAdvice 'Accent'
+        Write-Ui ''; Write-Ui 'Confidence is a pattern guess, not proof: open each item and check it before you act.' 'Muted'; Write-Ui $script:BreachLines[0] 'Accent'
+        Write-Ui $script:BreachLines[1] 'Muted'
     }
     return $path
 }
@@ -4878,9 +4878,10 @@ $script:FileBarBytes = 1MB
 # The per-file bar shows a speed and a time left only after this many seconds (before that the speed jumps about).
 $script:RateAfterSeconds = 1
 
-# A streamed download is read this much at a time (256 KB); the bar is updated at most this often (4 a second).
-$script:ChunkBytes = 256KB
-$script:BarRefreshMs = 250
+# A streamed download is read this much at a time (64 KB); the bar is updated at most this often (8 a second): smaller
+# steps, so the bar moves smoothly (the PAM, 2026-11-21: 256 KB and 4 a second looked choppy).
+$script:ChunkBytes = 64KB
+$script:BarRefreshMs = 125
 
 # A coloured line of live counts is printed under the progress bar at most this often (and after each folder).
 $script:LiveLineSeconds = 10
@@ -4961,23 +4962,23 @@ function Get-TimeLeftText {
 function Get-ScanMeterText {
     <#
     .SYNOPSIS
-      The meter as one status line with fixed-width counts: counts, time used and, when the total is known, time left.
-      The parts that change in width (time, PII per type) come last.
+      The run so far as one line for the scan bar (its middle line; the PAM, 2026-11-21): files done of the total with
+      the percent, read, not scanned, possible PII, the time elapsed and left, then the hits per type.
     .PARAMETER Meter
       Output of New-ScanMeter.
     .PARAMETER Noun
       What an item is, for example 'file'.
     .OUTPUTS
-      [string] for example "   12/   40 files | read    10 | not scanned     2 | possible PII     3 in     2 files | 00:42 used, about 01:48 left".
+      [string] for example "12 of 40 files (30%) | read 10 | not scanned 2 | possible PII 3 in 2 files | 00:42 elapsed, about 01:48 left".
     #>
     param([hashtable]$Meter, [string]$Noun)
-    $text = Format-Count $Meter.Done
-    if ($Meter.Total -gt 0) { $text += '/' + (Format-Count $Meter.Total) }
+    $text = '{0:N0} {1}s' -f $Meter.Done, $Noun
+    if ($Meter.Total -gt 0) { $text = '{0:N0} of {1:N0} {2}s ({3}%)' -f $Meter.Done, $Meter.Total, $Noun, (Get-MeterPercent $Meter) }
+    $hitNoun = $Noun + 's'; if ($Meter.HitItems -eq 1) { $hitNoun = $Noun }   # "in 1 file", "in 2 files"
+    $text += ' | read {0:N0} | not scanned {1:N0} | possible PII {2:N0} in {3:N0} {4} | {5} elapsed{6}' -f
+        $Meter.Read, $Meter.Skipped, $Meter.Hits, $Meter.HitItems, $hitNoun, (Format-Duration $Meter.Clock.Elapsed), (Get-TimeLeftText $Meter)
     $types = Get-TypeCountText $Meter
-    if ($types) { $types = ' | ' + $types }
-    $text += ' {0}s | read {1} | not scanned {2} | possible PII {3} in {4} {0}s | {5} used{6}{7}' -f
-        $Noun, (Format-Count $Meter.Read), (Format-Count $Meter.Skipped), (Format-Count $Meter.Hits), (Format-Count $Meter.HitItems),
-        (Format-Duration $Meter.Clock.Elapsed), (Get-TimeLeftText $Meter), $types
+    if ($types) { $text += ' | ' + $types }
     return $text
 }
 
@@ -5052,8 +5053,7 @@ function Write-MeterLine {
     Write-CountPart 'read' $Meter.Read 'Text'
     Write-CountPart 'not scanned' $Meter.Skipped (Get-CountKind $Meter.Skipped 'Accent')
     Write-CountPart 'possible PII' $Meter.Hits (Get-CountKind $Meter.Hits 'Alert')
-    Write-Ui ' | ' 'Rule' -NoNewline
-    Write-Ui ('{0} used{1}' -f (Format-Duration $elapsed), (Get-TimeLeftText $Meter)) 'Muted' -NoNewline
+    # No time here: the scan bar shows the time elapsed and left (the PAM, 2026-11-21).
     $types = Get-TypeCountText $Meter
     if ($types) { Write-Ui ' | ' 'Rule' -NoNewline; Write-Ui $types 'Alert' -NoNewline }
     Write-Ui ''
@@ -5090,21 +5090,21 @@ function Write-FileStep {
     if (-not (Test-FileBarSize $Size)) { return }
     $sizeMB = $Size / 1MB
     if ($Done -lt 0) {
-        $status = '{0} {1:N1} MB - no byte count from SharePoint for this file: please wait' -f $Step, $sizeMB
+        $status = '{0:N1} MB - SharePoint gives no byte count for this file: please wait' -f $sizeMB
         $percent = 0
     }
     else {
         $percent = [int][Math]::Floor([Math]::Min(100, 100 * $Done / [Math]::Max(1, $Size)))
-        $status = '{0} {1,5:N1} of {2:N1} MB {3,3}%' -f $Step, ($Done / 1MB), $sizeMB, $percent
+        $status = '{0:N1} of {1:N1} MB ({2}%)' -f ($Done / 1MB), $sizeMB, $percent
         $seconds = $Elapsed.TotalSeconds
         if ($Done -gt 0 -and $seconds -ge $script:RateAfterSeconds) {
             $rate = $Done / $seconds
             $status += ' | {0:N1} MB/s' -f ($rate / 1MB)
-            if ($Done -lt $Size) { $status += ', about {0} left' -f (Format-Duration ([TimeSpan]::FromSeconds(($Size - $Done) / $rate))) }
+            if ($Done -lt $Size) { $status += ' | about {0} left' -f (Format-Duration ([TimeSpan]::FromSeconds(($Size - $Done) / $rate))) }
         }
     }
     # No -ParentId: Windows PowerShell ISE indents a child bar; the PAM wants both bars aligned (2026-11-20).
-    Write-Progress -Id 2 -Activity 'Downloading this file' -Status $status -PercentComplete $percent
+    Write-Progress -Id 2 -Activity $Step -Status $status -PercentComplete $percent
 }
 
 function Copy-StreamWithProgress {
@@ -5323,9 +5323,10 @@ function Invoke-GroupScan {
         $before = $meter.Clone()
         foreach ($file in $group.Files) {
             # The file in work, with PII masked (the PAM, 2026-11-20: a slow file is then visible).
-            $Queue.Activity = "Scanning files - folder {0} of {1}: '{2}'" -f ($c + 1), $Groups.Count, (Protect-PiiName $group.Name)
+            # The scan bar's 3 lines (the PAM, 2026-11-21): the folder, the run so far, the file.
+            $Queue.Activity = 'Folder {0} of {1}: {2}' -f ($c + 1), $Groups.Count, (Protect-PiiName $group.Name)
             Write-Progress -Id 1 -Activity $Queue.Activity -Status (Get-ScanMeterText $meter 'file') -PercentComplete (Get-MeterPercent $meter) `
-                -CurrentOperation ('Now: ' + (& $ShownFile $group $file))
+                -CurrentOperation ('File: ' + (& $ShownFile $group $file))
             $firstRow = $Queue.Rows.Count
             if (-not (& $StartFile $Queue $group $file)) {
                 Update-ScanMeter $meter $Queue.Rows $firstRow 0
@@ -5335,7 +5336,7 @@ function Invoke-GroupScan {
         Wait-ScanQueue $Queue   # the folder's line counts all its files
         Write-ChannelLine $group.Name $before $meter 'file'
     }
-    Write-Progress -Id 1 -Activity 'Scanning files' -Completed
+    Write-Progress -Id 1 -Activity 'Scan' -Completed
 }
 
 function Add-WhoToRows {
@@ -6053,7 +6054,8 @@ function Connect-TeamSite {
             Write-Ui "Teams link: the script needs this team's site address. In Teams: the team's Shared tab > ... > Open in SharePoint, then copy the address." 'Accent'
             $site = Read-TeamSiteAddress
         }
-        Write-Ui "Signing in to $site (a sign-in window opens; if you do not see it, press Alt+Tab; if it says you have no access, close it) ..." 'Muted'
+        Write-Ui "Signing in to $site ..." 'Muted'
+        Write-Ui '  A sign-in window opens (if you do not see it, press Alt+Tab). If it says you have no access, close it.' 'Muted'
         # PnP prints a warning that suggests -Interactive (and its update notice): not useful to the person, so hidden (the PAM, 2026-11-20).
         Connect-PnPOnline -Url $site -UseWebLogin -WarningAction SilentlyContinue
         $null = Get-PnPWeb -ErrorAction Stop   # can this person open the site? A refusal here is "no access", before any scan
@@ -6295,7 +6297,7 @@ function Invoke-OneFileScan {
         $reason = Protect-PiiText ('Download failed: ' + $_.Exception.Message)
         $rows.Add((New-ReportRow 'File' $Channel $item $link $modified 'NOT SCANNED' '' '' $reason)); return $false
     }
-    finally { $script:Timing.Download += $clock.Elapsed; Write-Progress -Id 2 -Activity 'Downloading this file' -Completed }
+    finally { $script:Timing.Download += $clock.Elapsed; Write-Progress -Id 2 -Activity 'Downloading' -Completed }
     # The main thread downloads the next file while workers read this one (speed, the PAM 2026-11-21).
     # Accountability: who made and changed the file; for a file with a hit, who added each hit (version history).
     $who = Get-SharePointWho $File

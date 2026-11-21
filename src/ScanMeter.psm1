@@ -24,9 +24,10 @@ $script:FileBarBytes = 1MB
 # The per-file bar shows a speed and a time left only after this many seconds (before that the speed jumps about).
 $script:RateAfterSeconds = 1
 
-# A streamed download is read this much at a time (256 KB); the bar is updated at most this often (4 a second).
-$script:ChunkBytes = 256KB
-$script:BarRefreshMs = 250
+# A streamed download is read this much at a time (64 KB); the bar is updated at most this often (8 a second): smaller
+# steps, so the bar moves smoothly (the PAM, 2026-11-21: 256 KB and 4 a second looked choppy).
+$script:ChunkBytes = 64KB
+$script:BarRefreshMs = 125
 
 # A coloured line of live counts is printed under the progress bar at most this often (and after each folder).
 $script:LiveLineSeconds = 10
@@ -107,23 +108,23 @@ function Get-TimeLeftText {
 function Get-ScanMeterText {
     <#
     .SYNOPSIS
-      The meter as one status line with fixed-width counts: counts, time used and, when the total is known, time left.
-      The parts that change in width (time, PII per type) come last.
+      The run so far as one line for the scan bar (its middle line; the PAM, 2026-11-21): files done of the total with
+      the percent, read, not scanned, possible PII, the time elapsed and left, then the hits per type.
     .PARAMETER Meter
       Output of New-ScanMeter.
     .PARAMETER Noun
       What an item is, for example 'file'.
     .OUTPUTS
-      [string] for example "   12/   40 files | read    10 | not scanned     2 | possible PII     3 in     2 files | 00:42 used, about 01:48 left".
+      [string] for example "12 of 40 files (30%) | read 10 | not scanned 2 | possible PII 3 in 2 files | 00:42 elapsed, about 01:48 left".
     #>
     param([hashtable]$Meter, [string]$Noun)
-    $text = Format-Count $Meter.Done
-    if ($Meter.Total -gt 0) { $text += '/' + (Format-Count $Meter.Total) }
+    $text = '{0:N0} {1}s' -f $Meter.Done, $Noun
+    if ($Meter.Total -gt 0) { $text = '{0:N0} of {1:N0} {2}s ({3}%)' -f $Meter.Done, $Meter.Total, $Noun, (Get-MeterPercent $Meter) }
+    $hitNoun = $Noun + 's'; if ($Meter.HitItems -eq 1) { $hitNoun = $Noun }   # "in 1 file", "in 2 files"
+    $text += ' | read {0:N0} | not scanned {1:N0} | possible PII {2:N0} in {3:N0} {4} | {5} elapsed{6}' -f
+        $Meter.Read, $Meter.Skipped, $Meter.Hits, $Meter.HitItems, $hitNoun, (Format-Duration $Meter.Clock.Elapsed), (Get-TimeLeftText $Meter)
     $types = Get-TypeCountText $Meter
-    if ($types) { $types = ' | ' + $types }
-    $text += ' {0}s | read {1} | not scanned {2} | possible PII {3} in {4} {0}s | {5} used{6}{7}' -f
-        $Noun, (Format-Count $Meter.Read), (Format-Count $Meter.Skipped), (Format-Count $Meter.Hits), (Format-Count $Meter.HitItems),
-        (Format-Duration $Meter.Clock.Elapsed), (Get-TimeLeftText $Meter), $types
+    if ($types) { $text += ' | ' + $types }
     return $text
 }
 
@@ -198,8 +199,7 @@ function Write-MeterLine {
     Write-CountPart 'read' $Meter.Read 'Text'
     Write-CountPart 'not scanned' $Meter.Skipped (Get-CountKind $Meter.Skipped 'Accent')
     Write-CountPart 'possible PII' $Meter.Hits (Get-CountKind $Meter.Hits 'Alert')
-    Write-Ui ' | ' 'Rule' -NoNewline
-    Write-Ui ('{0} used{1}' -f (Format-Duration $elapsed), (Get-TimeLeftText $Meter)) 'Muted' -NoNewline
+    # No time here: the scan bar shows the time elapsed and left (the PAM, 2026-11-21).
     $types = Get-TypeCountText $Meter
     if ($types) { Write-Ui ' | ' 'Rule' -NoNewline; Write-Ui $types 'Alert' -NoNewline }
     Write-Ui ''
@@ -236,21 +236,21 @@ function Write-FileStep {
     if (-not (Test-FileBarSize $Size)) { return }
     $sizeMB = $Size / 1MB
     if ($Done -lt 0) {
-        $status = '{0} {1:N1} MB - no byte count from SharePoint for this file: please wait' -f $Step, $sizeMB
+        $status = '{0:N1} MB - SharePoint gives no byte count for this file: please wait' -f $sizeMB
         $percent = 0
     }
     else {
         $percent = [int][Math]::Floor([Math]::Min(100, 100 * $Done / [Math]::Max(1, $Size)))
-        $status = '{0} {1,5:N1} of {2:N1} MB {3,3}%' -f $Step, ($Done / 1MB), $sizeMB, $percent
+        $status = '{0:N1} of {1:N1} MB ({2}%)' -f ($Done / 1MB), $sizeMB, $percent
         $seconds = $Elapsed.TotalSeconds
         if ($Done -gt 0 -and $seconds -ge $script:RateAfterSeconds) {
             $rate = $Done / $seconds
             $status += ' | {0:N1} MB/s' -f ($rate / 1MB)
-            if ($Done -lt $Size) { $status += ', about {0} left' -f (Format-Duration ([TimeSpan]::FromSeconds(($Size - $Done) / $rate))) }
+            if ($Done -lt $Size) { $status += ' | about {0} left' -f (Format-Duration ([TimeSpan]::FromSeconds(($Size - $Done) / $rate))) }
         }
     }
     # No -ParentId: Windows PowerShell ISE indents a child bar; the PAM wants both bars aligned (2026-11-20).
-    Write-Progress -Id 2 -Activity 'Downloading this file' -Status $status -PercentComplete $percent
+    Write-Progress -Id 2 -Activity $Step -Status $status -PercentComplete $percent
 }
 
 function Copy-StreamWithProgress {
