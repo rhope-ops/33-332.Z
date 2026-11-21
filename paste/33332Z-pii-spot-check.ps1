@@ -21,13 +21,13 @@
     src/PiiMasking.psm1, sha256 752c251a94b2
     src/OcrText.psm1, sha256 a39acab441d4
     src/OleText.psm1, sha256 84041f86a020
-    src/ContainerText.psm1, sha256 99d9da9d9015
+    src/ContainerText.psm1, sha256 45d2b7bccb22
     src/PdfCore.psm1, sha256 da11bdba883c
     src/PdfObjects.psm1, sha256 4479101a8f3e
     src/PdfFonts.psm1, sha256 604c4d61b80a
     src/PdfLayout.psm1, sha256 feafecd946b7
     src/PdfText.psm1, sha256 312351e30b87
-    src/TextExtract.psm1, sha256 8073f22b9095
+    src/TextExtract.psm1, sha256 85800636bc42
     src/XlsxWriter.psm1, sha256 e29becdc6a65
     src/Report.psm1, sha256 abf11dbf3bd6
     src/ScanMeter.psm1, sha256 2c2a5a750104
@@ -47,18 +47,18 @@
     line   763  Module OcrText.psm1
     line   916  Module OleText.psm1
     line  1025  Module ContainerText.psm1
-    line  1307  Module PdfCore.psm1
-    line  1666  Module PdfObjects.psm1
-    line  2024  Module PdfFonts.psm1
-    line  2445  Module PdfLayout.psm1
-    line  2585  Module PdfText.psm1
-    line  3078  Module TextExtract.psm1
-    line  3457  Module XlsxWriter.psm1
-    line  3728  Module Report.psm1
-    line  4262  Module ScanMeter.psm1
-    line  4527  Module ChannelScan.psm1
-    line  5115  Body of Find-ChannelPII.ps1
-    line  5216  Clean-up
+    line  1341  Module PdfCore.psm1
+    line  1700  Module PdfObjects.psm1
+    line  2058  Module PdfFonts.psm1
+    line  2479  Module PdfLayout.psm1
+    line  2619  Module PdfText.psm1
+    line  3112  Module TextExtract.psm1
+    line  3495  Module XlsxWriter.psm1
+    line  3766  Module Report.psm1
+    line  4300  Module ScanMeter.psm1
+    line  4565  Module ChannelScan.psm1
+    line  5153  Body of Find-ChannelPII.ps1
+    line  5254  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -1088,33 +1088,39 @@ function Read-LimitedStream {
     finally { $Stream.Dispose(); $memory.Dispose() }
 }
 
-function Get-EncryptedZipNames {
+function Get-ZipEncryptedFlags {
     <#
     .SYNOPSIS
-      The names of the encrypted files in a zip, from its central directory (bit 0 of each entry's flags): .NET
-      opens a stored (not compressed) encrypted entry without an error and would give its scrambled bytes (review).
+      For each entry of a zip, in directory order (the order of ZipArchive.Entries): whether it is encrypted (bit 0
+      of its flags). Read from the central directory that the end record points to, so bytes inside a file are
+      never taken for a record; .NET opens a stored encrypted entry without an error (reviews of PR 19).
     .PARAMETER Bytes
       The archive bytes.
     .OUTPUTS
-      [System.Collections.Generic.HashSet[string]]
+      [bool[]], or $null when the directory cannot be read.
     #>
     param([byte[]]$Bytes)
-    $names = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
-    $at = 0
-    while ($at + 46 -le $Bytes.Length) {
-        $at = [Array]::IndexOf($Bytes, [byte]0x50, $at)
-        if ($at -lt 0 -or $at + 46 -gt $Bytes.Length) { break }
-        if ($Bytes[$at + 1] -eq 0x4B -and $Bytes[$at + 2] -eq 1 -and $Bytes[$at + 3] -eq 2) {   # PK 01 02: a central directory entry
-            $flags = [BitConverter]::ToUInt16($Bytes, $at + 8)
-            $nameLength = [BitConverter]::ToUInt16($Bytes, $at + 28)
-            if (($flags -band 1) -and $at + 46 + $nameLength -le $Bytes.Length) {
-                $encoding = $script:MimeLatin1; if ($flags -band 0x800) { $encoding = [System.Text.Encoding]::UTF8 }
-                [void]$names.Add($encoding.GetString($Bytes, $at + 46, $nameLength))
-            }
-        }
-        $at++
+    $end = -1
+    for ($at = $Bytes.Length - 22; $at -ge [Math]::Max(0, $Bytes.Length - 65557); $at--) {   # the end record: PK 05 06
+        if ($Bytes[$at] -eq 0x50 -and $Bytes[$at + 1] -eq 0x4B -and $Bytes[$at + 2] -eq 5 -and $Bytes[$at + 3] -eq 6) { $end = $at; break }
     }
-    return , $names
+    if ($end -lt 0) { return $null }
+    [long]$count = [BitConverter]::ToUInt16($Bytes, $end + 10)
+    [long]$offset = [BitConverter]::ToUInt32($Bytes, $end + 16)
+    if (($count -eq 0xFFFF -or $offset -eq 0xFFFFFFFF) -and $end -ge 20) {   # Zip64: the locator before the end record
+        $locator = $end - 20
+        if ($Bytes[$locator] -ne 0x50 -or $Bytes[$locator + 1] -ne 0x4B -or $Bytes[$locator + 2] -ne 6 -or $Bytes[$locator + 3] -ne 7) { return $null }
+        $zip64 = [BitConverter]::ToInt64($Bytes, $locator + 8)
+        if ($zip64 -lt 0 -or $zip64 + 56 -gt $Bytes.Length) { return $null }
+        $count = [BitConverter]::ToInt64($Bytes, $zip64 + 32); $offset = [BitConverter]::ToInt64($Bytes, $zip64 + 48)
+    }
+    $flags = New-Object System.Collections.Generic.List[bool]
+    for ($i = 0; $i -lt $count; $i++) {
+        if ($offset -lt 0 -or $offset + 46 -gt $Bytes.Length -or [BitConverter]::ToUInt32($Bytes, [int]$offset) -ne 0x02014B50) { return $null }
+        $flags.Add((([BitConverter]::ToUInt16($Bytes, [int]$offset + 8)) -band 1) -eq 1)
+        $offset += 46 + [BitConverter]::ToUInt16($Bytes, [int]$offset + 28) + [BitConverter]::ToUInt16($Bytes, [int]$offset + 30) + [BitConverter]::ToUInt16($Bytes, [int]$offset + 32)
+    }
+    return , $flags.ToArray()
 }
 
 function Get-ArchiveParts {
@@ -1133,11 +1139,20 @@ function Get-ArchiveParts {
     try {
         $count = 0
         $total = 0L
-        $encrypted = Get-EncryptedZipNames $Bytes
+        $encrypted = Get-ZipEncryptedFlags $Bytes
+        if ($null -eq $encrypted -or $encrypted.Count -ne $zip.Entries.Count) {
+            New-Part '(archive)' -Reason 'The archive directory could not be checked for encrypted files: check by hand'
+            $encrypted = $null
+        }
+        $index = -1
         foreach ($entry in $zip.Entries) {
+            $index++
             if (-not $entry.Name) { continue }   # a folder
-            if ($encrypted.Contains($entry.FullName)) { New-Part $entry.FullName -Reason 'Encrypted (password-protected) in the archive: check by hand'; continue }
             $count++
+            if ($null -ne $encrypted -and $encrypted[$index]) {
+                if ($count -le $script:MaxArchiveEntries) { New-Part $entry.FullName -Reason 'Encrypted (password-protected) in the archive: check by hand' }
+                continue
+            }
             if ($count -gt $script:MaxArchiveEntries) {
                 New-Part '(more files)' -Reason "More than $script:MaxArchiveEntries files in this archive: the rest is not scanned: check by hand"
                 break
@@ -1167,11 +1182,11 @@ function Split-MimeEntity {
       [hashtable] Headers, Body.
     #>
     param([string]$Text)
-    # A part that starts with a blank line or with text (no "Name: value" first line) has no headers: all is body.
-    if ($Text -notmatch '\A[!-9;-~]+:') { return @{ Headers = @{}; Body = $Text } }
-    $cut = [regex]::Match($Text, '\r?\n\r?\n')
-    $head = $Text; $body = ''
-    if ($cut.Success) { $head = $Text.Substring(0, $cut.Index); $body = $Text.Substring($cut.Index + $cut.Length) }
+    # The headers end at a blank line, or at the first line that is neither "Name: value" nor a continuation
+    # (a part may start with text and no blank line): such a line and all after it are the body (reviews of PR 19).
+    $end = [regex]::Match($Text, '\A(?:[!-9;-~]+:[^\r\n]*(?:\r?\n[ \t][^\r\n]*)*(?:\r?\n|\z))*')
+    $head = $end.Value
+    $body = $Text.Substring($end.Length) -replace '\A\r?\n', ''
     $headers = @{}
     foreach ($line in (($head -replace '\r?\n[ \t]+', ' ') -split '\r?\n')) {
         $colon = $line.IndexOf(':')
@@ -1236,6 +1251,23 @@ function ConvertFrom-EncodedWords {
     return [regex]::Replace($Value, '=\?([^?]+)\?([BbQq])\?([^?]*)\?=', $evaluator)
 }
 
+function Get-HeaderLines {
+    <#
+    .SYNOPSIS
+      The headers of a message or part as "Name: value" lines, encoded words decoded; the content headers (type,
+      encoding, disposition, ID) and MIME-Version left out, as they hold no text of the message.
+    .PARAMETER Headers
+      The headers of Split-MimeEntity (names in lower case).
+    .OUTPUTS
+      [string] lines.
+    #>
+    param([hashtable]$Headers)
+    foreach ($name in @($Headers.Keys | Sort-Object)) {
+        if ($name -like 'content-*' -or $name -eq 'mime-version') { continue }
+        (Get-Culture).TextInfo.ToTitleCase($name) + ': ' + (ConvertFrom-EncodedWords $Headers[$name])
+    }
+}
+
 function Get-MimeParts {
     <#
     .SYNOPSIS
@@ -1250,6 +1282,10 @@ function Get-MimeParts {
     #>
     param([string]$Text, [int]$Depth)
     $entity = Split-MimeEntity $Text
+    if ($Depth -gt 0) {   # a part's own headers other than its content ones (a line such as "Note: ..." is kept)
+        $own = @(Get-HeaderLines $entity.Headers)
+        if ($own.Count -gt 0) { New-Part '(part headers)' -Text ($own -join "`n") }
+    }
     $type = [string]$entity.Headers['content-type']
     $encoding = [string]$entity.Headers['content-transfer-encoding']
     if ($type -match '(?i)^\s*multipart/') {
@@ -1296,9 +1332,7 @@ function Get-EmailParts {
     param([byte[]]$Bytes)
     $text = $script:MimeLatin1.GetString($Bytes)
     $entity = Split-MimeEntity $text
-    $lines = foreach ($name in @('subject', 'from', 'to', 'cc', 'date')) {
-        if ($entity.Headers.ContainsKey($name)) { (Get-Culture).TextInfo.ToTitleCase($name) + ': ' + (ConvertFrom-EncodedWords $entity.Headers[$name]) }
-    }
+    $lines = Get-HeaderLines $entity.Headers
     New-Part '(message headers)' -Text (@($lines) -join "`n")
     $script:MimeParts = 0
     Get-MimeParts $text 0
@@ -3087,7 +3121,8 @@ TextExtract.psm1 - turns file bytes into plain text, in memory.
   Outputs:     an object with Status ('OK' or 'NOT SCANNED'), Reason, Text, Note and Parts (Get-TextFromBytes).
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
   Depends on:  PdfText.psm1 (Get-PdfText), OcrText.psm1 (Get-ImageText), OleText.psm1 (Get-OleText) and
-               ContainerText.psm1 (Get-ArchiveParts, Get-EmailParts), imported first by Find-ChannelPII.ps1.
+               ContainerText.psm1 (Get-ArchiveParts, Get-EmailParts, Read-LimitedStream), imported first by
+               Find-ChannelPII.ps1.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7); .NET System.IO.Compression only.
   Network:     none.
   Writes:      none. Bytes stay in memory; nothing is saved to disk.
@@ -3251,8 +3286,11 @@ function Get-OdfEncryptedReason {
 function Read-ZipEntry {
     # The text of one zip entry (UTF-8, as Office writes its XML), at most $MaxZipEntryBytes (a zip bomb throws).
     param($Entry)
-    if ($Entry.Length -gt $script:MaxZipEntryBytes) { throw 'A part of this file is too large to unpack in memory' }
-    $reader = New-Object System.IO.StreamReader($Entry.Open())
+    # Read through the bounded reader: a zip can state a false size, and .NET Framework unpacks past it.
+    $bytes = $null
+    if ($Entry.Length -le $script:MaxZipEntryBytes) { $bytes = Read-LimitedStream $Entry.Open() $script:MaxZipEntryBytes }
+    if ($null -eq $bytes) { throw 'A part of this file is too large to unpack in memory' }
+    $reader = New-Object System.IO.StreamReader((New-Object System.IO.MemoryStream(, $bytes)), [System.Text.Encoding]::UTF8, $true)   # a BOM wins
     try { return $reader.ReadToEnd() } finally { $reader.Dispose() }
 }
 

@@ -500,3 +500,17 @@ Assert-Equal $true ((Get-TextFromBytes -Bytes $msgAttach -FileName 'm.msg').Note
 $manyParts = "Content-Type: multipart/mixed; boundary=`"P`"`r`n`r`n" + ((1..600 | ForEach-Object { "--P`r`nContent-Type: text/plain`r`n`r`nline $_`r`n" }) -join '') + "--P--`r`n"
 $manyRead = (Get-TextFromBytes -Bytes ([System.Text.Encoding]::ASCII.GetBytes($manyParts)) -FileName 'p.eml').Parts.ToArray()
 Assert-Equal 1 @($manyRead | Where-Object { $_.Reason -match '^More than 500 parts' }).Count 'EML: past the part limit, the rest gets a reason'
+# Re-review of PR 19: a part's first line that looks like a header, with no blank line, keeps the lines after it.
+$noBlank = "Content-Type: multipart/mixed; boundary=`"XX`"`r`n`r`n--XX`r`nNote: call me`r`nSSN $($Sample.Ssn)`r`n--XX--`r`n"
+$noBlankText = ((Get-TextFromBytes -Bytes ([System.Text.Encoding]::ASCII.GetBytes($noBlank)) -FileName 'nb.eml').Parts.ToArray() | ForEach-Object { $_.Text }) -join ' '
+Assert-Equal $true (@(Find-PiiInText $noBlankText | ForEach-Object { $_.Detector }) -contains 'SSN') 'EML: lines after a header-like first line are read'
+# An encrypted entry whose name is not UTF-8 (byte 0x82, as 7-Zip writes some letters) is still named encrypted.
+$oddName = New-ZipBytes @{ 'rXsume.txt' = $ssnLine }
+for ($z = 0; $z + 3 -lt $oddName.Length; $z++) {
+    if ($oddName[$z] -eq 0x50 -and $oddName[$z + 1] -eq 0x4B -and $oddName[$z + 3] -in @(2, 4) -and $oddName[$z + 2] -in @(1, 3)) {
+        $oddName[$z + 6 + 2 * [int]($oddName[$z + 2] -eq 1)] = $oddName[$z + 6 + 2 * [int]($oddName[$z + 2] -eq 1)] -bor 1   # flags: bit 0
+    }
+}
+for ($z = 0; $z + 1 -lt $oddName.Length; $z++) { if ($oddName[$z] -eq [byte][char]'X' -and $oddName[$z + 1] -eq [byte][char]'s') { $oddName[$z] = 0x82 } }
+$oddPart = (Get-TextFromBytes -Bytes $oddName -FileName 'o.zip').Parts.ToArray()[0]
+Assert-Equal $true ($oddPart.Reason -match '^Encrypted') 'Zip: an encrypted entry with a non-UTF-8 name is named encrypted'

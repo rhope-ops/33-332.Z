@@ -9,7 +9,8 @@ TextExtract.psm1 - turns file bytes into plain text, in memory.
   Outputs:     an object with Status ('OK' or 'NOT SCANNED'), Reason, Text, Note and Parts (Get-TextFromBytes).
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
   Depends on:  PdfText.psm1 (Get-PdfText), OcrText.psm1 (Get-ImageText), OleText.psm1 (Get-OleText) and
-               ContainerText.psm1 (Get-ArchiveParts, Get-EmailParts), imported first by Find-ChannelPII.ps1.
+               ContainerText.psm1 (Get-ArchiveParts, Get-EmailParts, Read-LimitedStream), imported first by
+               Find-ChannelPII.ps1.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7); .NET System.IO.Compression only.
   Network:     none.
   Writes:      none. Bytes stay in memory; nothing is saved to disk.
@@ -174,8 +175,11 @@ function Get-OdfEncryptedReason {
 function Read-ZipEntry {
     # The text of one zip entry (UTF-8, as Office writes its XML), at most $MaxZipEntryBytes (a zip bomb throws).
     param($Entry)
-    if ($Entry.Length -gt $script:MaxZipEntryBytes) { throw 'A part of this file is too large to unpack in memory' }
-    $reader = New-Object System.IO.StreamReader($Entry.Open())
+    # Read through the bounded reader: a zip can state a false size, and .NET Framework unpacks past it.
+    $bytes = $null
+    if ($Entry.Length -le $script:MaxZipEntryBytes) { $bytes = Read-LimitedStream $Entry.Open() $script:MaxZipEntryBytes }
+    if ($null -eq $bytes) { throw 'A part of this file is too large to unpack in memory' }
+    $reader = New-Object System.IO.StreamReader((New-Object System.IO.MemoryStream(, $bytes)), [System.Text.Encoding]::UTF8, $true)   # a BOM wins
     try { return $reader.ReadToEnd() } finally { $reader.Dispose() }
 }
 
