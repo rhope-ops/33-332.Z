@@ -202,7 +202,13 @@ function Read-ScanTarget {
 }
 
 function Read-TeamSiteAddress {
-    # For a Teams link: asks for the team's site address until it is valid; Enter gives up (an error the caller reports).
+    <#
+    .SYNOPSIS
+      For a Teams link: asks for the team's site address until it is a valid one; Enter gives up (an error the caller
+      reports). Nothing is signed in here.
+    .OUTPUTS
+      [string] the site address, cut to the site.
+    #>
     while ($true) {
         $typed = Read-Host 'Team site address (https://usaf.dps.mil/teams/<team-site>), or Enter to go back'
         if (-not $typed -or -not $typed.Trim()) { throw 'No site address given.' }
@@ -537,7 +543,8 @@ function Invoke-FileScan {
     .PARAMETER Init
       How the reader workers load their code (New-ReaderPool).
     .PARAMETER Progress
-      Optional; gets the live meter (Progress.Meter), so a scan stopped part way can still say how many files were read.
+      Optional; gets Meter, Reading, Workers and Declined (Invoke-ScanRun), so a scan stopped part way can still say how
+      many files were read, and a "no" to "Scan now?" saves nothing.
     .OUTPUTS
       [int] the number of files whose text was scanned.
     #>
@@ -561,7 +568,7 @@ function Invoke-FileScan {
     $shown = { param($group, $file) Get-ShownItem $group.Name ((Get-FieldValue $file 'FileRef').Substring($group.Prefix.Length)) }
     $run = $Progress; if (-not $run) { $run = @{} }
     # A file's name and size, for the question before the scan.
-    $facts = { param($file) (Get-FieldValue $file 'FileLeafRef'), [long](Get-FieldValue $file 'File_x0020_Size') }
+    $facts = { param($file) $size = 0L; [void][long]::TryParse((Get-FieldValue $file 'File_x0020_Size'), [ref]$size); (Get-FieldValue $file 'FileLeafRef'), $size }
     try { Invoke-ScanRun $Init $Rows $groups $start $shown $run $facts $MaxFileMB }
     finally { if ($run.ContainsKey('Reading')) { $script:Timing.Check = $run.Reading } }
     return $run.Meter.Read

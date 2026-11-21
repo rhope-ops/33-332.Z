@@ -69,8 +69,8 @@ $IonWorkerInit = @{ Paths = @($readerModules | ForEach-Object { Join-Path $PSScr
 function Invoke-SiteFiles {
     <#
     .SYNOPSIS
-      Scans one signed-in site: its folders and files, then saves the workbook and signs out (also after an error or
-      a cancel: the results so far are saved and say INCOMPLETE). Returns the workbook path.
+      Scans one signed-in site, saves the workbook and signs out (after an error or cancel too: the results so far say
+      INCOMPLETE). Returns the workbook path; $null after no (or a cancel) at "Scan now?": nothing read or saved.
     .PARAMETER SiteUrl
       The signed-in site.
     .PARAMETER OutputFolder

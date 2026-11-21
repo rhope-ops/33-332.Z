@@ -1,6 +1,6 @@
 # Ion polish audit (2026-11-21)
 
-Source: a read-only audit by an agent (Sonnet), 2026-11-21, of src/ on branch claude/festive-wozniak-yo5ss3. Recommendations only: none is a decision of the PAM. Built in PR 30: the moving per-file bar, the wait bar, the summary label column.
+Source: a read-only audit by an agent (Sonnet), 2026-11-21, of src/ on branch claude/festive-wozniak-yo5ss3. Recommendations only, until the PAM chose (question dialog, 2026-11-21): build B1-B6, A1-A5, C1, and plan C2 and C4-C6. Built: B1-B6 (PR 36), A1-A5 and C1 (PR 37). C3 needs the PAM's decision (it conflicts with "no choices").
 
 ## A. Code cleanup
 1. Time as mm:ss is formatted in 3 places (ChannelScan Get-ScanTiming, DriveScan Get-DriveHeader, Find-ChannelPII header); ScanMeter has Format-Duration. Export it and use it. S.

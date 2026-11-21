@@ -26,7 +26,7 @@ Assert-Equal 1 $results.Count 'Script saved one workbook'
 Assert-Equal 0 @(Get-ChildItem -LiteralPath $runFolder -Recurse | Where-Object { $_.Extension -in @('.txt', '.csv') }).Count 'No .txt or .csv any more'
 Assert-Equal 'NOT SCANNED Phone SSN' (Get-WorkbookTypes $results[0].FullName) 'Script found every planted type'
 Assert-Equal 'Channel' (Get-XlsxSheets $results[0].FullName)['SSN'][0][1] 'A team: the folder column is named Channel'
-Assert-Equal 1 (Get-FakeCallCount 'Read-Host') 'Only one question when the site is given: another site or exit'
+Assert-Equal 1 (Get-FakeCallCount 'Read-Host') 'With the site given, one address question only (another site or exit); "Scan now?" and "Open" are their own'
 Assert-Equal $true ((Test-FakePnPCall 'Open question') -and (Test-FakePnPCall ('Open ' + $results[0].FullName))) 'Enter at the open question opens the workbook'
 Assert-Equal 1 @(Get-FakePnPConnection).Count 'One sign-in only: no posts sign-in'
 Assert-Equal $true ((Get-FakeProgressText) -match '    2/    3 files \| read +\d+ \| not scanned +0 \| possible PII +\d+ in +\d+ files') 'Progress bar shows the file counts'
@@ -44,6 +44,11 @@ Assert-Equal $true ($noShown -match 'Found 2 files \([\d.]+ MB\) in 2 folders; 1
 Assert-Equal $true ($noShown -match 'Not scanned: nothing was saved') 'Declined: the person is told'
 Assert-Equal 0 @(Get-ResultFiles $noFolder).Count 'Declined: nothing saved'
 Assert-Equal $true (Test-FakePnPCall 'Disconnect-PnPOnline') 'Declined: signed out'
+Reset-FakePnP @{ "$library/General/notes.txt" = $Txt }
+Set-FakeSiteAnswer -ScanAnswer 'cancel'
+$cancelFolder = Join-Path $runFolder 'cancelled'
+& $script -SiteUrl $Sample.Site -OutputFolder $cancelFolder 6>$null
+Assert-Equal 0 @(Get-ResultFiles $cancelFolder).Count 'Cancel at "Scan now?": nothing read, nothing saved'
 
 # ---- A plain SharePoint site (no team): Folder column, top-of-library files ----
 Reset-FakePnP @{ "$library/top.txt" = $Txt }
