@@ -68,6 +68,9 @@ LIST_INTERRUPT = r'([-+]|1[.)])(\s|$)'
 INDENTED = r'[ \t]'
 SETEXT_LINE = r'\s*(=+|-+)\s*'
 HARD_BREAK = r'.*(  |\\)$'
+# A quote mark at a line's start, and a GitHub alert line; both are taken off before a section is built (unquote).
+QUOTE_MARK = r'^>[ \t]?'
+ALERT_LINE = r'\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]'
 # A table's delimiter row (GFM): cells of dashes with optional alignment colons.
 DELIMITER_ROW = r'\|(\s*:?-+:?\s*\|)+'
 # HTML indents inside the generated blocks, matching the hand-written page around them.
@@ -87,7 +90,22 @@ def readme_section(text, name):
     match = re.search(rf'<!-- site:{re.escape(name)} -->\n(.*?)\n<!-- /site:{re.escape(name)} -->', text, re.S)
     if not match:
         raise ValueError(f'{README}: no section <!-- site:{name} --> ... <!-- /site:{name} -->')
-    return match.group(1).strip()
+    return unquote(match.group(1)).strip()
+
+
+def unquote(markdown):
+    """Return Markdown with quote marks ("> ") taken off and GitHub alert lines ("[!CAUTION]") dropped.
+
+    The README shows the WCO line as a quote and the breach note as a GitHub Caution box (the PAM, 2026-11-21); the
+    site shows the same words in its own style, so the builder reads them as the plain text inside.
+
+    Args:
+        markdown: the text of one README section.
+    Returns:
+        The same text without quote marks and alert lines.
+    """
+    lines = [re.sub(QUOTE_MARK, '', line) for line in markdown.splitlines()]
+    return '\n'.join(line for line in lines if not re.fullmatch(ALERT_LINE, line.strip()))
 
 
 def refuse_marks(markdown):
@@ -344,6 +362,8 @@ TEST_CASES = (('a fresh build passes', None, None, [], True),
               ('plain times, ratios and bold in brackets or quotes pass',
                ('A safe_tool & more.', 'A safe_tool (**Microsoft Purview**), "**Stop**", **PII**-free, 09:00-17:00, 10:30:45, 1:2:3,\n'
                 '2026. That year.'), None, [], True),
+              ('a quote and a GitHub Caution box are read as their plain text',
+               ('Report it now.\n\nRule para 1.', '> [!CAUTION]\n> Report it now.\n>\n> Rule para 1.'), None, [], True),
               ('a web address of another scheme fails', ('Rule para 1.', 'Rule para 1, see ftp://x.example'), None,
                [UNSUPPORTED_WORDS], True))
 # What the fresh build must write: an escaped "&", code kept, the Confidence column left out, two lines joined.
