@@ -43,8 +43,9 @@ foreach ($pair in @(@('AE', 0xC6), @('ae', 0xE6), @('Oslash', 0xD8), @('oslash',
 $script:GlyphMarks = @{ acute = 0x301; grave = 0x300; circumflex = 0x302; dieresis = 0x308; tilde = 0x303; ring = 0x30A; cedilla = 0x327; caron = 0x30C
     macron = 0x304; breve = 0x306; ogonek = 0x328; dotaccent = 0x307; hungarumlaut = 0x30B; commaaccent = 0x326 }
 # A made-up glyph name: up to 5 letters, then a number (g12, a3, G1, cid34, glyph7, index5), with an optional suffix.
-# Not afii plus a number: the Adobe names of Cyrillic and other letters.
-$script:MadeUpGlyphName = '^(?!afii)[A-Za-z]{1,5}\d+(?:\..*)?$'
+# Not the Adobe names that are letters and a number too: afii (Cyrillic and other letters), uni and u (code points),
+# SF and H (box drawing and shapes).
+$script:MadeUpGlyphName = '^(?!afii|uni|u\d|SF\d|H\d)[A-Za-z]{1,5}\d+(?:\..*)?$'
 
 $script:PictureFontPattern = '(?i)wingdings|webdings|dingbats|marlett|(?:^|\+)symbol(?:mt)?(?:$|[,-])'
 

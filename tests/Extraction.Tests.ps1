@@ -366,6 +366,12 @@ $signsRead = Get-TextFromBytes -Bytes $signs -FileName 'sg.pdf'
 Assert-Equal ('Acme' + [char]0xA9 + ' 5' + [char]0xB1 + '1 ' + [char]0x104 + '|') ($signsRead.Text.Trim() + '|' + $signsRead.Note) `
     'PDF: real glyph names the table lacks read as before, accents with ogonek read, no note'
 
+$realNames = New-PdfBytes 'BT /F1 12 Tf (ABCDEF) Tj ET' -Plain `
+    -FontDict '<< /Type /Font /Subtype /Type1 /BaseFont /X /Encoding << /Differences [65 /SF100000 /H18533 /u10000 /afii10017 /#4D /K 70 /g2] >> >>'
+$realNamesRead = Get-TextFromBytes -Bytes $realNames -FileName 'rn.pdf'
+Assert-Equal 'ABCDM|True' ($realNamesRead.Text.Trim() + '|' + ($realNamesRead.Note -match 'could not be read')) `
+    'PDF: Adobe names with digits read as before; a #xx escape decoded; a later name for a code replaces the earlier one'
+
 # ---- PDF review round 9 (2026-11-21): gaps decided per text block ----
 # Places text glyph by glyph as a PDF writer does: each move is the glyph's real Helvetica width at 12 pt plus the
 # letter spacing (in points).

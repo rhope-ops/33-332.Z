@@ -25,7 +25,7 @@
     src/ContainerText.psm1, sha256 7378569bd7e6
     src/PdfCore.psm1, sha256 da11bdba883c
     src/PdfObjects.psm1, sha256 4479101a8f3e
-    src/PdfFonts.psm1, sha256 420714c474da
+    src/PdfFonts.psm1, sha256 8ad00db84c87
     src/PdfLayout.psm1, sha256 feafecd946b7
     src/PdfText.psm1, sha256 312351e30b87
     src/TextExtract.psm1, sha256 3b52ab6462e5
@@ -56,20 +56,20 @@
     line  1420  Module PdfCore.psm1
     line  1779  Module PdfObjects.psm1
     line  2137  Module PdfFonts.psm1
-    line  2683  Module PdfLayout.psm1
-    line  2823  Module PdfText.psm1
-    line  3316  Module TextExtract.psm1
-    line  3729  Module ReaderPool.psm1
-    line  3981  Reader block end
-    line  3985  Module XlsxWriter.psm1
-    line  4256  Module Report.psm1
-    line  4827  Module ScanMeter.psm1
-    line  5150  Module ScanQueue.psm1
-    line  5388  Module Accountability.psm1
-    line  5682  Module ChannelScan.psm1
-    line  6270  Module DriveScan.psm1
-    line  6512  Body of Find-ChannelPII.ps1
-    line  6621  Clean-up
+    line  2684  Module PdfLayout.psm1
+    line  2824  Module PdfText.psm1
+    line  3317  Module TextExtract.psm1
+    line  3730  Module ReaderPool.psm1
+    line  3982  Reader block end
+    line  3986  Module XlsxWriter.psm1
+    line  4257  Module Report.psm1
+    line  4828  Module ScanMeter.psm1
+    line  5151  Module ScanQueue.psm1
+    line  5389  Module Accountability.psm1
+    line  5683  Module ChannelScan.psm1
+    line  6271  Module DriveScan.psm1
+    line  6513  Body of Find-ChannelPII.ps1
+    line  6622  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -2179,8 +2179,9 @@ foreach ($pair in @(@('AE', 0xC6), @('ae', 0xE6), @('Oslash', 0xD8), @('oslash',
 $script:GlyphMarks = @{ acute = 0x301; grave = 0x300; circumflex = 0x302; dieresis = 0x308; tilde = 0x303; ring = 0x30A; cedilla = 0x327; caron = 0x30C
     macron = 0x304; breve = 0x306; ogonek = 0x328; dotaccent = 0x307; hungarumlaut = 0x30B; commaaccent = 0x326 }
 # A made-up glyph name: up to 5 letters, then a number (g12, a3, G1, cid34, glyph7, index5), with an optional suffix.
-# Not afii plus a number: the Adobe names of Cyrillic and other letters.
-$script:MadeUpGlyphName = '^(?!afii)[A-Za-z]{1,5}\d+(?:\..*)?$'
+# Not the Adobe names that are letters and a number too: afii (Cyrillic and other letters), uni and u (code points),
+# SF and H (box drawing and shapes).
+$script:MadeUpGlyphName = '^(?!afii|uni|u\d|SF\d|H\d)[A-Za-z]{1,5}\d+(?:\..*)?$'
 
 $script:PictureFontPattern = '(?i)wingdings|webdings|dingbats|marlett|(?:^|\+)symbol(?:mt)?(?:$|[,-])'
 
