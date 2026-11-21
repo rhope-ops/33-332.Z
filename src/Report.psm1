@@ -22,8 +22,7 @@ Set-StrictMode -Version 2.0
 # Settings
 # =====================================================================================
 
-# Confidence labels as numbers, for sorting (High first). Rows with other labels are notes
-# (NOT SCANNED, BLOCKED, INCOMPLETE).
+# Confidence labels as numbers, for sorting (High first). Rows with other labels are notes (NOT SCANNED, BLOCKED, INCOMPLETE).
 $script:Rank = @{ 'High' = 3; 'Medium' = 2; 'Low' = 1 }
 
 # The tool's name on screen and in the workbook (the PAM, 2026-11-20).
@@ -44,10 +43,9 @@ $script:MinLastColumn = 12
 # Under the table of types: what High, Medium and Low mean (the PAM, 2026-11-21: plain words for a unit member).
 $script:ConfidenceKey = @('High = labelled ("SSN:") or a sure pattern. Medium = right form, no label.', 'Low = weak match, often not PII.')
 
-# Screen colours (the PAM, 2026-11-20: less grey, more format). Write-Host has only the 16 console colours:
-# Cyan = headings and labels, White = values, Green = clean or done, Yellow = check by hand and Medium,
-# Red = possible PII, High and errors, Gray = hints and the labels of the folder rows, DarkGray = rules and table
-# borders, DarkCyan (teal) = folder names on the folder rows (the PAM, 2026-11-20).
+# Screen colours (the PAM, 2026-11-20: less grey, more format), of the 16 console colours: Cyan = headings and labels,
+# White = values, Green = clean or done, Yellow = check by hand and Medium, Red = possible PII, High and errors,
+# Gray = hints and folder-row labels, DarkGray = rules and table borders, DarkCyan (teal) = folder names (the PAM, 2026-11-20).
 $script:ScreenColors = @{ Title = 'Cyan'; Label = 'Cyan'; Text = 'White'; Good = 'Green'; Accent = 'Yellow'; Alert = 'Red'
     Muted = 'Gray'; Rule = 'DarkGray'; Folder = 'DarkCyan' }
 
@@ -70,13 +68,13 @@ $script:NotScannedGroups = [ordered]@{
     '^An archive or e-mail inside another|in this archive|Too large to unpack|Could not unpack' = 'Archives: files not unpacked'
 }
 
-
-# What to do with PII found where it should not be: the breach steps of the rule source, AFI 33-332 para 3.1.2 as
-# changed by AFI33-332_DAFGM2026-01 (7 July 2026; edition: docs/DECISIONS.md).
-# The wording is the README's "If it finds PII" section; scripts/build_site.py --check fails when they differ (the PAM, 2026-11-20).
+# What to do with PII found where it should not be (rule source: AFI 33-332 para 3.1.2 as changed by AFI33-332_DAFGM2026-01,
+# 7 July 2026; edition: docs/DECISIONS.md). The wording is the README's "If it finds PII" section; scripts/build_site.py --check fails when they differ (the PAM, 2026-11-20).
 $script:BreachAdvice = 'PII where it should not be is a potential or actual breach; report it to your servicing Privacy ' +
                        'Manager/Monitor without delay (AFI 33-332 para 3.1.2, as changed by AFI33-332_DAFGM2026-01 (7 July 2026), ' +
                        'page 1, second paragraph).'
+# Shown as two lines, the advice and then its rule source (the PAM, 2026-11-21); the text stays README.md's, word for word.
+$script:BreachLines = @(($script:BreachAdvice -replace ' \(AFI .*$', '.'), ('Source: ' + ($script:BreachAdvice -replace '^.*\((AFI .*)\)\.$', '$1') + '.'))
 
 # =====================================================================================
 # Rows and summary
@@ -524,7 +522,8 @@ function Get-SummaryRows {
     , @('')
     , @('Tabs', 'One tab per type with High or Medium hits, worst type first; then Low confidence; then Not scanned.')
     , @('Confidence', 'A pattern guess, not proof: open each item and check it before you act.')
-    , @('If you find PII', $script:BreachAdvice)
+    , @('If you find PII', $script:BreachLines[0])
+    , @('Source', $script:BreachLines[1])
     , @('Handling', 'Handle this file as CUI: it shows where PII is. Every value in it is masked.')
 }
 
@@ -560,7 +559,8 @@ function Publish-ScanReport {
         Write-Ui ''; Write-Ui "Saved (values masked): $path" 'Good'; Write-Ui 'Handle this file as CUI: it shows where PII is.' 'Accent'
     }
     finally {
-        Write-Ui ''; Write-Ui 'Confidence is a pattern guess, not proof: open each item and check it before you act.' 'Muted'; Write-Ui $script:BreachAdvice 'Accent'
+        Write-Ui ''; Write-Ui 'Confidence is a pattern guess, not proof: open each item and check it before you act.' 'Muted'; Write-Ui $script:BreachLines[0] 'Accent'
+        Write-Ui $script:BreachLines[1] 'Muted'
     }
     return $path
 }

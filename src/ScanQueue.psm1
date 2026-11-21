@@ -146,9 +146,10 @@ function Invoke-GroupScan {
         $before = $meter.Clone()
         foreach ($file in $group.Files) {
             # The file in work, with PII masked (the PAM, 2026-11-20: a slow file is then visible).
-            $Queue.Activity = "Scanning files - folder {0} of {1}: '{2}'" -f ($c + 1), $Groups.Count, (Protect-PiiName $group.Name)
+            # The scan bar's 3 lines (the PAM, 2026-11-21): the folder, the run so far, the file.
+            $Queue.Activity = 'Folder {0} of {1}: {2}' -f ($c + 1), $Groups.Count, (Protect-PiiName $group.Name)
             Write-Progress -Id 1 -Activity $Queue.Activity -Status (Get-ScanMeterText $meter 'file') -PercentComplete (Get-MeterPercent $meter) `
-                -CurrentOperation ('Now: ' + (& $ShownFile $group $file))
+                -CurrentOperation ('File: ' + (& $ShownFile $group $file))
             $firstRow = $Queue.Rows.Count
             if (-not (& $StartFile $Queue $group $file)) {
                 Update-ScanMeter $meter $Queue.Rows $firstRow 0
@@ -158,7 +159,7 @@ function Invoke-GroupScan {
         Wait-ScanQueue $Queue   # the folder's line counts all its files
         Write-ChannelLine $group.Name $before $meter 'file'
     }
-    Write-Progress -Id 1 -Activity 'Scanning files' -Completed
+    Write-Progress -Id 1 -Activity 'Scan' -Completed
 }
 
 function Add-WhoToRows {

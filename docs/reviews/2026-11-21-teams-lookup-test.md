@@ -51,3 +51,43 @@ finally {
 | no answer | SharePoint answered without a site address. | Ion keeps asking for the site address. |
 | failed (type) | The sign-in or the lookup was refused, or the cmdlet is not there (for example CommandNotFoundException: not in PnP.PowerShell 1.12.0). The test cannot tell these apart. | If Ion's own sign-in works on the same site, the lookup failed: Ion keeps asking for the site address. |
 | hung | No answer within a minute. | Ion keeps asking for the site address. |
+
+## Result of test 1 (the PAM, 2026-11-21)
+
+"Result: works (it gives this team's site)". The lookup works on DoD365 from the team's own site.
+
+## Test 2: from the tenant root
+
+Ion can take a Teams link alone only if the lookup works from a site Ion knows before it asks anything. The only such site is the tenant root, `https://usaf.dps.mil`. Its sign-in hung on 2026-11-20 with no sign-in window. The window may have opened behind ISE. This test tries again, with that hint.
+
+- Read-only, the same as test 1. It signs in at the tenant root, asks for the site of the one group in the link, compares it with the site you type, then signs out.
+- When the sign-in starts, press Alt+Tab if no window shows. If nothing shows within a minute, press Stop, close ISE, and report "hung".
+- It prints one result line, the same as test 1.
+
+```powershell
+# Ion Teams-link lookup test 2: from the tenant root. Read-only, one group. Prints one result line, never an address or a message.
+$typed = (Read-Host 'Your team site address (usaf.dps.mil/sites/<name> or /teams/<name>)').Trim().Trim('"')
+if ($typed -notmatch '^https?://') { $typed = 'https://' + $typed }
+$siteMatch = [regex]::Match($typed, '^https://usaf\.dps\.mil/(?::[a-z]:/r/)?((?:sites|teams)/[^/?#\s]+)')
+if (-not $siteMatch.Success) { Write-Host 'Answer 1 is not a DoD365 site address (usaf.dps.mil/sites/... or /teams/...): run the test again.'; return }
+$site = 'https://usaf.dps.mil/' + $siteMatch.Groups[1].Value
+$link = Read-Host "The same team's Teams link (in Teams: ... > Copy link)"
+$groupId = [regex]::Match($link, 'groupId=([0-9a-fA-F-]{36})').Groups[1].Value
+if (-not $groupId) { Write-Host 'Answer 2 has no groupId: copy the team or channel link again (... > Copy link).'; return }
+Write-Host 'Signing in at the tenant root: if no window shows, press Alt+Tab.'
+try {
+    Connect-PnPOnline -Url 'https://usaf.dps.mil' -UseWebLogin -WarningAction SilentlyContinue -ErrorAction Stop
+    $answer = Invoke-PnPSPRestMethod -Method Post -Url '/_api/GroupSiteManager/GetSiteStatus' -Content @{ groupId = $groupId } -ErrorAction Stop
+    $url = ''
+    if ($answer -and $answer.PSObject.Properties['SiteUrl']) { $url = [string]$answer.SiteUrl }
+    if (-not $url) { Write-Host 'Result 2: no answer' }
+    elseif ($url.TrimEnd('/') -ieq $site) { Write-Host "Result 2: works (it gives this team's site)" }
+    else { Write-Host 'Result 2: works, but it gives another address' }
+}
+catch { Write-Host ('Result 2: failed ({0})' -f $_.Exception.GetType().Name) }
+finally {
+    try { Disconnect-PnPOnline -ErrorAction Stop } catch { Write-Host 'Signed out already.' }
+}
+```
+
+If test 2 works, Ion can take a Teams link alone: it signs in at the tenant root, finds the team's site, checks that the group ID matches, signs out, and then signs in to that site to scan it. That is 2 sign-ins instead of 1. The agent will show the PAM this flow before building it. If test 2 fails or hangs, Ion keeps asking for the site address.

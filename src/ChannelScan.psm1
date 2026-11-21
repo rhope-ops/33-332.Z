@@ -240,7 +240,8 @@ function Connect-TeamSite {
             Write-Ui "Teams link: the script needs this team's site address. In Teams: the team's Shared tab > ... > Open in SharePoint, then copy the address." 'Accent'
             $site = Read-TeamSiteAddress
         }
-        Write-Ui "Signing in to $site (a sign-in window opens; if you do not see it, press Alt+Tab; if it says you have no access, close it) ..." 'Muted'
+        Write-Ui "Signing in to $site ..." 'Muted'
+        Write-Ui '  A sign-in window opens (if you do not see it, press Alt+Tab). If it says you have no access, close it.' 'Muted'
         # PnP prints a warning that suggests -Interactive (and its update notice): not useful to the person, so hidden (the PAM, 2026-11-20).
         Connect-PnPOnline -Url $site -UseWebLogin -WarningAction SilentlyContinue
         $null = Get-PnPWeb -ErrorAction Stop   # can this person open the site? A refusal here is "no access", before any scan
@@ -482,7 +483,7 @@ function Invoke-OneFileScan {
         $reason = Protect-PiiText ('Download failed: ' + $_.Exception.Message)
         $rows.Add((New-ReportRow 'File' $Channel $item $link $modified 'NOT SCANNED' '' '' $reason)); return $false
     }
-    finally { $script:Timing.Download += $clock.Elapsed; Write-Progress -Id 2 -Activity 'Downloading this file' -Completed }
+    finally { $script:Timing.Download += $clock.Elapsed; Write-Progress -Id 2 -Activity 'Downloading' -Completed }
     # The main thread downloads the next file while workers read this one (speed, the PAM 2026-11-21).
     # Accountability: who made and changed the file; for a file with a hit, who added each hit (version history).
     $who = Get-SharePointWho $File
