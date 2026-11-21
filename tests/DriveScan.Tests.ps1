@@ -89,6 +89,11 @@ try {
     $byHit = Find-PiiAddedVersion '/sites/x/Shared Documents/a.txt' 'a.txt' $hits $who
     $added = $byHit[$hits[0].Detector + '|' + $hits[0].MaskedValue]
     Assert-Equal ('2026-01-02 03:04|' + $Sample.Email) ($added.AddedOn + '|' + $added.AddedBy) 'Who: the first version with the PII names who added it and when'
+    # More old versions than are read, the SSN first in a later one: who added it is not recorded, never the last editor.
+    $versionList = @(1..30 | ForEach-Object { New-FakeVersion ([datetime]'2026-01-01').AddDays($_) 'early.saver' $plain }) +
+        @(New-FakeVersion ([datetime]'2026-03-01') 'real.adder' $withSsn)
+    $byHit = Find-PiiAddedVersion '/sites/x/Shared Documents/a.txt' 'a.txt' $hits $who
+    Assert-Equal $true ($byHit[$hits[0].Detector + '|' + $hits[0].MaskedValue].AddedBy -match '^Not recorded') 'Who: past the versions read, who added it is not recorded'
     $versionList = @()
     $byHit = Find-PiiAddedVersion '/sites/x/Shared Documents/a.txt' 'a.txt' $hits $who
     Assert-Equal 'first.saver' $byHit[$hits[0].Detector + '|' + $hits[0].MaskedValue].AddedBy 'Who: with no older version, the maker added it'

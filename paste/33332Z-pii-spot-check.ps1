@@ -7,14 +7,15 @@
     3. Paste ALL of this text (Ctrl+V) and press F5.
     4. When asked, paste a Teams link (... next to the team or channel name > Copy link) or a SharePoint
        site address (in Teams: the Shared tab > ... > Open in SharePoint). Sign in with your CAC.
-       If you do not see a sign-in window, press Alt+Tab.
+       If you do not see a sign-in window, press Alt+Tab. Or paste a folder on a drive (X:\<folder> or
+       \\<server>\<share>\<folder>): it is read with your Windows logon, no sign-in.
     5. Watch the two progress bars (the whole scan, and the file in work) and the line per folder.
        At the end, read the summary of hits per PII type. The results workbook is saved in
        Documents\Ion\<site>\<date>: a Summary tab, then one tab per PII type (worst first).
        Handle it as CUI: it shows where PII is.
 
-  It scans the site's Documents library: every folder (in a team, one per standard channel) and the files at
-  its top. One sign-in only: channel posts are not read.
+  It scans every visible document library of the site (every folder, in a team one per standard channel, and
+  the files at each library's top), or the drive folder and all its subfolders. Channel posts are not read.
 
   Built from these files; to change it, change them and rebuild with: python3 scripts/build_paste.py
     src/PiiDetectors.psm1, sha256 ea19831b4d68
@@ -33,42 +34,42 @@
     src/Report.psm1, sha256 4c5c871cb5c5
     src/ScanMeter.psm1, sha256 2c2a5a750104
     src/ScanQueue.psm1, sha256 1ec233b97fc7
-    src/Accountability.psm1, sha256 2cced6e1f2d1
+    src/Accountability.psm1, sha256 8f985b071028
     src/ChannelScan.psm1, sha256 0a32b46dcc63
-    src/DriveScan.psm1, sha256 097672c6cd08
-    src/Find-ChannelPII.ps1, sha256 9daf9c68ed1c
+    src/DriveScan.psm1, sha256 27925138f3c7
+    src/Find-ChannelPII.ps1, sha256 7900bd04d77e
 
   Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.
   Run target: Windows PowerShell 5.1 with PnP.PowerShell 1.12.0; no admin rights, no file to unblock.
-  Network: only the one site given.
+  Network: only the one site or drive folder given (a folder: through your Windows logon).
   Writes: only the results workbook under $OutputFolder (default Documents\Ion).
   Credentials: your own CAC sign-in in the PnP sign-in window; nothing is stored.
 
   Contents (line numbers of this file):
-    line    74  Settings
-    line    85  Reader block
-    line    91  Module PiiDetectors.psm1
-    line   579  Module PiiMasking.psm1
-    line   779  Module OcrText.psm1
-    line   932  Module OleText.psm1
-    line  1041  Module ContainerText.psm1
-    line  1380  Module PdfCore.psm1
-    line  1739  Module PdfObjects.psm1
-    line  2097  Module PdfFonts.psm1
-    line  2518  Module PdfLayout.psm1
-    line  2658  Module PdfText.psm1
-    line  3151  Module TextExtract.psm1
-    line  3564  Module ReaderPool.psm1
-    line  3811  Reader block end
-    line  3815  Module XlsxWriter.psm1
-    line  4086  Module Report.psm1
-    line  4649  Module ScanMeter.psm1
-    line  4914  Module ScanQueue.psm1
-    line  5130  Module Accountability.psm1
-    line  5282  Module ChannelScan.psm1
-    line  5837  Module DriveScan.psm1
-    line  6067  Body of Find-ChannelPII.ps1
-    line  6176  Clean-up
+    line    75  Settings
+    line    86  Reader block
+    line    92  Module PiiDetectors.psm1
+    line   580  Module PiiMasking.psm1
+    line   780  Module OcrText.psm1
+    line   933  Module OleText.psm1
+    line  1042  Module ContainerText.psm1
+    line  1381  Module PdfCore.psm1
+    line  1740  Module PdfObjects.psm1
+    line  2098  Module PdfFonts.psm1
+    line  2519  Module PdfLayout.psm1
+    line  2659  Module PdfText.psm1
+    line  3152  Module TextExtract.psm1
+    line  3565  Module ReaderPool.psm1
+    line  3812  Reader block end
+    line  3816  Module XlsxWriter.psm1
+    line  4087  Module Report.psm1
+    line  4650  Module ScanMeter.psm1
+    line  4915  Module ScanQueue.psm1
+    line  5131  Module Accountability.psm1
+    line  5288  Module ChannelScan.psm1
+    line  5843  Module DriveScan.psm1
+    line  6073  Body of Find-ChannelPII.ps1
+    line  6182  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -5135,7 +5136,7 @@ Accountability.psm1 - who made and changed a file with PII, and who put the PII 
                who last modified it, when it was made and by whom, and who added the PII and when, by e-mail
                address (the report is CUI and stays in DoD365). SharePoint and Teams: the file's fields and its
                version history (the first version that holds each hit). Drives: the file's owner (a Windows logon
-               name; no directory lookup: "No reconnaissance"), its times, and the names an Office file stores.
+               name, which Windows looks up from the owner's ID; no search of the directory: "No reconnaissance"), its times, and the names an Office file stores.
   Inputs:      the file's list item, path or reader result, and its hits.
   Outputs:     @{ ModifiedBy; Created; CreatedBy; AddedOn; AddedBy; ByHit } for Report.psm1 Set-RowAccountability.
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
@@ -5151,6 +5152,7 @@ Accountability.psm1 - who made and changed a file with PII, and who put the PII 
 # Old versions read per file with a hit, oldest first (a file with more is dated from the oldest ones read).
 $script:MaxVersionsRead = 30
 $script:NoHistory = 'Not recorded (no version history)'
+$script:PartHistory = "Not recorded (not in the old versions read; check the file's version history by hand)"
 $script:DriveNoHistory = 'Not recorded (a drive keeps no file history)'
 
 function Get-PersonText {
@@ -5218,7 +5220,8 @@ function Find-PiiAddedVersion {
     $byHit = @{}
     $open = @($Hits | ForEach-Object { Get-HitKey $_ } | Sort-Object -Unique)
     try {
-        $versions = @(Get-PnPFileVersion -Url $Ref -ErrorAction Stop | Sort-Object Created | Select-Object -First $script:MaxVersionsRead)
+        $all = @(Get-PnPFileVersion -Url $Ref -ErrorAction Stop | Sort-Object Created)
+        $versions = @($all | Select-Object -First $script:MaxVersionsRead)
         $context = Get-PnPContext
         foreach ($version in $versions) { $context.Load($version.CreatedBy) }
         if ($versions.Count -gt 0) { $context.ExecuteQuery() }
@@ -5228,6 +5231,7 @@ function Find-PiiAddedVersion {
         foreach ($key in $open) { $byHit[$key] = @{ AddedOn = $script:NoHistory; AddedBy = $script:NoHistory } }
         return $byHit
     }
+    $complete = $all.Count -le $script:MaxVersionsRead   # every older version is read (else a later one may add a hit)
     foreach ($version in $versions) {
         if ($open.Count -eq 0) { break }
         try {
@@ -5236,17 +5240,19 @@ function Find-PiiAddedVersion {
             try { $stream.Value.CopyTo($memory); $bytes = $memory.ToArray() } finally { $memory.Dispose() }
             $text = Get-TextFromBytes -Bytes $bytes -FileName $Name
         }
-        catch { continue }   # a version that cannot be read: the next one dates the hit
-        if ($text.Status -ne 'OK') { continue }
+        catch { $complete = $false; continue }   # a version that cannot be read: a later one can only date the hit if it is in
+        if ($text.Status -ne 'OK') { $complete = $false; continue }
         $found = @(Find-PiiInText $text.Text | ForEach-Object { Get-HitKey $_ })
         foreach ($key in @($open | Where-Object { $found -contains $_ })) {
             $byHit[$key] = @{ AddedOn = (Get-DateText $version.Created); AddedBy = (Get-PersonText $version.CreatedBy) }
         }
         $open = @($open | Where-Object { -not $byHit.ContainsKey($_) })
     }
-    # Not in any older version: the current version added it (or, with no older version, the file's maker).
+    # In no older version: the current version added it (with no older version: the file's maker) - but only when
+    # every older version was read; else who added it is not known, and the report says so (review of PR 20).
     foreach ($key in $open) {
-        if ($versions.Count -eq 0) { $byHit[$key] = @{ AddedOn = $Who.Created; AddedBy = $Who.CreatedBy } }
+        if (-not $complete) { $byHit[$key] = @{ AddedOn = $script:PartHistory; AddedBy = $script:PartHistory } }
+        elseif ($versions.Count -eq 0) { $byHit[$key] = @{ AddedOn = $Who.Created; AddedBy = $Who.CreatedBy } }
         else { $byHit[$key] = @{ AddedOn = $Who.Modified; AddedBy = $Who.ModifiedBy } }
     }
     return $byHit
@@ -5915,7 +5921,7 @@ function Get-DriveLink {
       [string] the link, or empty.
     #>
     param([string]$Path)
-    if (@(Find-PiiInText $Path).Count -gt 0) { return '' }
+    if ((Protect-PiiName $Path) -ne $Path -or @(Find-PiiInText $Path).Count -gt 0) { return '' }   # as strict as Get-SafeLink
     $absolute = $Path; if ($Path.StartsWith('/')) { $absolute = 'file://' + $Path }   # / paths: the test machines only
     try { return ([uri]$absolute).AbsoluteUri } catch { return '' }
 }

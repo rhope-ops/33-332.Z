@@ -79,7 +79,7 @@ function Get-DriveLink {
       [string] the link, or empty.
     #>
     param([string]$Path)
-    if (@(Find-PiiInText $Path).Count -gt 0) { return '' }
+    if ((Protect-PiiName $Path) -ne $Path -or @(Find-PiiInText $Path).Count -gt 0) { return '' }   # as strict as Get-SafeLink
     $absolute = $Path; if ($Path.StartsWith('/')) { $absolute = 'file://' + $Path }   # / paths: the test machines only
     try { return ([uri]$absolute).AbsoluteUri } catch { return '' }
 }

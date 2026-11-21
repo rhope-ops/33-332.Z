@@ -5,7 +5,7 @@ Accountability.psm1 - who made and changed a file with PII, and who put the PII 
                who last modified it, when it was made and by whom, and who added the PII and when, by e-mail
                address (the report is CUI and stays in DoD365). SharePoint and Teams: the file's fields and its
                version history (the first version that holds each hit). Drives: the file's owner (a Windows logon
-               name; no directory lookup: "No reconnaissance"), its times, and the names an Office file stores.
+               name, which Windows looks up from the owner's ID; no search of the directory: "No reconnaissance"), its times, and the names an Office file stores.
   Inputs:      the file's list item, path or reader result, and its hits.
   Outputs:     @{ ModifiedBy; Created; CreatedBy; AddedOn; AddedBy; ByHit } for Report.psm1 Set-RowAccountability.
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
@@ -22,6 +22,7 @@ Set-StrictMode -Version 2.0
 # Old versions read per file with a hit, oldest first (a file with more is dated from the oldest ones read).
 $script:MaxVersionsRead = 30
 $script:NoHistory = 'Not recorded (no version history)'
+$script:PartHistory = "Not recorded (not in the old versions read; check the file's version history by hand)"
 $script:DriveNoHistory = 'Not recorded (a drive keeps no file history)'
 
 function Get-PersonText {
@@ -89,7 +90,8 @@ function Find-PiiAddedVersion {
     $byHit = @{}
     $open = @($Hits | ForEach-Object { Get-HitKey $_ } | Sort-Object -Unique)
     try {
-        $versions = @(Get-PnPFileVersion -Url $Ref -ErrorAction Stop | Sort-Object Created | Select-Object -First $script:MaxVersionsRead)
+        $all = @(Get-PnPFileVersion -Url $Ref -ErrorAction Stop | Sort-Object Created)
+        $versions = @($all | Select-Object -First $script:MaxVersionsRead)
         $context = Get-PnPContext
         foreach ($version in $versions) { $context.Load($version.CreatedBy) }
         if ($versions.Count -gt 0) { $context.ExecuteQuery() }
@@ -99,6 +101,7 @@ function Find-PiiAddedVersion {
         foreach ($key in $open) { $byHit[$key] = @{ AddedOn = $script:NoHistory; AddedBy = $script:NoHistory } }
         return $byHit
     }
+    $complete = $all.Count -le $script:MaxVersionsRead   # every older version is read (else a later one may add a hit)
     foreach ($version in $versions) {
         if ($open.Count -eq 0) { break }
         try {
@@ -107,17 +110,19 @@ function Find-PiiAddedVersion {
             try { $stream.Value.CopyTo($memory); $bytes = $memory.ToArray() } finally { $memory.Dispose() }
             $text = Get-TextFromBytes -Bytes $bytes -FileName $Name
         }
-        catch { continue }   # a version that cannot be read: the next one dates the hit
-        if ($text.Status -ne 'OK') { continue }
+        catch { $complete = $false; continue }   # a version that cannot be read: a later one can only date the hit if it is in
+        if ($text.Status -ne 'OK') { $complete = $false; continue }
         $found = @(Find-PiiInText $text.Text | ForEach-Object { Get-HitKey $_ })
         foreach ($key in @($open | Where-Object { $found -contains $_ })) {
             $byHit[$key] = @{ AddedOn = (Get-DateText $version.Created); AddedBy = (Get-PersonText $version.CreatedBy) }
         }
         $open = @($open | Where-Object { -not $byHit.ContainsKey($_) })
     }
-    # Not in any older version: the current version added it (or, with no older version, the file's maker).
+    # In no older version: the current version added it (with no older version: the file's maker) - but only when
+    # every older version was read; else who added it is not known, and the report says so (review of PR 20).
     foreach ($key in $open) {
-        if ($versions.Count -eq 0) { $byHit[$key] = @{ AddedOn = $Who.Created; AddedBy = $Who.CreatedBy } }
+        if (-not $complete) { $byHit[$key] = @{ AddedOn = $script:PartHistory; AddedBy = $script:PartHistory } }
+        elseif ($versions.Count -eq 0) { $byHit[$key] = @{ AddedOn = $Who.Created; AddedBy = $Who.CreatedBy } }
         else { $byHit[$key] = @{ AddedOn = $Who.Modified; AddedBy = $Who.ModifiedBy } }
     }
     return $byHit
