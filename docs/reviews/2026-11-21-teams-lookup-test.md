@@ -4,51 +4,45 @@ The PAM approved this test in the question dialog of 2026-11-21. Goal: find out 
 
 ## What it does
 
-- Read-only. It signs in to your own team's site (the same CAC sign-in as Ion), asks SharePoint or Microsoft Graph for the one group in the link, then signs out.
-- It touches one site and asks about one group: nothing is listed ("No reconnaissance").
-- It prints only "works", "no answer" or the kind of error (an error type name and an HTTP status number). It never prints an address, a name or an error message, so the result is safe to tell the agent.
-- If a step hangs for more than a minute, press the red Stop button and report "hung".
+- Read-only. It signs in to your own team's site (the same CAC sign-in as Ion), asks that site's SharePoint for the site of the one group in the link (GroupSiteManager GetSiteStatus, a read), then signs out.
+- It touches one site and asks about one group: nothing is listed ("No reconnaissance"). It sends nothing outside DoD365: there is no Microsoft Graph call (commercial Graph is outside the data boundary; review of PR 38).
+- It prints only one result line: "works", "works, but another address", "no answer", or "failed" with an error type name. It never prints an address, a name or an error message, so the line is safe to tell the agent.
+- If it hangs for more than a minute, press the red Stop button, close PowerShell ISE (this ends the sign-in), and report "hung".
 
 ## How to run it
 
 1. Open Windows PowerShell ISE on the gov device.
 2. Copy the whole block below, paste it into the script pane, and press F5.
 3. Paste your team's site address when asked, then the same team's Teams link (in Teams: ... next to the team name > Copy link).
-4. Tell the agent the two result lines, A and B.
+4. Tell the agent the result line.
 
 ```powershell
-# Ion Teams-link lookup test: read-only. Prints only "works", "no answer" or the kind of error.
+# Ion Teams-link lookup test: read-only, one site, one group. Prints one result line, never an address or a message.
 $site = (Read-Host 'Your team site address (https://usaf.dps.mil/teams/<team-site>)').Trim().TrimEnd('/')
 $link = Read-Host "The same team's Teams link (in Teams: ... > Copy link)"
 $groupId = [regex]::Match($link, 'groupId=([0-9a-fA-F-]{36})').Groups[1].Value
 if (-not $groupId) { Write-Host 'No groupId in that link: copy the team link again.'; return }
-Connect-PnPOnline -Url $site -UseWebLogin -WarningAction SilentlyContinue
-function Show-Result([string]$Name, [scriptblock]$Test) {
-    try {
-        $url = [string](& $Test)
-        if (-not $url) { Write-Host "$Name : no answer" }
-        elseif ($url.TrimEnd('/') -ieq $site) { Write-Host "$Name : works (it gives this team's site)" }
-        else { Write-Host "$Name : works, but it gives another address" }
-    }
-    catch {
-        $code = ''
-        if ($_.Exception.PSObject.Properties['Response'] -and $_.Exception.Response) { $code = [int]$_.Exception.Response.StatusCode }
-        Write-Host ("$Name : failed ({0} {1})" -f $_.Exception.GetType().Name, $code)
-    }
+try {
+    Connect-PnPOnline -Url $site -UseWebLogin -WarningAction SilentlyContinue -ErrorAction Stop
+    $answer = Invoke-PnPSPRestMethod -Method Post -Url '/_api/GroupSiteManager/GetSiteStatus' -Content @{ groupId = $groupId } -ErrorAction Stop
+    $url = ''
+    if ($answer -and $answer.PSObject.Properties['SiteUrl']) { $url = [string]$answer.SiteUrl }
+    if (-not $url) { Write-Host 'Result: no answer' }
+    elseif ($url.TrimEnd('/') -ieq $site) { Write-Host "Result: works (it gives this team's site)" }
+    else { Write-Host 'Result: works, but it gives another address' }
 }
-Show-Result 'A (SharePoint, from your site)' {
-    (Invoke-PnPSPRestMethod -Method Post -Url '/_api/GroupSiteManager/GetSiteStatus' -Content @{ groupId = $groupId }).SiteUrl
+catch { Write-Host ('Result: failed ({0})' -f $_.Exception.GetType().Name) }
+finally {
+    try { Disconnect-PnPOnline -ErrorAction Stop } catch { Write-Host 'Signed out already.' }
 }
-Show-Result 'B (Microsoft Graph)' { (Invoke-PnPGraphMethod -Url ('groups/' + $groupId + '/sites/root?$select=webUrl')).webUrl }
-Disconnect-PnPOnline
 ```
 
-## What the results mean
+## What the result means
 
 | Result | Meaning | Next step |
 |---|---|---|
-| A works (this team's site) | SharePoint can look up a team's site once Ion is signed in to any site the person can open. | Ion still needs one site to sign in to first (the tenant root hung). The agent proposes options for the PAM to choose from, for example the site of the person's last scan. |
-| A fails, B works | Graph can do it with the web sign-in. | Same as above, through Graph. |
-| Both fail or hang | Neither method works on DoD365 with a CAC web sign-in. | Ion keeps asking for the site address. B is expected to fail: the web sign-in gives SharePoint cookies, not a Graph token (Confidence: medium). |
-
-Not verified here: whether `Invoke-PnPGraphMethod` exists in PnP.PowerShell 1.12.0. If it does not, B prints "failed (CommandNotFoundException)", which also means "Graph is not available this way".
+| works (this team's site) | Once signed in to this team's site, SharePoint gives the site of the group in the link. Whether it does so from any other site is not shown by this test. | Ion still needs one site to sign in to first (the tenant root hung on 2026-11-20). The agent proposes options for the PAM to choose from. |
+| works, but another address | The lookup answers, but with an address that differs from the one typed (for example a /sites/ form, or another site). | The agent checks with the PAM before using it. |
+| no answer | SharePoint answered without a site address. | Ion keeps asking for the site address. |
+| failed (type) | The call is refused or not there (for example CommandNotFoundException: the cmdlet is not in PnP.PowerShell 1.12.0). | Ion keeps asking for the site address. |
+| hung | No answer within a minute. | Ion keeps asking for the site address. |

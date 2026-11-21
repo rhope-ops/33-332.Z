@@ -1,7 +1,7 @@
 <#
 EndToEnd.Tests.ps1 - runs Find-ChannelPII.ps1 from start to end against the fake site.
 
-  Purpose:     The whole script: every folder is scanned with no question asked and one sign-in, one workbook is
+  Purpose:     The whole script: every folder is scanned (one "Scan now?" question, Enter = yes) with one sign-in, one workbook is
                written, every planted type is found, the progress bars show the counts, a plain site gets a Folder
                column, and a failure part way still saves results that say INCOMPLETE.
   Inputs:      $Sample, $Docx, $Txt (earlier test files); the fakes.
@@ -17,7 +17,7 @@ $script = Join-Path (Join-Path (Split-Path $PSScriptRoot -Parent) 'src') 'Find-C
 $runFolder = Join-Path ([System.IO.Path]::GetTempPath()) ('piitest-e2e-' + [guid]::NewGuid())
 $library = '/sites/TeamA/Shared Documents'
 
-# ---- A full run: one workbook, every planted type, no question, the progress bars ----
+# ---- A full run: one workbook, every planted type, "Scan now?" answered with Enter, the progress bars ----
 Reset-FakePnP @{ "$library/General/Roster.docx" = $Docx; "$library/General/notes.txt" = $Txt; "$library/Ops/scan.pdf" = $Txt }
 & $script -SiteUrl $Sample.Site -OutputFolder $runFolder 6>$null
 $results = @(Get-ResultFiles $runFolder)
@@ -47,8 +47,13 @@ Assert-Equal $true (Test-FakePnPCall 'Disconnect-PnPOnline') 'Declined: signed o
 Reset-FakePnP @{ "$library/General/notes.txt" = $Txt }
 Set-FakeSiteAnswer -ScanAnswer 'cancel'
 $cancelFolder = Join-Path $runFolder 'cancelled'
-& $script -SiteUrl $Sample.Site -OutputFolder $cancelFolder 6>$null
+$cancelShown = (& $script -SiteUrl $Sample.Site -OutputFolder $cancelFolder 6>&1 | ForEach-Object { [string]$_ }) -join ' '
 Assert-Equal 0 @(Get-ResultFiles $cancelFolder).Count 'Cancel at "Scan now?": nothing read, nothing saved'
+Assert-Equal $true ($cancelShown -match 'Not scanned: nothing was saved' -and (Test-FakePnPCall 'Disconnect-PnPOnline')) 'Cancel at "Scan now?": told, and signed out'
+# No files at all: no "Scan now?" question.
+Reset-FakePnP @{}
+& $script -SiteUrl $Sample.Site -OutputFolder (Join-Path $runFolder 'empty') 6>$null
+Assert-Equal $false (Test-FakePnPCall 'Scan question') 'No files: no "Scan now?" question'
 
 # ---- A plain SharePoint site (no team): Folder column, top-of-library files ----
 Reset-FakePnP @{ "$library/top.txt" = $Txt }
