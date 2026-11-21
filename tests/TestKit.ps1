@@ -193,7 +193,7 @@ function Get-WorkbookTypes {
     $book = Get-XlsxSheets $Path
     $types = foreach ($tab in $book.Keys) {
         if ($tab -eq 'Low confidence' -or $tab -eq 'Not scanned') { $book[$tab] | Select-Object -Skip 1 | ForEach-Object { $_[0] } }
-        elseif ($tab -ne 'Summary') { $tab }
+        elseif ($tab -notin @('Summary', 'Method')) { $tab }
     }
     return (@($types | Sort-Object -Unique) -join ' ')
 }

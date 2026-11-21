@@ -116,7 +116,7 @@ try {
     $byHit = Find-PiiAddedVersion '/sites/x/Shared Documents/a.txt' 'a.txt' $hits $who
     $gapAdded = $byHit[$hits[0].Detector + '|' + $hits[0].MaskedValue]
     Assert-Equal 'later.saver|An older version could not be read: it may have been added earlier' ($gapAdded.AddedBy + '|' + $gapAdded.Note) `
-        'Who: after an unread version, the person alone in "PII added by", and the note says it may be earlier'
+        'Who: after an unread version, the person alone in "PII first saved by", and the note says it may be earlier'
     # More old versions than are read, all readable, the SSN in the oldest: a plain credit, no "could not be read".
     $versionList = @(New-FakeVersion ([datetime]'2026-01-01') 'true.adder' $withSsn) + @(2..31 | ForEach-Object { New-FakeVersion ([datetime]'2026-01-01').AddDays($_) 'other' $withSsn })
     $plainEntry = (Find-PiiAddedVersion '/sites/x/Shared Documents/a.txt' 'a.txt' $hits $who)[$hits[0].Detector + '|' + $hits[0].MaskedValue]

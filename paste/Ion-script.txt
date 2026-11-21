@@ -31,10 +31,10 @@
     src/TextExtract.psm1, sha256 3b52ab6462e5
     src/ReaderPool.psm1, sha256 8f8f73fda166
     src/XlsxWriter.psm1, sha256 e29becdc6a65
-    src/Report.psm1, sha256 efad858780e7
+    src/Report.psm1, sha256 e43fb80274ba
     src/ScanMeter.psm1, sha256 da4143adff10
-    src/ScanQueue.psm1, sha256 85cb65afb492
-    src/Accountability.psm1, sha256 15472f8fab6e
+    src/ScanQueue.psm1, sha256 35234e3c58cc
+    src/Accountability.psm1, sha256 3908dfa3d1ab
     src/ChannelScan.psm1, sha256 4eec88ad8ca9
     src/DriveScan.psm1, sha256 f307e810f8f5
     src/Find-ChannelPII.ps1, sha256 12724f0b06d3
@@ -65,11 +65,11 @@
     line  4258  Module Report.psm1
     line  4855  Module ScanMeter.psm1
     line  5179  Module ScanQueue.psm1
-    line  5522  Module Accountability.psm1
-    line  5816  Module ChannelScan.psm1
-    line  6409  Module DriveScan.psm1
-    line  6641  Body of Find-ChannelPII.ps1
-    line  6782  Clean-up
+    line  5524  Module Accountability.psm1
+    line  5847  Module ChannelScan.psm1
+    line  6440  Module DriveScan.psm1
+    line  6672  Body of Find-ChannelPII.ps1
+    line  6813  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -4291,7 +4291,7 @@ $script:ToolTitle = 'Ion - DoD365 PII Reporter'
 $script:SeverityOrder = @('SSN', 'Date of birth', 'Passport', 'Payment card', 'DoD ID', 'Home address', 'Name', 'Phone', 'Personal e-mail')
 
 $script:TopItems = 10   # how many files the screen summary lists (the workbook lists all)
-
+$script:MaxNameInPath = 40   # the site name is in the path twice: at most 40 characters keeps it under 260 (review of PR 41)
 # Screen tables fit the window: under 60 characters or unknown = 120; the last column keeps 12 (the author's choice, 2026-11-21).
 $script:DefaultScreenWidth = 120
 $script:MinScreenWidth = 60
@@ -4662,6 +4662,7 @@ function Get-ResultPath {
     $siteName = [uri]::UnescapeDataString(($SiteUrl.TrimEnd('/') -split '/')[-1])
     $siteName = ((Protect-PiiName $siteName) -replace '[\\/:*?"<>|]', '-').Trim(' .')
     if (-not $siteName) { $siteName = 'site' }
+    if ($siteName.Length -gt $script:MaxNameInPath) { $siteName = $siteName.Substring(0, $script:MaxNameInPath).Trim(' .') }   # MAX_PATH 260
     if ($siteName -match '^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\..*)?$') { $siteName = '_' + $siteName }   # names Windows keeps for devices
     $now = Get-Date
     $folder = Join-Path $OutputFolder $siteName
@@ -4724,11 +4725,9 @@ function Get-WorkbookSheets {
     #>
     param([object[]]$Rows, [int]$ItemsScanned, [System.Collections.IDictionary]$Header, [string]$FolderLabel)
     $hits = @($Rows | Where-Object { $script:Rank.ContainsKey($_.Confidence) })
-    # Accountability (the PAM, 2026-11-21): who made and changed the file, and who put the PII in and when (by e-mail).
-    # Created and Created by come before Last saved by; Last saved stays in its place. "Modified" is named "Last saved"
-    # (any save, not only the PII), and the caveats of "PII added by" have their own column (the PAM, 2026-11-21).
+    # Accountability columns, names and order: the PAM, 2026-11-21 (docs/DECISIONS.md); the Method tab explains them.
     $columns = @('Confidence', $FolderLabel, 'File', 'Masked value', 'Context', 'Last saved', 'Link', 'Found in',
-        'Created', 'Created by', 'Last saved by', 'PII added', 'PII added by', 'History note')
+        'Created', 'Created by', 'Last saved by', 'PII first saved', 'PII first saved by', 'History note')
     $widths = @(11, 22, 45, 18, 60, 17, 50, 10, 17, 30, 30, 17, 30, 50)
     $byRank = @{ Expression = { $script:Rank[$_.Confidence] }; Descending = $true }
     $sheets = New-Object System.Collections.Generic.List[object]
@@ -4746,6 +4745,7 @@ function Get-WorkbookSheets {
         $sheets.Add((New-XlsxSheet 'Not scanned' @('Status', $FolderLabel, 'File', 'Reason', 'Link') `
             @($notes | ForEach-Object { , @($_.Detector, $_.Channel, $_.Item, $_.Context, $_.Link) }) @(14, 22, 45, 70, 50) -List -LinkColumn 4))
     }
+    $sheets.Add((New-XlsxSheet 'Method' @('Topic', 'How Ion works it out') @(Get-MethodRows) @(34, 130) -List))   # the PAM, 2026-11-21
     return $sheets.ToArray()
 }
 
@@ -4780,7 +4780,7 @@ function Get-SummaryRows {
     , @('Tabs', 'One tab per type with High or Medium hits, worst type first; then Low confidence; then Not scanned.')
     , @('Confidence', 'A pattern guess, not proof: open each item and check it before you act.')
     , @('If you find PII', $script:BreachLines[0])
-    , @('Rule source', ($script:BreachLines[-1] -replace '^Source: ', ''))
+    if ($script:BreachLines.Count -gt 1) { , @('Rule source', ($script:BreachLines[1] -replace '^Source: ', '')) }
     , @('Handling', 'Handle this file as CUI: it shows where PII is. Every value in it is masked.')
 }
 
@@ -5471,8 +5471,10 @@ function Confirm-ScanStart {
         }
     }
     if ($count -eq 0) { return $true }   # nothing to read: no question
-    Write-Ui ('Found {0} files ({1:N1} MB) in {2} folders; {3} will be listed but not read (file type, or over {4} MB).' -f
-        $count, ($bytes / 1MB), $Groups.Count, $skipped, $MaxFileMB) 'Text'
+    # A count with its noun: "1 file", "2 files".
+    $plural = { param($n, $noun) if ($n -eq 1) { "1 $noun" } else { '{0:N0} {1}s' -f $n, $noun } }
+    Write-Ui ('Found {0} ({1:N1} MB) in {2}; {3:N0} will be listed but not read (file type, or over {4} MB).' -f
+        (& $plural $count 'file'), ($bytes / 1MB), (& $plural $Groups.Count 'folder'), $skipped, $MaxFileMB) 'Text'
     $answer = Read-Host 'Scan now? [Y/n]'
     return -not ($answer -and $answer.Trim() -match '^(n|no)$')
 }
@@ -5530,7 +5532,7 @@ Accountability.psm1 - who made and changed a file with PII, and who put the PII 
                name, which Windows looks up from the owner's ID; no search of the directory: "No reconnaissance"), its times, and the names an Office file stores.
   Inputs:      the file's list item, path or reader result, and its hits.
   Outputs:     @{ ModifiedBy; Created; CreatedBy; AddedOn; AddedBy; HistoryNote; ByHit } for Report.psm1 Set-RowAccountability.
-               "PII added" and "PII added by" hold only a date and a person (or "Not recorded"); every caveat goes in
+               "PII first saved" and "PII first saved by" hold only a date and a person (or "Not recorded"); every caveat goes in
                "History note" (the PAM, 2026-11-21: the columns must be easy to understand).
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
   Depends on:  TextExtract.psm1 (Get-TextFromBytes), PiiDetectors.psm1 (Find-PiiInText) and, for SharePoint,
@@ -5698,7 +5700,7 @@ function Add-PutBackText {
         if ($more -eq 1) { $text += '; and 1 more time' } elseif ($more -gt 1) { $text += ('; and {0} more times' -f $more) }
         Add-HistoryNote $ByHit[$key] $text
     }
-    # Say what the history read cannot show, so "PII added by" never reads as complete when it is not (review).
+    # Say what the history read cannot show, so "PII first saved by" never reads as complete when it is not (review).
     foreach ($key in @($ByHit.Keys | Where-Object { $ByHit[$_].AddedBy -ne $script:NotRecorded })) {
         if ($Unsure.ContainsKey($key)) { Add-HistoryNote $ByHit[$key] 'It may have been removed and put back (a version could not be read)' }
         if (-not $AllRead) { Add-HistoryNote $ByHit[$key] "Versions after the $script:MaxVersionsRead oldest were not checked" }
@@ -5811,6 +5813,35 @@ function Get-DriveWho {
     }
     return @{ ModifiedBy = $modifiedBy; Created = $created; CreatedBy = $createdBy; AddedOn = $script:NotRecorded; AddedBy = $script:NotRecorded
         HistoryNote = $script:DriveNoHistory }
+}
+
+function Get-MethodRows {
+    <#
+    .SYNOPSIS
+      The rows of the workbook's Method tab: how Ion finds possible PII, how sure each confidence is, and how it fills
+      the who-and-when columns, with what that evidence can and cannot show (the PAM, 2026-11-21: the method explained in
+      the worksheet, on its own page; "PII first saved by" is evidence, not proof).
+    .OUTPUTS
+      [object[]] rows of two cells (topic, text).
+    #>
+    , @('How Ion finds possible PII', ('It reads the text of each file in memory and looks for patterns (SSN, DoD ID, date of birth, payment card, passport, phone, personal e-mail, home ' +
+        'address, labelled names). A pattern match is a lead, not proof: open each file and check it.'))
+    , @('High', 'A label names it (for example "SSN:") or the number passes a check that random digits seldom pass.')
+    , @('Medium', 'The right form (for example dashes in an SSN), but no label.')
+    , @('Low', 'A weak match: often not PII. A Low match inside mostly unreadable text (symbols, a font read wrong) is dropped as noise.')
+    , @('')
+    , @('Created, Created by', 'From SharePoint: when the file was first saved to the site, and by which account. On a drive: the file time and its owner.')
+    , @('Last saved, Last saved by', 'The last save of the whole file, by anyone, for any reason. It says nothing about the PII; it shows who works on the file now.')
+    , @('PII first saved, PII first saved by', (('Ion reads the file''s SharePoint version history, oldest first (at most {0} versions), and finds ' +
+        'the first version whose text holds the same type and masked value. These columns name the account that saved that version, and when.') -f $script:MaxVersionsRead))
+    , @('What that shows', ('SharePoint records which account saved each version. So these columns show which account first saved a version that holds the value: strong evidence, ' +
+        'not proof of who typed it.'))
+    , @('Why it can be wrong', ('The person who saves or uploads a file is not always the one who wrote the text (pasted from e-mail, a copied file, the OneDrive sync client). ' +
+        'Co-authoring names one person per version. Old versions may have been deleted. Two different values with the same mask (for example the same last 4 ' +
+        'digits) look the same. A file copied in starts a new history. Drives keep no history.'))
+    , @('History note', ('Says when the history could not show the answer: no version history, not in the versions read, a version that could not be read, a value removed and ' +
+        'put back, or more versions than were read.'))
+    , @('Before you name a person', 'Open the file in SharePoint > Version history. Open the version Ion names and the one before it, and check that the full value first appears in that version.')
 }
 
 # ==== Module ChannelScan.psm1 ====

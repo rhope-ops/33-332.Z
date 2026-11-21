@@ -8,7 +8,7 @@ Accountability.psm1 - who made and changed a file with PII, and who put the PII 
                name, which Windows looks up from the owner's ID; no search of the directory: "No reconnaissance"), its times, and the names an Office file stores.
   Inputs:      the file's list item, path or reader result, and its hits.
   Outputs:     @{ ModifiedBy; Created; CreatedBy; AddedOn; AddedBy; HistoryNote; ByHit } for Report.psm1 Set-RowAccountability.
-               "PII added" and "PII added by" hold only a date and a person (or "Not recorded"); every caveat goes in
+               "PII first saved" and "PII first saved by" hold only a date and a person (or "Not recorded"); every caveat goes in
                "History note" (the PAM, 2026-11-21: the columns must be easy to understand).
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
   Depends on:  TextExtract.psm1 (Get-TextFromBytes), PiiDetectors.psm1 (Find-PiiInText) and, for SharePoint,
@@ -177,7 +177,7 @@ function Add-PutBackText {
         if ($more -eq 1) { $text += '; and 1 more time' } elseif ($more -gt 1) { $text += ('; and {0} more times' -f $more) }
         Add-HistoryNote $ByHit[$key] $text
     }
-    # Say what the history read cannot show, so "PII added by" never reads as complete when it is not (review).
+    # Say what the history read cannot show, so "PII first saved by" never reads as complete when it is not (review).
     foreach ($key in @($ByHit.Keys | Where-Object { $ByHit[$_].AddedBy -ne $script:NotRecorded })) {
         if ($Unsure.ContainsKey($key)) { Add-HistoryNote $ByHit[$key] 'It may have been removed and put back (a version could not be read)' }
         if (-not $AllRead) { Add-HistoryNote $ByHit[$key] "Versions after the $script:MaxVersionsRead oldest were not checked" }
@@ -292,4 +292,33 @@ function Get-DriveWho {
         HistoryNote = $script:DriveNoHistory }
 }
 
-Export-ModuleMember -Function Get-PersonText, Get-SharePointWho, Find-PiiAddedVersion, Get-DriveWho
+function Get-MethodRows {
+    <#
+    .SYNOPSIS
+      The rows of the workbook's Method tab: how Ion finds possible PII, how sure each confidence is, and how it fills
+      the who-and-when columns, with what that evidence can and cannot show (the PAM, 2026-11-21: the method explained in
+      the worksheet, on its own page; "PII first saved by" is evidence, not proof).
+    .OUTPUTS
+      [object[]] rows of two cells (topic, text).
+    #>
+    , @('How Ion finds possible PII', ('It reads the text of each file in memory and looks for patterns (SSN, DoD ID, date of birth, payment card, passport, phone, personal e-mail, home ' +
+        'address, labelled names). A pattern match is a lead, not proof: open each file and check it.'))
+    , @('High', 'A label names it (for example "SSN:") or the number passes a check that random digits seldom pass.')
+    , @('Medium', 'The right form (for example dashes in an SSN), but no label.')
+    , @('Low', 'A weak match: often not PII. A Low match inside mostly unreadable text (symbols, a font read wrong) is dropped as noise.')
+    , @('')
+    , @('Created, Created by', 'From SharePoint: when the file was first saved to the site, and by which account. On a drive: the file time and its owner.')
+    , @('Last saved, Last saved by', 'The last save of the whole file, by anyone, for any reason. It says nothing about the PII; it shows who works on the file now.')
+    , @('PII first saved, PII first saved by', (('Ion reads the file''s SharePoint version history, oldest first (at most {0} versions), and finds ' +
+        'the first version whose text holds the same type and masked value. These columns name the account that saved that version, and when.') -f $script:MaxVersionsRead))
+    , @('What that shows', ('SharePoint records which account saved each version. So these columns show which account first saved a version that holds the value: strong evidence, ' +
+        'not proof of who typed it.'))
+    , @('Why it can be wrong', ('The person who saves or uploads a file is not always the one who wrote the text (pasted from e-mail, a copied file, the OneDrive sync client). ' +
+        'Co-authoring names one person per version. Old versions may have been deleted. Two different values with the same mask (for example the same last 4 ' +
+        'digits) look the same. A file copied in starts a new history. Drives keep no history.'))
+    , @('History note', ('Says when the history could not show the answer: no version history, not in the versions read, a version that could not be read, a value removed and ' +
+        'put back, or more versions than were read.'))
+    , @('Before you name a person', 'Open the file in SharePoint > Version history. Open the version Ion names and the one before it, and check that the full value first appears in that version.')
+}
+
+Export-ModuleMember -Function Get-PersonText, Get-SharePointWho, Find-PiiAddedVersion, Get-DriveWho, Get-MethodRows

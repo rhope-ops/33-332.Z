@@ -34,7 +34,7 @@ $script:ToolTitle = 'Ion - DoD365 PII Reporter'
 $script:SeverityOrder = @('SSN', 'Date of birth', 'Passport', 'Payment card', 'DoD ID', 'Home address', 'Name', 'Phone', 'Personal e-mail')
 
 $script:TopItems = 10   # how many files the screen summary lists (the workbook lists all)
-
+$script:MaxNameInPath = 40   # the site name is in the path twice: at most 40 characters keeps it under 260 (review of PR 41)
 # Screen tables fit the window: under 60 characters or unknown = 120; the last column keeps 12 (the author's choice, 2026-11-21).
 $script:DefaultScreenWidth = 120
 $script:MinScreenWidth = 60
@@ -405,6 +405,7 @@ function Get-ResultPath {
     $siteName = [uri]::UnescapeDataString(($SiteUrl.TrimEnd('/') -split '/')[-1])
     $siteName = ((Protect-PiiName $siteName) -replace '[\\/:*?"<>|]', '-').Trim(' .')
     if (-not $siteName) { $siteName = 'site' }
+    if ($siteName.Length -gt $script:MaxNameInPath) { $siteName = $siteName.Substring(0, $script:MaxNameInPath).Trim(' .') }   # MAX_PATH 260
     if ($siteName -match '^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\..*)?$') { $siteName = '_' + $siteName }   # names Windows keeps for devices
     $now = Get-Date
     $folder = Join-Path $OutputFolder $siteName
@@ -467,11 +468,9 @@ function Get-WorkbookSheets {
     #>
     param([object[]]$Rows, [int]$ItemsScanned, [System.Collections.IDictionary]$Header, [string]$FolderLabel)
     $hits = @($Rows | Where-Object { $script:Rank.ContainsKey($_.Confidence) })
-    # Accountability (the PAM, 2026-11-21): who made and changed the file, and who put the PII in and when (by e-mail).
-    # Created and Created by come before Last saved by; Last saved stays in its place. "Modified" is named "Last saved"
-    # (any save, not only the PII), and the caveats of "PII added by" have their own column (the PAM, 2026-11-21).
+    # Accountability columns, names and order: the PAM, 2026-11-21 (docs/DECISIONS.md); the Method tab explains them.
     $columns = @('Confidence', $FolderLabel, 'File', 'Masked value', 'Context', 'Last saved', 'Link', 'Found in',
-        'Created', 'Created by', 'Last saved by', 'PII added', 'PII added by', 'History note')
+        'Created', 'Created by', 'Last saved by', 'PII first saved', 'PII first saved by', 'History note')
     $widths = @(11, 22, 45, 18, 60, 17, 50, 10, 17, 30, 30, 17, 30, 50)
     $byRank = @{ Expression = { $script:Rank[$_.Confidence] }; Descending = $true }
     $sheets = New-Object System.Collections.Generic.List[object]
@@ -489,6 +488,7 @@ function Get-WorkbookSheets {
         $sheets.Add((New-XlsxSheet 'Not scanned' @('Status', $FolderLabel, 'File', 'Reason', 'Link') `
             @($notes | ForEach-Object { , @($_.Detector, $_.Channel, $_.Item, $_.Context, $_.Link) }) @(14, 22, 45, 70, 50) -List -LinkColumn 4))
     }
+    $sheets.Add((New-XlsxSheet 'Method' @('Topic', 'How Ion works it out') @(Get-MethodRows) @(34, 130) -List))   # the PAM, 2026-11-21
     return $sheets.ToArray()
 }
 
@@ -523,7 +523,7 @@ function Get-SummaryRows {
     , @('Tabs', 'One tab per type with High or Medium hits, worst type first; then Low confidence; then Not scanned.')
     , @('Confidence', 'A pattern guess, not proof: open each item and check it before you act.')
     , @('If you find PII', $script:BreachLines[0])
-    , @('Rule source', ($script:BreachLines[-1] -replace '^Source: ', ''))
+    if ($script:BreachLines.Count -gt 1) { , @('Rule source', ($script:BreachLines[1] -replace '^Source: ', '')) }
     , @('Handling', 'Handle this file as CUI: it shows where PII is. Every value in it is masked.')
 }
 

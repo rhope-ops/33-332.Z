@@ -17,7 +17,7 @@ Keep your eyes on the files in local, network, and cloud directories you can acc
 <tr><td><b>Credentials:</b></td><td>CAC sign-on is needed to scan cloud directories</td></tr>
 <tr><td><b>Access:</b></td><td>Only sees what your account can see</td></tr>
 <tr><td><b>Read-only:</b></td><td>it makes no changes to anything it scans</td></tr>
-<tr><td><b>Accountable:</b></td><td>see who added or changed PII, and when</td></tr>
+<tr><td><b>Accountable:</b></td><td>see which account first saved each PII value, and when</td></tr>
 <tr><td><b>Boundary:</b></td><td>nothing leaves DoD365; the export is saved to your computer</td></tr>
 <tr><td><b>Verifiable:</b></td><td>inspect the commented code yourself within a .txt before execution</td></tr>
 <tr><td><b>Accessible:</b></td><td>paste and run via ISE; no download, no admin rights, no policy change</td></tr>
@@ -38,9 +38,9 @@ The steps to run it are at the top of the script.
 
 <kbd>Sign in</kbd> → <kbd>List and confirm</kbd> → <kbd>Read files in memory</kbd> → <kbd>Find PII</kbd> → <kbd><b>Mask it</b></kbd> → <kbd>Report</kbd>
 
-- **List and confirm:** Ion lists the files first and shows how many it found, their size, and how many it will list but not read. It asks "Scan now? [Y/n]"; Enter starts the scan, and "n" saves nothing.
-- **Progress:** one bar shows the folder, the run so far (files done, read, not scanned, possible PII, time elapsed and left) and the file in work; a second bar shows the MB downloaded of a large file.
-- **Report:** one Excel workbook per run, in `Documents\Ion\<site>\Ion <site> <yyyy-MM-dd HHmm>.xlsx` (a drive folder gets a folder of its own name). It has a Summary tab, one tab per PII type (worst first), Low confidence and Not scanned. Each hit row shows when the file was created and by whom, when it was last saved and by whom, who added the PII and when, and a History note when the file's history cannot show that.
+- **List and confirm:** Ion lists the files first and shows how many it found, their size, and how many it will list but not read. When it finds files, it asks "Scan now? [Y/n]"; Enter starts the scan, and "n" saves nothing.
+- **Progress:** one bar shows the folder, the run so far (files done, read, not scanned, possible PII, time elapsed and left) and the file in work; for a SharePoint or Teams file of 1 MB or more, a second bar shows the MB downloaded.
+- **Report:** one Excel workbook per run, in `Documents\Ion\<site>\Ion <site> <yyyy-MM-dd HHmm>.xlsx` (a drive folder gets a folder of its own name). It has a Summary tab, one tab per PII type (worst first), Low confidence and Not scanned. Each hit row shows when the file was created and by whom, when it was last saved and by whom, which account first saved a version with the PII and when, and a History note when the file's history cannot show that. The Method tab explains how each column is worked out: the "first saved by" account is evidence, not proof of who typed the PII.
 
 #### What it looks for
 

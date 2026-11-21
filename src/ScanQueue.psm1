@@ -293,8 +293,10 @@ function Confirm-ScanStart {
         }
     }
     if ($count -eq 0) { return $true }   # nothing to read: no question
-    Write-Ui ('Found {0} files ({1:N1} MB) in {2} folders; {3} will be listed but not read (file type, or over {4} MB).' -f
-        $count, ($bytes / 1MB), $Groups.Count, $skipped, $MaxFileMB) 'Text'
+    # A count with its noun: "1 file", "2 files".
+    $plural = { param($n, $noun) if ($n -eq 1) { "1 $noun" } else { '{0:N0} {1}s' -f $n, $noun } }
+    Write-Ui ('Found {0} ({1:N1} MB) in {2}; {3:N0} will be listed but not read (file type, or over {4} MB).' -f
+        (& $plural $count 'file'), ($bytes / 1MB), (& $plural $Groups.Count 'folder'), $skipped, $MaxFileMB) 'Text'
     $answer = Read-Host 'Scan now? [Y/n]'
     return -not ($answer -and $answer.Trim() -match '^(n|no)$')
 }
