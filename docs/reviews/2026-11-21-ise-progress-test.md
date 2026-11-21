@@ -9,10 +9,12 @@ Why: on the gov run of 2026-11-21 the PAM saw the scan bar as 2 lines in Windows
 
 ## How to run it
 
-1. Open Windows PowerShell ISE on the gov device.
-2. Copy the whole block below, paste it into the script pane, and press F5.
-3. Watch the bar at the top of the console pane while each letter is shown.
-4. Tell the agent, for each letter A to E: how many lines, any "." added, any indent, and where the file line is. Or just the letter that looks right.
+Test 1 is done (result below). These were its steps:
+
+1. On the gov device, open **Windows PowerShell ISE**. You see the window **Windows PowerShell ISE**. Go on.
+2. In the window **Windows PowerShell ISE**, paste the test 1 block into the script pane. You see the script. Go on.
+3. Press **F5**. You see "Layout A now" in the console pane. Wait until "Layout test done." shows.
+4. In the chat, type the letter of the layout that looked right. You see your message in the chat. The task is complete.
 
 ```powershell
 # Ion ISE progress-bar layout test: invented text only, no sign-in, no network, no files. About 30 seconds.
@@ -48,7 +50,14 @@ Write-Host 'Layout test done.'
 
 ## Test 2: the file on a line of its own
 
-The same steps as test 1: paste, F5, about 24 seconds. This time each layout uses a second bar for the file. Tell the agent the letter that looks right (F to I), and whether its folder line still ends in a ".".
+Each layout uses a second bar for the file. The test takes about 24 seconds.
+
+1. On the gov device, open **Windows PowerShell ISE**. You see the window **Windows PowerShell ISE**. Go on.
+2. In the window **Windows PowerShell ISE**, paste the test 2 block below into the script pane. You see the script. Go on.
+3. Press **F5**. You see "Layout F now" in the console pane and a bar at the top. Go on.
+4. Look at the bar at the top while each letter shows. You see the next letter every 6 seconds. Wait until "Layout test 2 done." shows.
+5. In the chat, type the letter (F to I) that put the file on its own line. You see your message in the chat. Go on.
+6. If that layout's folder line ended in a ".", type `dot` in the chat. You see your message in the chat. The task is complete.
 
 ```powershell
 # Ion ISE progress-bar layout test 2: invented text only, no sign-in, no network, no files. About 24 seconds.

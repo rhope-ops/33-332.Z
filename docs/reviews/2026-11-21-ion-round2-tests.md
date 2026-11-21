@@ -14,10 +14,18 @@ The PAM approved this plan on 2026-11-21 (docs/DECISIONS.md, newest row). Step 1
 
 ## How to run them
 
-1. Open Windows PowerShell ISE on the gov device.
-2. Copy one whole block below, paste it into the script pane, and press F5.
-3. Answer 1: your team site address. Answer 2: the path of one file of 1 to 20 MB on that site, as it shows in the browser's address bar after the site name, for example `Shared Documents/General/Report.pdf`.
-4. Tell the agent the "Result 3" or "Result 4" lines.
+Do these steps one time for test 3, then one time for test 4.
+
+1. On the gov device, open **Windows PowerShell ISE**. You see the window **Windows PowerShell ISE**. Go on.
+2. In the window **Windows PowerShell ISE**, paste the block of one test into the script pane. You see the script. Go on.
+3. Press **F5**. You see the question "Your team site address". Go on.
+4. Type your team site address, for example `usaf.dps.mil/teams/<team-site>`. You see the address after the question. Go on.
+5. Press **Enter**. You see the question "The file path after the site". Go on.
+6. Type the path of one file of 1 to 20 MB on that site, for example `Shared Documents/General/Report.pdf`. You see the path after the question. Go on.
+7. Press **Enter**. You see a sign-in window. Go on.
+8. In the sign-in window, sign in with your CAC. You see the console pane again. Wait until a line that starts with "Result" shows.
+9. Wait until the console pane stops. You see one or more lines that start with "Result". Write down each of these lines.
+10. In the chat, type each "Result" line that you wrote down. You see your message in the chat. The task is complete.
 
 ### Test 3: parallel downloads
 
