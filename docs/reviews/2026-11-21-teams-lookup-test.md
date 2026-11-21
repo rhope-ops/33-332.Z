@@ -5,7 +5,7 @@ The PAM approved this test in the question dialog of 2026-11-21. Goal: find out 
 ## What it does
 
 - Read-only. It signs in to your own team's site (the same CAC sign-in as Ion), asks that site's SharePoint for the site of the one group in the link (GroupSiteManager GetSiteStatus, a read), then signs out.
-- It accepts only a `https://usaf.dps.mil/teams/...` or `/sites/...` address, touches that one site and asks about one group: nothing is listed ("No reconnaissance"). It sends nothing outside DoD365: there is no Microsoft Graph call (commercial Graph is outside the data boundary; review of PR 38).
+- It accepts only a `usaf.dps.mil/sites/...` or `/teams/...` address (with or without `https://`; anything after the site name is cut off), touches that one site and asks about one group: nothing is listed ("No reconnaissance"). It sends nothing outside DoD365: there is no Microsoft Graph call (commercial Graph is outside the data boundary; review of PR 38).
 - It prints only one result line: "works", "works, but another address", "no answer", or "failed" with an error type name. It never prints an address, a name or an error message, so the line is safe to tell the agent.
 - If it hangs for more than a minute, press the red Stop button, close PowerShell ISE (this ends the sign-in), and report "hung".
 
@@ -13,17 +13,20 @@ The PAM approved this test in the question dialog of 2026-11-21. Goal: find out 
 
 1. Open Windows PowerShell ISE on the gov device.
 2. Copy the whole block below, paste it into the script pane, and press F5.
-3. Paste your team's site address when asked, then the same team's Teams link (in Teams: ... next to the team name > Copy link).
+3. Paste your team's site address when asked (answer 1), then the same team's Teams link (answer 2; in Teams: ... next to the team or channel name > Copy link). A team link and a channel link both work.
 4. Tell the agent the result line.
 
 ```powershell
 # Ion Teams-link lookup test: read-only, one site, one group. Prints one result line, never an address or a message.
-$site = (Read-Host 'Your team site address (https://usaf.dps.mil/teams/<team-site>)').Trim().TrimEnd('/')
+$typed = (Read-Host 'Your team site address (usaf.dps.mil/sites/<name> or /teams/<name>)').Trim().Trim('"')
+if ($typed -notmatch '^https?://') { $typed = 'https://' + $typed }
+# Only a DoD365 site is used (Data boundary rule); anything after the site name is cut off, as Ion does.
+$siteMatch = [regex]::Match($typed, '^https://usaf\.dps\.mil/(?::[a-z]:/r/)?((?:sites|teams)/[^/?#\s]+)')
+if (-not $siteMatch.Success) { Write-Host 'Answer 1 is not a DoD365 site address (usaf.dps.mil/sites/... or /teams/...): run the test again.'; return }
+$site = 'https://usaf.dps.mil/' + $siteMatch.Groups[1].Value
 $link = Read-Host "The same team's Teams link (in Teams: ... > Copy link)"
 $groupId = [regex]::Match($link, 'groupId=([0-9a-fA-F-]{36})').Groups[1].Value
-if (-not $groupId) { Write-Host 'No groupId in that link: copy the team link again.'; return }
-# Only a DoD365 team or site address is used: nothing goes to another host (Data boundary rule).
-if ($site -notmatch '^https://usaf\.dps\.mil/(sites|teams)/[^/]+$') { Write-Host 'Not a DoD365 site address: paste it again.'; return }
+if (-not $groupId) { Write-Host 'Answer 2 has no groupId: copy the team or channel link again (... > Copy link).'; return }
 try {
     Connect-PnPOnline -Url $site -UseWebLogin -WarningAction SilentlyContinue -ErrorAction Stop
     $answer = Invoke-PnPSPRestMethod -Method Post -Url '/_api/GroupSiteManager/GetSiteStatus' -Content @{ groupId = $groupId } -ErrorAction Stop
