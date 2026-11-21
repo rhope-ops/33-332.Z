@@ -10,7 +10,8 @@ turned into HTML and written into index.html between the generated-block marks
 "<!-- <<< site:NAME -->" (the kit's code standard C5 form). It also checks that the tool's breach text
 (src/Report.psm1, $script:BreachAdvice) says the README's breach section, word for word.
   intro      one paragraph                               -> the paragraph under the tool's name
-  key-facts  a table "| **Label:** | text |", then one line -> the aligned list of key facts, then that line
+  key-facts  an HTML table of rows <tr><td><b>Label:</b></td><td>text</td></tr> (no header row; the PAM, 2026-11-21),
+             then one line                                -> the aligned list of key facts, then that line
   looks-for  a table Type | Found when | Shown as | Confidence -> the table's rows (the first three columns)
   breach     the advice, a blank line, its citation      -> the breach note
 Inputs:  README.md, index.html, src/Report.psm1.
@@ -71,6 +72,11 @@ HARD_BREAK = r'.*(  |\\)$'
 # A quote mark at a line's start, and a GitHub alert line; both are taken off before a section is built (unquote).
 QUOTE_MARK = r'^>[ \t]?'
 ALERT_LINE = r'\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]'
+# The key-facts table: plain HTML, because a Markdown table always shows a header row and the PAM wants none
+# (2026-11-21). One row per line, the label bold and ending in ":"; cells hold plain text only (no tags, no Markdown).
+FACT_TABLE = r'<table>\n((?:<tr>.*</tr>\n)+)</table>(.*)'
+# No "&" either: in raw HTML a browser reads "&copy" as a symbol even without its ";", and the site would not.
+FACT_ROW = r'<tr><td><b>([^<>*`&]+:)</b></td><td>([^<>*`&]+)</td></tr>'
 # A table's delimiter row (GFM): cells of dashes with optional alignment colons.
 DELIMITER_ROW = r'\|(\s*:?-+:?\s*\|)+'
 # HTML indents inside the generated blocks, matching the hand-written page around them.
@@ -207,14 +213,25 @@ def build_key_facts(markdown):
     """Return the site's aligned key-facts list and the line after it.
 
     Args:
-        markdown: the key-facts section: a two-column table, a blank line, one closing line.
+        markdown: the key-facts section: an HTML table (FACT_TABLE, FACT_ROW), a blank line, one closing line.
     Returns:
         The HTML: a definition list (label, text) and a small paragraph.
+    Raises:
+        ValueError: when the table or a row has another form, or a cell holds more than plain text.
     """
-    head, rows, rest = table(markdown)
-    if len(head) != 2 or any(not re.fullmatch(r'\*\*[^\s*][^*]*:\*\*', row[0]) for row in rows):
-        raise ValueError(f'{README}: site:key-facts rows must be "| **Label:** | text |"')
-    items = ''.join(f'\n{INDENT_BLOCK}  <dt>{inline(row[0][2:-2])}</dt><dd>{inline(row[1])}</dd>' for row in rows)
+    match = re.fullmatch(FACT_TABLE, markdown, re.S)
+    lines = match.group(1).splitlines() if match else []
+    if not match or any(not re.fullmatch(FACT_ROW, line) for line in lines):
+        raise ValueError(f'{README}: site:key-facts must be <table>, then rows "<tr><td><b>Label:</b></td><td>text</td></tr>", '
+                         f'one per line, then </table>')
+    rest = match.group(2)
+    if rest.strip() and not rest.startswith('\n\n'):
+        raise ValueError(f'{README}: text after the site:key-facts table needs a blank line')
+    rows = [re.fullmatch(FACT_ROW, line).groups() for line in lines]
+    for cell in (cell for row in rows for cell in row):
+        refuse_marks(cell)
+    items = ''.join(f'\n{INDENT_BLOCK}  <dt>{html.escape(label.strip(), quote=False)}</dt>'
+                    f'<dd>{html.escape(text.strip(), quote=False)}</dd>' for label, text in rows)
     tail = ''.join(f'\n{INDENT_BLOCK}<p class="small mut">{inline(part)}</p>' for part in paragraphs(rest))
     return f'{INDENT_BLOCK}<dl class="facts">{items}\n{INDENT_BLOCK}</dl>{tail}'
 
@@ -328,7 +345,7 @@ def run(root, write):
 # The self-test's invented README, its tool text, and its cases: (label, README edit as (old, new) or None,
 # the words each finding must hold (none: the case must pass), and whether the case rebuilds the site first).
 TEST_README = ('<!-- site:intro -->\nA safe_tool & more.\n<!-- /site:intro -->\n'
-               '<!-- site:key-facts -->\n| Fact | |\n|---|---|\n| **Read-only:** | it changes `nothing`. |\n\nFirst line.\nAsk & learn.\n'
+               '<!-- site:key-facts -->\n<table>\n<tr><td><b>Read-only:</b></td><td>it changes nothing.</td></tr>\n</table>\n\nFirst line.\nAsk & learn.\n'
                '<!-- /site:key-facts -->\n'
                '<!-- site:looks-for -->\n| Type | Found when | Shown as | Confidence |\n|---|---|---|---|\n'
                '| SSN | 3-2-4 digits | `***-**-1234` | High |\n<!-- /site:looks-for -->\n'
@@ -341,7 +358,14 @@ TEST_CASES = (('a fresh build passes', None, None, [], True),
               ('a stale site fails', None, None, ['out of date'], False),
               ('a tool text that differs fails', None, ('now', 'later'), ['BreachAdvice differs'], True),
               ('a missing README section fails', ('<!-- site:intro -->', '<!-- site:gone -->'), None, ['no section'], True),
-              ('a key fact without a label fails', ('**Read-only:**', 'Read-only'), None, ['**Label:**'], True),
+              ('a key fact without a bold label fails', ('<b>Read-only:</b>', 'Read-only:'), None, ['<b>Label:</b>'], True),
+              ('a key fact with Markdown fails', ('changes nothing.', 'changes **nothing**.'), None, ['<b>Label:</b>'], True),
+              ('a key fact with "&" fails', ('changes nothing.', 'changes &copy nothing.'), None, ['<b>Label:</b>'], True),
+              ('text right after the key-facts table fails', ('</table>\n\nFirst line.', '</table>\nFirst line.'), None,
+               ['needs a blank line'], True),
+              ('a key fact with a link fails', ('changes nothing.', 'changes www.x.example'), None, [UNSUPPORTED_WORDS], True),
+              ('a key-facts table as Markdown fails', ('<table>\n<tr><td><b>Read-only:</b></td><td>it changes nothing.</td></tr>\n</table>',
+               '| | |\n|---|---|\n| **Read-only:** | it changes nothing. |'), None, ['<b>Label:</b>'], True),
               ('a renamed site column fails', ('| Shown as |', '| Shown |'), None, ['must start with the columns'], True),
               ('a row with a wrong cell count fails', ('| High |', '| High | extra |'), None, ['cells, its header'], True),
               ('unsupported Markdown fails', ('Report it now.', 'Report it *now*.'), None, [UNSUPPORTED_WORDS], True),
@@ -366,8 +390,8 @@ TEST_CASES = (('a fresh build passes', None, None, [], True),
                ('Report it now.\n\nRule para 1.', '> [!CAUTION]\n> Report it now.\n>\n> Rule para 1.'), None, [], True),
               ('a web address of another scheme fails', ('Rule para 1.', 'Rule para 1, see ftp://x.example'), None,
                [UNSUPPORTED_WORDS], True))
-# What the fresh build must write: an escaped "&", code kept, the Confidence column left out, two lines joined.
-TEST_BUILT = ('<dt>Read-only:</dt><dd>it changes <code>nothing</code>.</dd>', '<td>3-2-4 digits</td><td><code>***-**-1234</code></td></tr>',
+# What the fresh build must write: a key fact, code kept, the Confidence column left out, two lines joined, an escaped "&".
+TEST_BUILT = ('<dt>Read-only:</dt><dd>it changes nothing.</dd>', '<td>3-2-4 digits</td><td><code>***-**-1234</code></td></tr>',
               'First line. Ask &amp; learn.</p>')
 
 
