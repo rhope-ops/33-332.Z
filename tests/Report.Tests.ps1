@@ -164,3 +164,4 @@ Assert-Equal 'Encrypted (password or author limits)' (& $groupOf 'Encrypted (pas
 Assert-Equal 'PDF time limit reached (file may be fine)' (& $groupOf 'This PDF took longer than the time limit to read (2 minutes; the file may be fine): check by hand') 'Groups: the PDF time limit'
 Assert-Equal 'PDF parts not read (file may open fine)' (& $groupOf 'Part of this PDF is not well formed (the file may still open fine): check by hand') 'Groups: a PDF part not read'
 Assert-Equal 'Not a valid file (damaged or wrong name)' (& $groupOf 'Not a valid PDF (damaged, or another type with a .pdf name): check by hand') 'Groups: not a valid file'
+Assert-Equal 'Could not read (in use, damaged or protected)' (& $groupOf 'Could not read the file (in use, damaged or protected?): x') 'Groups: a file that could not be read is not called invalid'

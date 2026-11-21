@@ -32,9 +32,10 @@ $script:AnsiRunPattern = '[\x09\x0A\x0D\x20-\x7E]{6,}'
 $script:EncryptedStreamNames = @('EncryptedPackage', 'EncryptedSummary')
 
 # Names that only a file protected by rights management has (MS-OFFCRYPTO 2.2.11, IRM: a Microsoft Purview sensitivity
-# label with encryption uses it); a password-protected file has StrongEncryptionDataSpace instead (the PAM, 2026-11-21:
-# tell labels from passwords).
-$script:LabelStreamNames = @('DRMEncryptedDataSpace', 'DRMEncryptedTransform')
+# label with encryption uses it): DRMEncrypted* in a new-style file kept in OLE form, DRMDataSpace and DRMContent in an
+# old .doc/.xls/.ppt; a password-protected file has StrongEncryptionDataSpace instead (the PAM, 2026-11-21: tell
+# labels from passwords).
+$script:LabelStreamNames = @('DRMEncryptedDataSpace', 'DRMEncryptedTransform', 'DRMDataSpace', 'DRMContent')
 $script:LabelReason = 'Sensitivity label with encryption (Microsoft Purview): open it and check by hand'
 $script:PasswordReason = 'Encrypted (password-protected): check by hand'
 

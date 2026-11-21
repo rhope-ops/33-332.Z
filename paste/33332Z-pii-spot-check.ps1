@@ -21,7 +21,7 @@
     src/PiiDetectors.psm1, sha256 0c1ea11519a9
     src/PiiMasking.psm1, sha256 752c251a94b2
     src/OcrText.psm1, sha256 a39acab441d4
-    src/OleText.psm1, sha256 fc909b00dd5e
+    src/OleText.psm1, sha256 2f5d0a036e97
     src/ContainerText.psm1, sha256 7378569bd7e6
     src/PdfCore.psm1, sha256 2911c3a19ab3
     src/PdfObjects.psm1, sha256 085efef3e4fb
@@ -31,7 +31,7 @@
     src/TextExtract.psm1, sha256 5e02d07ddf10
     src/ReaderPool.psm1, sha256 8f8f73fda166
     src/XlsxWriter.psm1, sha256 0d8b1a3e1de1
-    src/Report.psm1, sha256 aae9cfcefa60
+    src/Report.psm1, sha256 fbda0ca47111
     src/ScanMeter.psm1, sha256 18c82f0b37c3
     src/ScanQueue.psm1, sha256 09fb4ac8713b
     src/Accountability.psm1, sha256 c83be234edd1
@@ -52,24 +52,24 @@
     line   619  Module PiiMasking.psm1
     line   819  Module OcrText.psm1
     line   972  Module OleText.psm1
-    line  1110  Module ContainerText.psm1
-    line  1449  Module PdfCore.psm1
-    line  1811  Module PdfObjects.psm1
-    line  2169  Module PdfFonts.psm1
-    line  2717  Module PdfLayout.psm1
-    line  2857  Module PdfText.psm1
-    line  3359  Module TextExtract.psm1
-    line  3777  Module ReaderPool.psm1
-    line  4029  Reader block end
-    line  4033  Module XlsxWriter.psm1
-    line  4340  Module Report.psm1
-    line  4899  Module ScanMeter.psm1
-    line  5296  Module ScanQueue.psm1
-    line  5654  Module Accountability.psm1
-    line  6032  Module ChannelScan.psm1
-    line  6628  Module DriveScan.psm1
-    line  6860  Body of Find-ChannelPII.ps1
-    line  7001  Clean-up
+    line  1111  Module ContainerText.psm1
+    line  1450  Module PdfCore.psm1
+    line  1812  Module PdfObjects.psm1
+    line  2170  Module PdfFonts.psm1
+    line  2718  Module PdfLayout.psm1
+    line  2858  Module PdfText.psm1
+    line  3360  Module TextExtract.psm1
+    line  3778  Module ReaderPool.psm1
+    line  4030  Reader block end
+    line  4034  Module XlsxWriter.psm1
+    line  4341  Module Report.psm1
+    line  4901  Module ScanMeter.psm1
+    line  5298  Module ScanQueue.psm1
+    line  5656  Module Accountability.psm1
+    line  6034  Module ChannelScan.psm1
+    line  6630  Module DriveScan.psm1
+    line  6862  Body of Find-ChannelPII.ps1
+    line  7003  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -1003,9 +1003,10 @@ $script:AnsiRunPattern = '[\x09\x0A\x0D\x20-\x7E]{6,}'
 $script:EncryptedStreamNames = @('EncryptedPackage', 'EncryptedSummary')
 
 # Names that only a file protected by rights management has (MS-OFFCRYPTO 2.2.11, IRM: a Microsoft Purview sensitivity
-# label with encryption uses it); a password-protected file has StrongEncryptionDataSpace instead (the PAM, 2026-11-21:
-# tell labels from passwords).
-$script:LabelStreamNames = @('DRMEncryptedDataSpace', 'DRMEncryptedTransform')
+# label with encryption uses it): DRMEncrypted* in a new-style file kept in OLE form, DRMDataSpace and DRMContent in an
+# old .doc/.xls/.ppt; a password-protected file has StrongEncryptionDataSpace instead (the PAM, 2026-11-21: tell
+# labels from passwords).
+$script:LabelStreamNames = @('DRMEncryptedDataSpace', 'DRMEncryptedTransform', 'DRMDataSpace', 'DRMContent')
 $script:LabelReason = 'Sensitivity label with encryption (Microsoft Purview): open it and check by hand'
 $script:PasswordReason = 'Encrypted (password-protected): check by hand'
 
@@ -4402,7 +4403,8 @@ $script:NotScannedGroups = [ordered]@{
     'longer than the time limit|longer than its time limit' = 'PDF time limit reached (file may be fine)'
     '^Part of this PDF is not well formed|^Part of this PDF could not be read' = 'PDF parts not read (file may open fine)'
     '^Part of this PDF' = 'PDF parts not unpacked'
-    '^Not a valid (Office file|PDF)|^Could not read' = 'Not a valid file (damaged or wrong name)'
+    '^Not a valid (Office file|PDF)' = 'Not a valid file (damaged or wrong name)'
+    '^Could not read' = 'Could not read (in use, damaged or protected)'
     'could not be fully read|^A font in this PDF|^Some characters in this PDF' = 'PDF fonts not fully readable'
     '^Files attached inside this PDF' = 'PDF attachments'
     '^Image: Windows OCR|^Scanned PDF: Image: Windows OCR' = 'Images: OCR not available'

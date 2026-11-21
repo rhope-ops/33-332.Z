@@ -37,3 +37,5 @@ $oleLocked = [byte[]]($oleHead + [System.Text.Encoding]::Unicode.GetBytes('Encry
 Assert-Equal $true ((Get-TextFromBytes -Bytes $oleLocked -FileName 'locked.xlsx').Reason -match '^Encrypted \(password') 'New Office in OLE form: a password named'
 $oleLabel = [byte[]]($oleHead + [System.Text.Encoding]::Unicode.GetBytes('DRMEncryptedDataSpace EncryptedPackage') + (New-Object byte[] 64))
 Assert-Equal $true ((Get-TextFromBytes -Bytes $oleLabel -FileName 'cui.docx').Reason -match '^Sensitivity label') 'New Office in OLE form: a sensitivity label named'
+$oldIrm = [byte[]]($oleHead + [System.Text.Encoding]::Unicode.GetBytes('DRMDataSpace DRMContent') + (New-Object byte[] 64))
+Assert-Equal $true ((Get-TextFromBytes -Bytes $oldIrm -FileName 'cui.doc').Reason -match '^Sensitivity label') 'Old Office with rights management: a sensitivity label named'
