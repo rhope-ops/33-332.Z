@@ -137,7 +137,11 @@ function Add-DriveListRows {
         $Rows.Add((New-ReportRow 'Scan' (Protect-PiiName $blocked.Folder) '(folder)' '' '' 'BLOCKED' '' '' $reason))
     }
     foreach ($link in $Found.FileLinks) {
-        $Rows.Add((New-ReportRow 'Scan' (Protect-PiiName $link) '(file link)' '' '' 'NOT SCANNED' '' '' $script:FileLinkReason))
+        $shown = Protect-PiiName $link
+        foreach ($hit in @(Find-PiiInText $link)) {   # PII in the link's own name, as for any file
+            $Rows.Add((New-ReportRow 'File name' $shown '(file link)' '' '' $hit.Detector $hit.Confidence $hit.MaskedValue 'In the file or folder name'))
+        }
+        $Rows.Add((New-ReportRow 'Scan' $shown '(file link)' '' '' 'NOT SCANNED' '' '' $script:FileLinkReason))
     }
     foreach ($link in $Found.Links) {
         $reason = 'A link to another folder is not followed (it can lead outside the folder): check by hand'

@@ -148,3 +148,7 @@ finally {
 $row = New-ReportRow 'File' 'Ops' 'a.txt' '' '' 'SSN' 'High' '***-**-0000' 'x'
 Set-RowAccountability @($row) (Get-DriveWho (Join-Path ([System.IO.Path]::GetTempPath()) 'no-such-file.txt') $null)
 Assert-Equal $true ($row.AddedBy -match '^Not recorded' -and $row.ModifiedBy -match '^Not recorded') 'Who: a drive file says what is not recorded'
+# A file link whose name holds PII: its name gets a hit row (masked), and it is still not read.
+$nameRows = New-Object System.Collections.Generic.List[object]
+& (Get-Module DriveScan) { param($r, $n) Add-DriveListRows @{ Blocked = @(); Links = @(); FileLinks = @("Ops/memo $n.txt") } $r } $nameRows $Sample.Ssn
+Assert-Equal 'SSN|NOT SCANNED' ((@($nameRows | ForEach-Object { $_.Detector }) | Sort-Object -Descending) -join '|') 'Drive: a file link named with PII gets a name hit and a NOT SCANNED row'

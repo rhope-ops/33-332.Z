@@ -36,7 +36,7 @@
     src/ScanQueue.psm1, sha256 1ec233b97fc7
     src/Accountability.psm1, sha256 6a1d334dbbe3
     src/ChannelScan.psm1, sha256 0a32b46dcc63
-    src/DriveScan.psm1, sha256 2d9c9820cfd1
+    src/DriveScan.psm1, sha256 1dad4613859d
     src/Find-ChannelPII.ps1, sha256 b2d6bfd7a72b
 
   Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.
@@ -68,8 +68,8 @@
     line  5131  Module Accountability.psm1
     line  5409  Module ChannelScan.psm1
     line  5964  Module DriveScan.psm1
-    line  6202  Body of Find-ChannelPII.ps1
-    line  6311  Clean-up
+    line  6206  Body of Find-ChannelPII.ps1
+    line  6315  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -6100,7 +6100,11 @@ function Add-DriveListRows {
         $Rows.Add((New-ReportRow 'Scan' (Protect-PiiName $blocked.Folder) '(folder)' '' '' 'BLOCKED' '' '' $reason))
     }
     foreach ($link in $Found.FileLinks) {
-        $Rows.Add((New-ReportRow 'Scan' (Protect-PiiName $link) '(file link)' '' '' 'NOT SCANNED' '' '' $script:FileLinkReason))
+        $shown = Protect-PiiName $link
+        foreach ($hit in @(Find-PiiInText $link)) {   # PII in the link's own name, as for any file
+            $Rows.Add((New-ReportRow 'File name' $shown '(file link)' '' '' $hit.Detector $hit.Confidence $hit.MaskedValue 'In the file or folder name'))
+        }
+        $Rows.Add((New-ReportRow 'Scan' $shown '(file link)' '' '' 'NOT SCANNED' '' '' $script:FileLinkReason))
     }
     foreach ($link in $Found.Links) {
         $reason = 'A link to another folder is not followed (it can lead outside the folder): check by hand'
