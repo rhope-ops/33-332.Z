@@ -13,7 +13,6 @@ Keep your eyes on the files in local, network, and cloud directories you can acc
 
 <!-- site:key-facts -->
 | | |
-|---|---|
 | **Universal:** | Ion scans every type of file in the chosen directory. |
 | **Access:** | uses your CAC sign-on to scan, and saves nothing between sessions. |
 | **Read-only:** | it makes no changes to anything it scans. |
