@@ -34,7 +34,7 @@
     src/Report.psm1, sha256 4c5c871cb5c5
     src/ScanMeter.psm1, sha256 2c2a5a750104
     src/ScanQueue.psm1, sha256 1ec233b97fc7
-    src/Accountability.psm1, sha256 6e4f5dcfac67
+    src/Accountability.psm1, sha256 6a1d334dbbe3
     src/ChannelScan.psm1, sha256 0a32b46dcc63
     src/DriveScan.psm1, sha256 27925138f3c7
     src/Find-ChannelPII.ps1, sha256 b2d6bfd7a72b
@@ -5292,7 +5292,7 @@ function Add-PutBackText {
     .PARAMETER Back
       Hit key -> the put-back texts (Add-PutBack).
     .PARAMETER Unsure
-      Hit keys removed and then not seen (a version not read): a put-back there cannot be named.
+      Hit keys with a version not read after they were first seen: a removal and put-back there cannot be named.
     .PARAMETER AllRead
       Whether every old version was read (else later ones were not checked).
     #>
@@ -5306,7 +5306,7 @@ function Add-PutBackText {
     }
     # Say what the history read cannot show, so "PII added by" never reads as complete when it is not (review).
     foreach ($key in @($ByHit.Keys | Where-Object { $ByHit[$_].AddedBy -ne $script:PartHistory })) {
-        if ($Unsure.ContainsKey($key)) { $ByHit[$key].AddedBy += '; it may have been put back again (a version could not be read)' }
+        if ($Unsure.ContainsKey($key)) { $ByHit[$key].AddedBy += '; it may have been removed and put back (a version could not be read)' }
         if (-not $AllRead) { $ByHit[$key].AddedBy += "; versions after the $script:MaxVersionsRead read were not checked" }
     }
 }
@@ -5350,13 +5350,13 @@ function Find-PiiAddedVersion {
     $keys = $open
     $present = @{}   # per hit: in the last version read ($true/$false), or not known after a version not read ($null)
     $back = @{}      # per hit: when it was put back after a version without it (the PAM, 2026-11-21)
-    $unsure = @{}    # per hit: removed, then a version not read: a put-back there cannot be named
+    $unsure = @{}    # per hit: a version not read after the hit was seen: a removal and put-back there cannot be named
     foreach ($version in $versions) {   # every version read (not only to the first with each hit): put-backs count too
         $text = Read-VersionText $version $context $Name
         if ($null -eq $text) {   # not read: later versions can neither be first nor a put-back for sure
             $complete = $false; $readFailed = $true
             foreach ($key in $keys) {
-                if ($present.ContainsKey($key) -and $present[$key] -eq $false) { $unsure[$key] = $true }   # removed, then not seen
+                if ($byHit.ContainsKey($key)) { $unsure[$key] = $true }   # seen before: it may be removed and put back in this one
                 $present[$key] = $null
             }
             continue

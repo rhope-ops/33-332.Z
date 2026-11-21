@@ -117,7 +117,17 @@ try {
     $versionList = @((New-FakeVersion ([datetime]'2026-01-01') 'orig.adder' $withSsn), (New-FakeVersion ([datetime]'2026-01-02') 'remover' $plain),
         $gapVersion, (New-FakeVersion ([datetime]'2026-01-04') 'back' $withSsn))
     $unsureBy = (Find-PiiAddedVersion '/sites/x/Shared Documents/a.txt' 'a.txt' $hits $who)[$hits[0].Detector + '|' + $hits[0].MaskedValue].AddedBy
-    Assert-Equal 'orig.adder; it may have been put back again (a version could not be read)' $unsureBy 'Who: a put-back next to an unread version is noted'
+    Assert-Equal 'orig.adder; it may have been removed and put back (a version could not be read)' $unsureBy 'Who: a put-back next to an unread version is noted'
+    # A version not read right after the first one with the SSN (a removal and put-back may hide in it): noted.
+    $hidden = New-FakeVersion ([datetime]'2026-01-02') 'unread' $plain
+    $hidden | Add-Member -MemberType ScriptMethod -Name OpenBinaryStream -Value { throw 'version not available' } -Force
+    $versionList = @((New-FakeVersion ([datetime]'2026-01-01') 'first.adder' $withSsn), $hidden, (New-FakeVersion ([datetime]'2026-01-03') 'back' $withSsn))
+    $hiddenBy = (Find-PiiAddedVersion '/sites/x/Shared Documents/a.txt' 'a.txt' $hits $who)[$hits[0].Detector + '|' + $hits[0].MaskedValue].AddedBy
+    Assert-Equal 'first.adder; it may have been removed and put back (a version could not be read)' $hiddenBy 'Who: an unread version after the first sighting is noted'
+    # Not seen before the unread version: no removal is known, so no put-back note.
+    $versionList = @((New-FakeVersion ([datetime]'2026-01-01') 'none' $plain), $hidden, (New-FakeVersion ([datetime]'2026-01-03') 'a3' $withSsn))
+    $laterBy = (Find-PiiAddedVersion '/sites/x/Shared Documents/a.txt' 'a.txt' $hits $who)[$hits[0].Detector + '|' + $hits[0].MaskedValue].AddedBy
+    Assert-Equal $false ($laterBy -match 'put back') 'Who: no put-back note for a hit first seen after an unread version'
     $versionList = @()
     $byHit = Find-PiiAddedVersion '/sites/x/Shared Documents/a.txt' 'a.txt' $hits $who
     Assert-Equal 'first.saver' $byHit[$hits[0].Detector + '|' + $hits[0].MaskedValue].AddedBy 'Who: with no older version, the maker added it'
