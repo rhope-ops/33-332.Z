@@ -31,7 +31,7 @@ Assert-Equal ('TeamA/' + (Get-Date -Format 'yyyy-MM-dd')) ((Split-Path (Split-Pa
 Assert-Equal $true ((Split-Path $path -Leaf) -match '^Ion Results \d\d-\d\d-\d\d\.xlsx$') 'Named Ion Results <time>.xlsx'
 $book = Get-XlsxSheets $path
 Assert-Equal 'Summary|SSN|Date of birth|Low confidence|Not scanned' (@($book.Keys) -join '|') 'Tabs: Summary, types worst first, Low, Not scanned'
-$hitHeader = 'Confidence|Channel|File|Masked value|Context|Modified|Link|Found in|Modified by|Created|Created by|PII added|PII added by'
+$hitHeader = 'Confidence|Channel|File|Masked value|Context|Modified|Link|Found in|Created|Created by|Modified by|PII added|PII added by'
 Assert-Equal $hitHeader ($book['SSN'][0] -join '|') 'Hit tab header, folder column named Channel for a team'
 Assert-Equal 'High|General|Roster.docx|***-**-6789' (($book['SSN'][1] | Select-Object -First 4) -join '|') 'SSN tab row'
 Assert-Equal 'Phone' $book['Low confidence'][1][0] 'Low hit in the Low confidence tab, with its type'

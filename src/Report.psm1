@@ -399,7 +399,7 @@ function Get-HitCells {
     # One row of a hit tab: the hit's cells in the order of $HitColumns.
     param($Hit)
     @($Hit.Confidence, $Hit.Channel, $Hit.Item, $Hit.MaskedValue, $Hit.Context, $Hit.Modified, $Hit.Link, $Hit.Source,
-        $Hit.ModifiedBy, $Hit.Created, $Hit.CreatedBy, $Hit.AddedOn, $Hit.AddedBy)
+        $Hit.Created, $Hit.CreatedBy, $Hit.ModifiedBy, $Hit.AddedOn, $Hit.AddedBy)
 }
 
 function Set-RowAccountability {
@@ -444,10 +444,11 @@ function Get-WorkbookSheets {
     #>
     param([object[]]$Rows, [int]$ItemsScanned, [System.Collections.IDictionary]$Header, [string]$FolderLabel)
     $hits = @($Rows | Where-Object { $script:Rank.ContainsKey($_.Confidence) })
-    # Accountability (the PAM, 2026-11-21): who changed and made the file, and who put the PII in and when (by e-mail).
+    # Accountability (the PAM, 2026-11-21): who made and changed the file, and who put the PII in and when (by e-mail).
+    # Created and Created by come before Modified by; Modified stays in its place (the PAM, 2026-11-21).
     $columns = @('Confidence', $FolderLabel, 'File', 'Masked value', 'Context', 'Modified', 'Link', 'Found in',
-        'Modified by', 'Created', 'Created by', 'PII added', 'PII added by')
-    $widths = @(11, 22, 45, 18, 60, 17, 50, 10, 30, 17, 30, 17, 30)
+        'Created', 'Created by', 'Modified by', 'PII added', 'PII added by')
+    $widths = @(11, 22, 45, 18, 60, 17, 50, 10, 17, 30, 30, 17, 30)
     $byRank = @{ Expression = { $script:Rank[$_.Confidence] }; Descending = $true }
     $sheets = New-Object System.Collections.Generic.List[object]
     $sheets.Add((New-XlsxSheet 'Summary' @($script:ToolTitle, '', '', '', '') (Get-SummaryRows $Rows $ItemsScanned $Header) @(28, 70, 9, 9, 9)))

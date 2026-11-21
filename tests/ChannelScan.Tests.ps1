@@ -138,7 +138,7 @@ $chunked = New-Object System.IO.MemoryStream(, [byte[]](1..200 | ForEach-Object 
 $copied = Copy-StreamWithProgress $chunked 200 'Downloading'
 Assert-Equal '200|200' ('{0}|{1}' -f $copied.Length, $copied[199]) 'Stream copy: all bytes, in order'
 Assert-Equal $true ($copied -is [byte[]]) 'Stream copy: a byte array, not unrolled'
-$largeFile = New-Object byte[] (2MB); [System.Text.Encoding]::UTF8.GetBytes('Call ' + $Sample.Phone).CopyTo($largeFile, 0)
+$largeFile = [byte[]](@(32) * 2MB); [System.Text.Encoding]::UTF8.GetBytes('Call ' + $Sample.Phone).CopyTo($largeFile, 0)   # 2 MB of spaces (NUL control characters would read as unreadable text)
 $channelScan = Get-Module ChannelScan
 $normalOpener = & $channelScan { $script:OpenDirectStream }
 # The fake stream opener: the file bytes, or (Short) fewer bytes than the list says, as a sign-in page would give.

@@ -331,6 +331,17 @@ $bullet = New-PdfBytes 'BT /F1 12 Tf <F0B70020004D> Tj ET' -Plain -ToUnicode 'be
 $bulletRead = Get-TextFromBytes -Bytes $bullet -FileName 'b.pdf'
 Assert-Equal "|$([char]0xB7) M" ($bulletRead.Note + '|' + $bulletRead.Text.Trim()) 'PDF: a Word bullet reads as a plain character, no note'
 
+# ---- Picture fonts (the PAM, 2026-11-21): Wingdings and the like read as spaces, so their symbols give no hits ----
+$digits = $Sample.Phone -replace '-', ' '
+$wingdings = New-PdfBytes "BT /F1 12 Tf ($digits) Tj ET" -Plain -FontDict '<< /Type /Font /Subtype /TrueType /BaseFont /ABCDEF+Wingdings-Regular >>'
+$wingRead = Get-TextFromBytes -Bytes $wingdings -FileName 'w.pdf'
+Assert-Equal '' $wingRead.Text.Trim() 'PDF: a Wingdings run reads as spaces'
+Assert-Equal 0 @(Find-PiiInText $wingRead.Text).Count 'PDF: a Wingdings run gives no hit'
+$symbolPdf = New-PdfBytes "BT /F1 12 Tf ($digits) Tj ET" -Plain -FontDict '<< /Type /Font /Subtype /Type1 /BaseFont /SymbolMT >>'
+Assert-Equal '' (Get-TextFromBytes -Bytes $symbolPdf -FileName 's.pdf').Text.Trim() 'PDF: a Symbol font run reads as spaces'
+$plainPdf = New-PdfBytes "BT /F1 12 Tf ($digits) Tj ET" -Plain -FontDict '<< /Type /Font /Subtype /Type1 /BaseFont /SymbolicSans >>'
+Assert-Equal $digits (Get-TextFromBytes -Bytes $plainPdf -FileName 'p.pdf').Text.Trim() 'PDF: a font name that only starts with Symbol is read'
+
 # ---- PDF review round 9 (2026-11-21): gaps decided per text block ----
 # Places text glyph by glyph as a PDF writer does: each move is the glyph's real Helvetica width at 12 pt plus the
 # letter spacing (in points).
