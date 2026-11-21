@@ -37,6 +37,10 @@ try {
     $found = Get-DriveGroups $driveRoot
     Assert-Equal 'Admin/pointer.txt' (@($found.FileLinks) -join '|').Replace('\', '/') 'Drive: a file link is listed, not read'
     Assert-Equal 'Admin=2|Ops=2|(top of the folder)=1' (@($found.Groups | ForEach-Object { $_.Name + '=' + $_.Files.Count }) -join '|') 'Drive: one group per top-level folder, then the top'
+    Set-FakeSiteAnswer -ScanAnswer 'no'
+    $declined = Invoke-DriveScan -Path $driveRoot -OutputFolder (Join-Path $driveOut 'declined') -MaxFileMB 25 -Init $null 6>$null
+    Assert-Equal $true ($null -eq $declined -and -not (Test-Path -LiteralPath (Join-Path $driveOut 'declined'))) 'Drive: "no" to "Scan now?" saves nothing'
+    Set-FakeSiteAnswer
     $book = Invoke-DriveScan -Path $driveRoot -OutputFolder $driveOut -MaxFileMB 25 -Init $null 6>$null
     Assert-Equal 'NOT SCANNED Phone SSN' (Get-WorkbookTypes $book) 'Drive: every planted type found'
     $linkRow = @((Get-XlsxSheets $book)['Not scanned'] | Where-Object { $_[3] -match '^A link to another file is not followed' })

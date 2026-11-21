@@ -1,10 +1,10 @@
 <#
 .SYNOPSIS
-  Find-ChannelPII.ps1 - Ion, DoD365 PII Reporter: read-only check of one Teams team or SharePoint site for possible PII.
+  Find-ChannelPII.ps1 - Ion, DoD365 PII Reporter: read-only check of one Teams team, SharePoint site or drive folder for possible PII.
 
 .DESCRIPTION
-  Scans the files of a team's or site's "Shared Documents" library: every folder (in a team, one per standard
-  channel) and the files at the top of the library. Two progress bars (the whole scan, and the file in work)
+  Scans the files of a team's or site's document libraries: every folder (in a team, one per standard channel) and
+  the files at the top of each library; or every file in one drive folder and its subfolders. Two progress bars (the whole scan, and the file in work)
   and one line per folder show the counts as it goes. At the end it shows the hits per PII type on screen and
   saves one Excel workbook: a Summary tab first, then one tab per PII type (worst first), Low confidence and
   Not scanned. Every value found is MASKED on screen and in the workbook.
@@ -22,8 +22,9 @@
   Policy:      Read-only; one site only (no network reconnaissance); file content stays in memory; values
                masked (the PAM, 2026-11-20). No script file is collected or sent: script types are not
                read and only their (masked) names appear in the report.
-  Not scanned: images, legacy .doc/.xls/.ppt, encrypted files, PDFs without text (reported as NOT SCANNED); channel posts; private and shared
-               channels (each has its own site: run again with that site's address); 1:1, group and meeting chats.
+  Not scanned: encrypted or password-protected files, script and other unread file types, files over -MaxFileMB, and
+               images where Windows OCR is not there (each a NOT SCANNED row with its reason); channel posts; private
+               and shared channels (each has its own site: run again with that site's address); 1:1, group and meeting chats.
 
 .PARAMETER SiteUrl
   The Teams link or the SharePoint site address.
@@ -110,13 +111,13 @@ function Invoke-SiteFiles {
     finally {
         if (-not $finished -and $progress.ContainsKey('Meter')) { $scanned = $progress.Meter.Read }   # stopped part way: the live count
         Add-IncompleteRow -Rows $rows -Finished $finished
-        $header = [ordered]@{ Site = $SiteUrl }
-        if (-not $listName) { $listName = $folderLabel + 's' }
-        $header[$listName] = ($selected | ForEach-Object { Protect-PiiName $_ }) -join ', '
-        $header['Run'] = Get-Date -Format 'yyyy-MM-dd HH:mm'
-        $header['Time used'] = '{0:00}:{1:00}' -f [int][Math]::Floor($clock.Elapsed.TotalMinutes), $clock.Elapsed.Seconds
-        foreach ($pair in (Get-ScanTiming).GetEnumerator()) { $header[$pair.Key] = $pair.Value }
-        try { $path = Publish-ScanReport -Rows $rows.ToArray() -ItemsScanned $scanned -Header $header -OutputFolder $OutputFolder -SiteUrl $SiteUrl -FolderLabel $folderLabel }
+        try {
+            if ($progress.ContainsKey('Declined') -and $progress.Declined) { Write-Ui 'Not scanned: nothing was saved.' 'Accent' }   # "No" to "Scan now?"
+            else {
+                $header = Get-SiteHeader $SiteUrl $listName $folderLabel $selected $clock.Elapsed
+                $path = Publish-ScanReport -Rows $rows.ToArray() -ItemsScanned $scanned -Header $header -OutputFolder $OutputFolder -SiteUrl $SiteUrl -FolderLabel $folderLabel
+            }
+        }
         finally {
             # Sign out even when the results could not be saved (for example, a folder that cannot be written).
             try { Disconnect-PnPOnline }
@@ -124,6 +125,33 @@ function Invoke-SiteFiles {
         }
     }
     return $path
+}
+
+function Get-SiteHeader {
+    <#
+    .SYNOPSIS
+      The top of a site scan's summary: the site, what was scanned (as Channels, Folders or Libraries), when, how long.
+    .PARAMETER SiteUrl
+      The site.
+    .PARAMETER ListName
+      The label of the scanned list ('Channels', 'Folders' or 'Libraries'); empty when the scan stopped before it.
+    .PARAMETER FolderLabel
+      'Channel', 'Folder' or 'Library / Folder' (the label when ListName is empty).
+    .PARAMETER Selected
+      The folders or libraries scanned.
+    .PARAMETER Used
+      The time the scan took.
+    .OUTPUTS
+      [System.Collections.Specialized.OrderedDictionary]
+    #>
+    param([string]$SiteUrl, [string]$ListName, [string]$FolderLabel, [string[]]$Selected, [TimeSpan]$Used)
+    if (-not $ListName) { $ListName = $FolderLabel + 's' }   # stopped before the libraries were read
+    $header = [ordered]@{ Site = $SiteUrl }
+    $header[$ListName] = ($Selected | ForEach-Object { Protect-PiiName $_ }) -join ', '
+    $header['Run'] = Get-Date -Format 'yyyy-MM-dd HH:mm'
+    $header['Time used'] = Format-Duration $Used
+    foreach ($pair in (Get-ScanTiming).GetEnumerator()) { $header[$pair.Key] = $pair.Value }
+    return $header
 }
 
 function Open-ScanResult {
