@@ -276,9 +276,9 @@ function Get-PdfShownRaw {
     #>
     param([string]$Token)
     $raw = $null
-    if ($Token[0] -eq '<' -and $script:ShownHex.TryGetValue($Token, [ref]$raw)) { return $raw }
+    if ($script:ShownHex.TryGetValue($Token, [ref]$raw)) { return $raw }
     $raw = ConvertFrom-PdfString $Token
-    if ($Token[0] -eq '<' -and $Token.Length -le 66) {
+    if ($Token.Length -le 66) {   # short hex and literal strings (a token decodes the same in every PDF)
         if ($script:ShownHex.Count -ge $script:MaxShownHex) { $script:ShownHex.Clear() }
         $script:ShownHex[$Token] = $raw
     }

@@ -410,3 +410,12 @@ Assert-Equal $true ($damaged.Status -eq 'NOT SCANNED' -or @(Find-PiiInText $dama
 # Text shown outside BT/ET (against the spec) is still read.
 $loose = Get-TextFromBytes -Bytes (New-PdfBytes "BT /F1 12 Tf (Roster) Tj ET 0 0 1 rg (SSN: $($Sample.Ssn)) Tj" -Plain) -FileName 'lo.pdf'
 Assert-Equal $true (@(Find-PiiInText $loose.Text | ForEach-Object { $_.Detector }) -contains 'SSN') 'PDF: text shown outside a text object is read'
+
+# ---- PDF review round 14 (2026-11-21) ----
+# Text after an ET inside an open TJ array (damaged) is still read, as before.
+$openArray = Get-TextFromBytes -Bytes (New-PdfBytes "BT /F1 12 Tf (Roster) Tj ET BT /F1 12 Tf [(Name) ET (SSN: $($Sample.Ssn))] TJ ET" -Plain) -FileName 'oa.pdf'
+Assert-Equal $true (@(Find-PiiInText $openArray.Text | ForEach-Object { $_.Detector }) -contains 'SSN') 'PDF: text after an ET inside an open array is read'
+# Short letter-spaced lines (3 letter gaps each) take the block's letter spacing: no spaces inside the words.
+$shortRuns = (Get-GlyphRun 'SSN:' 3.6) + ' 0 -14 Td ' + (Get-GlyphRun '1234' 3.6)
+$shortRead = Get-TextFromBytes -Bytes (New-PdfBytes "BT /F1 12 Tf $shortRuns ET" -Plain) -FileName 'sr.pdf'
+Assert-Equal $true ($shortRead.Text -match 'SSN:' -and $shortRead.Text -match '1234') 'PDF: short letter-spaced lines keep their words'

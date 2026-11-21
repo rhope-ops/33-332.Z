@@ -28,6 +28,16 @@ $script:PdfStringPattern = '\((?>[^()\\]+|\\[\s\S]|\((?<d>)|\)(?<-d>)){0,10000}(
 # The message of the error a string not read throws (Get-PdfText turns it into "part of this PDF could not be read").
 $script:PdfStringError = 'PDF string not read'
 
+# The escapes of a literal string (\n, \053, a line break ...) and how each is undone, built once: building a
+# PowerShell delegate per string cost about 450 microseconds (speed, 2026-11-21).
+$script:EscapePattern = New-Object System.Text.RegularExpressions.Regex('\\(?:[0-7]{1,3}|\r?\n|.)')
+$script:UndoEscape = [System.Text.RegularExpressions.MatchEvaluator] {
+    param($m)
+    $code = $m.Value.Substring(1)
+    if ($code -match '^[0-7]+$') { return [string][char]([Convert]::ToInt32($code, 8) -band 0xFF) }
+    switch -CaseSensitive ($code) { 'n' { "`n" } 'r' { "`r" } 't' { "`t" } 'b' { ' ' } 'f' { ' ' } default { $code.Trim("`r", "`n") } }
+}
+
 # An object stream (PDF 1.5) is unpacked only within these limits: its header of object numbers and offsets, and its
 # object count (real files hold a few hundred objects per stream). More gives a "check by hand" note.
 $script:MaxPackedHeader = 1MB
@@ -184,13 +194,9 @@ function ConvertFrom-PdfString {
             [char][Convert]::ToInt32($hex.Substring($i, 2), 16)
         })
     }
-    $undo = [System.Text.RegularExpressions.MatchEvaluator] {
-        param($m)
-        $code = $m.Value.Substring(1)
-        if ($code -match '^[0-7]+$') { return [string][char]([Convert]::ToInt32($code, 8) -band 0xFF) }
-        switch -CaseSensitive ($code) { 'n' { "`n" } 'r' { "`r" } 't' { "`t" } 'b' { ' ' } 'f' { ' ' } default { $code.Trim("`r", "`n") } }
-    }
-    return [regex]::Replace($Token.Substring(1, $Token.Length - 2), '\\(?:[0-7]{1,3}|\r?\n|.)', $undo)
+    $inner = $Token.Substring(1, $Token.Length - 2)
+    if ($inner.IndexOf([char]92) -lt 0) { return $inner }   # no escapes (most strings): as it is (speed)
+    return $script:EscapePattern.Replace($inner, $script:UndoEscape)
 }
 
 function ConvertFrom-PdfTextString {

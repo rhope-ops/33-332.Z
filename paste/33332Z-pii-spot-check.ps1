@@ -23,13 +23,13 @@
     src/OleText.psm1, sha256 0b1924bcf524
     src/ContainerText.psm1, sha256 12e3acaa974e
     src/PdfCore.psm1, sha256 da11bdba883c
-    src/PdfObjects.psm1, sha256 c5dc0f478de1
-    src/PdfFonts.psm1, sha256 af2a8ea37ea4
-    src/PdfText.psm1, sha256 392a85c300cf
+    src/PdfObjects.psm1, sha256 5ed1e4ab471c
+    src/PdfFonts.psm1, sha256 f34800d85a7f
+    src/PdfText.psm1, sha256 b76e2af725f1
     src/TextExtract.psm1, sha256 f27467e1e75a
     src/ReaderPool.psm1, sha256 0b40c1fe0897
     src/XlsxWriter.psm1, sha256 e29becdc6a65
-    src/Report.psm1, sha256 3d03734f62fd
+    src/Report.psm1, sha256 4c5c871cb5c5
     src/ScanMeter.psm1, sha256 2c2a5a750104
     src/ScanQueue.psm1, sha256 1ec233b97fc7
     src/Accountability.psm1, sha256 2cced6e1f2d1
@@ -53,20 +53,20 @@
     line  1034  Module ContainerText.psm1
     line  1274  Module PdfCore.psm1
     line  1633  Module PdfObjects.psm1
-    line  1979  Module PdfFonts.psm1
-    line  2353  Module PdfText.psm1
-    line  2899  Module TextExtract.psm1
-    line  3282  Module ReaderPool.psm1
-    line  3529  Reader block end
-    line  3533  Module XlsxWriter.psm1
-    line  3804  Module Report.psm1
-    line  4367  Module ScanMeter.psm1
-    line  4632  Module ScanQueue.psm1
-    line  4848  Module Accountability.psm1
-    line  5000  Module ChannelScan.psm1
-    line  5555  Module DriveScan.psm1
-    line  5785  Body of Find-ChannelPII.ps1
-    line  5894  Clean-up
+    line  1985  Module PdfFonts.psm1
+    line  2359  Module PdfText.psm1
+    line  2951  Module TextExtract.psm1
+    line  3334  Module ReaderPool.psm1
+    line  3581  Reader block end
+    line  3585  Module XlsxWriter.psm1
+    line  3856  Module Report.psm1
+    line  4419  Module ScanMeter.psm1
+    line  4684  Module ScanQueue.psm1
+    line  4900  Module Accountability.psm1
+    line  5052  Module ChannelScan.psm1
+    line  5607  Module DriveScan.psm1
+    line  5837  Body of Find-ChannelPII.ps1
+    line  5946  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -1660,6 +1660,16 @@ $script:PdfStringPattern = '\((?>[^()\\]+|\\[\s\S]|\((?<d>)|\)(?<-d>)){0,10000}(
 # The message of the error a string not read throws (Get-PdfText turns it into "part of this PDF could not be read").
 $script:PdfStringError = 'PDF string not read'
 
+# The escapes of a literal string (\n, \053, a line break ...) and how each is undone, built once: building a
+# PowerShell delegate per string cost about 450 microseconds (speed, 2026-11-21).
+$script:EscapePattern = New-Object System.Text.RegularExpressions.Regex('\\(?:[0-7]{1,3}|\r?\n|.)')
+$script:UndoEscape = [System.Text.RegularExpressions.MatchEvaluator] {
+    param($m)
+    $code = $m.Value.Substring(1)
+    if ($code -match '^[0-7]+$') { return [string][char]([Convert]::ToInt32($code, 8) -band 0xFF) }
+    switch -CaseSensitive ($code) { 'n' { "`n" } 'r' { "`r" } 't' { "`t" } 'b' { ' ' } 'f' { ' ' } default { $code.Trim("`r", "`n") } }
+}
+
 # An object stream (PDF 1.5) is unpacked only within these limits: its header of object numbers and offsets, and its
 # object count (real files hold a few hundred objects per stream). More gives a "check by hand" note.
 $script:MaxPackedHeader = 1MB
@@ -1816,13 +1826,9 @@ function ConvertFrom-PdfString {
             [char][Convert]::ToInt32($hex.Substring($i, 2), 16)
         })
     }
-    $undo = [System.Text.RegularExpressions.MatchEvaluator] {
-        param($m)
-        $code = $m.Value.Substring(1)
-        if ($code -match '^[0-7]+$') { return [string][char]([Convert]::ToInt32($code, 8) -band 0xFF) }
-        switch -CaseSensitive ($code) { 'n' { "`n" } 'r' { "`r" } 't' { "`t" } 'b' { ' ' } 'f' { ' ' } default { $code.Trim("`r", "`n") } }
-    }
-    return [regex]::Replace($Token.Substring(1, $Token.Length - 2), '\\(?:[0-7]{1,3}|\r?\n|.)', $undo)
+    $inner = $Token.Substring(1, $Token.Length - 2)
+    if ($inner.IndexOf([char]92) -lt 0) { return $inner }   # no escapes (most strings): as it is (speed)
+    return $script:EscapePattern.Replace($inner, $script:UndoEscape)
 }
 
 function ConvertFrom-PdfTextString {
@@ -2254,9 +2260,9 @@ function Get-PdfShownRaw {
     #>
     param([string]$Token)
     $raw = $null
-    if ($Token[0] -eq '<' -and $script:ShownHex.TryGetValue($Token, [ref]$raw)) { return $raw }
+    if ($script:ShownHex.TryGetValue($Token, [ref]$raw)) { return $raw }
     $raw = ConvertFrom-PdfString $Token
-    if ($Token[0] -eq '<' -and $Token.Length -le 66) {
+    if ($Token.Length -le 66) {   # short hex and literal strings (a token decodes the same in every PDF)
         if ($script:ShownHex.Count -ge $script:MaxShownHex) { $script:ShownHex.Clear() }
         $script:ShownHex[$Token] = $raw
     }
@@ -2388,6 +2394,13 @@ $script:MinSpacingGaps = 4
 $script:ColumnGapEms = 1.0
 
 # The operators that change the text (Invoke-PdfTextOperator); every other operator only drops its operands.
+# Tokens per Matches walk (Read-PdfTextObject): bounds the memory a walk holds.
+$script:WalkTokens = 5000
+# Entries one [ ] array may hold (a TJ line has tens to thousands); more makes the PDF NOT SCANNED.
+$script:MaxArrayItems = 100000
+# Entries of what a line showed before they are summed (Compress-PdfShown).
+$script:MaxShownItems = 1024
+
 $script:TextOperators = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
 foreach ($operator in @('Tf', 'Tc', 'Tw', 'Tz', 'TJ', 'Tj', "'", '"', 'Td', 'TD', 'T*', 'Tm', 'ET')) { [void]$script:TextOperators.Add($operator) }
 
@@ -2461,16 +2474,14 @@ function Read-PdfTextObject {
     #>
     param([string]$Content, [int]$Start, [hashtable]$State, [hashtable]$Fonts, $Tokens, $ImageEnd)
     $stack = New-Object System.Collections.Generic.List[object]
-    $array = $null
-    $count = 0
-    $next = $Start
-    $inImage = $false
-    # One Matches walk per stretch (a Match call per token costs about 40 times more in PowerShell; speed, 2026-11-21);
-    # after an inline image the walk starts again past its bytes.
+    $array = $null; $count = 0; $next = $Start; $inImage = $false
+    # One Matches walk per stretch (a Match call per token costs 40 times more; speed): it starts again past an inline
+    # image, and every $WalkTokens tokens, because a match list keeps every match it gave out (memory, review r14).
     $walk = $true
     while ($walk) {
-    $walk = $false
+    $walk = $false; $inWalk = 0
     foreach ($token in $Tokens.Matches($Content, $next)) {
+        if ((++$inWalk) -gt $script:WalkTokens) { $walk = $true; break }   # this token is found again from $next
         if ((++$count % 100) -eq 0) { Assert-PdfTime }
         $t = $token.Value
         if ($token.Index -gt $next -and $Content.IndexOf('(', $next, $token.Index - $next) -ge 0) { Assert-PdfGap $Content $next $token.Index }
@@ -2485,10 +2496,13 @@ function Read-PdfTextObject {
         if ($t -eq '[') { $array = New-Object System.Collections.Generic.List[string]; continue }
         if ($t -eq ']') { if ($null -ne $array) { $stack.Add($array) }; $array = $null; continue }
         if ($first -eq '(' -or $first -eq '<' -or $first -eq '/' -or ($first -ge '0' -and $first -le '9') -or $first -eq '-' -or $first -eq '+' -or $first -eq '.') {
-            if ($null -ne $array) { $array.Add($t) } else { $stack.Add($t) }
-            continue
+            if ($null -eq $array) { $stack.Add($t); continue }
+            # No real TJ array is this long: a hostile one would hold gigabytes, so the PDF is reported (r14).
+            if ($array.Count -ge $script:MaxArrayItems) { throw (New-Object System.FormatException (Get-PdfStringError)) }
+            $array.Add($t); continue
         }
         # Only text operators change the text; drawing operators just drop their operands.
+        if ($null -ne $array) { continue }   # an operator inside an open [ ] (damaged): the array goes on, as before
         if ($t -ceq 'Td') { Add-PdfMove $stack $State }   # the most common operator: straight to its handler (speed)
         elseif ($script:TextOperators.Contains($t)) { Invoke-PdfTextOperator $t $stack $State $Fonts }
         $stack.Clear()
@@ -2529,7 +2543,7 @@ function Invoke-PdfTextOperator {
         $raw = Get-PdfShownRaw $last
         $font = $State.Font
         if (-not ($font -and $font.TextCache -and $font.TextCache.TryGetValue($raw, [ref]$shown))) { $shown = Get-PdfShownText $raw $font }
-        $State.Shown.Add(@($raw, $shown, $State.Font, $State.Size, $State.CharSpace, $State.WordSpace, $State.Scale))
+        $State.Shown.Add(@($raw, $shown, $State.Font, $State.Size, $State.CharSpace, $State.WordSpace, $State.Scale)); Compress-PdfShown $State
         $State.LastLength = $shown.Length
         $State.Pieces.Add($shown)
     }
@@ -2576,6 +2590,21 @@ function Add-PdfMove {
     $State.Shown.Clear()
 }
 
+function Compress-PdfShown {
+    <#
+    .SYNOPSIS
+      Keeps the list of what a line showed short: past $MaxShownItems entries, they become their width (one
+      number), so a line of millions of strings cannot hold gigabytes (fresh review r14).
+    .PARAMETER State
+      The text state.
+    #>
+    param([hashtable]$State)
+    if ($State.Shown.Count -lt $script:MaxShownItems) { return }
+    $sum = Get-PdfAdvance $State
+    $State.Shown.Clear()
+    $State.Shown.Add([double]$sum)
+}
+
 function Get-PdfAdvance {
     <#
     .SYNOPSIS
@@ -2606,32 +2635,54 @@ function Get-PdfAdvance {
     return $sum
 }
 
-function Add-PdfLine {
+function Get-PdfSpacing {
     <#
     .SYNOPSIS
-      Writes one line of a text block: its strings, and a space for each gap wider than the line's letter spacing
-      plus $WordGapEms (the letter spacing: the median gap between two one-glyph pieces, when there are at least
-      $MinSpacingGaps and they are at least half of the line's gaps; else 0).
-    .PARAMETER Line
-      The line's pieces: strings, and gaps as @{ Gap; Single }.
-    .PARAMETER Out
-      The StringBuilder that receives the line.
+      The letter spacing of some text pieces: the median gap between two one-glyph pieces (line breaks are not
+      glyphs), with how many such gaps there are and how many gaps in all. Base is 0 unless there are at least
+      $MinSpacingGaps letter gaps and they are at least half of the gaps.
+    .PARAMETER Pieces
+      Strings, and gaps as @{ Gap; Single }.
+    .OUTPUTS
+      [hashtable] Base, Letters, Gaps.
     #>
-    param($Line, $Out)
+    param($Pieces)
     $letters = [System.Collections.Generic.List[double]]::new()
     $gaps = 0
-    for ($k = 0; $k -lt $Line.Count; $k++) {
+    for ($k = 0; $k -lt $Pieces.Count; $k++) {
         if (($k % 2000) -eq 1999) { Assert-PdfTime }
-        $piece = $Line[$k]
+        $piece = $Pieces[$k]
         if ($piece -isnot [hashtable]) { continue }
         $gaps++
-        $after = $null; if ($k + 1 -lt $Line.Count) { $after = $Line[$k + 1] }
-        if ($piece.Single -and $after -is [string] -and $after.Length -eq 1 -and $piece.Gap -lt $script:ColumnGapEms) { $letters.Add($piece.Gap) }
+        $after = $null; if ($k + 1 -lt $Pieces.Count) { $after = $Pieces[$k + 1] }
+        $glyph = $after -is [string] -and $after.Length -eq 1 -and $after -ne "`n"
+        if ($piece.Single -and $glyph -and $piece.Gap -lt $script:ColumnGapEms) { $letters.Add($piece.Gap) }
     }
     $base = 0.0
     if ($letters.Count -ge $script:MinSpacingGaps -and $letters.Count * 2 -ge $gaps) {
         $sorted = @($letters.ToArray() | Sort-Object); $base = [Math]::Max(0.0, $sorted[[int]($sorted.Count / 2)])
     }
+    return @{ Base = $base; Letters = $letters.Count; Gaps = $gaps }
+}
+
+function Add-PdfLine {
+    <#
+    .SYNOPSIS
+      Writes one line of a text block: its strings, and a space for each gap wider than its letter spacing plus
+      $WordGapEms. The letter spacing is the line's own (Get-PdfSpacing); a short line with only a few letter gaps
+      ("SSN:" spaced out) takes the block's, so it is not read as "S S N :"; a line without letter gaps has none, so
+      a spaced heading never joins the words below it (fresh reviews r12, r14).
+    .PARAMETER Line
+      The line's pieces: strings, and gaps as @{ Gap; Single }.
+    .PARAMETER Out
+      The StringBuilder that receives the line.
+    .PARAMETER BlockBase
+      The letter spacing of the whole block.
+    #>
+    param($Line, $Out, [double]$BlockBase)
+    $spacing = Get-PdfSpacing $Line
+    $base = $spacing.Base
+    if ($base -eq 0 -and $spacing.Letters -gt 0 -and $spacing.Letters * 2 -ge $spacing.Gaps) { $base = $BlockBase }
     $limit = $base + $script:WordGapEms
     $count = 0
     foreach ($piece in $Line) {
@@ -2662,13 +2713,14 @@ function Complete-PdfTextBlock {
     if (-not $gapped) { $text = -join $State.Pieces }   # no gaps (most blocks): the strings as they are (speed)
     else {
         $out = [System.Text.StringBuilder]::new()
+        $blockBase = (Get-PdfSpacing $State.Pieces).Base
         $line = [System.Collections.Generic.List[object]]::new()
         foreach ($piece in $State.Pieces) {
             if ((++$count % 2000) -eq 0) { Assert-PdfTime }
-            if ($piece -is [string] -and $piece.StartsWith("`n")) { Add-PdfLine $line $out; [void]$out.Append($piece); $line.Clear() }
+            if ($piece -is [string] -and $piece.StartsWith("`n")) { Add-PdfLine $line $out $blockBase; [void]$out.Append($piece); $line.Clear() }
             else { $line.Add($piece) }
         }
-        Add-PdfLine $line $out
+        Add-PdfLine $line $out $blockBase
         $text = $out.ToString()
     }
     # Microsoft symbol fonts map their characters to U+F020-U+F0FF (Word's bullet is U+F0B7): back to U+0020-U+00FF.
@@ -2733,7 +2785,7 @@ function Add-PdfArrayPieces {
             $raw = Get-PdfShownRaw $item
             $text = Get-PdfShownText $raw $State.Font
             $State.Pieces.Add($text)
-            $State.Shown.Add(@($raw, $text, $State.Font, $State.Size, $State.CharSpace, $State.WordSpace, $State.Scale))
+            $State.Shown.Add(@($raw, $text, $State.Font, $State.Size, $State.CharSpace, $State.WordSpace, $State.Scale)); Compress-PdfShown $State
             $State.LastLength = $text.Length
         }
         else {
@@ -3869,10 +3921,10 @@ $script:NotScannedGroups = [ordered]@{
 
 # What to do with PII found where it should not be: the breach steps of the rule source, AFI 33-332 para 3.1.2 as
 # changed by AFI33-332_DAFGM2026-01 (7 July 2026; edition: docs/DECISIONS.md).
-# The wording is the same on the site page (the PAM, 2026-11-20).
+# The wording is the README's "If it finds PII" section; scripts/build_site.py --check fails when they differ (the PAM, 2026-11-20).
 $script:BreachAdvice = 'PII where it should not be is a potential or actual breach; report it to your servicing Privacy ' +
-                       'Manager/Monitor without delay (AFI 33-332 para 3.1.2, as changed by AFI33-332_DAFGM2026-01, page 1, ' +
-                       'second paragraph).'
+                       'Manager/Monitor without delay (AFI 33-332 para 3.1.2, as changed by AFI33-332_DAFGM2026-01 (7 July 2026), ' +
+                       'page 1, second paragraph).'
 
 # =====================================================================================
 # Rows and summary

@@ -1,66 +1,29 @@
-# 33-332.Z · Privacy Act Management
+![33-332.Z: Privacy Act Management](https://repository-images.githubusercontent.com/1465745904/63428ac3-60d0-44c2-be58-475984d11817)
 
-<!-- This top part mirrors the site page (index.html), for networks that block github.io (the PAM, 2026-11-21).
-     Change both together. -->
+# Ion: DoD365 PII Reporter
 
-## Ion · DoD365 PII Reporter
+<!-- site:intro -->
+Keep your eyes on the files in local, network, and cloud directories you can access. Ion checks them for Personally Identifiable Information (PII) and gives you a comprehensive report: an Excel workbook that summarizes and categorizes its findings. It only reads, and every value it finds is masked.
+<!-- /site:intro -->
 
-Keep your eyes on the files in one Teams team or SharePoint site you can access. Ion checks them for Personally Identifiable Information (PII) and gives you a comprehensive report: an Excel workbook that summarizes and categorizes its findings. It only reads, and every value it finds is masked.
+A read-only PowerShell script that a **member** runs to find files that may hold PII in one Microsoft Teams team or SharePoint site. It uses only your own access: owner rights are not needed, and a private or shared channel is scanned only if you are in it. It scans every folder of the site's Documents library (in a team, one folder per standard channel) and the files at its top, with two progress bars (the whole scan, and the file in work) and live counts. At the end it shows the hits per PII type on screen and saves one Excel workbook: a Summary tab first, then one tab per PII type, worst first. **Every found value is masked** (for example `***-**-1234`), so the results are not a PII spill themselves.
 
-### Key Facts
+> This is a spot check, not a compliance control. The standard tool for PII in Teams is **Microsoft Purview** (DLP policies and Content Search), run by your wing's privacy or cybersecurity office.
 
-| | |
+## Key facts
+
+<!-- site:key-facts -->
+| Fact | |
 |---|---|
-| **Universal:** | Ion scans **everything** it can access. |
+| **Universal:** | Ion scans every type of file in the chosen directory. |
 | **Your access:** | uses your CAC sign-on to scan, and saves nothing between sessions. |
-| **Read-only:** | it makes no changes to your Teams or SharePoint content. |
+| **Read-only:** | it makes no changes to anything it scans. |
 | **Data boundary:** | nothing leaves DoD365; the export is saved to your computer. |
 | **Verifiable:** | inspect the commented code yourself within a .txt before execution. |
 | **Accessible:** | paste and run via ISE; no download, no admin rights, no policy change. |
 
 Have concerns? Speak with your WCO.
-
-### Get the script
-
-| | |
-|---|---|
-| **[Copy the script](https://github.com/rhope-ops/33-332.Z/blob/main/paste/33332Z-pii-spot-check.ps1)** | Opens the script on GitHub. Press **Copy raw file** (the copy icon at the top right of the file), then in PowerShell ISE: **File > New**, **Ctrl+V**, **F5**. |
-| **[Open the script as .txt](https://raw.githubusercontent.com/rhope-ops/33-332.Z/main/paste/33332Z-pii-spot-check.ps1)** | Opens the script as plain text in your browser, to read it before you run it. **Ctrl+S** saves it as a .txt file. |
-
-The steps to run it are at the top of the script. If one link is blocked on your network, try the other.
-
-### How it works
-
-Sign in → Read files in memory → Find PII → **Mask it** → Report
-
-### What it looks for
-
-| Type | Found when | Shown as |
-|---|---|---|
-| SSN | 3-2-4 digits the SSA could issue | `***-**-1234` |
-| DoD ID | 10 digits after "DoD ID", "EDIPI" or "CAC" | `******7890` |
-| Date of birth | A date after "DOB" or "born" | `[date masked]` |
-| Payment card | 13 to 19 digits with a card network's prefix that pass the card check | `************1111` |
-| Passport | Letters and digits after "passport" | `*****567` |
-| Phone | A US 10-digit number | `***-***-0142` |
-| Personal e-mail | Any address not ending in .gov or .mil (Gmail, Yahoo and the like rank higher) | `***@domain` |
-| Home address | Number, street name and street type | `[address masked]` |
-| Name | After "Name:", "Spouse:", "NOK:" and similar | Initials |
-
-Not read: encrypted files, files over 25 MB, and images when Windows has no OCR language (each is listed in the workbook, to check by hand), and channel posts and chats (not checked at all).
-
-### If it finds PII
-
-> PII where it should not be is a potential or actual breach; report it to your servicing Privacy Manager/Monitor without delay.
-> <sub>AFI 33-332 para 3.1.2, as changed by AFI33-332_DAFGM2026-01, page 1, second paragraph.</sub>
-
----
-
-# Details
-
-A read-only PowerShell script that a **member** runs to find files that may hold PII in one Microsoft Teams team or SharePoint site. It uses only your own access: owner rights are not needed, and a private or shared channel is scanned only if you are in it. It scans every visible document library of the one site you give (in a team, the Documents library with one folder per standard channel), every folder and the files at each library's top, with two progress bars (the whole scan, and the file in work) and live counts. At the end it shows the hits per PII type on screen and saves one Excel workbook: a Summary tab first, then one tab per PII type, worst first. **Every found value is masked** (for example `***-**-1234`), so the results are not a PII spill themselves.
-
-> This is a spot check, not a compliance control. The standard tool for PII in Teams is **Microsoft Purview** (DLP policies and Content Search), run by your wing's privacy or cybersecurity office.
+<!-- /site:key-facts -->
 
 ## What it scans
 
@@ -81,18 +44,20 @@ A read-only PowerShell script that a **member** runs to find files that may hold
 
 ## Detection rules and confidence
 
-| Type | Rule | Confidence |
-|---|---|---|
-| SSN | 3-2-4 digits, valid by SSA issuing rules | High with "SSN"/"SSAN"/"social security" near; Medium with dashes; Low for 9 bare digits |
-| DoD ID (EDIPI) | 10 digits with "DoD ID", "DODID", "EDIPI" or "CAC" near | High |
-| Date of birth | A date with "DOB", "date of birth" or "born" near | High |
-| Payment card | 13–19 digits passing the Luhn check | High with "card"/"GTC"/"Visa" etc. near; else Medium |
-| Passport | 6–9 letters/digits with "passport" near | Medium |
-| Phone | US 10-digit number | Medium with "cell"/"mobile"/"home"/"personal" near; else Low |
-| Personal e-mail | Any address not ending in .gov or .mil | Medium |
-| Home address | House number + street name + street type (St, Ave, Rd ...), optional city, state, ZIP | High with "home address"/"residence" near; Medium with state + ZIP; Low for a street only |
-| Name | A name after a label: Name:, Full name:, Member:, Spouse:, Dependent:, NOK:, POC: | High when an SSN, DoD ID, date of birth, passport or card number is near; else Low |
-| PII in a file or folder name | Any of the above in the path | As above; reported with Source "File name" |
+<!-- site:looks-for -->
+| Type | Found when | Shown as | Confidence |
+|---|---|---|---|
+| SSN | 3-2-4 digits the SSA could issue | `***-**-1234` | High with "SSN"/"SSAN"/"social security" near; Medium with dashes; Low for 9 bare digits |
+| DoD ID | 10 digits after "DoD ID", "DODID", "EDIPI" or "CAC" | `******7890` | High |
+| Date of birth | A date after "DOB", "date of birth" or "born" | `[date masked]` | High |
+| Payment card | 13 to 19 digits with a card network's prefix that pass the card check | `************1111` | High with "card"/"GTC"/"Visa" etc. near; else Medium |
+| Passport | 6 to 9 letters and digits after "passport" | `*****567` | Medium |
+| Phone | A US 10-digit number | `***-***-0142` | Medium with "cell"/"mobile"/"home"/"personal" near; else Low |
+| Personal e-mail | Any address not ending in .gov or .mil (Gmail, Yahoo and the like rank higher) | `***@domain` | Medium at a personal provider; else Low |
+| Home address | Number, street name and street type (St, Ave, Rd ...) | `[address masked]` | High with "home address"/"residence" near; Medium with state + ZIP; Low for a street only |
+| Name | After "Name:", "Full name:", "Member:", "Spouse:", "Dependent:", "NOK:" or "POC:" | Initials | High when an SSN, DoD ID, date of birth, passport or card number is near; else Low |
+| PII in a file or folder name | Any of the above in the path | As above | As above |
+<!-- /site:looks-for -->
 
 Confidence is a pattern guess. Open each item and check it before you act. A name **without** a label is not detected: that would need a list of real names.
 
@@ -139,7 +104,14 @@ Optional settings at the top of the paste text (edit them in ISE before F5):
 - **No formulas:** every text cell of the workbook is plain text, so text from a scanned file cannot run as a formula in Excel. The site folder name is masked like any other name.
 - **Stops cleanly:** if something fails part way or you press Ctrl+C, the workbook is still saved and says INCOMPLETE; the script signs out even if it cannot be saved.
 - **Handle the workbook as CUI anyway:** file names and masked fragments still point to where PII is.
-- PII where it should not be is a potential or actual breach; report it to your servicing Privacy Manager/Monitor without delay (AFI 33-332 para 3.1.2, as changed by AFI33-332_DAFGM2026-01, 7 July 2026, page 1, second paragraph).
+
+## If it finds PII
+
+<!-- site:breach -->
+PII where it should not be is a potential or actual breach; report it to your servicing Privacy Manager/Monitor without delay.
+
+AFI 33-332 para 3.1.2, as changed by AFI33-332_DAFGM2026-01 (7 July 2026), page 1, second paragraph.
+<!-- /site:breach -->
 
 ## Files
 
@@ -161,6 +133,8 @@ Each file starts with a header: purpose, inputs, outputs, how to run, run target
 | `tests/Lint.ps1` | Windows PowerShell 5.1 syntax check (PSScriptAnalyzer) |
 | `paste/33332Z-pii-spot-check.ps1` | GENERATED: the one text you paste into ISE (the run steps, then a Settings block, the seven modules and the script) |
 | `scripts/build_paste.py` | Builds the paste text from `src/`; `--check` fails when it is out of date |
+| `index.html` | The site page (GitHub Pages). Its intro, key facts, "What it looks for" rows and breach note are GENERATED from this README's marked sections (`<!-- site:NAME -->`) |
+| `scripts/build_site.py` | Writes those marked README sections into `index.html`; `--check` fails when the site, or the tool's breach text in `src/Report.psm1`, differs from this README |
 | `ref/afi33-332.pdf`, `ref/afi33-332.txt` | The rule source: AFI 33-332 with AFI33-332_DAFGM2026-01 (edition: docs/DECISIONS.md) |
 
 ## Standards and policy it follows
@@ -186,6 +160,12 @@ Pass = last line `CHECK PASS`. It runs the kit checks, the content check and `sc
 
 ```bash
 python3 scripts/build_paste.py
+```
+
+The README is the source of truth for what the site says. Change a marked section here, then rebuild the site:
+
+```bash
+python3 scripts/build_site.py --write
 ```
 
 On pull requests, the `checks` job runs the same, and the `ps51` job runs the tests on Windows PowerShell 5.1. PSScriptAnalyzerSettings.psd1 says which style rules are off and why. Test data is invented; PII-shaped samples are built from parts at run time, so no complete PII-shaped string is stored in this public repo.

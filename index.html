@@ -7,36 +7,26 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <meta name="description" content="33-332.Z, Privacy Act Management: simple tools to help you protect PII.">
 <style>
-/* Layout: the 90-161.Z header band (logo, name and subtitle left, Core right), then one narrow column with the tool. */
+/* Layout: the 90-161.Z header band (logo, name and subtitle left, Core right), then one narrow column with the tool card drawn as the disc. */
+/* Fulcrum Minimal, kit 6.2.0 (archimedes_lever docs/brand/fulcrum.json): five Logo Studies colours and the roles built from them. */
 :root{
-  /* FULCRUM palette (Logo Studies): ink, cream, ember, slate, gold. Nothing else. */
   --ink:#15171D; --cream:#F3EEE4; --ember:#E4572E; --slate:#5A5E6A; --gold:#D4AF37;
-  --bg:#F6F2EA; --card:#FFFDF8; --fg:#15171D; --mut:#555963; --line:#DED6C8;
-  --link:#A63A16; --link-hover:#7E2A0E;
-  --btn:#15171D; --btn-fg:#F3EEE4; --btn-hover:#2A2D36;
-  --hl:#FBEADF; --code:#EFE9DD; --err:#A3241A; --focus:#E4572E;
-  --field:#7E796D;   /* the outlined button's border: 3.9:1 on the page (WCAG 1.4.11 asks 3:1) */
-  --band:#15171D; --band-fg:#F3EEE4; --band-mist:#C9C3B8;
+  --bg:#F3EEE4; --card:#15171D; --ring:#F3EEE4; --fg:#15171D; --mut:#5A5E6A; --line:#DED6C8;
+  --link:#A63A16; --link-hover:#15171D; --err:#A3241A; --focus:#E4572E; --field:#5A5E6A; --hl:transparent;
+  --btn:#E4572E; --btn-fg:#15171D; --btn-hover:#F2916F;
+  --band:#15171D; --band-fg:#F3EEE4; --band-mist:#A9ACB5;
   --display:"Bahnschrift","Segoe UI Semibold","Segoe UI",system-ui,sans-serif;
   --text:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
   --mono:"Cascadia Mono","Consolas","SFMono-Regular",Menlo,monospace;
+  color-scheme:light;
 }
-/* Dark theme: the same tokens with dark values; set by the system setting, or by data-theme="dark" (next block). */
+/* Dark theme: the page is ink and the disc a step lighter, with a slate ring. */
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --bg:#111318; --card:#1A1D24; --fg:#F3EEE4; --mut:#B5B0A6; --line:#30343D;
-  --link:#F2916F; --link-hover:#F7B39A;
-  --btn:#E4572E; --btn-fg:#15171D; --btn-hover:#F07A55;
-  --hl:#2E211C; --code:#22252D; --err:#F49B91; --focus:#F2916F; --field:#8A8578;
-  --band:#0C0D11; --band-mist:#B5B0A6; color-scheme:dark}}
+  --bg:#15171D; --card:#1C1F27; --ring:#5A5E6A; --fg:#F3EEE4; --mut:#A9ACB5; --line:#30343D;
+  --link:#F2916F; --link-hover:#F3EEE4; --err:#F49B91; --focus:#F2916F; --field:#A9ACB5; color-scheme:dark}}
 :root[data-theme="dark"]{
-  --bg:#111318; --card:#1A1D24; --fg:#F3EEE4; --mut:#B5B0A6; --line:#30343D;
-  --link:#F2916F; --link-hover:#F7B39A;
-  --btn:#E4572E; --btn-fg:#15171D; --btn-hover:#F07A55;
-  --hl:#2E211C; --code:#22252D; --err:#F49B91; --focus:#F2916F; --field:#8A8578;
-  --band:#0C0D11; --band-mist:#B5B0A6; color-scheme:dark}
-/* More contrast (a Windows or browser setting): darker grey text and lines. */
-@media (prefers-contrast:more){:root{--mut:#33363D;--line:#7A7466}}
-
+  --bg:#15171D; --card:#1C1F27; --ring:#5A5E6A; --fg:#F3EEE4; --mut:#A9ACB5; --line:#30343D;
+  --link:#F2916F; --link-hover:#F3EEE4; --err:#F49B91; --focus:#F2916F; --field:#A9ACB5; color-scheme:dark}
 /* Base: page, links, focus ring, type, the centred column with its safe side gutter. */
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 var(--text)}
@@ -59,7 +49,14 @@ code,pre{font-family:var(--mono);font-size:.9em}
 
 /* The tool card and its sections. */
 main{padding-block:32px 48px}
-.tool{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:26px;display:flex;flex-direction:column;gap:26px}
+.tool{--fg:#F3EEE4;--mut:#A9ACB5;--line:#30343D;--link:#F2916F;--link-hover:#F3EEE4;--err:#F49B91;--field:#A9ACB5;--bg:var(--card);--focus:#F2916F;
+  color:var(--fg);color-scheme:dark;background:var(--card);border-radius:14px;padding:28px;display:flex;flex-direction:column;gap:26px;
+  box-shadow:inset 0 0 0 5px var(--card),inset 0 0 0 6px var(--ring)}   /* the disc and its ring, as the logo */
+.tool a{color:var(--link)}
+/* Sections are split by the marks' dotted line (round dots), and each heading stands on the ember fulcrum. */
+.tool > section + section{padding-top:22px;background:radial-gradient(circle,var(--slate) 1.5px,transparent 1.7px) 0 0/10px 4px repeat-x}
+.tool h3{display:flex;align-items:center;gap:8px}
+.tool h3::before{content:"";flex:none;width:12px;height:10px;background:var(--ember);clip-path:polygon(50% 0,100% 100%,0 100%)}
 .tool > header{display:flex;flex-direction:column;gap:8px}
 .tool h2{font-size:1.5rem}
 .tool h2 .sub2{display:block;font-size:.95rem;font-weight:600;color:var(--mut);margin-top:4px}   /* the subtitle under the name */
@@ -68,10 +65,11 @@ main{padding-block:32px 48px}
 .mut{color:var(--mut)}
 .small{font-size:.875rem}
 ul.plain{margin:0;padding-left:1.15em;display:flex;flex-direction:column;gap:4px}
-/* Key Facts: labels in one column, every value starting at the same indent (the PAM, 2026-11-20) */
+/* Key facts: each label in one column, its text aligned in the next (the PAM, 2026-11-20); one column on narrow phones. */
 .facts{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;margin:0}
 .facts dt{font-weight:600}
-.facts dd{margin:0}
+.facts dd{margin:0;min-width:0}
+@media (max-width:420px){.facts{grid-template-columns:1fr;gap:0}.facts dd{margin-bottom:8px}}
 
 /* The two buttons and the status line. */
 .go{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
@@ -81,7 +79,7 @@ ul.plain{margin:0;padding-left:1.15em;display:flex;flex-direction:column;gap:4px
 .btn svg{width:18px;height:18px}
 /* The second button: outlined, so "Copy the script" stays the main action. */
 .btn.ghost{background:transparent;color:var(--fg);border:1px solid var(--field)}
-.btn.ghost:hover{background:var(--hl)}
+.btn.ghost:hover{border-color:var(--fg)}
 .status{font-size:.9rem}
 .status.ok{color:var(--fg);font-weight:600}
 .status.err{color:var(--err)}
@@ -102,15 +100,19 @@ tr:last-child td{border-bottom:0}
 /* If it finds PII: the breach note. */
 .note{padding:12px 14px;border-left:3px solid var(--ember);background:var(--hl);border-radius:0 6px 6px 0;font-size:.95rem}
 
+/* More contrast (a Windows or browser setting): stronger grey text and lines inside the disc and in the band
+   (after the .tool rule, so it wins): lines 4.9:1 or more and grey text 11:1 or more on both disc colours.
+   The ring is raised only in the dark theme (slate 2.5:1 to 5.0:1); the light theme's cream ring is already 15.5:1. */
+@media (prefers-contrast:more){.tool{--mut:#D8D4CC;--line:#8A8D96}:root{--band-mist:#D8D4CC}:root[data-theme="dark"]{--ring:#8A8D96}}
+@media (prefers-contrast:more) and (prefers-color-scheme:dark){:root:not([data-theme="light"]){--ring:#8A8D96}}
 /* Phones: a smaller card padding and logos. */
 @media (max-width:640px){
-  .facts{grid-template-columns:1fr;gap:0}.facts dd{margin-bottom:8px}
   .tool{padding:18px}
   .logo{width:48px;height:48px}
 }
 /* Motion only when the person has not asked for less; Windows contrast themes keep the logo colours. */
 @media (prefers-reduced-motion:no-preference){.btn{transition:background-color .15s,border-color .15s}}
-@media (forced-colors:active){.logo{forced-color-adjust:none}.band{border-bottom-color:CanvasText}}
+@media (forced-colors:active){.logo{forced-color-adjust:none}.band{border-bottom-color:CanvasText}.tool{box-shadow:none;border:1px solid CanvasText}}
 </style>
 </head>
 <body>
@@ -133,20 +135,24 @@ tr:last-child td{border-bottom:0}
     <article class="tool" aria-labelledby="t1">
       <header>
         <h2 id="t1">Ion <span class="sub2">DoD365 PII Reporter</span></h2>
-        <p>Keep your eyes on the files in one Teams team or SharePoint site you can access. Ion checks them for Personally Identifiable Information (PII) and gives you a comprehensive report: an Excel workbook that summarizes and categorizes its findings. It only reads, and every value it finds is masked.</p>
+        <!-- >>> site:intro: generated from README.md by scripts/build_site.py --write (do not edit) -->
+        <p>Keep your eyes on the files in local, network, and cloud directories you can access. Ion checks them for Personally Identifiable Information (PII) and gives you a comprehensive report: an Excel workbook that summarizes and categorizes its findings. It only reads, and every value it finds is masked.</p>
+        <!-- <<< site:intro -->
       </header>
 
       <section aria-labelledby="h-ok">
         <h3 id="h-ok">Key Facts</h3>
+        <!-- >>> site:key-facts: generated from README.md by scripts/build_site.py --write (do not edit) -->
         <dl class="facts">
-          <dt>Universal:</dt><dd>Ion scans <strong>everything</strong> it can access.</dd>
+          <dt>Universal:</dt><dd>Ion scans every type of file in the chosen directory.</dd>
           <dt>Your access:</dt><dd>uses your CAC sign-on to scan, and saves nothing between sessions.</dd>
-          <dt>Read-only:</dt><dd>it makes no changes to your Teams or SharePoint content.</dd>
+          <dt>Read-only:</dt><dd>it makes no changes to anything it scans.</dd>
           <dt>Data boundary:</dt><dd>nothing leaves DoD365; the export is saved to your computer.</dd>
           <dt>Verifiable:</dt><dd>inspect the commented code yourself within a .txt before execution.</dd>
           <dt>Accessible:</dt><dd>paste and run via ISE; no download, no admin rights, no policy change.</dd>
         </dl>
         <p class="small mut">Have concerns? Speak with your WCO.</p>
+        <!-- <<< site:key-facts -->
       </section>
 
       <section aria-label="Get the script">
@@ -168,24 +174,28 @@ tr:last-child td{border-bottom:0}
           <div class="tbl"><table>
             <thead><tr><th scope="col">Type</th><th scope="col">Found when</th><th scope="col">Shown as</th></tr></thead>
             <tbody>
+              <!-- >>> site:looks-for: generated from README.md by scripts/build_site.py --write (do not edit) -->
               <tr><td>SSN</td><td>3-2-4 digits the SSA could issue</td><td><code>***-**-1234</code></td></tr>
-              <tr><td>DoD ID</td><td>10 digits after "DoD ID", "EDIPI" or "CAC"</td><td><code>******7890</code></td></tr>
-              <tr><td>Date of birth</td><td>A date after "DOB" or "born"</td><td><code>[date masked]</code></td></tr>
+              <tr><td>DoD ID</td><td>10 digits after "DoD ID", "DODID", "EDIPI" or "CAC"</td><td><code>******7890</code></td></tr>
+              <tr><td>Date of birth</td><td>A date after "DOB", "date of birth" or "born"</td><td><code>[date masked]</code></td></tr>
               <tr><td>Payment card</td><td>13 to 19 digits with a card network's prefix that pass the card check</td><td><code>************1111</code></td></tr>
-              <tr><td>Passport</td><td>Letters and digits after "passport"</td><td><code>*****567</code></td></tr>
+              <tr><td>Passport</td><td>6 to 9 letters and digits after "passport"</td><td><code>*****567</code></td></tr>
               <tr><td>Phone</td><td>A US 10-digit number</td><td><code>***-***-0142</code></td></tr>
               <tr><td>Personal e-mail</td><td>Any address not ending in .gov or .mil (Gmail, Yahoo and the like rank higher)</td><td><code>***@domain</code></td></tr>
-              <tr><td>Home address</td><td>Number, street name and street type</td><td><code>[address masked]</code></td></tr>
-              <tr><td>Name</td><td>After "Name:", "Spouse:", "NOK:" and similar</td><td>Initials</td></tr>
+              <tr><td>Home address</td><td>Number, street name and street type (St, Ave, Rd ...)</td><td><code>[address masked]</code></td></tr>
+              <tr><td>Name</td><td>After "Name:", "Full name:", "Member:", "Spouse:", "Dependent:", "NOK:" or "POC:"</td><td>Initials</td></tr>
+              <tr><td>PII in a file or folder name</td><td>Any of the above in the path</td><td>As above</td></tr>
+              <!-- <<< site:looks-for -->
             </tbody>
           </table></div>
-          <p class="small mut" style="padding:0 12px 12px">Not read: encrypted files, files over 25 MB, and images when Windows has no OCR language (each is listed in the workbook, to check by hand), and channel posts and chats (not checked at all).</p>
         </div>
       </section>
 
       <section aria-labelledby="h-found">
         <h3 id="h-found">If it finds PII</h3>
-        <p class="note">PII where it should not be is a potential or actual breach; report it to your servicing Privacy Manager/Monitor without delay.<br><span class="mut small">AFI 33-332 para 3.1.2, as changed by AFI33-332_DAFGM2026-01, page 1, second paragraph.</span></p>
+        <!-- >>> site:breach: generated from README.md by scripts/build_site.py --write (do not edit) -->
+        <p class="note">PII where it should not be is a potential or actual breach; report it to your servicing Privacy Manager/Monitor without delay.<br><span class="mut small">AFI 33-332 para 3.1.2, as changed by AFI33-332_DAFGM2026-01 (7 July 2026), page 1, second paragraph.</span></p>
+        <!-- <<< site:breach -->
       </section>
     </article>
   </div>
