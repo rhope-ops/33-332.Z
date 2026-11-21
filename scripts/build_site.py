@@ -1,23 +1,24 @@
 #!/usr/bin/env python3
 """Build the shared parts of the site page (index.html) from README.md, so the README is the one source of truth.
 
-Why: the README and the site said the same facts in two hand-written copies, and they drifted (the PAM, 2026-11-20:
-"one needs to be source of truth"; the PAM chose the README). Run target: any machine with Python 3 (a build tool,
-never run on a gov device).
-What it does: README.md holds four marked sections, "<!-- site:NAME -->" to "<!-- /site:NAME -->". Each one is
-turned into HTML and written into index.html between the generated-block marks
-"<!-- >>> site:NAME: generated from README.md by scripts/build_site.py --write (do not edit) -->" and
-"<!-- <<< site:NAME -->" (the kit's code standard C5 form). It also checks that the tool's breach text
-(src/Report.psm1, $script:BreachAdvice) says the README's breach section, word for word.
-  intro      one paragraph                               -> the paragraph under the tool's name
-  key-facts  an HTML table of rows <tr><td><b>Label:</b></td><td>text</td></tr> (no header row; the PAM, 2026-11-21),
-             then one line                                -> the aligned list of key facts, then that line
-  looks-for  a table Type | Found when | Shown as | Confidence -> the table's rows (the first three columns)
-  breach     the advice, a blank line, its citation      -> the breach note
-Inputs:  README.md, index.html, src/Report.psm1.
-Outputs: with --write, index.html; then, or with --check alone, "SITE PASS", or one line per finding and "SITE FAIL".
+Why: a README and a site page that say the same facts in two hand-written copies drift (33-332.Z, 2026-11-20: "one
+needs to be source of truth"; made a kit file 2026-11-21). Run target: any machine with Python 3 (a build tool).
+What it does: README.md holds marked sections, "<!-- site:NAME -->" to "<!-- /site:NAME -->". The page declares what it
+shows: each generated block "<!-- >>> site:NAME: generated from README.md by scripts/build_site.py --write (do not
+edit) -->" ... "<!-- <<< site:NAME -->" in index.html is rebuilt from the README section of the same name, indented as
+its start mark. Each README section needs exactly one block on the page, and each block a README section.
+  intro      one paragraph                                       -> <p>
+  key-facts  an HTML table of rows <tr><td><b>Label:</b></td><td>text</td></tr> (no header row; a row may end with
+             "<!-- source: ... -->", which names what makes the fact true), then optional lines -> <dl class="facts">
+A project adds its own kinds in scripts/build_site_local.py (not a kit file; a sync never touches it):
+  BUILDERS = {"NAME": function(markdown, indent) -> html}   more section kinds; the helpers here are importable
+  REQUIRE_FACT_SOURCE = True                                each key-facts row must end with its source comment
+  def extra_checks(root, readme): return [finding, ...]     more checks, for example a tool text that must match
+Inputs:  README.md, index.html, scripts/build_site_local.py (when present).
+Outputs: with --write, index.html; then, or with --check alone, "SITE PASS" (or "SITE SKIP" when nothing is shared),
+         or one line per finding and "SITE FAIL".
 Usage:   python3 scripts/build_site.py --write    rebuild the site's shared parts, then check
-         python3 scripts/build_site.py --check    check only (scripts/check.local.sh runs it)
+         python3 scripts/build_site.py --check    check only (scripts/check.sh runs it when README.md has site marks)
          python3 scripts/build_site.py --test     self-test; prints SITE TEST PASS
 Network: none.
 Writes: index.html with --write only (the self-test: temporary files).
@@ -26,6 +27,7 @@ Credentials: none.
 
 import argparse
 import html
+import importlib.util
 import re
 import sys
 import tempfile
@@ -34,22 +36,21 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 README = 'README.md'
 SITE = 'index.html'
-TOOL = 'src/Report.psm1'
+LOCAL = 'scripts/build_site_local.py'
 COMMAND = 'scripts/build_site.py --write'
-# The four shared sections, in README order (the PAM, 2026-11-20, README Source Preview v3).
-SECTIONS = ('intro', 'key-facts', 'looks-for', 'breach')
-# The site shows the first three columns of the README's "What it looks for" table (Confidence stays README only);
-# their names must be these, as the site's hand-written table head says them (index.html <thead>).
-SITE_HEAD = ('Type', 'Found when', 'Shown as')
-SITE_COLUMNS = len(SITE_HEAD)
-# Where the tool keeps its breach text: one PowerShell string, written as single-quoted parts joined with "+".
-TOOL_VAR = re.compile(r"\$script:BreachAdvice\s*=\s*((?:'(?:[^']|'')*'\s*\+?\s*)+)")
-TOOL_PART = re.compile(r"'((?:[^']|'')*)'")
+# A README section and a generated block on the page; NAME is lower-case letters, digits and "-". Each end mark starts
+# its own line (after the indent), so no old text can stay in front of it; the body may be empty.
+SECTION = re.compile(r'<!-- site:([a-z0-9-]+) -->\n(?:(.*?)\n)?<!-- /site:\1 -->', re.S)
+BLOCK = re.compile(r'^([ \t]*)<!-- >>> site:([a-z0-9-]+): generated from README\.md by scripts/build_site\.py --write '
+                   r'\(do not edit\) -->\n(?:(.*?)\n)?[ \t]*<!-- <<< site:\2 -->', re.S | re.M)
+# Any site mark, also a broken one (a typo in a name or an end mark): each must be used by SECTION or BLOCK (stray_marks).
+README_MARK = re.compile(r'<!-- /?site:[^>]*-->')
+SITE_MARK = re.compile(r'<!-- (?:>>>|<<<) site:[^>]*-->')
 # Plain text in a site section may hold only these characters (an allow list): letters, digits, spaces and ordinary
 # punctuation that GitHub shows as typed. Any other character (* _ at a word's edge, ` ~ [ ] < > @ # = \ | ^ and the
 # like) could be Markdown that GitHub renders differently from this builder, so the check fails on it. An underscore
 # inside a word is plain text on GitHub (AFI33-332_DAFGM2026-01) and is allowed.
-PLAIN_TEXT = r"[A-Za-z0-9 .,;:'\"()\-/?!%+&\u2018\u2019\u201c\u201d\u2013\u2014\u2026]*"
+PLAIN_TEXT = r"[A-Za-z0-9 .,;:'\"()\-/?!%+&‘’“”–—…]*"
 IN_WORD_UNDERSCORE = r'(?<=[A-Za-z0-9])_(?=[A-Za-z0-9])'
 # Strong text GitHub renders, in the forms this builder allows: "**" after the line start, a space, "(", a quote or
 # "-", before a non-space; the closing "**" after a non-space, before the line end, a space, punctuation, a quote or
@@ -72,38 +73,37 @@ HARD_BREAK = r'.*(  |\\)$'
 # A quote mark at a line's start, and a GitHub alert line; both are taken off before a section is built (unquote).
 QUOTE_MARK = r'^>[ \t]?'
 ALERT_LINE = r'\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]'
-# The key-facts table: plain HTML, because a Markdown table always shows a header row and the PAM wants none
-# (2026-11-21). One row per line, the label bold and ending in ":"; cells hold plain text only (no tags, no Markdown).
-FACT_TABLE = r'<table>\n((?:<tr>.*</tr>\n)+)</table>(.*)'
-# No "&" either: in raw HTML a browser reads "&copy" as a symbol even without its ";", and the site would not.
-FACT_ROW = r'<tr><td><b>([^<>*`&]+:)</b></td><td>([^<>*`&]+)</td></tr>'
-# A table's delimiter row (GFM): cells of dashes with optional alignment colons.
-DELIMITER_ROW = r'\|(\s*:?-+:?\s*\|)+'
-# HTML indents inside the generated blocks, matching the hand-written page around them.
-INDENT_BLOCK = '        '
-INDENT_ROW = '              '
+# The key-facts table: plain HTML, because a Markdown table always shows a header row (33-332.Z, 2026-11-21). One row
+# per line, the label bold and ending in ":"; cells hold plain text only (no tags, no Markdown), and no "&" either: in
+# raw HTML a browser reads "&copy" as a symbol even without its ";", and the site would not. A row may end with a
+# source comment (FACT_SOURCE), which GitHub and the site do not show.
+FACT_TABLE = r'<table>\n((?:<tr>.*</tr>.*\n)+)</table>(.*)'
+FACT_ROW = r'<tr><td><b>([^<>*`&]+:)</b></td><td>([^<>*`&]+)</td></tr>(?: <!-- source: ([^<>]*[^<>\s-]) -->)?'
 
 
-def readme_section(text, name):
-    """Return the text between a README section's marks, stripped; raise ValueError when it is missing.
+def readme_sections(readme):
+    """Return the README's site sections by name, each without its marks and quote marks, stripped.
 
     Args:
-        text: the whole README.md.
-        name: the section name, for example "key-facts".
+        readme: the whole README.md.
     Returns:
-        The section's Markdown, without its marks.
+        A dict of section name to its Markdown.
+    Raises:
+        ValueError: when a name is used for two sections.
     """
-    match = re.search(rf'<!-- site:{re.escape(name)} -->\n(.*?)\n<!-- /site:{re.escape(name)} -->', text, re.S)
-    if not match:
-        raise ValueError(f'{README}: no section <!-- site:{name} --> ... <!-- /site:{name} -->')
-    return unquote(match.group(1)).strip()
+    found = {}
+    for name, body in SECTION.findall(readme):
+        if name in found:
+            raise ValueError(f'{README}: two sections <!-- site:{name} -->')
+        found[name] = unquote(body or '').strip()
+    return found
 
 
 def unquote(markdown):
     """Return Markdown with quote marks ("> ") taken off and GitHub alert lines ("[!CAUTION]") dropped.
 
-    The README shows the WCO line as a quote and the breach note as a GitHub Caution box (the PAM, 2026-11-21); the
-    site shows the same words in its own style, so the builder reads them as the plain text inside.
+    A README can show a line as a quote or a GitHub alert box; the site shows the same words in its own style, so the
+    builder reads them as the plain text inside.
 
     Args:
         markdown: the text of one README section.
@@ -122,8 +122,8 @@ def refuse_marks(markdown):
     """
     text = re.sub(IN_WORD_UNDERSCORE, 'x', re.sub(BOLD, r'\1', markdown))
     if not re.fullmatch(PLAIN_TEXT, text) or re.search(ENTITY_OR_ADDRESS, text):
-        raise ValueError(f'{README}: unsupported Markdown or character in a site section; only plain text, **bold** and `code`: '
-                         f'{markdown}')
+        raise ValueError(f'{README}: unsupported Markdown or character in a site section; only plain text, **bold** and '
+                         f'`code`: {markdown}')
 
 
 def inline(markdown):
@@ -150,277 +150,394 @@ def paragraphs(markdown):
     Args:
         markdown: text without a table.
     Returns:
-        The paragraphs, each on one line; raise ValueError when a line starts a list, heading or quote.
+        The paragraphs, each on one line.
+    Raises:
+        ValueError: when a line starts a list, is indented, underlines a heading or ends with a hard break.
     """
     lines = markdown.splitlines()
     for number, line in enumerate(lines):
         starts = number == 0 or not lines[number - 1].strip()
-        if re.match(LIST_START if starts else LIST_INTERRUPT, line) or re.match(INDENTED, line) or re.fullmatch(SETEXT_LINE, line) or re.fullmatch(HARD_BREAK, line):
-            raise ValueError(f'{README}: a list, an indented line, a heading underline or a hard line break is not supported '
-                             f'in a site section: {line}')
+        if (re.match(LIST_START if starts else LIST_INTERRUPT, line) or re.match(INDENTED, line)
+                or re.fullmatch(SETEXT_LINE, line) or re.fullmatch(HARD_BREAK, line)):
+            raise ValueError(f'{README}: a list, an indented line, a heading underline or a hard line break is not '
+                             f'supported in a site section: {line}')
     return [' '.join(part.split()) for part in re.split(r'\n\s*\n', markdown) if part.strip()]
 
 
-def split_row(line):
-    """Split one Markdown table row into cell texts; raise ValueError on an escaped pipe.
+def build_intro(markdown, indent):
+    """Return the site's intro paragraph.
 
     Args:
-        line: one table row, for example "| SSN | 3-2-4 digits |". GitHub splits on every "|", even inside `code`.
+        markdown: the intro section: one paragraph.
+        indent: the indent of the block's start mark on the page.
     Returns:
-        The cell texts, stripped.
+        The HTML paragraph.
     """
-    if '\\|' in line:
-        raise ValueError(f'{README}: an escaped "|" is not supported in a site table: {line}')
-    return [cell.strip() for cell in line.strip()[1:-1].split('|')]
-
-
-def table(markdown):
-    """Return a section's table (header cells and body rows) and the text after it.
-
-    Args:
-        markdown: the section: a table first (every line starts and ends with "|", the second line is the
-            delimiter row), then optional plain text after a blank line.
-    Returns:
-        A triple: the header cells, the body rows as lists of cell texts, and the text after the table.
-    Raises:
-        ValueError: when the table is missing, malformed, or a row's cell count differs from the header's.
-    """
-    lines = markdown.splitlines()
-    end = next((n for n, line in enumerate(lines) if not line.strip().startswith('|')), len(lines))
-    rows_text, rest = lines[:end], '\n'.join(lines[end:])
-    if len(rows_text) < 3 or any(not line.strip().endswith('|') for line in rows_text):
-        raise ValueError(f'{README}: a site section must start with a table: every row starts and ends with "|"')
-    if not re.fullmatch(DELIMITER_ROW, rows_text[1].strip()) or len(split_row(rows_text[1])) != len(split_row(rows_text[0])):
-        raise ValueError(f'{README}: the second table line must be the delimiter row, one |---| cell per header cell')
-    if '|' in rest or (rest.strip() and not rest.startswith('\n')):
-        raise ValueError(f'{README}: text after a site table needs a blank line, and no other table rows')
-    head, rows = split_row(rows_text[0]), [split_row(line) for line in rows_text[2:]]
-    for row in rows:
-        if len(row) != len(head):
-            raise ValueError(f'{README}: a table row has {len(row)} cells, its header {len(head)}: {row}')
-    return head, rows, rest
-
-
-def build_intro(markdown):
-    """Return the site's intro paragraph."""
     parts = paragraphs(markdown)
     if len(parts) != 1:
         raise ValueError(f'{README}: site:intro must be one paragraph')
-    return f'{INDENT_BLOCK}<p>{inline(parts[0])}</p>'
+    return f'{indent}<p>{inline(parts[0])}</p>'
 
 
-def build_key_facts(markdown):
-    """Return the site's aligned key-facts list and the line after it.
+def fact_rows(markdown, need_source):
+    """Return the key-facts rows (label, text) and the text after the table.
 
     Args:
-        markdown: the key-facts section: an HTML table (FACT_TABLE, FACT_ROW), a blank line, one closing line.
+        markdown: the key-facts section: an HTML table (FACT_TABLE, FACT_ROW), then optional text after a blank line.
+        need_source: True when every row must end with its source comment.
     Returns:
-        The HTML: a definition list (label, text) and a small paragraph.
+        A pair: the rows as (label, text) and the text after the table.
     Raises:
-        ValueError: when the table or a row has another form, or a cell holds more than plain text.
+        ValueError: when the table or a row has another form, a cell holds more than plain text, or a source is missing.
     """
     match = re.fullmatch(FACT_TABLE, markdown, re.S)
     lines = match.group(1).splitlines() if match else []
     if not match or any(not re.fullmatch(FACT_ROW, line) for line in lines):
-        raise ValueError(f'{README}: site:key-facts must be <table>, then rows "<tr><td><b>Label:</b></td><td>text</td></tr>", '
-                         f'one per line, then </table>')
+        raise ValueError(f'{README}: site:key-facts must be <table>, then rows "<tr><td><b>Label:</b></td><td>text</td>'
+                         f'</tr>" (each may end with " <!-- source: ... -->"), one per line, then </table>')
     rest = match.group(2)
     if rest.strip() and not rest.startswith('\n\n'):
         raise ValueError(f'{README}: text after the site:key-facts table needs a blank line')
     rows = [re.fullmatch(FACT_ROW, line).groups() for line in lines]
-    for cell in (cell for row in rows for cell in row):
+    missing = [label for label, _, source in rows if need_source and not source]
+    if missing:
+        raise ValueError(f'{README}: site:key-facts rows need " <!-- source: ... -->" (REQUIRE_FACT_SOURCE): '
+                         f'{", ".join(missing)}')
+    for cell in (cell for label, text, _ in rows for cell in (label, text)):
         refuse_marks(cell)
-    items = ''.join(f'\n{INDENT_BLOCK}  <dt>{html.escape(label.strip(), quote=False)}</dt>'
-                    f'<dd>{html.escape(text.strip(), quote=False)}</dd>' for label, text in rows)
-    tail = ''.join(f'\n{INDENT_BLOCK}<p class="small mut">{inline(part)}</p>' for part in paragraphs(rest))
-    return f'{INDENT_BLOCK}<dl class="facts">{items}\n{INDENT_BLOCK}</dl>{tail}'
+    return [(label, text) for label, text, _ in rows], rest
 
 
-def build_looks_for(markdown):
-    """Return the table rows of "What it looks for" (Type, Found when, Shown as).
+def build_key_facts(markdown, indent, need_source=False):
+    """Return the site's aligned key-facts list and the lines after it.
 
     Args:
-        markdown: the looks-for section: a table with at least three columns.
+        markdown: the key-facts section (fact_rows).
+        indent: the indent of the block's start mark on the page.
+        need_source: True when every row must end with its source comment.
     Returns:
-        The HTML rows, one per line.
+        The HTML: a definition list (label, text), then one small paragraph for each line after the table.
     """
-    head, rows, rest = table(markdown)
-    if rest.strip():
-        raise ValueError(f'{README}: site:looks-for holds only its table')
-    if tuple(head[:SITE_COLUMNS]) != SITE_HEAD:
-        raise ValueError(f'{README}: site:looks-for must start with the columns {" | ".join(SITE_HEAD)} (the site\'s table head)')
-    return '\n'.join(INDENT_ROW + '<tr>' + ''.join(f'<td>{inline(cell)}</td>' for cell in row[:SITE_COLUMNS]) + '</tr>'
-                     for row in rows)
+    rows, rest = fact_rows(markdown, need_source)
+    items = ''.join(f'\n{indent}  <dt>{html.escape(label.strip(), quote=False)}</dt>'
+                    f'<dd>{html.escape(text.strip(), quote=False)}</dd>' for label, text in rows)
+    tail = ''.join(f'\n{indent}<p class="small mut">{inline(part)}</p>' for part in paragraphs(rest))
+    return f'{indent}<dl class="facts">{items}\n{indent}</dl>{tail}'
 
 
-def breach_parts(markdown):
-    """Return the breach advice and its citation; raise ValueError unless the section has exactly these two paragraphs."""
-    parts = paragraphs(markdown)
-    if len(parts) != 2:
-        raise ValueError(f'{README}: site:breach must hold the advice, a blank line, then its citation')
-    return parts[0], parts[1]
+def load_local(root):
+    """Return the project's own module scripts/build_site_local.py, or None when it is not there.
+
+    Args:
+        root: the repository folder.
+    Returns:
+        The loaded module, or None.
+    Raises:
+        ValueError: when the file is there but cannot be loaded (a broken extension must fail, not be skipped).
+    """
+    path = root / LOCAL
+    if not path.is_file():
+        return None
+    try:
+        spec = importlib.util.spec_from_file_location('build_site_local', path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    except Exception as err:  # any error in a project's own code is a finding with its cause
+        raise ValueError(f'{LOCAL}: cannot be loaded: {type(err).__name__}: {err}') from err
+    return module
 
 
-def build_breach(markdown):
-    """Return the site's breach note: the advice, then its citation in small text."""
-    advice, citation = breach_parts(markdown)
-    return f'{INDENT_BLOCK}<p class="note">{inline(advice)}<br><span class="mut small">{inline(citation)}</span></p>'
+def builders(local):
+    """Return the section builders by name: the kit's two kinds, then the project's own (which may replace them).
+
+    Args:
+        local: the project's module (load_local), or None.
+    Returns:
+        A dict of section name to function(markdown, indent) -> html.
+    """
+    need_source = bool(getattr(local, 'REQUIRE_FACT_SOURCE', False))
+    found = {'intro': build_intro,
+             'key-facts': lambda markdown, indent: build_key_facts(markdown, indent, need_source)}
+    extra = getattr(local, 'BUILDERS', {})  # only a missing BUILDERS means none; 0, "", [] or None is a mistake
+    if not isinstance(extra, dict) or not all(isinstance(k, str) and callable(v) for k, v in extra.items()):
+        raise ValueError(f'{LOCAL}: BUILDERS must be a dict of section name to function(markdown, indent)')
+    found.update({name: project_builder(name, build) for name, build in extra.items()})
+    return found
 
 
-BUILDERS = {'intro': build_intro, 'key-facts': build_key_facts, 'looks-for': build_looks_for, 'breach': build_breach}
+def project_builder(name, build):
+    """Return a project builder wrapped so that its own ValueError names its section (kit builders name it already).
+
+    Args:
+        name: the section name.
+        build: the project's function(markdown, indent).
+    Returns:
+        A function with the same arguments.
+    """
+    def run_it(markdown, indent):
+        """Run the project builder; give its ValueError the prefix "site:NAME: "."""
+        try:
+            return build(markdown, indent)
+        except ValueError as err:
+            raise ValueError(f'site:{name}: {err}') from err
+    return run_it
 
 
-def tool_text(advice, citation):
-    """Return the breach text the tool must show: the advice with its citation in brackets."""
-    return f'{advice.removesuffix(".")} ({citation.removesuffix(".")}).'
-
-
-def block_pattern(name):
-    """Return the regex of a generated block in index.html: its two marks and what lies between them."""
-    start = f'<!-- >>> site:{name}: generated from {README} by {COMMAND} (do not edit) -->'
-    return re.compile(rf'({re.escape(start)}\n)(.*?)(\n[ \t]*<!-- <<< site:{re.escape(name)} -->)', re.S)
-
-
-def render(readme, site):
-    """Return the site page with every shared block rebuilt from the README.
+def stray_marks(readme, site):
+    """Return findings for site marks that are not the two ends of a section or block (a typo, capitals, a missing end
+    mark, or a mark inside another block, which a rebuild would drop).
 
     Args:
         readme: the text of README.md.
         site: the text of index.html.
     Returns:
-        The new text of index.html.
-    Raises:
-        ValueError: when a README section or a site block is missing or has the wrong form.
+        A list of finding lines, empty when every mark belongs to a section or a block.
     """
-    for name in SECTIONS:
-        pattern = block_pattern(name)
-        if len(pattern.findall(site)) != 1:
-            raise ValueError(f'{SITE}: needs exactly one generated block for site:{name}')
-        body = BUILDERS[name](readme_section(readme, name))
-        site = pattern.sub(lambda match, body=body: match.group(1) + body + match.group(3), site)
-    return site
+    found = []
+    for text, file, mark, pair in ((readme, README, README_MARK, SECTION), (site, SITE, SITE_MARK, BLOCK)):
+        used = set()
+        for pm in pair.finditer(text):  # only the first and the last mark of a match are its two ends
+            ends = list(mark.finditer(pm.group(0)))
+            used |= {pm.start() + ends[0].start(), pm.start() + ends[-1].start()}
+        found += [f'{file}: a site mark with no pair or a name not in a-z, 0-9 and "-": {m.group(0)}'
+                  for m in mark.finditer(text) if m.start() not in used]
+    return found
 
 
-def check_tool(readme, tool):
-    """Return findings when the tool's breach text differs from the README's breach section.
+def build_one(kinds, name, markdown, indent):
+    """Return one block's HTML from its builder; a project builder's own error becomes a finding.
+
+    Args:
+        kinds: the section builders (builders).
+        name: the section name.
+        markdown: the README section.
+        indent: the indent of the block's start mark.
+    Returns:
+        The HTML text.
+    Raises:
+        ValueError: on any error of the builder, with its name and cause.
+    """
+    try:
+        body = kinds[name](markdown, indent)
+    except ValueError:  # a kit builder names its section; a project builder's error got its name in project_builder
+        raise
+    except Exception as err:  # a project builder with a wrong signature or a bug: a finding, not a traceback
+        raise ValueError(f'site:{name}: the builder failed: {type(err).__name__}: {err}') from err
+    if not isinstance(body, str):
+        raise ValueError(f'site:{name}: the builder must return text, not {type(body).__name__}')
+    return body
+
+
+def local_findings(local, root, readme):
+    """Return the findings of the project's extra_checks; a wrong result or an error is a finding too.
+
+    Args:
+        local: the project's module (load_local), or None.
+        root: the repository folder.
+        readme: the text of README.md.
+    Returns:
+        A list of finding lines.
+    """
+    check = getattr(local, 'extra_checks', None)
+    if check is None:
+        return []
+    try:
+        result = check(root, readme)
+    except Exception as err:  # a project's own code: a finding with its cause
+        return [f'{LOCAL}: extra_checks failed: {type(err).__name__}: {err}']
+    if result is None:
+        return []
+    if not isinstance(result, (list, tuple)) or not all(isinstance(line, str) for line in result):
+        return [f'{LOCAL}: extra_checks must return a list of text lines, not {type(result).__name__}']
+    return list(result)
+
+
+def render(readme, site, kinds):
+    """Return the site page with every shared block rebuilt from the README.
 
     Args:
         readme: the text of README.md.
-        tool: the text of src/Report.psm1.
+        site: the text of index.html.
+        kinds: the section builders (builders).
     Returns:
-        A list of finding lines, empty when they match.
+        The new text of index.html.
+    Raises:
+        ValueError: when a section and a block do not pair up one to one, or a section has no builder or a wrong form.
     """
-    match = TOOL_VAR.search(tool)
-    if not match:
-        return [f'{TOOL}: no $script:BreachAdvice string found']
-    said = ''.join(part.replace("''", "'") for part in TOOL_PART.findall(match.group(1)))
-    wanted = tool_text(*breach_parts(readme_section(readme, 'breach')))
-    return [] if said == wanted else [f'{TOOL}: $script:BreachAdvice differs from {README} site:breach; it must say: {wanted}']
+    sections = readme_sections(readme)
+    names = [match.group(2) for match in BLOCK.finditer(site)]
+    for name in sorted(set(sections) | set(names)):
+        if names.count(name) != 1:
+            raise ValueError(f'{SITE}: needs exactly one generated block for site:{name} (found {names.count(name)})')
+        if name not in sections:
+            raise ValueError(f'{README}: no section <!-- site:{name} --> ... <!-- /site:{name} --> for the block on {SITE}')
+        if name not in kinds:
+            raise ValueError(f'{README}: no builder for site:{name}; the kit builds intro and key-facts, a project adds '
+                             f'its own in {LOCAL}')
+
+    def rebuild(match):
+        """Return one generated block with its body built from its README section."""
+        indent, name = match.group(1), match.group(2)
+        start, end = match.group(0).split('\n', 1)[0], match.group(0).rsplit('\n', 1)[1]
+        return f'{start}\n{build_one(kinds, name, sections[name], indent)}\n{end}'
+    return BLOCK.sub(rebuild, site)
 
 
 def run(root, write):
-    """Check (and with write, rebuild) the site under root; return the list of findings.
+    """Check (and with write, rebuild) the site under root.
 
     Args:
         root: the repository folder.
         write: True to rewrite index.html first.
     Returns:
-        The findings, empty when everything passes.
+        A pair: the findings (empty when everything passes) and whether anything is shared (False: SITE SKIP).
     """
     try:
         readme = (root / README).read_text(encoding='utf-8')
-        site = (root / SITE).read_text(encoding='utf-8')
-        fresh = render(readme, site)
-        findings = check_tool(readme, (root / TOOL).read_text(encoding='utf-8'))
+        site_path = root / SITE
+        site = site_path.read_text(encoding='utf-8') if site_path.is_file() else ''
+        if not README_MARK.search(readme) and not SITE_MARK.search(site):
+            return [], False
+        stray = stray_marks(readme, site)
+        if stray:
+            return stray, True
+        local = load_local(root)
+        fresh = render(readme, site, builders(local))
+        findings = local_findings(local, root, readme)
     except (OSError, ValueError) as err:
-        return [str(err)]
+        return [str(err)], True
     if write and fresh != site:
-        (root / SITE).write_text(fresh, encoding='utf-8')
+        site_path.write_text(fresh, encoding='utf-8')
         site = fresh
     if fresh != site:
         findings.append(f'{SITE}: out of date with {README}; run: python3 {COMMAND}')
-    return findings
+    return findings, True
 
 
-# The self-test's invented README, its tool text, and its cases: (label, README edit as (old, new) or None,
-# the words each finding must hold (none: the case must pass), and whether the case rebuilds the site first).
+def mark(name, body='old', indent='    '):
+    """Return one generated block for the self-test, with the given body and indent."""
+    return (f'{indent}<!-- >>> site:{name}: generated from {README} by {COMMAND} (do not edit) -->\n{body}\n'
+            f'{indent}<!-- <<< site:{name} -->\n')
+
+
+# The self-test's invented README and page, and its cases: (label, README edit as (old, new) or None, the page,
+# the local module's text or None, the words each finding must hold (none: the case must pass), and whether the case
+# rebuilds the site first).
 TEST_README = ('<!-- site:intro -->\nA safe_tool & more.\n<!-- /site:intro -->\n'
-               '<!-- site:key-facts -->\n<table>\n<tr><td><b>Read-only:</b></td><td>it changes nothing.</td></tr>\n</table>\n\nFirst line.\nAsk & learn.\n'
-               '<!-- /site:key-facts -->\n'
-               '<!-- site:looks-for -->\n| Type | Found when | Shown as | Confidence |\n|---|---|---|---|\n'
-               '| SSN | 3-2-4 digits | `***-**-1234` | High |\n<!-- /site:looks-for -->\n'
-               '<!-- site:breach -->\nReport it now.\n\nRule para 1.\n<!-- /site:breach -->\n')
-# The words that the findings for unsupported text and for unsupported lines start with.
-UNSUPPORTED_WORDS = 'unsupported Markdown'
-BLOCK_WORDS = 'is not supported in a site section'
-TEST_TOOL = "$script:BreachAdvice = 'Report it now ' +\n    '(Rule para 1).'\n"
-TEST_CASES = (('a fresh build passes', None, None, [], True),
-              ('a stale site fails', None, None, ['out of date'], False),
-              ('a tool text that differs fails', None, ('now', 'later'), ['BreachAdvice differs'], True),
-              ('a missing README section fails', ('<!-- site:intro -->', '<!-- site:gone -->'), None, ['no section'], True),
-              ('a key fact without a bold label fails', ('<b>Read-only:</b>', 'Read-only:'), None, ['<b>Label:</b>'], True),
-              ('a key fact with Markdown fails', ('changes nothing.', 'changes **nothing**.'), None, ['<b>Label:</b>'], True),
-              ('a key fact with "&" fails', ('changes nothing.', 'changes &copy nothing.'), None, ['<b>Label:</b>'], True),
-              ('text right after the key-facts table fails', ('</table>\n\nFirst line.', '</table>\nFirst line.'), None,
-               ['needs a blank line'], True),
-              ('a key fact with a link fails', ('changes nothing.', 'changes www.x.example'), None, [UNSUPPORTED_WORDS], True),
-              ('a key-facts table as Markdown fails', ('<table>\n<tr><td><b>Read-only:</b></td><td>it changes nothing.</td></tr>\n</table>',
-               '| | |\n|---|---|\n| **Read-only:** | it changes nothing. |'), None, ['<b>Label:</b>'], True),
-              ('a renamed site column fails', ('| Shown as |', '| Shown |'), None, ['must start with the columns'], True),
-              ('a row with a wrong cell count fails', ('| High |', '| High | extra |'), None, ['cells, its header'], True),
-              ('unsupported Markdown fails', ('Report it now.', 'Report it *now*.'), None, [UNSUPPORTED_WORDS], True),
-              ('a link fails', ('Rule para 1.', 'Rule [para 1](x).'), None, [UNSUPPORTED_WORDS], True),
-              ('a "|" inside code fails, as GitHub splits the cell there', ('| 3-2-4 digits |', '| 3-2-4 `a|b` digits |'), None,
-               ['cells, its header'], True),
-              ('a table without its delimiter row fails', ('|---|---|---|---|\n', '| a | b | c | d |\n'), None, ['delimiter row'], True),
-              ('a list in a section fails', ('First line.', '- First line.'), None, [BLOCK_WORDS], True),
-              ('an empty list item fails', ('First line.', '1.\nFirst line.'), None, [BLOCK_WORDS], True),
-              ('an indented code block fails', ('Ask & learn.', 'Ask & learn.\n\n    code here'), None, [BLOCK_WORDS], True),
-              ('a heading underline fails', ('Ask & learn.', 'Ask & learn.\n==='), None, [BLOCK_WORDS], True),
-              ('bold with inner spaces fails', ('Report it now.', 'Report it ** now **.'), None, [UNSUPPORTED_WORDS], True),
-              ('bold GitHub would not close fails', ('Report it now.', 'Report **it:**now.'), None, [UNSUPPORTED_WORDS], True),
-              ('a delimiter row with the wrong cell count fails', ('|---|---|---|---|', '|---|---|---|'), None, ['delimiter row'], True),
-              ('an e-mail address fails', ('Rule para 1.', 'Rule para 1, ask a@b.example.'), None, [UNSUPPORTED_WORDS], True),
-              ('an entity with digits fails', ('Rule para 1.', 'Rule para &frac12;.'), None, [UNSUPPORTED_WORDS], True),
-              ('an emoji code fails', ('Report it now.', 'Report it now :warning:'), None, [UNSUPPORTED_WORDS], True),
-              ('plain times, ratios and bold in brackets or quotes pass',
-               ('A safe_tool & more.', 'A safe_tool (**Microsoft Purview**), "**Stop**", **PII**-free, 09:00-17:00, 10:30:45, 1:2:3,\n'
-                '2026. That year.'), None, [], True),
-              ('a quote and a GitHub Caution box are read as their plain text',
-               ('Report it now.\n\nRule para 1.', '> [!CAUTION]\n> Report it now.\n>\n> Rule para 1.'), None, [], True),
-              ('a web address of another scheme fails', ('Rule para 1.', 'Rule para 1, see ftp://x.example'), None,
-               [UNSUPPORTED_WORDS], True))
-# What the fresh build must write: a key fact, code kept, the Confidence column left out, two lines joined, an escaped "&".
-TEST_BUILT = ('<dt>Read-only:</dt><dd>it changes nothing.</dd>', '<td>3-2-4 digits</td><td><code>***-**-1234</code></td></tr>',
-              'First line. Ask &amp; learn.</p>')
+               '<!-- site:key-facts -->\n<table>\n<tr><td><b>Read-only:</b></td><td>it changes nothing.</td></tr> '
+               '<!-- source: docs/engine.md -->\n</table>\n\nFirst line.\nAsk & learn.\n<!-- /site:key-facts -->\n')
+TEST_PAGE = '<main>\n' + mark('intro') + mark('key-facts') + '</main>\n'
+UNSUPPORTED = 'unsupported Markdown'
+BLOCKED_LINE = 'is not supported in a site section'
+TEST_LOCAL = ('from pathlib import Path\nBUILDERS = {"note": lambda md, indent: indent + "<aside>" + md + "</aside>"}\n'
+              'def extra_checks(root, readme):\n    return [] if "Ask" in readme else ["local: Ask is missing"]\n')
+EMPTY_PAGE = '<main></main>\n'
+NOTE = '<!-- site:note -->\nplain\n<!-- /site:note -->\n'
+TEST_CASES = (
+    ('a fresh build passes', None, TEST_PAGE, None, [], True),
+    ('a stale site fails', None, TEST_PAGE, None, ['out of date'], False),
+    ('a README section with no block fails', None, mark('key-facts'), None,
+     ['exactly one generated block for site:intro'], True),
+    ('a block with no README section fails', None, TEST_PAGE + mark('extra'), None, ['no section <!-- site:extra'], True),
+    ('two blocks of one name fail', None, TEST_PAGE + mark('intro'), None, ['found 2'], True),
+    ('two README sections of one name fail', ('<!-- site:key-facts -->', '<!-- site:intro -->\nB.\n<!-- /site:intro -->\n'
+     '<!-- site:key-facts -->'), TEST_PAGE, None, ['two sections'], True),
+    ('a section kind with no builder fails', ('<!-- site:intro -->', NOTE + '<!-- site:intro -->'), TEST_PAGE + mark('note'),
+     None, ['no builder for site:note'], True),
+    ('a local builder and its extra check work', ('<!-- site:intro -->', NOTE + '<!-- site:intro -->'),
+     TEST_PAGE + mark('note'), TEST_LOCAL, [], True),
+    ('a local extra check can fail', ('Ask & learn.', 'Learn.'), TEST_PAGE, TEST_LOCAL, ['local: Ask is missing'], True),
+    ('a local module that cannot load fails', None, TEST_PAGE, 'raise RuntimeError("broken")\n', ['cannot be loaded'], True),
+    ('a required source missing fails', (' <!-- source: docs/engine.md -->', ''), TEST_PAGE, 'REQUIRE_FACT_SOURCE = True\n',
+     ['need " <!-- source'], True),
+    ('a required source present passes', None, TEST_PAGE, 'REQUIRE_FACT_SOURCE = True\n', [], True),
+    ('a key fact without a bold label fails', ('<b>Read-only:</b>', 'Read-only:'), TEST_PAGE, None, ['<b>Label:</b>'], True),
+    ('a key fact with Markdown fails', ('changes nothing.', 'changes **nothing**.'), TEST_PAGE, None, ['<b>Label:</b>'], True),
+    ('a key fact with "&" fails', ('changes nothing.', 'changes &copy nothing.'), TEST_PAGE, None, ['<b>Label:</b>'], True),
+    ('text right after the key-facts table fails', ('</table>\n\nFirst line.', '</table>\nFirst line.'), TEST_PAGE, None,
+     ['needs a blank line'], True),
+    ('a key fact with a web address fails', ('changes nothing.', 'changes www.x.example'), TEST_PAGE, None, [UNSUPPORTED], True),
+    ('an intro of two paragraphs fails', ('A safe_tool & more.', 'One.\n\nTwo.'), TEST_PAGE, None, ['one paragraph'], True),
+    ('unsupported Markdown fails', ('A safe_tool & more.', 'A *safe* tool.'), TEST_PAGE, None, [UNSUPPORTED], True),
+    ('a link fails', ('A safe_tool & more.', 'A [tool](x).'), TEST_PAGE, None, [UNSUPPORTED], True),
+    ('a list in a section fails', ('First line.', '- First line.'), TEST_PAGE, None, [BLOCKED_LINE], True),
+    ('an empty list item fails', ('First line.', '1.\nFirst line.'), TEST_PAGE, None, [BLOCKED_LINE], True),
+    ('an indented code block fails', ('Ask & learn.', 'Ask & learn.\n\n    code here'), TEST_PAGE, None, [BLOCKED_LINE], True),
+    ('a heading underline fails', ('Ask & learn.', 'Ask & learn.\n==='), TEST_PAGE, None, [BLOCKED_LINE], True),
+    ('bold with inner spaces fails', ('A safe_tool & more.', 'A ** safe ** tool.'), TEST_PAGE, None, [UNSUPPORTED], True),
+    ('bold GitHub would not close fails', ('A safe_tool & more.', 'A **tool:**now.'), TEST_PAGE, None, [UNSUPPORTED], True),
+    ('an e-mail address fails', ('Ask & learn.', 'Ask a@b.example.'), TEST_PAGE, None, [UNSUPPORTED], True),
+    ('an entity with digits fails', ('Ask & learn.', 'Ask &frac12;.'), TEST_PAGE, None, [UNSUPPORTED], True),
+    ('an emoji code fails', ('Ask & learn.', 'Ask :warning:'), TEST_PAGE, None, [UNSUPPORTED], True),
+    ('a web address of another scheme fails', ('Ask & learn.', 'See ftp://x.example'), TEST_PAGE, None, [UNSUPPORTED], True),
+    ('plain times, ratios and bold in brackets or quotes pass',
+     ('A safe_tool & more.', 'A safe_tool (**Microsoft Purview**), "**Stop**", **PII**-free, 09:00-17:00, 10:30:45, 1:2:3,\n'
+      '2026. That year.'), TEST_PAGE, None, [], True),
+    ('a quote and a GitHub alert box are read as their plain text',
+     ('First line.\nAsk & learn.', '> [!NOTE]\n> First line.\n> Ask & learn.'), TEST_PAGE, None, [], True),
+    ('nothing shared: a skip, not a failure', ('site:', 'x-site:'), EMPTY_PAGE, None, [], True),
+    ('a README end mark with a typo fails', ('<!-- /site:intro -->', '<!-- /site:intr -->'), mark('key-facts'), None,
+     ['a site mark with no pair'], True),
+    ('a name in capitals fails', ('site:intro -->\nA', 'site:Intro -->\nA'), mark('key-facts'), None, ['a site mark with no pair'], True),
+    ('a page start mark with no end mark fails', None, TEST_PAGE + mark('gone').split('\n')[0] + '\n', None,
+     ['a site mark with no pair'], True),
+    ('an empty block body is rebuilt', None, '<main>\n' + mark('intro', '').replace('-->\n\n', '-->\n') + mark('key-facts')
+     + '</main>\n', None, [], True),
+    ('a local builder with a wrong signature is a finding', ('<!-- site:intro -->', NOTE + '<!-- site:intro -->'),
+     TEST_PAGE + mark('note'), 'BUILDERS = {"note": lambda md: md}\n', ['the builder failed: TypeError'], True),
+    ('extra_checks that return text, not a list, is one finding', None, TEST_PAGE,
+     'def extra_checks(root, readme):\n    return "bad"\n', ['must return a list of text lines'], True),
+    ('old text in front of an end mark fails', None, TEST_PAGE.replace('old\n    <!-- <<< site:intro', 'old <!-- <<< site:intro'), None,
+     ['a site mark with no pair'], True),
+    ('a start mark inside another block fails', None, TEST_PAGE.replace('old\n    <!-- <<< site:intro', mark('intro').split('\n')[0]
+     + '\n    <!-- <<< site:intro'), None, ['a site mark with no pair'], True),
+    ('a local builder that returns no text is a finding', ('<!-- site:intro -->', NOTE + '<!-- site:intro -->'),
+     TEST_PAGE + mark('note'), 'BUILDERS = {"note": lambda md, indent: None}\n', ['must return text'], True),
+    ('BUILDERS that is not a dict is a finding', None, TEST_PAGE, 'BUILDERS = 5\n', ['BUILDERS must be a dict'], True),
+    ('BUILDERS that is empty but not a dict is a finding', None, TEST_PAGE, 'BUILDERS = []\n', ['BUILDERS must be a dict'], True),
+    ('text in front of a README end mark fails', ('more.\n<!-- /site:intro -->', 'more. <!-- /site:intro -->'), TEST_PAGE, None,
+     ['a site mark with no pair'], True),
+    ('an empty README section is read as empty', ('A safe_tool & more.\n', ''), TEST_PAGE, None, ['^README.md: site:intro must be one paragraph'], True),
+    ('a project builder error that names another section still gets its own name', ('<!-- site:intro -->', NOTE + '<!-- site:intro -->'),
+     TEST_PAGE + mark('note'), 'def bad(md, indent):\n    raise ValueError("see site:notes")\nBUILDERS = {"note": bad}\n',
+     ['^site:note: see site:notes'], True))
+# What the fresh build must write: the intro, a key fact without its source, two lines joined, an escaped "&", the
+# block's indent kept.
+TEST_BUILT = ('    <p>A safe_tool &amp; more.</p>', '      <dt>Read-only:</dt><dd>it changes nothing.</dd>',
+              '    <p class="small mut">First line. Ask &amp; learn.</p>')
 
 
-def test_case(edit, tool_edit, expect, write):
-    """Run one self-test case in a temporary repository; return whether it behaved as expected, and the findings.
+def test_case(edit, page, local, expect, write):
+    """Run one self-test case in a temporary repository.
 
     Args:
-        edit: an (old, new) change to the invented README, or None for the README as it is.
-        tool_edit: an (old, new) change to the invented tool text, or None.
-        expect: the words each finding must hold; empty when the case must pass.
+        edit: an (old, new) change to the invented README (all places), or None for the README as it is.
+        page: the text of the invented index.html.
+        local: the text of an invented scripts/build_site_local.py, or None for none.
+        expect: the words some finding must hold (a word that starts with "^": a finding must start with the rest); empty
+            when the case must pass.
         write: True to rebuild the site before the check.
     Returns:
         A pair: True when the case behaved as expected, and the list of findings.
     """
     readme = TEST_README.replace(*edit) if edit else TEST_README
-    tool = TEST_TOOL.replace(*tool_edit) if tool_edit else TEST_TOOL
-    marks = ''.join(f'<!-- >>> site:{name}: generated from {README} by {COMMAND} (do not edit) -->\nold\n'
-                    f'<!-- <<< site:{name} -->\n' for name in SECTIONS)
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
-        (root / 'src').mkdir()
+        (root / 'scripts').mkdir()
         (root / README).write_text(readme, encoding='utf-8')
-        (root / SITE).write_text(marks, encoding='utf-8')
-        (root / TOOL).write_text(tool, encoding='utf-8')
-        found = run(root, write)
+        (root / SITE).write_text(page, encoding='utf-8')
+        if local is not None:
+            (root / LOCAL).write_text(local, encoding='utf-8')
+        found, shared = run(root, write)
+        if page is EMPTY_PAGE:  # the "nothing shared" case: it must skip, not pass a check
+            return not found and not shared, found
         if expect:
-            return all(any(word in line for line in found) for word in expect), found
+            hit = lambda word, line: line.startswith(word[1:]) if word.startswith('^') else word in line  # "^": the finding starts so
+            return bool(found) and all(any(hit(word, line) for line in found) for word in expect), found
         built = (root / SITE).read_text(encoding='utf-8')
-        return not found and all(part in built for part in TEST_BUILT) and '>High<' not in built, found
+        whole = page is TEST_PAGE and local is None and edit is None
+        aside = local != TEST_LOCAL or '    <aside>plain</aside>' in built  # the local builder's block was written
+        return not found and aside and (not whole or all(part in built for part in TEST_BUILT)) and 'source:' not in built, found
 
 
 def self_test():
@@ -430,8 +547,8 @@ def self_test():
         0 when every case passes, else 1.
     """
     failed = 0
-    for label, edit, tool_edit, expect, write in TEST_CASES:
-        ok, found = test_case(edit, tool_edit, expect, write)
+    for label, edit, page, local, expect, write in TEST_CASES:
+        ok, found = test_case(edit, page, local, expect, write)
         failed += not ok
         print(('ok   ' if ok else 'FAIL ') + label + ('' if ok else f': {found}'))
     print('SITE TEST PASS' if not failed else 'SITE TEST FAIL')
@@ -452,10 +569,10 @@ def main():
     args = parser.parse_args()
     if args.test:
         return self_test()
-    found = run(ROOT, args.write)
+    found, shared = run(ROOT, args.write)
     for line in found:
         print(line)
-    print('SITE PASS' if not found else 'SITE FAIL')
+    print('SITE FAIL' if found else ('SITE PASS' if shared else 'SITE SKIP (README.md has no site sections)'))
     return 1 if found else 0
 
 
