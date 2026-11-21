@@ -98,7 +98,8 @@ function New-ReportRow {
     .PARAMETER Context
       The masked snippet, or the reason for a note.
     .OUTPUTS
-      [pscustomobject] Source, Channel, Item, Detector, Confidence, MaskedValue, Context, Modified, Link.
+      [pscustomobject] Source, Channel, Item, Detector, Confidence, MaskedValue, Context, Modified, Link, and the
+      accountability fields (empty until Set-RowAccountability fills them): ModifiedBy, Created, CreatedBy, AddedOn, AddedBy.
     #>
     param(
         [string]$Source, [string]$Channel, [string]$Item, [string]$Link, [string]$Modified,
@@ -107,6 +108,7 @@ function New-ReportRow {
     [pscustomobject]@{
         Source = $Source; Channel = $Channel; Item = $Item; Detector = $Detector; Confidence = $Confidence
         MaskedValue = $MaskedValue; Context = $Context; Modified = $Modified; Link = $Link
+        ModifiedBy = ''; Created = ''; CreatedBy = ''; AddedOn = ''; AddedBy = ''
     }
 }
 
@@ -393,7 +395,32 @@ function Get-ResultPath {
 function Get-HitCells {
     # One row of a hit tab: the hit's cells in the order of $HitColumns.
     param($Hit)
-    @($Hit.Confidence, $Hit.Channel, $Hit.Item, $Hit.MaskedValue, $Hit.Context, $Hit.Modified, $Hit.Link, $Hit.Source)
+    @($Hit.Confidence, $Hit.Channel, $Hit.Item, $Hit.MaskedValue, $Hit.Context, $Hit.Modified, $Hit.Link, $Hit.Source,
+        $Hit.ModifiedBy, $Hit.Created, $Hit.CreatedBy, $Hit.AddedOn, $Hit.AddedBy)
+}
+
+function Set-RowAccountability {
+    <#
+    .SYNOPSIS
+      Fills the accountability fields of a file's rows: who last changed it, when it was made and by whom, and who
+      put the PII in and when (where the file's history shows it; else the file's maker or "not recorded").
+    .PARAMETER Rows
+      The file's rows (New-ReportRow).
+    .PARAMETER Who
+      @{ ModifiedBy; Created; CreatedBy; AddedOn; AddedBy; ByHit } (any may be missing); ByHit: "type|masked value"
+      -> @{ AddedOn; AddedBy } for each hit dated from the file's history.
+    #>
+    param([object[]]$Rows, [hashtable]$Who)
+    if (-not $Who) { return }
+    foreach ($row in $Rows) {
+        foreach ($key in @('ModifiedBy', 'Created', 'CreatedBy', 'AddedOn', 'AddedBy')) {
+            if ($Who.ContainsKey($key) -and $Who[$key]) { $row.$key = [string]$Who[$key] }
+        }
+        $hitKey = $row.Detector + '|' + $row.MaskedValue
+        if ($Who.ContainsKey('ByHit') -and $Who.ByHit -and $Who.ByHit.ContainsKey($hitKey)) {
+            $row.AddedOn = [string]$Who.ByHit[$hitKey].AddedOn; $row.AddedBy = [string]$Who.ByHit[$hitKey].AddedBy
+        }
+    }
 }
 
 function Get-WorkbookSheets {
@@ -414,8 +441,10 @@ function Get-WorkbookSheets {
     #>
     param([object[]]$Rows, [int]$ItemsScanned, [System.Collections.IDictionary]$Header, [string]$FolderLabel)
     $hits = @($Rows | Where-Object { $script:Rank.ContainsKey($_.Confidence) })
-    $columns = @('Confidence', $FolderLabel, 'File', 'Masked value', 'Context', 'Modified', 'Link', 'Found in')
-    $widths = @(11, 22, 45, 18, 60, 17, 50, 10)
+    # Accountability (the PAM, 2026-11-21): who changed and made the file, and who put the PII in and when (by e-mail).
+    $columns = @('Confidence', $FolderLabel, 'File', 'Masked value', 'Context', 'Modified', 'Link', 'Found in',
+        'Modified by', 'Created', 'Created by', 'PII added', 'PII added by')
+    $widths = @(11, 22, 45, 18, 60, 17, 50, 10, 30, 17, 30, 17, 30)
     $byRank = @{ Expression = { $script:Rank[$_.Confidence] }; Descending = $true }
     $sheets = New-Object System.Collections.Generic.List[object]
     $sheets.Add((New-XlsxSheet 'Summary' @($script:ToolTitle, '', '', '', '') (Get-SummaryRows $Rows $ItemsScanned $Header) @(28, 70, 9, 9, 9)))
@@ -533,4 +562,4 @@ function Add-PartRows {
 }
 
 Export-ModuleMember -Function Write-Ui, Get-SeverityIndex, New-ReportRow, Add-IncompleteRow, Get-ReportSummary, Get-TypeCounts, Get-NotScannedCounts, Get-ScanSummaryText, Get-WorkbookSheets,
-Get-ResultPath, Publish-ScanReport, Add-PartRows
+Get-ResultPath, Publish-ScanReport, Add-PartRows, Set-RowAccountability

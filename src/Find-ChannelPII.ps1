@@ -11,13 +11,13 @@
 
   Purpose:     Help a team or site member (owner rights are not needed) find files that may hold PII, so they can
                review them. A spot check, not a replacement for Microsoft Purview DLP or Content Search.
-  Inputs:      the Teams link or SharePoint site address (asked when not given).
+  Inputs:      the Teams link, SharePoint site address or drive folder (X:\<folder>, \\<server>\<share>\<folder>), asked when not given.
   Outputs:     progress and the summary on screen; <OutputFolder>\<site>\<yyyy-MM-dd>\Ion Results <HH-mm-ss>.xlsx.
   How to run:  .\Find-ChannelPII.ps1   (README.md "Run it" gives every step)
   Run target:  Windows PowerShell 5.1 (also PowerShell 7) with PnP.PowerShell 1.12.0. No other modules.
-  Network:     only the one SharePoint site given. Channel posts are not read (the PAM, 2026-11-20).
+  Network:     only the one SharePoint site, or the one drive folder's server, given. Channel posts are not read (the PAM, 2026-11-20).
   Writes:      only the workbook in -OutputFolder (default Documents\Ion); nothing in Teams or SharePoint.
-  Credentials: the person's own CAC sign-in in the PnP sign-in window; nothing is stored or saved.
+  Credentials: the person's own CAC sign-in in the PnP sign-in window (a drive folder: the Windows logon); nothing is stored.
 
   Policy:      Read-only; one site only (no network reconnaissance); file content stays in memory; values
                masked (the PAM, 2026-11-20). No script file is collected or sent: script types are not
@@ -54,11 +54,13 @@ Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
 
 # Modules, in dependency order (each module's header names what it needs).
-foreach ($module in @('PiiDetectors.psm1', 'PiiMasking.psm1', 'OcrText.psm1', 'OleText.psm1', 'ContainerText.psm1',
-    'PdfCore.psm1', 'PdfObjects.psm1', 'PdfFonts.psm1', 'PdfLayout.psm1', 'PdfText.psm1',
-    'TextExtract.psm1', 'XlsxWriter.psm1', 'Report.psm1', 'ScanMeter.psm1', 'ChannelScan.psm1')) {
+# The readers (the reader workers load the same files: ReaderPool.psm1), then the scan and report modules.
+$readerModules = @('PiiDetectors.psm1', 'PiiMasking.psm1', 'OcrText.psm1', 'OleText.psm1', 'ContainerText.psm1',
+    'PdfCore.psm1', 'PdfObjects.psm1', 'PdfFonts.psm1', 'PdfLayout.psm1', 'PdfText.psm1', 'TextExtract.psm1', 'ReaderPool.psm1')
+foreach ($module in $readerModules + @('XlsxWriter.psm1', 'Report.psm1', 'ScanMeter.psm1', 'ScanQueue.psm1', 'Accountability.psm1', 'ChannelScan.psm1', 'DriveScan.psm1')) {
     Import-Module (Join-Path $PSScriptRoot $module) -Force
 }
+$IonWorkerInit = @{ Paths = @($readerModules | ForEach-Object { Join-Path $PSScriptRoot $_ }) }
 
 # ==== Body ==== (scripts/build_paste.py copies everything from this line into the paste bundle; the lines above
 # become the bundle's Settings block and its inline module code)
@@ -96,7 +98,7 @@ function Invoke-SiteFiles {
         $listName = $folderLabel + 's'; if ($libraries.Count -gt 1) { $listName = 'Libraries' }
         Write-Ui ($listName + ' to scan: ') 'Label' -NoNewline
         Write-Ui ((($selected | ForEach-Object { Protect-PiiName $_ }) -join ', ') + '; also any files at the top of each library') 'Text'
-        $scanned += Invoke-FileScan -Library $libraries -Channels $selected -SiteUrl $SiteUrl -MaxFileMB $MaxFileMB -Rows $rows
+        $scanned += Invoke-FileScan -Library $libraries -Channels $selected -SiteUrl $SiteUrl -MaxFileMB $MaxFileMB -Rows $rows -Init $IonWorkerInit
         $finished = $true
     }
     catch {
@@ -146,9 +148,17 @@ Write-Ui 'Read-only. Every PII value found is masked on screen and in the result
 # ---- Ask for a site, sign in, scan, save; then offer another site, until the person presses Enter ----
 # A wrong paste is explained and asked again (Read-ScanTarget); a site the person cannot open is reported as
 # "no access" and nothing is saved for it (Connect-TeamSite); only the one site given is touched each time.
-$target = Read-ScanTarget $SiteUrl 'Teams link or SharePoint site address (https://usaf.dps.mil/teams/<team-site>), or Enter to exit'
+$target = Read-ScanTarget $SiteUrl 'Teams link, SharePoint site address (https://usaf.dps.mil/teams/<team-site>) or folder (X:\<folder>), or Enter to exit'
 while ($null -ne $target) {
     $site = $null
+    if ($target.DrivePath) {
+        # A drive or network folder: no sign-in (the Windows logon); read-only; nothing above the folder.
+        try { Open-ScanResult (Invoke-DriveScan -Path $target.DrivePath -OutputFolder $OutputFolder -MaxFileMB $MaxFileMB -Init $IonWorkerInit) }
+        catch { Write-Ui ('The results could not be saved: ' + (Protect-PiiText $_.Exception.Message)) 'Alert' }
+        Write-Ui ''
+        $target = Read-ScanTarget '' 'Scan another? Paste a Teams link, a site address or a folder (X:\<folder>), or press Enter to exit'
+        continue
+    }
     try { $site = Connect-TeamSite $target }
     catch { Write-Ui $_.Exception.Message 'Alert' }
     if ($site) {
@@ -157,6 +167,6 @@ while ($null -ne $target) {
         catch { Write-Ui ('The results could not be saved: ' + (Protect-PiiText $_.Exception.Message)) 'Alert' }
     }
     Write-Ui ''
-    $target = Read-ScanTarget '' 'Scan another site? Paste its Teams link or site address, or press Enter to exit'
+    $target = Read-ScanTarget '' 'Scan another? Paste a Teams link, a site address or a folder (X:\<folder>), or press Enter to exit'
 }
 Write-Ui 'Ion is done: nothing stays signed in.' 'Good'

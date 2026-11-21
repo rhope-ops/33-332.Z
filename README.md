@@ -65,6 +65,8 @@ The steps to run it are at the top of the script.
 | Channel posts and replies | Requires tenant admin rights. |
 | Private and shared channels | Each has its own SharePoint site: run Ion again with that site's link |
 | Subsites | Run Ion again with the subsite's link |
+| A link to another folder inside a scanned drive folder | Listed as NOT SCANNED (a link can lead outside the folder): check it by hand |
+| A file link inside a scanned drive folder | Followed: Ion reads the file it points to |
 | Style Library and Form Templates | SharePoint's own files, not people's: skipped on purpose |
 | Encrypted or password-protected files | Listed as NOT SCANNED: check them by hand |
 | Files over 25 MB | Listed as NOT SCANNED: check them by hand (the limit is a setting) |
@@ -108,6 +110,10 @@ Each file starts with a header: purpose, inputs, outputs, how to run, run target
 |---|---|
 | `src/Find-ChannelPII.ps1` | Entry point: the five steps (address, sign-in, folders, files, results) |
 | `src/ChannelScan.psm1` | SharePoint and Teams steps: check the address, team or plain site, list folders, read files |
+| `src/DriveScan.psm1` | Scans a folder on a mapped or network drive (`X:\folder` or `\\server\share\folder`) |
+| `src/ReaderPool.psm1` | Reads several files at once in PowerShell runspaces, and each identical file only once per run |
+| `src/ScanQueue.psm1` | Turns the reader pool's results into report rows, in the order files finish |
+| `src/Accountability.psm1` | Who made and changed a file with PII, and who put the PII in and when |
 | `src/TextExtract.psm1` | Turns file bytes into plain text, in memory, and picks the reader for each file type |
 | `src/PdfCore.psm1`, `src/PdfObjects.psm1`, `src/PdfFonts.psm1`, `src/PdfLayout.psm1`, `src/PdfText.psm1` | The PDF reader, with .NET only: limits and stream filters, objects, fonts, word spacing, page text |
 | `src/OcrText.psm1` | Text in images and in a scanned PDF's JPEG pages, with Windows' built-in OCR |

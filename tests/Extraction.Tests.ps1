@@ -543,3 +543,7 @@ Assert-Equal 1 @($conflictParts | Where-Object { $_.Reason -match 'conflicting C
 $twoDesc = "Content-Description: first`r`nContent-Description: SSN $($Sample.Ssn)`r`n`r`nbody`r`n"
 $twoDescText = ((Get-TextFromBytes -Bytes ([System.Text.Encoding]::ASCII.GetBytes($twoDesc)) -FileName 'd2.eml').Parts.ToArray() | ForEach-Object { $_.Text }) -join ' '
 Assert-Equal $true (@(Find-PiiInText $twoDescText | ForEach-Object { $_.Detector }) -contains 'SSN') 'EML: a second Content-Description is read'
+# The same Content-Type twice, written with other spacing or quotes, is no conflict.
+$sameType = "Content-Type: text/plain; charset=utf-8`r`nContent-Type: text/plain;charset=`"utf-8`"`r`n`r`nbody`r`n"
+$sameParts = (Get-TextFromBytes -Bytes ([System.Text.Encoding]::ASCII.GetBytes($sameType)) -FileName 's.eml').Parts.ToArray()
+Assert-Equal 0 @($sameParts | Where-Object { $_.Reason -match 'conflicting' }).Count 'EML: the same Content-Type in another spelling is no conflict'

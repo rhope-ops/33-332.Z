@@ -13,3 +13,12 @@ CHECK PASS, fresh review without MAJOR, merged, bundle rebuilt.
    The Total row shows the worker count. SharePoint stays one file at a time (one CAC sign-in).
 5. Report: the same workbook; the Link is a file:/// link to the file; names masked with Protect-PiiName; results
    folder named after the last folder of the path. Docs and tests use placeholders only (Public repo rule).
+
+## As built (2026-11-21)
+- src/DriveScan.psm1 (the scan), src/ReaderPool.psm1 (runspace workers, one read per identical file), src/ScanQueue.psm1
+  (results into rows). Item 4 changed by the PAM's speed decision (docs/DECISIONS.md, 2026-11-21): SharePoint also uses
+  the workers: the main thread downloads, workers read; still one sign-in.
+- The worker count starts at 2 and moves by one every 6 files on the MB per second (at most 8 and one per processor);
+  CPU load is not read (no performance counters).
+- Measured on a 4-core test container, 32 different 190 KB PDFs: 1 worker 63.7 s, 2 workers 47.3 s, 4 workers 41.2 s.
+- Same file read once: SHA-256 (FIPS provider) of the bytes plus the extension.
