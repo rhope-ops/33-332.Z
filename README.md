@@ -21,6 +21,7 @@ Keep your eyes on the files in local, network, and cloud directories you can acc
 <tr><td><b>Boundary:</b></td><td>nothing leaves DoD365; the export is saved to your computer.</td></tr>
 <tr><td><b>Verifiable:</b></td><td>inspect the commented code yourself within a .txt before execution.</td></tr>
 <tr><td><b>Accessible:</b></td><td>paste and run via ISE; no download, no admin rights, no policy change.</td></tr>
+<tr><td><b>Speed:</b></td><td>reads up to 8 files at once; each identical file is read only once</td></tr>
 </table>
 
 > Have concerns? Speak with your WCO.
@@ -68,16 +69,10 @@ The steps to run it are at the top of the script.
 | Encrypted or password-protected files | Listed as NOT SCANNED: check them by hand |
 | Files over 25 MB | Listed as NOT SCANNED: check them by hand (the limit is a setting) |
 | Scripts, programs, audio, video and other file types Ion does not read | Listed as NOT SCANNED: check them by hand |
-| An archive or e-mail inside another archive or e-mail | Listed as NOT SCANNED: open it and check by hand |
+| An archive or e-mail nested more than two levels deep | Listed as NOT SCANNED: open it and check by hand |
+| Attachments of an Outlook .msg | A note says they were not read: open them and check by hand |
 | Images and scanned PDFs on a computer without Windows OCR | Listed as NOT SCANNED: check them by hand |
-| Old .doc .xls .ppt and Outlook .msg | Read in part (numbers in an old .xls are not read): check these files by hand |
-
----|---|
-| Channel posts and replies | Reading posts needs a Microsoft Graph permission that a tenant admin must approve; ask your privacy or cybersecurity office for a Microsoft Purview content search |
-| Private and shared channels | Each has its own SharePoint site: run Ion again with that site's link |
-| Subsites | Run Ion again with the subsite's link |
-| Encrypted Office files | A password or an encrypting sensitivity label stops Ion reading the file; it is listed as NOT SCANNED: check it by hand |
-| Files over 25 MB | Listed as NOT SCANNED: check them by hand |
+| Scanned PDF pages not stored as JPEG images, and the scanned pages of a PDF that also has text | Not read with OCR: check them by hand |
 | Old .doc .xls .ppt and Outlook .msg | Read in part (numbers in an old .xls are not read): check these files by hand |
 
 ---
@@ -115,7 +110,7 @@ Each file starts with a header: purpose, inputs, outputs, how to run, run target
 | `src/ChannelScan.psm1` | SharePoint and Teams steps: check the address, team or plain site, list folders, read files |
 | `src/TextExtract.psm1` | Turns file bytes into plain text, in memory, and picks the reader for each file type |
 | `src/PdfCore.psm1`, `src/PdfObjects.psm1`, `src/PdfFonts.psm1`, `src/PdfLayout.psm1`, `src/PdfText.psm1` | The PDF reader, with .NET only: limits and stream filters, objects, fonts, word spacing, page text |
-| `src/OcrText.psm1` | Text in images and scanned PDFs, with Windows' built-in OCR |
+| `src/OcrText.psm1` | Text in images and in a scanned PDF's JPEG pages, with Windows' built-in OCR |
 | `src/OleText.psm1` | Text from old .doc, .xls and .ppt files and Outlook .msg messages |
 | `src/ContainerText.psm1` | Opens .zip archives and .eml e-mails in memory, so each file inside is read |
 | `src/PiiDetectors.psm1` | One detector per PII type; finds positions and raw values |

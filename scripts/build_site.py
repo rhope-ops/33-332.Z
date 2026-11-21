@@ -75,7 +75,8 @@ ALERT_LINE = r'\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]'
 # The key-facts table: plain HTML, because a Markdown table always shows a header row and the PAM wants none
 # (2026-11-21). One row per line, the label bold and ending in ":"; cells hold plain text only (no tags, no Markdown).
 FACT_TABLE = r'<table>\n((?:<tr>.*</tr>\n)+)</table>(.*)'
-FACT_ROW = r'<tr><td><b>([^<>*`]+:)</b></td><td>([^<>*`]+)</td></tr>'
+# No "&" either: in raw HTML a browser reads "&copy" as a symbol even without its ";", and the site would not.
+FACT_ROW = r'<tr><td><b>([^<>*`&]+:)</b></td><td>([^<>*`&]+)</td></tr>'
 # A table's delimiter row (GFM): cells of dashes with optional alignment colons.
 DELIMITER_ROW = r'\|(\s*:?-+:?\s*\|)+'
 # HTML indents inside the generated blocks, matching the hand-written page around them.
@@ -359,6 +360,9 @@ TEST_CASES = (('a fresh build passes', None, None, [], True),
               ('a missing README section fails', ('<!-- site:intro -->', '<!-- site:gone -->'), None, ['no section'], True),
               ('a key fact without a bold label fails', ('<b>Read-only:</b>', 'Read-only:'), None, ['<b>Label:</b>'], True),
               ('a key fact with Markdown fails', ('changes nothing.', 'changes **nothing**.'), None, ['<b>Label:</b>'], True),
+              ('a key fact with "&" fails', ('changes nothing.', 'changes &copy nothing.'), None, ['<b>Label:</b>'], True),
+              ('text right after the key-facts table fails', ('</table>\n\nFirst line.', '</table>\nFirst line.'), None,
+               ['needs a blank line'], True),
               ('a key fact with a link fails', ('changes nothing.', 'changes www.x.example'), None, [UNSUPPORTED_WORDS], True),
               ('a key-facts table as Markdown fails', ('<table>\n<tr><td><b>Read-only:</b></td><td>it changes nothing.</td></tr>\n</table>',
                '| | |\n|---|---|\n| **Read-only:** | it changes nothing. |'), None, ['<b>Label:</b>'], True),
