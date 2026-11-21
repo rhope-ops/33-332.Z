@@ -54,8 +54,12 @@ $script:GarbledChar = [regex]'[\p{Co}\uFFFD\x01-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F\u
 # A CAC name as certificates and digital signatures write it: 2 to 4 name parts, each ending in a dot, then the 10-digit
 # DoD ID (single spaces allowed between digits: PDF signature blocks are often drawn with gaps). $CacNameEnd is the
 # same name part alone, at the end of the text before an SSN-shaped match; $CacNameChars is how far back it is looked for.
-# The first two name parts have 2 letters or more, so initials and abbreviations ("J.A.", "U.S.", "e.g.") are no CAC name.
-$script:CacNamePrefix = "(?<![\w.])[A-Za-z][A-Za-z'-]+\.[A-Za-z][A-Za-z'-]+\.(?:[A-Za-z][A-Za-z'-]*\.){0,2}"
+# Certificates write the name in capitals: the last name has 2 letters or more, so initials ("J.A.", "U.S.") and lower-case
+# words ("e.g.", "Acct.No.", "backup.config.") are no CAC name; nor are capital abbreviations such as "REF.NO." (review of PR 49).
+$script:CacNamePrefix = "(?<![\w.])(?!(?:NO|NR|NUM|REF|ACCT|ACC|TEL|PH|FAX|ID|DOC|REV|VER)\.)[A-Z][A-Z'-]+\." +
+    "(?!(?:NO|NR|NUM|REF|ACCT|TEL|PH|FAX|ID)\.)[A-Z][A-Z'-]*\.(?:[A-Z][A-Z'-]*\.){0,2}"
+# Words that put a number in a digital signature (where a gapped DoD ID is drawn), looked for just before it.
+$script:SignatureWords = '(?i:signed|\bCN\s*=|\bDN\s*:)'
 $script:CacNamePattern = $script:CacNamePrefix + '(?<id>\d(?: ?\d){9})(?![\w-]| \d)'
 $script:CacNameEnd = $script:CacNamePrefix + '$'
 $script:CacNameChars = 120
@@ -193,7 +197,7 @@ function Test-SsnPartOfLonger {
     <#
     .SYNOPSIS
       True when an SSN-shaped match without dashes is part of a gapped 10-digit DoD ID: one more digit alone after one
-      space ("123 45 6789 0"), or a CAC name ("LAST.FIRST." or "LAST.FIRST.M.") right before it, with no space.
+      space ("123 45 6789 0") with a signature word just before, or a CAC name ("LAST.FIRST." or "LAST.FIRST.M.") right before it, with no space.
       A dashed SSN, and one followed by a longer number (a date, a count), stays an SSN (review of PR 49).
     .PARAMETER Text
       The text searched.
@@ -207,7 +211,8 @@ function Test-SsnPartOfLonger {
     $end = $Match.Index + $Match.Length
     $loneDigit = $end + 1 -lt $Text.Length -and $Text[$end] -eq ' ' -and [char]::IsDigit($Text[$end + 1]) -and
         ($end + 2 -ge $Text.Length -or -not [char]::IsLetterOrDigit($Text[$end + 2]))
-    if ($loneDigit) { return $true }
+    # A lone digit after it ("... 2 copies") is a gapped DoD ID only in a signature ("Digitally signed by", "CN=").
+    if ($loneDigit -and (Test-KeywordBefore $Text $Match.Index $script:SignatureWords)) { return $true }
     $start = [Math]::Max(0, $Match.Index - $script:CacNameChars)
     return [regex]::IsMatch($Text.Substring($start, $Match.Index - $start), $script:CacNameEnd)
 }
