@@ -99,7 +99,8 @@ function New-ReportRow {
       The masked snippet, or the reason for a note.
     .OUTPUTS
       [pscustomobject] Source, Channel, Item, Detector, Confidence, MaskedValue, Context, Modified, Link, and the
-      accountability fields (empty until Set-RowAccountability fills them): ModifiedBy, Created, CreatedBy, AddedOn, AddedBy.
+      accountability fields (empty until Set-RowAccountability fills them): ModifiedBy, Created, CreatedBy, AddedOn, AddedBy,
+      HistoryNote.
     #>
     param(
         [string]$Source, [string]$Channel, [string]$Item, [string]$Link, [string]$Modified,
@@ -108,7 +109,7 @@ function New-ReportRow {
     [pscustomobject]@{
         Source = $Source; Channel = $Channel; Item = $Item; Detector = $Detector; Confidence = $Confidence
         MaskedValue = $MaskedValue; Context = $Context; Modified = $Modified; Link = $Link
-        ModifiedBy = ''; Created = ''; CreatedBy = ''; AddedOn = ''; AddedBy = ''
+        ModifiedBy = ''; Created = ''; CreatedBy = ''; AddedOn = ''; AddedBy = ''; HistoryNote = ''
     }
 }
 
@@ -399,7 +400,7 @@ function Get-HitCells {
     # One row of a hit tab: the hit's cells in the order of $HitColumns.
     param($Hit)
     @($Hit.Confidence, $Hit.Channel, $Hit.Item, $Hit.MaskedValue, $Hit.Context, $Hit.Modified, $Hit.Link, $Hit.Source,
-        $Hit.Created, $Hit.CreatedBy, $Hit.ModifiedBy, $Hit.AddedOn, $Hit.AddedBy)
+        $Hit.Created, $Hit.CreatedBy, $Hit.ModifiedBy, $Hit.AddedOn, $Hit.AddedBy, $Hit.HistoryNote)
 }
 
 function Set-RowAccountability {
@@ -410,18 +411,20 @@ function Set-RowAccountability {
     .PARAMETER Rows
       The file's rows (New-ReportRow).
     .PARAMETER Who
-      @{ ModifiedBy; Created; CreatedBy; AddedOn; AddedBy; ByHit } (any may be missing); ByHit: "type|masked value"
-      -> @{ AddedOn; AddedBy } for each hit dated from the file's history.
+      @{ ModifiedBy; Created; CreatedBy; AddedOn; AddedBy; HistoryNote; ByHit } (any may be missing); ByHit:
+      "type|masked value" -> @{ AddedOn; AddedBy; Note } for each hit dated from the file's history.
     #>
     param([object[]]$Rows, [hashtable]$Who)
     if (-not $Who) { return }
     foreach ($row in $Rows) {
-        foreach ($key in @('ModifiedBy', 'Created', 'CreatedBy', 'AddedOn', 'AddedBy')) {
+        foreach ($key in @('ModifiedBy', 'Created', 'CreatedBy', 'AddedOn', 'AddedBy', 'HistoryNote')) {
             if ($Who.ContainsKey($key) -and $Who[$key]) { $row.$key = [string]$Who[$key] }
         }
         $hitKey = $row.Detector + '|' + $row.MaskedValue
         if ($Who.ContainsKey('ByHit') -and $Who.ByHit -and $Who.ByHit.ContainsKey($hitKey)) {
-            $row.AddedOn = [string]$Who.ByHit[$hitKey].AddedOn; $row.AddedBy = [string]$Who.ByHit[$hitKey].AddedBy
+            $entry = $Who.ByHit[$hitKey]
+            $row.AddedOn = [string]$entry.AddedOn; $row.AddedBy = [string]$entry.AddedBy
+            if ($entry.ContainsKey('Note')) { $row.HistoryNote = [string]$entry.Note }
         }
     }
 }
@@ -445,10 +448,11 @@ function Get-WorkbookSheets {
     param([object[]]$Rows, [int]$ItemsScanned, [System.Collections.IDictionary]$Header, [string]$FolderLabel)
     $hits = @($Rows | Where-Object { $script:Rank.ContainsKey($_.Confidence) })
     # Accountability (the PAM, 2026-11-21): who made and changed the file, and who put the PII in and when (by e-mail).
-    # Created and Created by come before Modified by; Modified stays in its place (the PAM, 2026-11-21).
-    $columns = @('Confidence', $FolderLabel, 'File', 'Masked value', 'Context', 'Modified', 'Link', 'Found in',
-        'Created', 'Created by', 'Modified by', 'PII added', 'PII added by')
-    $widths = @(11, 22, 45, 18, 60, 17, 50, 10, 17, 30, 30, 17, 30)
+    # Created and Created by come before Last saved by; Last saved stays in its place. "Modified" is named "Last saved"
+    # (any save, not only the PII), and the caveats of "PII added by" have their own column (the PAM, 2026-11-21).
+    $columns = @('Confidence', $FolderLabel, 'File', 'Masked value', 'Context', 'Last saved', 'Link', 'Found in',
+        'Created', 'Created by', 'Last saved by', 'PII added', 'PII added by', 'History note')
+    $widths = @(11, 22, 45, 18, 60, 17, 50, 10, 17, 30, 30, 17, 30, 50)
     $byRank = @{ Expression = { $script:Rank[$_.Confidence] }; Descending = $true }
     $sheets = New-Object System.Collections.Generic.List[object]
     $sheets.Add((New-XlsxSheet 'Summary' @($script:ToolTitle, '', '', '', '') (Get-SummaryRows $Rows $ItemsScanned $Header) @(28, 70, 9, 9, 9)))

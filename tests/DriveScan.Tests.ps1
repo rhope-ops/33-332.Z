@@ -101,41 +101,46 @@ try {
     $versionList = @(1..30 | ForEach-Object { New-FakeVersion ([datetime]'2026-01-01').AddDays($_) 'early.saver' $plain }) +
         @(New-FakeVersion ([datetime]'2026-03-01') 'real.adder' $withSsn)
     $byHit = Find-PiiAddedVersion '/sites/x/Shared Documents/a.txt' 'a.txt' $hits $who
-    Assert-Equal $true ($byHit[$hits[0].Detector + '|' + $hits[0].MaskedValue].AddedBy -match '^Not recorded') 'Who: past the versions read, who added it is not recorded'
+    $pastEntry = $byHit[$hits[0].Detector + '|' + $hits[0].MaskedValue]
+    $pastText = $pastEntry.AddedOn + '|' + $pastEntry.AddedBy + '|' + $pastEntry.Note
+    Assert-Equal ('Not recorded|Not recorded|' + "Not in the old versions read: check the file's version history by hand") $pastText `
+        'Who: past the versions read, who added it is not recorded, and the note says why'
     # An older version that cannot be read: the later version with the SSN is named, marked "may have been added earlier".
     $unreadable = New-FakeVersion ([datetime]'2026-01-01') 'unread.saver' $withSsn
     $unreadable | Add-Member -MemberType ScriptMethod -Name OpenBinaryStream -Value { throw 'version not available' } -Force
     $versionList = @($unreadable, (New-FakeVersion ([datetime]'2026-01-05') 'later.saver' $withSsn))
     $byHit = Find-PiiAddedVersion '/sites/x/Shared Documents/a.txt' 'a.txt' $hits $who
     $gapAdded = $byHit[$hits[0].Detector + '|' + $hits[0].MaskedValue]
-    $gapMarked = $gapAdded.AddedBy -match '^later\.saver \(an older version could not be read' -and $gapAdded.AddedOn -match '^by '
-    Assert-Equal $true $gapMarked 'Who: after an unread version, the credit says it may be earlier'
+    Assert-Equal 'later.saver|An older version could not be read: it may have been added earlier' ($gapAdded.AddedBy + '|' + $gapAdded.Note) `
+        'Who: after an unread version, the person alone in "PII added by", and the note says it may be earlier'
     # More old versions than are read, all readable, the SSN in the oldest: a plain credit, no "could not be read".
     $versionList = @(New-FakeVersion ([datetime]'2026-01-01') 'true.adder' $withSsn) + @(2..31 | ForEach-Object { New-FakeVersion ([datetime]'2026-01-01').AddDays($_) 'other' $withSsn })
-    $plainBy = (Find-PiiAddedVersion '/sites/x/Shared Documents/a.txt' 'a.txt' $hits $who)[$hits[0].Detector + '|' + $hits[0].MaskedValue].AddedBy
-    Assert-Equal "true.adder; versions after the 30 read were not checked" $plainBy 'Who: past the version cap, the oldest version with the hit is credited, with a note'
+    $plainEntry = (Find-PiiAddedVersion '/sites/x/Shared Documents/a.txt' 'a.txt' $hits $who)[$hits[0].Detector + '|' + $hits[0].MaskedValue]
+    Assert-Equal 'true.adder|Versions after the 30 oldest were not checked' `
+        ($plainEntry.AddedBy + '|' + $plainEntry.Note) 'Who: past the version cap, the oldest version with the hit is credited, with a note'
     # Removed, then put back: the first adder is named, and who put it back (the PAM, 2026-11-21).
     $versionList = @((New-FakeVersion ([datetime]'2026-01-01') 'orig.adder' $withSsn), (New-FakeVersion ([datetime]'2026-01-02') 'remover' $plain),
         (New-FakeVersion ([datetime]'2026-01-03') 'readder' $withSsn))
-    $backBy = (Find-PiiAddedVersion '/sites/x/Shared Documents/a.txt' 'a.txt' $hits $who)[$hits[0].Detector + '|' + $hits[0].MaskedValue].AddedBy
-    Assert-Equal 'orig.adder; put back by readder on 2026-01-03 00:00' $backBy 'Who: a hit put back after a removal names who put it back'
+    $backEntry = (Find-PiiAddedVersion '/sites/x/Shared Documents/a.txt' 'a.txt' $hits $who)[$hits[0].Detector + '|' + $hits[0].MaskedValue]
+    Assert-Equal 'orig.adder|Put back by readder on 2026-01-03 00:00' ($backEntry.AddedBy + '|' + $backEntry.Note) 'Who: a hit put back after a removal names who put it back'
     # Removed, then a version not read, then back: the put-back cannot be named, and the report says so.
     $gapVersion = New-FakeVersion ([datetime]'2026-01-03') 'unread' $withSsn
     $gapVersion | Add-Member -MemberType ScriptMethod -Name OpenBinaryStream -Value { throw 'version not available' } -Force
     $versionList = @((New-FakeVersion ([datetime]'2026-01-01') 'orig.adder' $withSsn), (New-FakeVersion ([datetime]'2026-01-02') 'remover' $plain),
         $gapVersion, (New-FakeVersion ([datetime]'2026-01-04') 'back' $withSsn))
-    $unsureBy = (Find-PiiAddedVersion '/sites/x/Shared Documents/a.txt' 'a.txt' $hits $who)[$hits[0].Detector + '|' + $hits[0].MaskedValue].AddedBy
-    Assert-Equal 'orig.adder; it may have been removed and put back (a version could not be read)' $unsureBy 'Who: a put-back next to an unread version is noted'
+    $unsureEntry = (Find-PiiAddedVersion '/sites/x/Shared Documents/a.txt' 'a.txt' $hits $who)[$hits[0].Detector + '|' + $hits[0].MaskedValue]
+    Assert-Equal 'orig.adder|It may have been removed and put back (a version could not be read)' ($unsureEntry.AddedBy + '|' + $unsureEntry.Note) 'Who: a put-back next to an unread version is noted'
     # A version not read right after the first one with the SSN (a removal and put-back may hide in it): noted.
     $hidden = New-FakeVersion ([datetime]'2026-01-02') 'unread' $plain
     $hidden | Add-Member -MemberType ScriptMethod -Name OpenBinaryStream -Value { throw 'version not available' } -Force
     $versionList = @((New-FakeVersion ([datetime]'2026-01-01') 'first.adder' $withSsn), $hidden, (New-FakeVersion ([datetime]'2026-01-03') 'back' $withSsn))
-    $hiddenBy = (Find-PiiAddedVersion '/sites/x/Shared Documents/a.txt' 'a.txt' $hits $who)[$hits[0].Detector + '|' + $hits[0].MaskedValue].AddedBy
-    Assert-Equal 'first.adder; it may have been removed and put back (a version could not be read)' $hiddenBy 'Who: an unread version after the first sighting is noted'
+    $hiddenEntry = (Find-PiiAddedVersion '/sites/x/Shared Documents/a.txt' 'a.txt' $hits $who)[$hits[0].Detector + '|' + $hits[0].MaskedValue]
+    Assert-Equal 'first.adder|It may have been removed and put back (a version could not be read)' `
+        ($hiddenEntry.AddedBy + '|' + $hiddenEntry.Note) 'Who: an unread version after the first sighting is noted'
     # Not seen before the unread version: no removal is known, so no put-back note.
     $versionList = @((New-FakeVersion ([datetime]'2026-01-01') 'none' $plain), $hidden, (New-FakeVersion ([datetime]'2026-01-03') 'a3' $withSsn))
-    $laterBy = (Find-PiiAddedVersion '/sites/x/Shared Documents/a.txt' 'a.txt' $hits $who)[$hits[0].Detector + '|' + $hits[0].MaskedValue].AddedBy
-    Assert-Equal $false ($laterBy -match 'put back') 'Who: no put-back note for a hit first seen after an unread version'
+    $laterNote = (Find-PiiAddedVersion '/sites/x/Shared Documents/a.txt' 'a.txt' $hits $who)[$hits[0].Detector + '|' + $hits[0].MaskedValue].Note
+    Assert-Equal $false ($laterNote -match 'put back') 'Who: no put-back note for a hit first seen after an unread version'
     $versionList = @()
     $byHit = Find-PiiAddedVersion '/sites/x/Shared Documents/a.txt' 'a.txt' $hits $who
     Assert-Equal 'first.saver' $byHit[$hits[0].Detector + '|' + $hits[0].MaskedValue].AddedBy 'Who: with no older version, the maker added it'
@@ -147,7 +152,8 @@ finally {
 # Rows get the columns; a drive file says what Windows does not record.
 $row = New-ReportRow 'File' 'Ops' 'a.txt' '' '' 'SSN' 'High' '***-**-0000' 'x'
 Set-RowAccountability @($row) (Get-DriveWho (Join-Path ([System.IO.Path]::GetTempPath()) 'no-such-file.txt') $null)
-Assert-Equal $true ($row.AddedBy -match '^Not recorded' -and $row.ModifiedBy -match '^Not recorded') 'Who: a drive file says what is not recorded'
+Assert-Equal $true ($row.AddedBy -eq 'Not recorded' -and $row.ModifiedBy -match '^Not recorded') 'Who: a drive file says what is not recorded'
+Assert-Equal 'A drive keeps no file history' $row.HistoryNote 'Who: a drive file says why in the history note'
 # A file link whose name holds PII: its name gets a hit row (masked), and it is still not read.
 $nameRows = New-Object System.Collections.Generic.List[object]
 & (Get-Module DriveScan) { param($r, $n) Add-DriveListRows @{ Blocked = @(); Links = @(); FileLinks = @("Ops/memo $n.txt") } $r } $nameRows $Sample.Ssn
