@@ -4,7 +4,8 @@ PowerShell ISE and runs with F5 (AGENTS.md "Platform": paste and run, never an e
 
 Why: a gov computer runs pasted text in ISE, not downloaded files (ISSM ruling 2026-11-13). A pasted text loads no
 module file and runs no script file, so the execution policy does not apply to it.
-What it writes: paste/33332Z-pii-spot-check.ps1, in this order:
+What it writes: paste/33332Z-pii-spot-check.ps1 and the same text as paste/Ion-script.txt (the README links the .txt,
+because a .ps1 link causes trouble on gov computers; the PAM, 2026-11-21), in this order:
   1. a header (how to run first, then GENERATED, the sources with their SHA-256, Network/Writes/Credentials, a contents list);
   2. the Settings block: plain variables a person may set in ISE (site, results folder, file size limit);
   3. the modules of src/, inline (no module file is loaded), in dependency order: the reader modules inside one
@@ -14,11 +15,11 @@ What it writes: paste/33332Z-pii-spot-check.ps1, in this order:
   5. a Clean-up block: parts 3 and 4 run inside try/finally, which turns strict mode off and puts the ISE session's
      error setting back when the run ends.
 Inputs:  the files in READERS and MODULES below (src/*.psm1) and src/Find-ChannelPII.ps1.
-Outputs: the bundle file; with --check, nothing: exit 1 when the committed bundle differs from a fresh build.
+Outputs: the two bundle files; with --check, nothing: exit 1 when either committed file differs from a fresh build.
 Usage:   python3 scripts/build_paste.py            build
          python3 scripts/build_paste.py --check    check (scripts/check.local.sh runs it)
 Network: none.
-Writes: paste/33332Z-pii-spot-check.ps1 (not with --check).
+Writes: paste/33332Z-pii-spot-check.ps1 and paste/Ion-script.txt (not with --check).
 Credentials: none.
 """
 
@@ -30,6 +31,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 BUNDLE = ROOT / 'paste' / '33332Z-pii-spot-check.ps1'
+# The same text as a .txt file: the README's links open it as plain text, with no .ps1 in the address.
+BUNDLE_TXT = ROOT / 'paste' / 'Ion-script.txt'
 MAIN = 'src/Find-ChannelPII.ps1'
 # Dependency order: each module uses only those listed before it (their headers say so).
 # The reader modules come first; the reader workers (ReaderPool.psm1) load exactly these.
@@ -149,7 +152,7 @@ def header(sources, contents):
            '  Ion - DoD365 PII Reporter (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)',
            '',
            '  HOW TO RUN',
-           '    1. Optional: read this text first (the Open the script button saves it as a .txt file for Notepad).',
+           '    1. Optional: read this text first (Open the script shows it as a .txt in your browser).',
            '    2. Open Windows PowerShell ISE and choose File > New.',
            '    3. Paste ALL of this text (Ctrl+V) and press F5.',
            '    4. When asked, paste a Teams link (... next to the team or channel name > Copy link) or a SharePoint',
@@ -207,21 +210,22 @@ def build():
 
 
 def main():
-    """Build the bundle, or with --check compare it with the committed file. Exit 1 on a difference."""
+    """Build the two bundle files, or with --check compare them with the committed files. Exit 1 on a difference."""
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--check', action='store_true', help='fail when paste/ is not the fresh build')
     args = ap.parse_args()
     text = build()
-    if args.check:
-        if not BUNDLE.is_file() or BUNDLE.read_text(encoding='utf-8') != text:
-            print('PASTE FAIL: %s is not the fresh build; run python3 scripts/build_paste.py and commit it'
-                  % BUNDLE.relative_to(ROOT))
-            sys.exit(1)
-        print('PASTE PASS: %s is up to date' % BUNDLE.relative_to(ROOT))
-        return
-    BUNDLE.parent.mkdir(parents=True, exist_ok=True)
-    BUNDLE.write_text(text, encoding='utf-8', newline='\n')
-    print('PASTE BUILT: %s (%d lines)' % (BUNDLE.relative_to(ROOT), text.count('\n')))
+    for path in (BUNDLE, BUNDLE_TXT):
+        if args.check:
+            if not path.is_file() or path.read_text(encoding='utf-8') != text:
+                print('PASTE FAIL: %s is not the fresh build; run python3 scripts/build_paste.py and commit it'
+                      % path.relative_to(ROOT))
+                sys.exit(1)
+            print('PASTE PASS: %s is up to date' % path.relative_to(ROOT))
+            continue
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding='utf-8', newline='\n')
+        print('PASTE BUILT: %s (%d lines)' % (path.relative_to(ROOT), text.count('\n')))
 
 
 if __name__ == '__main__':

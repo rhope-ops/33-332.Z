@@ -25,3 +25,5 @@ Title: 33-332.Z · <task> · <date>. Read AGENTS.md first.
 10. Approved plan 2026-11-20 (next): Ion round 3 readers, docs/reviews/2026-11-20-ion-round3-plan.md.
 11. Approved plan 2026-11-21 (next): network drives, docs/reviews/2026-11-21-ion-network-drive-plan.md.
 12. Backlog 2026-11-21: file editor and dates in the report, docs/reviews/2026-11-21-ion-editor-item.md.
+13. README rework 2026-11-21: on main at the PAM's request (no wait for network-drives).
+    Steps and open items: docs/reviews/2026-11-21-readme-rework.md.
