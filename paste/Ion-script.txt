@@ -31,10 +31,10 @@
     src/TextExtract.psm1, sha256 3b52ab6462e5
     src/ReaderPool.psm1, sha256 8f8f73fda166
     src/XlsxWriter.psm1, sha256 e29becdc6a65
-    src/Report.psm1, sha256 e43fb80274ba
+    src/Report.psm1, sha256 633fe419fbf1
     src/ScanMeter.psm1, sha256 da4143adff10
     src/ScanQueue.psm1, sha256 35234e3c58cc
-    src/Accountability.psm1, sha256 3908dfa3d1ab
+    src/Accountability.psm1, sha256 440e6491dc97
     src/ChannelScan.psm1, sha256 4eec88ad8ca9
     src/DriveScan.psm1, sha256 f307e810f8f5
     src/Find-ChannelPII.ps1, sha256 12724f0b06d3
@@ -66,10 +66,10 @@
     line  4855  Module ScanMeter.psm1
     line  5179  Module ScanQueue.psm1
     line  5524  Module Accountability.psm1
-    line  5847  Module ChannelScan.psm1
-    line  6440  Module DriveScan.psm1
-    line  6672  Body of Find-ChannelPII.ps1
-    line  6813  Clean-up
+    line  5861  Module ChannelScan.psm1
+    line  6454  Module DriveScan.psm1
+    line  6686  Body of Find-ChannelPII.ps1
+    line  6827  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -4777,7 +4777,7 @@ function Get-SummaryRows {
         foreach ($group in $skipped) { , @($group.Reason, $group.Count) }
     }
     , @('')
-    , @('Tabs', 'One tab per type with High or Medium hits, worst type first; then Low confidence; then Not scanned.')
+    , @('Tabs', 'One tab per type with High or Medium hits, worst type first; then Low confidence; then Not scanned; then Method (how each column is worked out).')
     , @('Confidence', 'A pattern guess, not proof: open each item and check it before you act.')
     , @('If you find PII', $script:BreachLines[0])
     if ($script:BreachLines.Count -gt 1) { , @('Rule source', ($script:BreachLines[1] -replace '^Source: ', '')) }
@@ -5553,6 +5553,9 @@ $script:MaxPutBacks = 3
 $script:MaybeEarlier = 'An older version could not be read: it may have been added earlier'
 $script:PartHistory = "Not in the old versions read: check the file's version history by hand"
 $script:DriveNoHistory = 'A drive keeps no file history'
+# The two fallbacks of "PII first saved by" say so in the History note (review of PR 41).
+$script:NoOlderVersion = "No older version: the file's creator is named"
+$script:OnlyCurrentVersion = 'In no older version: the current version is named'
 
 function Get-PersonText {
     <#
@@ -5626,8 +5629,8 @@ function Complete-CurrentVersion {
     }
     foreach ($key in @($Keys | Where-Object { -not $ByHit.ContainsKey($_) })) {
         if (-not $Read.Complete) { $ByHit[$key] = New-AddedEntry $script:NotRecorded $script:NotRecorded $script:PartHistory }
-        elseif ($Read.Versions -eq 0) { $ByHit[$key] = New-AddedEntry $Who.Created $Who.CreatedBy }
-        else { $ByHit[$key] = New-AddedEntry $Who.Modified $Who.ModifiedBy }
+        elseif ($Read.Versions -eq 0) { $ByHit[$key] = New-AddedEntry $Who.Created $Who.CreatedBy $script:NoOlderVersion }
+        else { $ByHit[$key] = New-AddedEntry $Who.Modified $Who.ModifiedBy $script:OnlyCurrentVersion }
     }
 }
 
@@ -5818,30 +5821,41 @@ function Get-DriveWho {
 function Get-MethodRows {
     <#
     .SYNOPSIS
-      The rows of the workbook's Method tab: how Ion finds possible PII, how sure each confidence is, and how it fills
-      the who-and-when columns, with what that evidence can and cannot show (the PAM, 2026-11-21: the method explained in
-      the worksheet, on its own page; "PII first saved by" is evidence, not proof).
+      The rows of the workbook's Method tab: how Ion finds possible PII, how sure each confidence is for each type (as
+      src/PiiDetectors.psm1 decides it), and how it fills the who-and-when columns, with what that evidence can and
+      cannot show (the PAM, 2026-11-21: the method on its own page; "PII first saved by" is evidence, not proof).
     .OUTPUTS
       [object[]] rows of two cells (topic, text).
     #>
-    , @('How Ion finds possible PII', ('It reads the text of each file in memory and looks for patterns (SSN, DoD ID, date of birth, payment card, passport, phone, personal e-mail, home ' +
-        'address, labelled names). A pattern match is a lead, not proof: open each file and check it.'))
-    , @('High', 'A label names it (for example "SSN:") or the number passes a check that random digits seldom pass.')
-    , @('Medium', 'The right form (for example dashes in an SSN), but no label.')
-    , @('Low', 'A weak match: often not PII. A Low match inside mostly unreadable text (symbols, a font read wrong) is dropped as noise.')
+    , @('How Ion finds possible PII', ('Ion reads the text of each file in memory and looks for patterns. A match is a lead, not proof: ' +
+        'open each file and check it. The confidence (High, Medium, Low) depends on the type, as below.'))
+    , @('SSN', 'High: "SSN", "SSAN" or "social security" just before it. Medium: 3-2-4 digits with dashes or spaces. Low: 9 digits in a row.')
+    , @('DoD ID', 'Found only with "DoD ID", "DODID", "EDIPI" or "CAC" just before it: always High.')
+    , @('Date of birth', 'Found only with "DOB", "date of birth" or "born" just before it: always High.')
+    , @('Payment card', 'Medium: a card number that passes the card check. High: the same with a card word (card, Visa, GTC ...) before it.')
+    , @('Passport', 'Found only with "passport" just before it: always Medium.')
+    , @('Phone', 'Low: any US 10-digit number (office numbers are common). Medium: "cell", "mobile", "home" or "personal" just before it.')
+    , @('Personal e-mail', 'Low: an address that does not end in .gov or .mil. Medium: a personal mail service (Gmail, Yahoo and the like).')
+    , @('Home address', 'Low: number, street name and street type. Medium: it ends with a state and ZIP code. High: "home address" or similar before it.')
+    , @('Name', 'Low: a name after "Name:", "Member:", "Spouse:" and the like. High: the same, with an SSN, DoD ID, date of birth, passport or card number close by.')
+    , @('Noise', 'A Low match inside text that is mostly unreadable characters (symbols, a font read wrong) is dropped. High and Medium are always kept.')
     , @('')
     , @('Created, Created by', 'From SharePoint: when the file was first saved to the site, and by which account. On a drive: the file time and its owner.')
     , @('Last saved, Last saved by', 'The last save of the whole file, by anyone, for any reason. It says nothing about the PII; it shows who works on the file now.')
     , @('PII first saved, PII first saved by', (('Ion reads the file''s SharePoint version history, oldest first (at most {0} versions), and finds ' +
-        'the first version whose text holds the same type and masked value. These columns name the account that saved that version, and when.') -f $script:MaxVersionsRead))
-    , @('What that shows', ('SharePoint records which account saved each version. So these columns show which account first saved a version that holds the value: strong evidence, ' +
-        'not proof of who typed it.'))
-    , @('Why it can be wrong', ('The person who saves or uploads a file is not always the one who wrote the text (pasted from e-mail, a copied file, the OneDrive sync client). ' +
-        'Co-authoring names one person per version. Old versions may have been deleted. Two different values with the same mask (for example the same last 4 ' +
-        'digits) look the same. A file copied in starts a new history. Drives keep no history.'))
-    , @('History note', ('Says when the history could not show the answer: no version history, not in the versions read, a version that could not be read, a value removed and ' +
-        'put back, or more versions than were read.'))
-    , @('Before you name a person', 'Open the file in SharePoint > Version history. Open the version Ion names and the one before it, and check that the full value first appears in that version.')
+        'the first version whose text holds the same type and masked value. These columns name the account that saved that version, and when. ' +
+        'If the value is in no older version, they name the current version (the same as Last saved). If the file has no older versions at all ' +
+        '(version history off or never used), they name the file''s creator.') -f $script:MaxVersionsRead))
+    , @('What that shows', ('SharePoint records which account saved each version. So these columns show which account first saved a version ' +
+        'that holds the value: strong evidence, not proof of who typed it.'))
+    , @('Why it can be wrong', ('The person who saves or uploads a file is not always the one who wrote the text: it may be pasted from an e-mail, ' +
+        'copied from another file, or uploaded by OneDrive. When several people edit at once, SharePoint names one of them. Old versions may have ' +
+        'been deleted. Two different values can look the same once masked (for example the same last 4 digits). A file copied in starts a new ' +
+        'history. A drive keeps no history at all.'))
+    , @('History note', ('Says when the history could not show the answer: no version history, not in the versions read, a version that could ' +
+        'not be read, a value removed and put back, or more versions than were read.'))
+    , @('Before you name a person', ('Open the file in SharePoint > Version history. Open the version Ion names and the one before it, and check ' +
+        'that the full value first appears in that version.'))
 }
 
 # ==== Module ChannelScan.psm1 ====

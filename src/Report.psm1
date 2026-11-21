@@ -520,7 +520,7 @@ function Get-SummaryRows {
         foreach ($group in $skipped) { , @($group.Reason, $group.Count) }
     }
     , @('')
-    , @('Tabs', 'One tab per type with High or Medium hits, worst type first; then Low confidence; then Not scanned.')
+    , @('Tabs', 'One tab per type with High or Medium hits, worst type first; then Low confidence; then Not scanned; then Method (how each column is worked out).')
     , @('Confidence', 'A pattern guess, not proof: open each item and check it before you act.')
     , @('If you find PII', $script:BreachLines[0])
     if ($script:BreachLines.Count -gt 1) { , @('Rule source', ($script:BreachLines[1] -replace '^Source: ', '')) }

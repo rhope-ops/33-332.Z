@@ -148,6 +148,7 @@ try {
     $versionList = @()
     $byHit = Find-PiiAddedVersion '/sites/x/Shared Documents/a.txt' 'a.txt' $hits $who
     Assert-Equal 'first.saver' $byHit[$hits[0].Detector + '|' + $hits[0].MaskedValue].AddedBy 'Who: with no older version, the maker added it'
+    Assert-Equal "No older version: the file's creator is named" $byHit[$hits[0].Detector + '|' + $hits[0].MaskedValue].Note 'Who: the no-older-version fallback is noted'
 }
 finally {
     Remove-Item function:global:Get-PnPFileVersion, function:global:New-FakeVersion

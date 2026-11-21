@@ -124,7 +124,8 @@ $sourceBook = Get-XlsxSheets (@(Get-ResultFiles $reportFolder) | Sort-Object Las
 Assert-Equal 1 @($sourceBook['Summary'] | Where-Object { $_[0] -eq 'Rule source' -and $_[1] -match '^AFI 33-332' }).Count 'Advice: the Summary tab has the reference as its own row'
 # The Method tab explains the who-and-when columns and says the first-saved account is evidence, not proof (the PAM, 2026-11-21).
 $methodText = (@($sourceBook['Method']) | ForEach-Object { $_ -join ' ' }) -join "`n"
-$methodOk = $methodText -match 'PII first saved by' -and $methodText -match 'evidence, not proof' -and $methodText -match 'Version history'
+$methodOk = $methodText -match 'PII first saved by' -and $methodText -match 'evidence, not proof' -and $methodText -match 'Version history' -and
+    $methodText -match 'SSN High: "SSN"' -and $methodText -match 'DoD ID Found only with'
 Assert-Equal $true $methodOk 'Method tab: how the columns are worked out, and the limits'
 # A long site name is cut so the workbook path stays under 260 characters (review of PR 41).
 $longPath = & (Get-Module Report) { param($f) Get-ResultPath $f ('https://tenant.example.com/sites/' + ('a' * 150)) } $reportFolder

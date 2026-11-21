@@ -8,7 +8,7 @@ Title: 33-332.Z · <task> · <date>. Read AGENTS.md first.
    OpenDocument, Visio, zip, e-mail; 7f12d69), PR #20 (network drives, 1-8 reader workers, one read per identical
    file, accountability columns with put-backs; bdb7dd3). Fresh reviews until no MAJOR; each MAJOR fix has a test.
 10. The PAM to test on the gov device: ISE paste of paste/Ion-script.txt; a drive folder scan (runspaces in ISE, FIPS
-   SHA-256); Windows OCR on an image; SharePoint version history ("PII added by"); colours; Excel opening.
+   SHA-256); Windows OCR on an image; SharePoint version history ("PII first saved by"); colours; Excel opening.
 11. Speed items 3 and 4 not built (measured 2026-11-21): a one-lookup token test gave no gain (11.2 s either way on
    long.pdf: PowerShell's cost per statement, not the comparisons); the xref table would save only the 0.11 s header
    scan of a 2.1 s object read (old object versions must still be read). Workers gave 1.5x on 4 cores (GC bound?).
