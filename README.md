@@ -27,7 +27,7 @@ Keep your eyes on the files in local, network, and cloud directories you can acc
 
 ---
 
-[**Copy the script**](https://github.com/rhope-ops/33-332.Z/blob/main/paste/33332Z-pii-spot-check.ps1) · [**Open the script**](https://raw.githubusercontent.com/rhope-ops/33-332.Z/main/paste/33332Z-pii-spot-check.ps1)
+[**Copy the script**](https://github.com/rhope-ops/33-332.Z/blob/main/paste/Ion-script.txt) · [**Open the script**](https://raw.githubusercontent.com/rhope-ops/33-332.Z/main/paste/Ion-script.txt)
 
 The steps to run it are at the top of the script.
 
@@ -110,6 +110,6 @@ Each file starts with a header: purpose, inputs, outputs, how to run, run target
 | `tests/TestKit.ps1`, `tests/FakePnP.ps1` | The test assertion and samples; the fake PnP cmdlets |
 | `tests/*.Tests.ps1` | One test file per module, a start-to-end run, and a run of the paste text |
 | `tests/Lint.ps1` | Windows PowerShell 5.1 syntax check (PSScriptAnalyzer) |
-| `paste/33332Z-pii-spot-check.ps1` | GENERATED: the one text you paste into ISE (the run steps, then a Settings block, the seven modules and the script) |
+| `paste/33332Z-pii-spot-check.ps1`, `paste/Ion-script.txt` | GENERATED: the one text you paste into ISE, twice (the README links the .txt) (the run steps, then a Settings block, the seven modules and the script) |
 | `scripts/build_paste.py` | Builds the paste text from `src/`; `--check` fails when it is out of date |
 | `ref/afi33-332.pdf`, `ref/afi33-332.txt` | The rule source: AFI 33-332 with AFI33-332_DAFGM2026-01 |
