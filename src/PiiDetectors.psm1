@@ -32,6 +32,19 @@ $script:ShortKeywordWindowChars = 30
 # guidance treats a name together with an identifier (SSN, DoD ID, date of birth) as sensitive PII.
 $script:NameToIdentifierChars = 80
 
+# Unreadable text around a Low hit (Test-GarbledNear): the characters looked at on each side of the hit, the fewest
+# visible ones needed to judge, and the share of unreadable ones that drops the hit. 30% and 20 characters: the
+# author's choice, 2026-11-21 (normal prose has almost none; a run of symbol-font characters is nearly all).
+$script:GarbledWindowChars = 40
+$script:GarbledMinChars = 20
+$script:GarbledShare = 0.3
+$script:VisibleChar = [regex]'\S'
+# Unreadable: private-use characters, the replacement character, control characters other than NUL, tab, CR and LF,
+# and the Latin-1 signs a symbol font read as text gives (not the degree sign or the middle dot). Symbols that normal
+# text uses (|, the cell break of a sheet; box drawing; maths; currency) are not counted (review of PR 31).
+$script:GarbledChar = [regex]'[\p{Co}\uFFFD\x01-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F\u00A4-\u00A6\u00A8-\u00AF\u00B1-\u00B6\u00B8-\u00BF]'
+
+
 # Regular expressions: .NET keeps the last 15 patterns compiled; the detectors and the masking use more, so each file
 # re-parsed them. A larger cache keeps them all (a speed-up for many files; the author's choice, 2026-11-20).
 [regex]::CacheSize = 64
@@ -465,6 +478,30 @@ function Set-NameNearIdentifierHigh {
     }
 }
 
+function Test-GarbledNear {
+    <#
+    .SYNOPSIS
+      True when the text around a hit is mostly unreadable: at least $GarbledShare of its visible characters are
+      private-use, replacement or control characters or Latin-1 signs ($GarbledChar), as when a symbol font is read
+      as text (the PAM, 2026-11-21: 50-100 characters of Wingdings flagged as Low hits).
+    .PARAMETER Text
+      The text searched.
+    .PARAMETER Index
+      The hit's start.
+    .PARAMETER Length
+      The hit's length.
+    .OUTPUTS
+      [bool]
+    #>
+    param([string]$Text, [int]$Index, [int]$Length)
+    $start = [Math]::Max(0, $Index - $script:GarbledWindowChars)
+    $end = [Math]::Min($Text.Length, $Index + $Length + $script:GarbledWindowChars)
+    $around = $Text.Substring($start, $Index - $start) + $Text.Substring($Index + $Length, $end - $Index - $Length)
+    $visible = @($script:VisibleChar.Matches($around)).Count
+    if ($visible -lt $script:GarbledMinChars) { return $false }
+    return (@($script:GarbledChar.Matches($around)).Count / $visible) -ge $script:GarbledShare
+}
+
 function Get-PiiSpan {
     <#
     .SYNOPSIS
@@ -482,6 +519,8 @@ function Get-PiiSpan {
     $searchText = $Text.Replace('_', ' ')
     $kept = Remove-OverlappingHits @(Get-AllHits $searchText)
     Set-NameNearIdentifierHigh $kept.ToArray()
+    # A Low hit inside unreadable text (symbols, a font read wrong) is noise: it is dropped. High and Medium hits stay.
+    $kept = @($kept | Where-Object { $_.Confidence -ne 'Low' -or -not (Test-GarbledNear $searchText $_.Index $_.Length) })
     foreach ($hit in $kept) { $hit.Value = $Text.Substring($hit.Index, $hit.Length) }  # the value as written
     return @($kept | Sort-Object Index)
 }

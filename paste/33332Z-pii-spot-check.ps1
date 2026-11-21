@@ -18,20 +18,20 @@
   the files at each library's top), or the drive folder and all its subfolders. Channel posts are not read.
 
   Built from these files; to change it, change them and rebuild with: python3 scripts/build_paste.py
-    src/PiiDetectors.psm1, sha256 ea19831b4d68
+    src/PiiDetectors.psm1, sha256 0c1ea11519a9
     src/PiiMasking.psm1, sha256 752c251a94b2
     src/OcrText.psm1, sha256 a39acab441d4
     src/OleText.psm1, sha256 84041f86a020
     src/ContainerText.psm1, sha256 7378569bd7e6
     src/PdfCore.psm1, sha256 da11bdba883c
     src/PdfObjects.psm1, sha256 4479101a8f3e
-    src/PdfFonts.psm1, sha256 604c4d61b80a
+    src/PdfFonts.psm1, sha256 7ae85965bcee
     src/PdfLayout.psm1, sha256 feafecd946b7
     src/PdfText.psm1, sha256 312351e30b87
     src/TextExtract.psm1, sha256 3b52ab6462e5
     src/ReaderPool.psm1, sha256 8f8f73fda166
     src/XlsxWriter.psm1, sha256 e29becdc6a65
-    src/Report.psm1, sha256 9a6fbc1c5935
+    src/Report.psm1, sha256 d4de6ecb5092
     src/ScanMeter.psm1, sha256 739747d75471
     src/ScanQueue.psm1, sha256 37e83cec1fd9
     src/Accountability.psm1, sha256 6a1d334dbbe3
@@ -49,27 +49,27 @@
     line    75  Settings
     line    86  Reader block
     line    92  Module PiiDetectors.psm1
-    line   580  Module PiiMasking.psm1
-    line   780  Module OcrText.psm1
-    line   933  Module OleText.psm1
-    line  1042  Module ContainerText.psm1
-    line  1381  Module PdfCore.psm1
-    line  1740  Module PdfObjects.psm1
-    line  2098  Module PdfFonts.psm1
-    line  2519  Module PdfLayout.psm1
-    line  2659  Module PdfText.psm1
-    line  3152  Module TextExtract.psm1
-    line  3565  Module ReaderPool.psm1
-    line  3817  Reader block end
-    line  3821  Module XlsxWriter.psm1
-    line  4092  Module Report.psm1
-    line  4658  Module ScanMeter.psm1
-    line  4981  Module ScanQueue.psm1
-    line  5219  Module Accountability.psm1
-    line  5497  Module ChannelScan.psm1
-    line  6085  Module DriveScan.psm1
-    line  6327  Body of Find-ChannelPII.ps1
-    line  6436  Clean-up
+    line   619  Module PiiMasking.psm1
+    line   819  Module OcrText.psm1
+    line   972  Module OleText.psm1
+    line  1081  Module ContainerText.psm1
+    line  1420  Module PdfCore.psm1
+    line  1779  Module PdfObjects.psm1
+    line  2137  Module PdfFonts.psm1
+    line  2567  Module PdfLayout.psm1
+    line  2707  Module PdfText.psm1
+    line  3200  Module TextExtract.psm1
+    line  3613  Module ReaderPool.psm1
+    line  3865  Reader block end
+    line  3869  Module XlsxWriter.psm1
+    line  4140  Module Report.psm1
+    line  4707  Module ScanMeter.psm1
+    line  5030  Module ScanQueue.psm1
+    line  5268  Module Accountability.psm1
+    line  5546  Module ChannelScan.psm1
+    line  6134  Module DriveScan.psm1
+    line  6376  Body of Find-ChannelPII.ps1
+    line  6485  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -122,6 +122,19 @@ $script:ShortKeywordWindowChars = 30
 # A labelled name within this many characters of an identifier is raised to High. DoD privacy
 # guidance treats a name together with an identifier (SSN, DoD ID, date of birth) as sensitive PII.
 $script:NameToIdentifierChars = 80
+
+# Unreadable text around a Low hit (Test-GarbledNear): the characters looked at on each side of the hit, the fewest
+# visible ones needed to judge, and the share of unreadable ones that drops the hit. 30% and 20 characters: the
+# author's choice, 2026-11-21 (normal prose has almost none; a run of symbol-font characters is nearly all).
+$script:GarbledWindowChars = 40
+$script:GarbledMinChars = 20
+$script:GarbledShare = 0.3
+$script:VisibleChar = [regex]'\S'
+# Unreadable: private-use characters, the replacement character, control characters other than NUL, tab, CR and LF,
+# and the Latin-1 signs a symbol font read as text gives (not the degree sign or the middle dot). Symbols that normal
+# text uses (|, the cell break of a sheet; box drawing; maths; currency) are not counted (review of PR 31).
+$script:GarbledChar = [regex]'[\p{Co}\uFFFD\x01-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F\u00A4-\u00A6\u00A8-\u00AF\u00B1-\u00B6\u00B8-\u00BF]'
+
 
 # Regular expressions: .NET keeps the last 15 patterns compiled; the detectors and the masking use more, so each file
 # re-parsed them. A larger cache keeps them all (a speed-up for many files; the author's choice, 2026-11-20).
@@ -556,6 +569,30 @@ function Set-NameNearIdentifierHigh {
     }
 }
 
+function Test-GarbledNear {
+    <#
+    .SYNOPSIS
+      True when the text around a hit is mostly unreadable: at least $GarbledShare of its visible characters are
+      private-use, replacement or control characters or Latin-1 signs ($GarbledChar), as when a symbol font is read
+      as text (the PAM, 2026-11-21: 50-100 characters of Wingdings flagged as Low hits).
+    .PARAMETER Text
+      The text searched.
+    .PARAMETER Index
+      The hit's start.
+    .PARAMETER Length
+      The hit's length.
+    .OUTPUTS
+      [bool]
+    #>
+    param([string]$Text, [int]$Index, [int]$Length)
+    $start = [Math]::Max(0, $Index - $script:GarbledWindowChars)
+    $end = [Math]::Min($Text.Length, $Index + $Length + $script:GarbledWindowChars)
+    $around = $Text.Substring($start, $Index - $start) + $Text.Substring($Index + $Length, $end - $Index - $Length)
+    $visible = @($script:VisibleChar.Matches($around)).Count
+    if ($visible -lt $script:GarbledMinChars) { return $false }
+    return (@($script:GarbledChar.Matches($around)).Count / $visible) -ge $script:GarbledShare
+}
+
 function Get-PiiSpan {
     <#
     .SYNOPSIS
@@ -573,6 +610,8 @@ function Get-PiiSpan {
     $searchText = $Text.Replace('_', ' ')
     $kept = Remove-OverlappingHits @(Get-AllHits $searchText)
     Set-NameNearIdentifierHigh $kept.ToArray()
+    # A Low hit inside unreadable text (symbols, a font read wrong) is noise: it is dropped. High and Medium hits stay.
+    $kept = @($kept | Where-Object { $_.Confidence -ne 'Low' -or -not (Test-GarbledNear $searchText $_.Index $_.Length) })
     foreach ($hit in $kept) { $hit.Value = $Text.Substring($hit.Index, $hit.Length) }  # the value as written
     return @($kept | Sort-Object Index)
 }
@@ -2114,6 +2153,11 @@ PdfFonts.psm1 - the fonts of a PDF: their character maps and their real glyph wi
 #>
 
 
+# Fonts that draw pictures, not text (by name, with or without a subset prefix such as ABCDEF+): Wingdings 1-3,
+# Webdings, (Zapf) Dingbats, Marlett and Symbol (Greek and maths signs). Their text is read as spaces: a row of symbols
+# read as letters and digits gave Low hits that were plainly wrong (the PAM, 2026-11-21).
+$script:PictureFontPattern = '(?i)wingdings|webdings|dingbats|marlett|(?:^|\+)symbol(?:mt)?(?:$|[,-])'
+
 # Widths of the standard fonts (Adobe AFM, in thousandths of an em) for character codes 32-126; Courier is 600 for all.
 # A simple font may leave out /Widths only when it is one of these (ISO 32000-1, 9.6.2.2).
 $script:HelveticaWidths = @(278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556, 556, 556, 556, 556,
@@ -2201,6 +2245,8 @@ function New-PdfFontRecord {
     $record = @{ CMap = $null; Bytes = 1; Widths = @{}; DefaultWidth = -1.0; Standard = $null; Vertical = ($Dict -match '/Encoding\s*/Identity-V\b')
         TextCache = (New-Object 'System.Collections.Generic.Dictionary[string,string]'); EmCache = (New-Object 'System.Collections.Generic.Dictionary[string,double]') }
     if ($composite) { $record.Bytes = 2 }
+    # A picture font draws symbols, not letters: its codes read as text give runs of false letters and digits.
+    $record.Picture = [regex]::Match($Dict, '/BaseFont\s*/([^\s/<>\[\]()]+)').Groups[1].Value -match $script:PictureFontPattern
     $unicode = [regex]::Match($Dict, '/ToUnicode\s+(\d+)\s+\d+\s+R')
     if ($unicode.Success -and $Objects.Contains($unicode.Groups[1].Value) -and $Objects[$unicode.Groups[1].Value].Stream) {
         $cmap = $Objects[$unicode.Groups[1].Value]   # read once, also when many fonts share it
@@ -2333,6 +2379,8 @@ function ConvertFrom-PdfGlyphs {
       A font record, or $null.
     #>
     param([string]$Raw, $Font)
+    # A picture font (Wingdings and the like): one space per glyph, so its symbols never read as PII (the PAM, 2026-11-21).
+    if ($Font -and $Font.ContainsKey('Picture') -and $Font.Picture) { return ' ' * [int][Math]::Ceiling($Raw.Length / [Math]::Max(1, [int]$Font.Bytes)) }
     if (-not $Font -or -not $Font.CMap) { return $Raw }
     $cmap = $Font.CMap
     if ($cmap.ContainsKey('Unreadable')) {
@@ -4490,7 +4538,7 @@ function Get-HitCells {
     # One row of a hit tab: the hit's cells in the order of $HitColumns.
     param($Hit)
     @($Hit.Confidence, $Hit.Channel, $Hit.Item, $Hit.MaskedValue, $Hit.Context, $Hit.Modified, $Hit.Link, $Hit.Source,
-        $Hit.ModifiedBy, $Hit.Created, $Hit.CreatedBy, $Hit.AddedOn, $Hit.AddedBy)
+        $Hit.Created, $Hit.CreatedBy, $Hit.ModifiedBy, $Hit.AddedOn, $Hit.AddedBy)
 }
 
 function Set-RowAccountability {
@@ -4535,10 +4583,11 @@ function Get-WorkbookSheets {
     #>
     param([object[]]$Rows, [int]$ItemsScanned, [System.Collections.IDictionary]$Header, [string]$FolderLabel)
     $hits = @($Rows | Where-Object { $script:Rank.ContainsKey($_.Confidence) })
-    # Accountability (the PAM, 2026-11-21): who changed and made the file, and who put the PII in and when (by e-mail).
+    # Accountability (the PAM, 2026-11-21): who made and changed the file, and who put the PII in and when (by e-mail).
+    # Created and Created by come before Modified by; Modified stays in its place (the PAM, 2026-11-21).
     $columns = @('Confidence', $FolderLabel, 'File', 'Masked value', 'Context', 'Modified', 'Link', 'Found in',
-        'Modified by', 'Created', 'Created by', 'PII added', 'PII added by')
-    $widths = @(11, 22, 45, 18, 60, 17, 50, 10, 30, 17, 30, 17, 30)
+        'Created', 'Created by', 'Modified by', 'PII added', 'PII added by')
+    $widths = @(11, 22, 45, 18, 60, 17, 50, 10, 17, 30, 30, 17, 30)
     $byRank = @{ Expression = { $script:Rank[$_.Confidence] }; Descending = $true }
     $sheets = New-Object System.Collections.Generic.List[object]
     $sheets.Add((New-XlsxSheet 'Summary' @($script:ToolTitle, '', '', '', '') (Get-SummaryRows $Rows $ItemsScanned $Header) @(28, 70, 9, 9, 9)))

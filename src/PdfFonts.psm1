@@ -17,6 +17,11 @@ PdfFonts.psm1 - the fonts of a PDF: their character maps and their real glyph wi
 
 Set-StrictMode -Version 2.0
 
+# Fonts that draw pictures, not text (by name, with or without a subset prefix such as ABCDEF+): Wingdings 1-3,
+# Webdings, (Zapf) Dingbats, Marlett and Symbol (Greek and maths signs). Their text is read as spaces: a row of symbols
+# read as letters and digits gave Low hits that were plainly wrong (the PAM, 2026-11-21).
+$script:PictureFontPattern = '(?i)wingdings|webdings|dingbats|marlett|(?:^|\+)symbol(?:mt)?(?:$|[,-])'
+
 # Widths of the standard fonts (Adobe AFM, in thousandths of an em) for character codes 32-126; Courier is 600 for all.
 # A simple font may leave out /Widths only when it is one of these (ISO 32000-1, 9.6.2.2).
 $script:HelveticaWidths = @(278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556, 556, 556, 556, 556,
@@ -104,6 +109,8 @@ function New-PdfFontRecord {
     $record = @{ CMap = $null; Bytes = 1; Widths = @{}; DefaultWidth = -1.0; Standard = $null; Vertical = ($Dict -match '/Encoding\s*/Identity-V\b')
         TextCache = (New-Object 'System.Collections.Generic.Dictionary[string,string]'); EmCache = (New-Object 'System.Collections.Generic.Dictionary[string,double]') }
     if ($composite) { $record.Bytes = 2 }
+    # A picture font draws symbols, not letters: its codes read as text give runs of false letters and digits.
+    $record.Picture = [regex]::Match($Dict, '/BaseFont\s*/([^\s/<>\[\]()]+)').Groups[1].Value -match $script:PictureFontPattern
     $unicode = [regex]::Match($Dict, '/ToUnicode\s+(\d+)\s+\d+\s+R')
     if ($unicode.Success -and $Objects.Contains($unicode.Groups[1].Value) -and $Objects[$unicode.Groups[1].Value].Stream) {
         $cmap = $Objects[$unicode.Groups[1].Value]   # read once, also when many fonts share it
@@ -236,6 +243,8 @@ function ConvertFrom-PdfGlyphs {
       A font record, or $null.
     #>
     param([string]$Raw, $Font)
+    # A picture font (Wingdings and the like): one space per glyph, so its symbols never read as PII (the PAM, 2026-11-21).
+    if ($Font -and $Font.ContainsKey('Picture') -and $Font.Picture) { return ' ' * [int][Math]::Ceiling($Raw.Length / [Math]::Max(1, [int]$Font.Bytes)) }
     if (-not $Font -or -not $Font.CMap) { return $Raw }
     $cmap = $Font.CMap
     if ($cmap.ContainsKey('Unreadable')) {
