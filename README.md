@@ -74,6 +74,7 @@ The steps to run it are at the top of the script.
 | Attachments of an Outlook .msg | A note says they were not read: open them and check by hand |
 | Images and scanned PDFs on a computer without Windows OCR | Listed as NOT SCANNED: check them by hand |
 | Scanned PDF pages not stored as JPEG images, and the scanned pages of a PDF that also has text | Not read with OCR: check them by hand |
+| Symbols in picture fonts (Wingdings, Webdings, Dingbats, Marlett, Symbol) in a PDF | Not read as text, so not checked for PII |
 | Old .doc .xls .ppt and Outlook .msg | Read in part (numbers in an old .xls are not read): check these files by hand |
 
 ---
