@@ -23,3 +23,7 @@ Title: 33-332.Z · <task> · <date>. Read AGENTS.md first.
     Gov results: bar works; "Wingdings" PDF 1 hit left (a wide PDF: open); Ctrl+C saves; Teams lookup test 1 works.
     Next: Teams test 2 (docs/reviews/2026-11-21-teams-lookup-test.md). Roadmap and open items: docs/DECISIONS.md
     2026-11-21 rows; C2, C4-C6 of docs/reviews/2026-11-21-ion-polish-audit.md; the output folder layout.
+15. 2026-11-21 PR 46: gamma on the start line only; file on its own scan-bar line; "Downloading..."; "done / total";
+    not-scanned groups split (label, password, PDF time limit, PDF parts). Waits on the PAM: ISE layout test
+    (docs/reviews/2026-11-21-ise-progress-test.md); the reason text of the "damaged" PDFs on the next run; decisions
+    on item permissions/views and parallel SharePoint downloads (open questions of that chat).

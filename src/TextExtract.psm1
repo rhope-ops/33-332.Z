@@ -58,11 +58,12 @@ $script:ContainerExtensions = @('.zip', '.eml')
 $script:MaxContainerDepth = 2
 
 # First bytes of a zip (every .docx/.xlsx/.pptx) and of an OLE compound file. Office saves a file in OLE form when it
-# is encrypted: a password, or a sensitivity label (CUI) with encryption; an old .doc/.xls/.ppt renamed is OLE too.
-# The text of an encrypted file cannot be read without the Microsoft Information Protection SDK (not on the gov device).
+# is encrypted: a password, or a sensitivity label (CUI) with encryption (Get-OleLockReason tells them apart); an old
+# .doc/.xls/.ppt renamed is OLE too. The text of an encrypted file cannot be read without the Microsoft Information
+# Protection SDK (not on the gov device).
 $script:ZipMagic = '504B'
 $script:OleMagic = 'D0CF11E0A1B11AE1'
-$script:EncryptedReason = 'Encrypted, password-protected or labelled with encryption (or an old Office format with a new name): check by hand'
+$script:OldFormatReason = 'An old Office file (97-2003 format) with a new-style name: open it and check by hand'
 
 # =====================================================================================
 # Markup to text
@@ -308,7 +309,11 @@ function Get-NotZipReason {
     if ($null -eq $Bytes -or $Bytes.Length -eq 0) { return 'Empty file (0 bytes)' }
     $head = ($Bytes[0..([Math]::Min(7, $Bytes.Length - 1))] | ForEach-Object { $_.ToString('X2') }) -join ''
     if ($head.StartsWith($script:ZipMagic)) { return '' }
-    if ($head.StartsWith($script:OleMagic)) { return $script:EncryptedReason }
+    if ($head.StartsWith($script:OleMagic)) {
+        $lock = Get-OleLockReason $Bytes
+        if ($lock) { return $lock }
+        return $script:OldFormatReason
+    }
     # Decoded with its byte order mark, if any (UTF-8 or UTF-16), so a web page with a mark is still seen.
     $start = (Get-PlainText ([byte[]]$Bytes[0..([Math]::Min(255, $Bytes.Length - 1))])).TrimStart([char]0xFEFF, ' ', "`t", "`r", "`n")
     if ($start.StartsWith('<')) { return 'The download gave a web page, not the file: open it in SharePoint and check by hand' }

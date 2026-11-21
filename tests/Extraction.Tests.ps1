@@ -157,7 +157,7 @@ Assert-Equal 'NOT SCANNED' (Get-TextFromBytes -Bytes $Txt -FileName 'setup.ps1')
 Assert-Equal 'NOT SCANNED' (Get-TextFromBytes -Bytes $Txt -FileName 'broken.docx').Status 'damaged docx not scanned'
 # Bytes that are not a zip get a reason a person can act on, not .NET's "End of central directory not found".
 $ole = [byte[]](0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1, 0, 0, 0, 0)
-Assert-Equal $true ((Get-TextFromBytes -Bytes $ole -FileName 'Recall.xlsx').Reason -match '^Encrypted, password-protected') 'OLE bytes: encrypted or labelled'
+Assert-Equal $true ((Get-TextFromBytes -Bytes $ole -FileName 'Recall.xlsx').Reason -match '^An old Office file') 'OLE bytes without encryption: an old format with a new name'
 Assert-Equal 'Empty file (0 bytes)' (Get-TextFromBytes -Bytes ([byte[]]@()) -FileName 'New.xlsx').Reason 'Empty file named'
 $page = [System.Text.Encoding]::ASCII.GetBytes('  <!DOCTYPE html><html>sign in</html>')
 Assert-Equal $true ((Get-TextFromBytes -Bytes $page -FileName 'a.xlsx').Reason -match 'web page') 'A web page instead of the file named'
@@ -189,7 +189,7 @@ $docRead = Get-TextFromBytes -Bytes $oleDoc -FileName 'old.doc'
 Assert-Equal 'OK|SSN|' ($docRead.Status + '|' + (@(Find-PiiInText $docRead.Text) | Select-Object -First 1).Detector + '|' + $docRead.Note) 'Old .doc: UTF-16 text read, no note'
 Assert-Equal $true ((Get-TextFromBytes -Bytes $oleDoc -FileName 'old.xls').Note -match '^Old Excel file') 'Old .xls: note that numbers are not read'
 $oleLocked = [byte[]]($oleHead + [System.Text.Encoding]::Unicode.GetBytes('EncryptedPackage') + (New-Object byte[] 64))
-Assert-Equal $true ((Get-TextFromBytes -Bytes $oleLocked -FileName 'locked.doc').Reason -match '^Encrypted') 'Old Office: encryption named'
+Assert-Equal $true ((Get-TextFromBytes -Bytes $oleLocked -FileName 'locked.doc').Reason -match '^Encrypted \(password') 'Old Office: encryption named'
 $msgRead = Get-TextFromBytes -Bytes ([byte[]]($oleHead + [System.Text.Encoding]::ASCII.GetBytes("Subject: roster $ssnLine"))) -FileName 'mail.msg'
 Assert-Equal 'SSN' (@(Find-PiiInText $msgRead.Text) | Select-Object -First 1).Detector 'Outlook .msg: 8-bit text read'
 

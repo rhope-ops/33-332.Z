@@ -52,13 +52,19 @@ $script:ScreenColors = @{ Title = 'Cyan'; Label = 'Cyan'; Text = 'White'; Good =
 # Not-scanned reasons in groups for the counts on screen and on the Summary tab: a pattern on the reason, its group.
 # A file type that is not read is counted per extension (Get-NotScannedGroup).
 $script:NotScannedGroups = [ordered]@{
-    '^Encrypted' = 'Encrypted or labelled with encryption'
+    '^Sensitivity label' = 'Sensitivity label with encryption'
+    '^Encrypted' = 'Encrypted (password or author limits)'
+    '^An old Office file' = 'Old Office format with a new name'
     '^Larger than' = 'Too large'
     '^Empty file' = 'Empty file'
     '^No text in this PDF' = 'PDF without text (scanned image?)'
     'web page' = 'Download gave a web page'
     '^Download failed' = 'Download failed'
-    '^Not a valid (Office file|PDF)|^Could not read|too large or damaged to read in time|^Part of this PDF' = 'Damaged or not readable'
+    'longer than the time limit|longer than its time limit' = 'PDF time limit reached (file may be fine)'
+    '^Part of this PDF is not well formed|^Part of this PDF could not be read' = 'PDF parts not read (file may open fine)'
+    '^Part of this PDF' = 'PDF parts not unpacked'
+    '^Not a valid (Office file|PDF)' = 'Not a valid file (damaged or wrong name)'
+    '^Could not read' = 'Could not read (in use, damaged or protected)'
     'could not be fully read|^A font in this PDF|^Some characters in this PDF' = 'PDF fonts not fully readable'
     '^Files attached inside this PDF' = 'PDF attachments'
     '^Image: Windows OCR|^Scanned PDF: Image: Windows OCR' = 'Images: OCR not available'
@@ -159,8 +165,10 @@ function Get-IonMark {
 }
 
 function Write-Banner {
-    # A heading line "==== <mark> <text> ====", the mark in the mark's eye colour (yellow), the rest in the title colour (the PAM, 2026-11-21).
-    param([string]$Text)
+    # A heading line "==== <text> ====" in the title colour. With -Mark (the start line next to "Ion" only; the PAM,
+    # 2026-11-21): "==== <mark> <text> ====", the mark in the mark's eye colour (yellow).
+    param([string]$Text, [switch]$Mark)
+    if (-not $Mark) { Write-Ui ('==== ' + $Text + ' ====') 'Title'; return }
     Write-Ui '==== ' 'Title' -NoNewline; Write-Ui (Get-IonMark) 'Accent' -NoNewline; Write-Ui (' ' + $Text + ' ====') 'Title'
 }
 
@@ -293,7 +301,7 @@ function Get-ScanSummaryText {
     $out = New-Object System.Collections.Generic.List[object]
     # Adds one screen line with its colour; the first LabelLength characters are written in the label colour.
     $add = { param($text, $kind, $labelLength = 0) $out.Add([pscustomobject]@{ Text = $text; Kind = $kind; LabelLength = $labelLength }) }
-    & $add '' 'Text'; & $add ('==== ' + (Get-IonMark) + ' Results ====') 'Title'
+    & $add '' 'Text'; & $add '==== Results ====' 'Title'
     # A scan that stopped early says so first, in red: its results cover only the files read so far.
     if (@($Rows | Where-Object { $_.Detector -eq 'INCOMPLETE' }).Count -gt 0) {
         & $add ('INCOMPLETE: the scan stopped early. Only the {0} {1} read are in these results; scan again.' -f $ItemsScanned, @('files', 'file')[[int]($ItemsScanned -eq 1)]) 'Alert'
@@ -504,8 +512,7 @@ function Publish-ScanReport {
     param([object[]]$Rows, [int]$ItemsScanned, [System.Collections.IDictionary]$Header, [string]$OutputFolder, [string]$SiteUrl,
           [string]$FolderLabel = 'Folder')
     foreach ($line in @(Get-ScanSummaryText -Rows $Rows -ItemsScanned $ItemsScanned -Header $Header -FolderLabel $FolderLabel)) {
-        if ($line.Kind -eq 'Title' -and $line.Text -match '^==== . (.+) ====$') { Write-Banner $Matches[1] }   # the mark in yellow
-        elseif ($line.LabelLength -gt 0) { Write-Ui $line.Text.Substring(0, $line.LabelLength) 'Label' -NoNewline; Write-Ui $line.Text.Substring($line.LabelLength) $line.Kind }
+        if ($line.LabelLength -gt 0) { Write-Ui $line.Text.Substring(0, $line.LabelLength) 'Label' -NoNewline; Write-Ui $line.Text.Substring($line.LabelLength) $line.Kind }
         else { Write-Ui $line.Text $line.Kind }
     }
     # The advice comes after the saved path (the PAM, 2026-11-21), and also when the save fails ('finally').

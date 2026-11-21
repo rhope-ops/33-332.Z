@@ -53,9 +53,16 @@ $script:InlineImageEnd = '\sEI(?=[\s/\[<(%]|$)'
 $script:PdfNoTextReason = 'No text in this PDF (a scanned image?): check by hand'
 # A scanned PDF's JPEG page images, found by Get-PdfAllText: read with Windows OCR when the PDF has no text.
 $script:PdfScanImages = @()
-$script:PdfSlowReason = 'This PDF is too large or damaged to read in time: check by hand'
-$script:PdfPartReason = 'Part of this PDF could not be read (a damaged or unusual string): check by hand'
-$script:PdfEncryptedReason = 'Encrypted PDF (password or label): check by hand'
+# Not-scanned reasons, each its own group on the Not scanned tab (the PAM, 2026-11-21: tell labels from passwords, and
+# a time limit from damage: many PDFs called damaged open fine). The limits are $PdfSecondsLimit and $PdfRegexTimeout of PdfCore.psm1.
+$script:PdfSlowReason = 'This PDF took longer than the time limit to read (2 minutes; the file may be fine): check by hand'
+$script:PdfSearchSlowReason = 'One search in this PDF took longer than its time limit (2 seconds; the file may be fine): check by hand'
+$script:PdfPartReason = 'Part of this PDF could not be read (an unusual string; the file may still open fine): check by hand'
+$script:PdfEncryptedReason = 'Encrypted PDF (a password, or limits set by its author; it may open without one): check by hand'
+# Microsoft Purview protection: an encrypted PDF whose security handler is Microsoft's, or a wrapper PDF that holds the
+# protected document as an encrypted payload (ISO 32000-2; its own pages only say the file is protected).
+$script:PdfLabelReason = 'Sensitivity label with encryption (Microsoft Purview): open it and check by hand'
+$script:PdfLabelPattern = '/Filter\s*/MicrosoftIRMServices\b|/EncryptedPayload\b'
 
 function Convert-PdfContentToText {
     <#
@@ -163,7 +170,7 @@ function Complete-PdfOpenArray {
     $strings = $false
     foreach ($item in $Array) { if ($item[0] -eq '(' -or $item[0] -eq '<') { $strings = $true; break } }
     if (-not $strings) { return }   # no strings: nothing lost
-    Add-PdfNote 'Part of this PDF is damaged (an unclosed [ ]): check by hand'
+    Add-PdfNote 'Part of this PDF is not well formed (the file may still open fine; an unclosed [ ]): check by hand'
     Add-PdfArrayPieces $Array $State
 }
 
@@ -191,7 +198,7 @@ function Add-PdfStackText {
     if ($texts.Count -eq 0) { return $false }
     $usual = $texts.Count -eq 1 -and [object]::ReferenceEquals($texts[0], $Stack[$Stack.Count - 1]) -and (($Operator -ceq 'TJ') -eq ($texts[0] -is [System.Collections.Generic.List[string]]))
     if ($usual) { return $false }
-    Add-PdfNote 'Part of this PDF is damaged (text with stray operands): check by hand'
+    Add-PdfNote 'Part of this PDF is not well formed (the file may still open fine; text with stray operands): check by hand'
     $gap = $false
     foreach ($text in $texts) {
         Assert-PdfTime   # up to $MaxArrayItems operands: the clock is checked for each (review r19)
@@ -298,7 +305,7 @@ function Skip-PdfInlineImage {
     param([string]$Content, [int]$From, $ImageEnd)
     $end = $ImageEnd.Match($Content, [Math]::Min($Content.Length, $From + 1))   # ID is followed by one white-space byte
     if ($end.Success) { return ($end.Index + $end.Length) }
-    Add-PdfNote 'Part of this PDF is damaged: check by hand'
+    Add-PdfNote 'Part of this PDF is not well formed (the file may still open fine): check by hand'
     return $Content.Length
 }
 
@@ -357,6 +364,7 @@ function Get-PdfText {
     if ($text.IndexOf('%PDF') -lt 0 -or $text.IndexOf('%PDF') -gt 1024) {
         return @{ Text = ''; Reason = 'Not a valid PDF (damaged, or another type with a .pdf name): check by hand' }
     }
+    if ($text -match $script:PdfLabelPattern) { return @{ Text = ''; Reason = $script:PdfLabelReason } }
     if ($text -match '/Encrypt\s*(?:\d+\s+\d+\s+R|<<)') { return @{ Text = ''; Reason = $script:PdfEncryptedReason } }
     Reset-PdfOldObjects   # this PDF's own older versions only
     $script:PdfScanImages = @()   # and its own scanned pages
@@ -365,7 +373,8 @@ function Get-PdfText {
     catch {
         # A limit or an unread string can arrive wrapped (a .NET call, the pipeline): look through the whole chain.
         for ($e = $_.Exception; $e; $e = $e.InnerException) {
-            if ($e -is [System.TimeoutException] -or $e -is [System.Text.RegularExpressions.RegexMatchTimeoutException]) { return @{ Text = ''; Reason = $script:PdfSlowReason } }
+            if ($e -is [System.Text.RegularExpressions.RegexMatchTimeoutException]) { return @{ Text = ''; Reason = $script:PdfSearchSlowReason } }
+            if ($e -is [System.TimeoutException]) { return @{ Text = ''; Reason = $script:PdfSlowReason } }
             if ($e -is [System.FormatException] -and $e.Message -eq (Get-PdfStringError)) { return @{ Text = ''; Reason = $script:PdfPartReason } }
         }
         throw   # any other error is the caller's (Get-TextFromBytes reports the file)

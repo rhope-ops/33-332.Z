@@ -123,7 +123,7 @@ Assert-Equal 'https://tenant.example.com/sites/TeamA/Shared%20Documents/General/
     ($rows | Where-Object { $_.Item -eq 'Roster.docx' } | Select-Object -First 1).Link 'Link built'
 Assert-Equal 'https://tenant.example.com/sites/TeamA/Shared%20Documents/Ops/scan%20%23A.pdf' `
     ($rows | Where-Object { $_.Item -eq 'scan #A.pdf' }).Link 'Link escapes #'
-Assert-Equal $true ((Get-FakeProgressText) -match 'File: Roster\.docx') 'Progress bar names the file in work'
+Assert-Equal $true ((Get-FakeProgressText) -match "\nFile: Roster\.docx") 'Progress bar names the file in work, on a line of its own'
 
 # A plain SharePoint site: files at the top of the library are scanned too, also when there is no folder.
 Reset-FakePnP @{ "$library/top.txt" = $Txt; "$library/General/notes.txt" = $Txt; "$library/Forms/AllItems.txt" = $Txt }
@@ -133,11 +133,11 @@ $rootRows = New-Object System.Collections.Generic.List[object]
 Assert-Equal 1 (Invoke-FileScan -Library $lib -Channels @() -SiteUrl $Sample.Site -MaxFileMB 25 -Rows $rootRows 6>$null) 'Top-of-library file scanned'
 Assert-Equal '(top of the library)' (($rootRows | Select-Object -ExpandProperty Channel -Unique) -join ',') 'Top-of-library files named as such'
 Assert-Equal 'top.txt' (($rootRows | Select-Object -ExpandProperty Item -Unique) -join ',') 'Only the top file, not the folder file'
-Write-FileStep (6MB) 'Downloading' (3MB) ([TimeSpan]::FromSeconds(2))
-Assert-Equal $true ((Get-FakeProgressText) -match 'Downloading 3\.0 of 6\.0 MB \(50%\) \| 1\.5 MB/s \| about 00:02 left') `
+Write-FileStep (6MB) 'Downloading...' (3MB) ([TimeSpan]::FromSeconds(2))
+Assert-Equal $true ((Get-FakeProgressText) -match 'Downloading\.\.\. 3\.0 of 6\.0 MB \(50%\) \| 1\.5 MB/s \| about 00:02 left') `
     'Per-file bar: MB done of the size, percent, speed and time left'
-Write-FileStep (6MB) 'Downloading'
-Assert-Equal $true ((Get-FakeProgressText) -match 'Downloading 6\.0 MB - SharePoint gives no byte count') 'Per-file bar: says when the download gives no byte count'
+Write-FileStep (6MB) 'Downloading...'
+Assert-Equal $true ((Get-FakeProgressText) -match 'Downloading\.\.\. 6\.0 MB - SharePoint gives no byte count') 'Per-file bar: says when the download gives no byte count'
 
 # ---- The streamed download of a large file: the bar counts the bytes ----
 $chunked = New-Object System.IO.MemoryStream(, [byte[]](1..200 | ForEach-Object { [byte]$_ }))
@@ -153,7 +153,7 @@ Reset-FakePnP @{ "$library/General/large.txt" = $largeFile }
 $streamRows = New-Object System.Collections.Generic.List[object]
 Assert-Equal 1 (Invoke-FileScan -Library $lib -Channels @('General') -SiteUrl $Sample.Site -MaxFileMB 25 -Rows $streamRows 6>$null) 'Streamed: the large file is read'
 Assert-Equal 1 @($streamRows | Where-Object { $_.Detector -eq 'Phone' }).Count 'Streamed: its PII is found'
-Assert-Equal $true ((Get-FakeProgressText) -match 'Downloading 2\.0 of 2\.0 MB \(100%\)') 'Streamed: the bar reaches the full size'
+Assert-Equal $true ((Get-FakeProgressText) -match 'Downloading\.\.\. 2\.0 of 2\.0 MB \(100%\)') 'Streamed: the bar reaches the full size'
 # Now the opener gives two bytes of a web page: not the size the list gives.
 & $channelScan { $script:OpenDirectStream = { param($url) Get-FakeFileStream $url -Short } }
 Reset-FakePnP @{ "$library/General/large.txt" = $largeFile; "$library/General/large2.txt" = $largeFile }
@@ -256,7 +256,7 @@ Reset-FakePnP @{}
 $liveMeter = @{ Total = 4; Done = 2; Read = 1; Skipped = 1; Hits = 2; HitItems = 1; Types = @{ 'SSN' = 1; 'Phone' = 1 }; LastLine = [TimeSpan]::Zero
     Clock = [pscustomobject]@{ Elapsed = [TimeSpan]::FromSeconds(20) } }
 $live = (Write-MeterLine $liveMeter 'file' -Force 6>&1 | ForEach-Object { [string]$_ }) -join ''
-$expected = '  Total | files     2/    4  50% | read     1 | not scanned     1 | possible PII     2 | SSN 1, Phone 1'
+$expected = '  Total | files     2 /     4  50% | read     1 | not scanned     1 | possible PII     2 | SSN 1, Phone 1'
 Assert-Equal $expected $live 'Live line: Total first, fixed-width counts, then types worst first; no time (it is on the scan bar)'
 $folderMeter = $liveMeter.Clone(); $folderMeter.NameWidth = 12; $liveMeter.NameWidth = 12
 $row = (Write-ChannelLine 'General' @{ Done = 0; Read = 0; Skipped = 0; Hits = 0 } $folderMeter 'file' 6>&1 | ForEach-Object { [string]$_ }) -join ''

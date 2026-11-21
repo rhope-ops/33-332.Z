@@ -37,6 +37,9 @@ $script:NotScannedLibraries = @('Style Library', 'Form Templates')
 $script:NotChannelFolders = @('Forms')
 
 # Time spent downloading and spent reading, for the summary (it shows where a slow scan loses its time).
+# The per-file bar's heading while a file comes down from SharePoint into memory (never to disk), with "..." (the PAM, 2026-11-21).
+$script:DownloadStep = 'Downloading...'
+
 $script:Timing = @{ Download = [TimeSpan]::Zero; Check = [TimeSpan]::Zero }
 
 # Streamed download (Get-FileBytes, the PAM 2026-11-21): File.OpenBinaryDirect on the signed-in connection, so the bar
@@ -387,7 +390,7 @@ function Get-FileBytes {
     if ($script:DirectDownload -and (Test-FileBarSize $Size) -and $ServerRelativeUrl.IndexOfAny([char[]]'#%') -lt 0) {
         try {
             $stream = & $script:OpenDirectStream $ServerRelativeUrl
-            try { $bytes = Copy-StreamWithProgress $stream $Size 'Downloading' } finally { $stream.Dispose() }
+            try { $bytes = Copy-StreamWithProgress $stream $Size $script:DownloadStep } finally { $stream.Dispose() }
             if ($bytes.LongLength -eq $Size) { return , $bytes }
             # Not the size the list gives (a sign-in page, for example): the normal download decides.
             throw ('the stream gave {0} bytes, the list says {1}' -f $bytes.LongLength, $Size)
@@ -398,7 +401,7 @@ function Get-FileBytes {
             Write-Verbose ('Streamed download not possible, normal download used: ' + $_.Exception.Message)
         }
     }
-    Write-FileStep $Size 'Downloading'   # no byte count: the bar says so
+    Write-FileStep $Size $script:DownloadStep   # no byte count: the bar says so
     # The leading commas keep the byte array whole: PowerShell would otherwise unroll it, byte by byte (slow).
     try {
         $stream = Get-PnPFile -Url $ServerRelativeUrl -AsMemoryStream -ErrorAction Stop
@@ -483,7 +486,7 @@ function Invoke-OneFileScan {
         $reason = Protect-PiiText ('Download failed: ' + $_.Exception.Message)
         $rows.Add((New-ReportRow 'File' $Channel $item $link $modified 'NOT SCANNED' '' '' $reason)); return $false
     }
-    finally { $script:Timing.Download += $clock.Elapsed; Write-Progress -Id 2 -Activity 'Downloading' -Completed }
+    finally { $script:Timing.Download += $clock.Elapsed; Write-Progress -Id 2 -Activity $script:DownloadStep -Completed }
     # The main thread downloads the next file while workers read this one (speed, the PAM 2026-11-21).
     # Accountability: who made and changed the file; for a file with a hit, who added each hit (version history).
     $who = Get-SharePointWho $File

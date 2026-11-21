@@ -201,7 +201,7 @@ function Write-MeterLine {
     Write-Ui ('  ' + (Format-Name $script:TotalName (Get-RowWidth $Meter))) 'Text' -NoNewline
     Write-Ui ' | ' 'Rule' -NoNewline
     Write-Ui ($Noun + 's ') 'Muted' -NoNewline
-    Write-Ui ('{0}/{1} {2,3}%' -f (Format-Count $Meter.Done), (Format-Count $Meter.Total), (Get-MeterPercent $Meter)) 'Text' -NoNewline
+    Write-Ui ('{0} / {1} {2,3}%' -f (Format-Count $Meter.Done), (Format-Count $Meter.Total), (Get-MeterPercent $Meter)) 'Text' -NoNewline
     Write-CountPart 'read' $Meter.Read 'Text'
     Write-CountPart 'not scanned' $Meter.Skipped (Get-CountKind $Meter.Skipped 'Accent')
     Write-CountPart 'possible PII' $Meter.Hits (Get-CountKind $Meter.Hits 'Alert')
@@ -232,7 +232,7 @@ function Write-FileStep {
     .PARAMETER Size
       The file size in bytes.
     .PARAMETER Step
-      What is being done now, for example 'Downloading'.
+      What is being done now, for example 'Downloading...'.
     .PARAMETER Done
       The bytes done so far; -1 when the download method gives no byte count (the bar then says so and does not move).
     .PARAMETER Elapsed
@@ -256,7 +256,7 @@ function Write-FileStep {
         }
     }
     # No -ParentId: Windows PowerShell ISE indents a child bar; the PAM wants both bars aligned (2026-11-20).
-    Write-Progress -Id 2 -Activity ((Get-IonMark) + ' ' + $Step) -Status $status -PercentComplete $percent
+    Write-Progress -Id 2 -Activity $Step -Status $status -PercentComplete $percent
 }
 
 function Copy-StreamWithProgress {
@@ -269,7 +269,7 @@ function Copy-StreamWithProgress {
     .PARAMETER Size
       The expected size (the bar's 100%, and the first buffer size); 0 when not known.
     .PARAMETER Step
-      The bar's step text, for example 'Downloading'.
+      The bar's step text, for example 'Downloading...'.
     .OUTPUTS
       [byte[]]
     #>
@@ -382,8 +382,8 @@ function Write-ChannelLine {
     Write-Ui ('  ' + (Format-Name (Protect-PiiName $Channel) (Get-RowWidth $Meter))) 'Folder' -NoNewline
     Write-Ui ' | ' 'Rule' -NoNewline
     Write-Ui ($Noun + 's ') 'Muted' -NoNewline
-    # Padded to the width of the total row's "done/total percent", so the next columns line up.
-    Write-Ui ((Format-Count ($Meter.Done - $Before.Done)).PadRight($script:CountWidth * 2 + 6)) 'Text' -NoNewline
+    # Padded to the width of the total row's "done / total percent", so the next columns line up.
+    Write-Ui ((Format-Count ($Meter.Done - $Before.Done)).PadRight($script:CountWidth * 2 + 8)) 'Text' -NoNewline
     Write-CountPart 'read' ($Meter.Read - $Before.Read) 'Text'
     Write-CountPart 'not scanned' $skipped (Get-CountKind $skipped 'Accent')
     Write-CountPart 'possible PII' $hits (Get-CountKind $hits 'Alert')

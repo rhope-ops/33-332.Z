@@ -170,7 +170,7 @@ function Open-ScanResult {
     catch { Write-Ui ('The workbook could not be opened: ' + (Protect-PiiText $_.Exception.Message) + '. Open it from the folder above.') 'Accent' }
 }
 
-Write-Banner 'Ion - DoD365 PII Reporter'
+Write-Banner 'Ion - DoD365 PII Reporter' -Mark
 Write-Ui 'Read-only. Every PII value found is masked on screen and in the results.' 'Muted'
 # What it scans and how to stop early (the PAM, 2026-11-21): a cancel still saves the results so far ('finally').
 Write-Ui ('Scans the files of one Teams team, SharePoint site or drive folder. Files over {0} MB are listed, not read.' -f $MaxFileMB) 'Muted'

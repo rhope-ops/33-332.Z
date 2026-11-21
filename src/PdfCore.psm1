@@ -97,7 +97,10 @@ function Expand-PdfStream {
     #>
     param([string]$Raw)
     $bytes = $script:Latin1.GetBytes($Raw)
-    $skip = 0; if ($bytes.Length -ge 2 -and $bytes[0] -eq 0x78) { $skip = 2 }
+    # The zlib header (RFC 1950): method 8 in the low 4 bits, and the two bytes a multiple of 31. Any window size, not
+    # only 0x78: a header read as deflate data made good PDFs look damaged (the PAM's gov run, 2026-11-21).
+    $skip = 0
+    if ($bytes.Length -ge 2 -and ($bytes[0] -band 0x0F) -eq 8 -and (($bytes[0] * 256 + $bytes[1]) % 31) -eq 0) { $skip = 2 }
     $source = New-Object System.IO.MemoryStream -ArgumentList $bytes, $skip, ($bytes.Length - $skip)
     $inflate = New-Object System.IO.Compression.DeflateStream($source, [System.IO.Compression.CompressionMode]::Decompress)
     $output = New-Object System.IO.MemoryStream
@@ -116,7 +119,7 @@ function Expand-PdfStream {
             $script:PdfBudget.Inflated += $read
         }
     }
-    catch { Add-PdfNote 'Part of this PDF is damaged: check by hand' }   # the text read before the damage is kept
+    catch { Add-PdfNote 'Part of this PDF is not well formed (the file may still open fine): check by hand' }   # the text read before the damage is kept
     finally { $inflate.Dispose(); $source.Dispose() }
     return $script:Latin1.GetString($output.ToArray())
 }
@@ -176,7 +179,7 @@ function Expand-LzwStream {
             if ($code -eq 257) { return (Close-PdfUnpack $out -Whole) }
             if ($code -lt $table.Count) { $entry = $table[$code] }
             elseif ($code -eq $table.Count -and $null -ne $previous) { $entry = $previous + $previous[0] }
-            else { Add-PdfNote 'Part of this PDF is damaged: check by hand'; return (Close-PdfUnpack $out -Whole) }
+            else { Add-PdfNote 'Part of this PDF is not well formed (the file may still open fine): check by hand'; return (Close-PdfUnpack $out -Whole) }
             [void]$out.Append($entry)
             if (Test-PdfUnpackCap $out.Length) { return (Close-PdfUnpack $out) }
             if ($null -ne $previous -and $table.Count -lt 4096) { $table.Add($previous + $entry[0]) }
