@@ -7,7 +7,8 @@ Report.psm1 - the scan results for a person: a summary on screen and one Excel w
   Inputs:      report rows (New-ReportRow) from ChannelScan.psm1; values in them are already masked.
   Outputs:     the summary on screen; <OutputFolder>\<site>\Ion <site> <yyyy-MM-dd HHmm>.xlsx.
   Depends on:  PiiDetectors.psm1 (Find-PiiInText), PiiMasking.psm1 (Protect-PiiName, Protect-PiiText), XlsxWriter.psm1,
-               imported first by Find-ChannelPII.ps1.
+               imported first; at run time also ScanMeter.psm1 (the screen tables) and Accountability.psm1 (the By account
+               and Method tabs), imported later by Find-ChannelPII.ps1.
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7).
   Network:     none.
@@ -34,11 +35,11 @@ $script:ToolTitle = 'Ion - DoD365 PII Reporter'
 $script:SeverityOrder = @('SSN', 'Date of birth', 'Passport', 'Payment card', 'DoD ID', 'Home address', 'Name', 'Phone', 'Personal e-mail')
 
 $script:TopItems = 10   # how many files the screen summary lists (the workbook lists all)
-$script:MaxNameInPath = 40   # the site name is in the path twice: at most 40 characters keeps it under 260 (review of PR 41)
-# Screen tables fit the window: under 60 characters or unknown = 120; the last column keeps 12 (the author's choice, 2026-11-21).
-$script:DefaultScreenWidth = 120
-$script:MinScreenWidth = 60
-$script:MinLastColumn = 12
+$script:MaxNameInPath = 40
+# C6, the review columns the person fills in (the PAM, 2026-11-21), each with its dropdown (empty = free text); Ion never fills them.
+$script:ReviewColumns = [ordered]@{ 'Reviewed by' = @(); 'Review date' = @(); 'Is it PII?' = @('Yes', 'No', 'Not sure')
+    'Action taken' = @('Removed', 'Moved', 'Access limited', 'Left (not PII)', 'Other')
+    'Reported to Privacy Manager' = @('Yes', 'No', 'Not needed') }   # the site name is in the path twice: at most 40 characters keeps it under 260 (review of PR 41)
 # Under the table of types: what High, Medium and Low mean (the PAM, 2026-11-21: plain words for a unit member).
 $script:ConfidenceKey = @('High = labelled ("SSN:") or a sure pattern. Medium = right form, no label.', 'Low = weak match, often not PII.')
 
@@ -260,74 +261,6 @@ function Get-ScanMetrics {
     return $metrics
 }
 
-function Format-BoxTable {
-    <#
-    .SYNOPSIS
-      A text table with ASCII borders (no other characters: Windows PowerShell 5.1 and ISE show them all alike).
-      Text columns are left-aligned, number columns right-aligned.
-    .PARAMETER Columns
-      The header texts.
-    .PARAMETER Rows
-      The rows, each an array of cells.
-    .PARAMETER MaxWidth
-      The widest a line may be (0: no limit); the last column is cut to fit.
-    .OUTPUTS
-      [string[]] the border line, the header, the border, one line per row, the border.
-    #>
-    param([string[]]$Columns, [object[]]$Rows, [int]$MaxWidth = 0)
-    $widths = @(for ($i = 0; $i -lt $Columns.Count; $i++) {
-        [Math]::Max($Columns[$i].Length, (@($Rows | ForEach-Object { ([string]$_[$i]).Length }) + 0 | Measure-Object -Maximum).Maximum)
-    })
-    # Too wide for the screen: the last column (a file path) is cut, with '...', so no line wraps (the PAM, 2026-11-21).
-    $total = ($widths | Measure-Object -Sum).Sum + 3 * $widths.Count + 1
-    if ($MaxWidth -gt 0 -and $total -gt $MaxWidth) { $widths[-1] = [Math]::Max([Math]::Min($script:MinLastColumn, $widths[-1]), $widths[-1] - ($total - $MaxWidth)) }
-    $border = '+' + ((@($widths) | ForEach-Object { '-' * ($_ + 2) }) -join '+') + '+'
-    # One table line: each cell padded to its column width, numbers to the right.
-    $line = {
-        param($cells)
-        $parts = for ($i = 0; $i -lt $Columns.Count; $i++) {
-            $cell = [string]$cells[$i]
-            if ($cell.Length -gt $widths[$i]) { $cell = $cell.Substring(0, $widths[$i] - 3) + '...' }
-            if ($cells[$i] -is [int]) { ' ' + $cell.PadLeft($widths[$i]) + ' ' } else { ' ' + $cell.PadRight($widths[$i]) + ' ' }
-        }
-        '|' + ($parts -join '|') + '|'
-    }
-    $border
-    & $line $Columns
-    $border
-    foreach ($row in $Rows) { & $line $row }
-    $border
-}
-
-function Get-ScreenWidth {
-    # The width of the console or ISE pane in characters, less one (a full line would wrap); $DefaultScreenWidth when unknown.
-    try { $width = [int]$Host.UI.RawUI.WindowSize.Width } catch { $width = 0 }   # no window size: the default below
-    if ($width -lt $script:MinScreenWidth) { $width = $script:DefaultScreenWidth }
-    return $width - 1
-}
-
-function Get-TableLines {
-    <#
-    .SYNOPSIS
-      A boxed table as screen lines: borders grey, the header in the label colour, each row in its own colour.
-    .PARAMETER Columns
-      The header texts.
-    .PARAMETER Rows
-      The rows, each an array of cells.
-    .PARAMETER Kinds
-      One Write-Ui colour per row.
-    .OUTPUTS
-      [pscustomobject] Text, Kind, LabelLength (0), one per line.
-    #>
-    param([string[]]$Columns, [object[]]$Rows, [string[]]$Kinds)
-    $table = @(Format-BoxTable $Columns $Rows (Get-ScreenWidth))
-    for ($i = 0; $i -lt $table.Count; $i++) {
-        $kind = 'Rule'
-        if ($i -eq 1) { $kind = 'Label' } elseif ($i -ge 3 -and $i -lt $table.Count - 1) { $kind = $Kinds[$i - 3] }
-        [pscustomobject]@{ Text = $table[$i]; Kind = $kind; LabelLength = 0 }
-    }
-}
-
 function Get-ScanSummaryText {
     <#
     .SYNOPSIS
@@ -421,7 +354,7 @@ function Get-HitCells {
     # One row of a hit tab: the hit's cells in the order of $HitColumns.
     param($Hit)
     @($Hit.Confidence, $Hit.Channel, $Hit.Item, $Hit.MaskedValue, $Hit.Context, $Hit.Modified, $Hit.Link, $Hit.Source,
-        $Hit.Created, $Hit.CreatedBy, $Hit.ModifiedBy, $Hit.AddedOn, $Hit.AddedBy, $Hit.HistoryNote)
+        $Hit.Created, $Hit.CreatedBy, $Hit.ModifiedBy, $Hit.AddedOn, $Hit.AddedBy, $Hit.HistoryNote) + @('') * $script:ReviewColumns.Count
 }
 
 function Set-RowAccountability {
@@ -470,25 +403,35 @@ function Get-WorkbookSheets {
     $hits = @($Rows | Where-Object { $script:Rank.ContainsKey($_.Confidence) })
     # Accountability columns, names and order: the PAM, 2026-11-21 (docs/DECISIONS.md); the Method tab explains them.
     $columns = @('Confidence', $FolderLabel, 'File', 'Masked value', 'Context', 'Last saved', 'Link', 'Found in',
-        'Created', 'Created by', 'Last saved by', 'PII first saved', 'PII first saved by', 'History note')
-    $widths = @(11, 22, 45, 18, 60, 17, 50, 10, 17, 30, 30, 17, 30, 50)
+        'Created', 'Created by', 'Last saved by', 'PII first saved', 'PII first saved by', 'History note') + @($script:ReviewColumns.Keys)
+    $widths = @(11, 22, 45, 18, 60, 17, 50, 10, 17, 30, 30, 17, 30, 50) + @(20) * $script:ReviewColumns.Count
+    $choices = @{}; $offset = $columns.Count - $script:ReviewColumns.Count; $lowChoices = @{}   # the review columns' dropdowns
+    foreach ($name in @($script:ReviewColumns.Keys)) {
+        if ($script:ReviewColumns[$name]) { $choices[$offset] = $script:ReviewColumns[$name]; $lowChoices[$offset + 1] = $script:ReviewColumns[$name] }
+        $offset++
+    }
     $byRank = @{ Expression = { $script:Rank[$_.Confidence] }; Descending = $true }
     $sheets = New-Object System.Collections.Generic.List[object]
     $sheets.Add((New-XlsxSheet 'Summary' @($script:ToolTitle, '', '', '', '') (Get-SummaryRows $Rows $ItemsScanned $Header) @(28, 70, 9, 9, 9)))
     foreach ($type in @(Get-TypeCounts $hits | Where-Object { $_.High + $_.Medium -gt 0 } | ForEach-Object { $_.Type })) {
         $typeHits = @($hits | Where-Object { $_.Detector -eq $type -and $_.Confidence -ne 'Low' } | Sort-Object $byRank, Channel, Item)
-        $sheets.Add((New-XlsxSheet $type $columns @($typeHits | ForEach-Object { , (Get-HitCells $_) }) $widths -List -LinkColumn 6))
+        $sheets.Add((New-XlsxSheet $type $columns @($typeHits | ForEach-Object { , (Get-HitCells $_) }) $widths -List -LinkColumn 6 -Choices $choices))
     }
     $low = @($hits | Where-Object { $_.Confidence -eq 'Low' } | Sort-Object { Get-SeverityIndex $_.Detector }, Channel, Item)
     if ($low.Count -gt 0) {
-        $sheets.Add((New-XlsxSheet 'Low confidence' (@('Type') + $columns) @($low | ForEach-Object { , (@($_.Detector) + (Get-HitCells $_)) }) (@(16) + $widths) -List -LinkColumn 7))
+        $lowCells = @($low | ForEach-Object { , (@($_.Detector) + (Get-HitCells $_)) })
+        $sheets.Add((New-XlsxSheet 'Low confidence' (@('Type') + $columns) $lowCells (@(16) + $widths) -List -LinkColumn 7 -Choices $lowChoices))
     }
     $notes = @($Rows | Where-Object { -not $script:Rank.ContainsKey($_.Confidence) })
     if ($notes.Count -gt 0) {
         $sheets.Add((New-XlsxSheet 'Not scanned' @('Status', $FolderLabel, 'File', 'Reason', 'Link') `
             @($notes | ForEach-Object { , @($_.Detector, $_.Channel, $_.Item, $_.Context, $_.Link) }) @(14, 22, 45, 70, 50) -List -LinkColumn 4))
     }
-    $sheets.Add((New-XlsxSheet 'Method' @('Topic', 'How Ion works it out') @(Get-MethodRows) @(34, 130) -List))   # the PAM, 2026-11-21
+    $accounts = @(Get-AccountRows $hits)   # C6 (the PAM, 2026-11-21): whom to contact first
+    if ($accounts.Count -gt 0) {
+        $sheets.Add((New-XlsxSheet 'By account' @('PII first saved by', 'Files', 'High', 'Medium', 'Low') $accounts @(40, 9, 9, 9, 9) -List))
+    }
+    $sheets.Add((New-XlsxSheet 'Method' @('Topic', 'How Ion works it out') @(Get-MethodRows) @(34, 110) -List -WrapColumns @(1)))   # the PAM, 2026-11-21
     return $sheets.ToArray()
 }
 

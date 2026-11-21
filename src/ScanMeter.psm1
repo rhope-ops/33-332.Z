@@ -6,7 +6,7 @@ ScanMeter.psm1 - the progress bars and the per-folder lines of a scan: counts on
                names show only masked PII.
   Inputs:      the report row list and the counts the scan functions of ChannelScan.psm1 give.
   Outputs:     a meter (hashtable), status text, percent, a per-file progress bar and one coloured line per folder,
-               counts in fixed widths (the PAM, 2026-11-20).
+               counts in fixed widths (the PAM, 2026-11-20); the boxed screen tables of the summary, cut to the window.
   Depends on:  PiiMasking.psm1 (Protect-PiiName), Report.psm1 (Write-Ui), imported first by Find-ChannelPII.ps1.
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7).
@@ -28,6 +28,11 @@ $script:RateAfterSeconds = 1
 # steps, so the bar moves smoothly (the PAM, 2026-11-21: 256 KB and 4 a second looked choppy).
 $script:ChunkBytes = 64KB
 $script:BarRefreshMs = 125
+
+# Screen tables fit the window: under 60 characters or unknown = 120; the last column keeps 12 (the author's choice, 2026-11-21).
+$script:DefaultScreenWidth = 120
+$script:MinScreenWidth = 60
+$script:MinLastColumn = 12
 
 # A coloured line of live counts is printed under the progress bar at most this often (and after each folder).
 $script:LiveLineSeconds = 10
@@ -288,6 +293,74 @@ function Copy-StreamWithProgress {
     finally { $memory.Dispose() }
 }
 
+function Format-BoxTable {
+    <#
+    .SYNOPSIS
+      A text table with ASCII borders (no other characters: Windows PowerShell 5.1 and ISE show them all alike).
+      Text columns are left-aligned, number columns right-aligned.
+    .PARAMETER Columns
+      The header texts.
+    .PARAMETER Rows
+      The rows, each an array of cells.
+    .PARAMETER MaxWidth
+      The widest a line may be (0: no limit); the last column is cut to fit.
+    .OUTPUTS
+      [string[]] the border line, the header, the border, one line per row, the border.
+    #>
+    param([string[]]$Columns, [object[]]$Rows, [int]$MaxWidth = 0)
+    $widths = @(for ($i = 0; $i -lt $Columns.Count; $i++) {
+        [Math]::Max($Columns[$i].Length, (@($Rows | ForEach-Object { ([string]$_[$i]).Length }) + 0 | Measure-Object -Maximum).Maximum)
+    })
+    # Too wide for the screen: the last column (a file path) is cut, with '...', so no line wraps (the PAM, 2026-11-21).
+    $total = ($widths | Measure-Object -Sum).Sum + 3 * $widths.Count + 1
+    if ($MaxWidth -gt 0 -and $total -gt $MaxWidth) { $widths[-1] = [Math]::Max([Math]::Min($script:MinLastColumn, $widths[-1]), $widths[-1] - ($total - $MaxWidth)) }
+    $border = '+' + ((@($widths) | ForEach-Object { '-' * ($_ + 2) }) -join '+') + '+'
+    # One table line: each cell padded to its column width, numbers to the right.
+    $line = {
+        param($cells)
+        $parts = for ($i = 0; $i -lt $Columns.Count; $i++) {
+            $cell = [string]$cells[$i]
+            if ($cell.Length -gt $widths[$i]) { $cell = $cell.Substring(0, $widths[$i] - 3) + '...' }
+            if ($cells[$i] -is [int]) { ' ' + $cell.PadLeft($widths[$i]) + ' ' } else { ' ' + $cell.PadRight($widths[$i]) + ' ' }
+        }
+        '|' + ($parts -join '|') + '|'
+    }
+    $border
+    & $line $Columns
+    $border
+    foreach ($row in $Rows) { & $line $row }
+    $border
+}
+
+function Get-ScreenWidth {
+    # The width of the console or ISE pane in characters, less one (a full line would wrap); $DefaultScreenWidth when unknown.
+    try { $width = [int]$Host.UI.RawUI.WindowSize.Width } catch { $width = 0 }   # no window size: the default below
+    if ($width -lt $script:MinScreenWidth) { $width = $script:DefaultScreenWidth }
+    return $width - 1
+}
+
+function Get-TableLines {
+    <#
+    .SYNOPSIS
+      A boxed table as screen lines: borders grey, the header in the label colour, each row in its own colour.
+    .PARAMETER Columns
+      The header texts.
+    .PARAMETER Rows
+      The rows, each an array of cells.
+    .PARAMETER Kinds
+      One Write-Ui colour per row.
+    .OUTPUTS
+      [pscustomobject] Text, Kind, LabelLength (0), one per line.
+    #>
+    param([string[]]$Columns, [object[]]$Rows, [string[]]$Kinds)
+    $table = @(Format-BoxTable $Columns $Rows (Get-ScreenWidth))
+    for ($i = 0; $i -lt $table.Count; $i++) {
+        $kind = 'Rule'
+        if ($i -eq 1) { $kind = 'Label' } elseif ($i -ge 3 -and $i -lt $table.Count - 1) { $kind = $Kinds[$i - 3] }
+        [pscustomobject]@{ Text = $table[$i]; Kind = $kind; LabelLength = 0 }
+    }
+}
+
 function Write-ChannelLine {
     <#
     .SYNOPSIS
@@ -322,5 +395,6 @@ function Write-RuleLine {
     Write-Ui ('  ' + ('-' * $script:RuleWidth)) 'Rule'
 }
 
-Export-ModuleMember -Function Format-Duration, New-ScanMeter, Update-ScanMeter, Get-ScanMeterText, Get-MeterPercent, Get-NameWidth, Write-MeterLine, Test-FileBarSize,
+Export-ModuleMember -Function Format-BoxTable, Get-TableLines, Get-ScreenWidth,
+    Format-Duration, New-ScanMeter, Update-ScanMeter, Get-ScanMeterText, Get-MeterPercent, Get-NameWidth, Write-MeterLine, Test-FileBarSize,
     Write-FileStep, Copy-StreamWithProgress, Write-ChannelLine, Write-RuleLine
