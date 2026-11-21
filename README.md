@@ -9,18 +9,19 @@ Keep your eyes on the files in local, network, and cloud directories you can acc
 
 ---
 
-### 🔺 Key Facts
+### 🔺 Summary
 
 <!-- site:key-facts -->
-| | |
-|---|---|
-| **Universal:** | Ion scans every type of file in the chosen directory. |
-| **Access:** | uses your CAC sign-on to scan, and saves nothing between sessions. |
-| **Read-only:** | it makes no changes to anything it scans. |
-| **Accountable:** | see who added or changed PII, and when. |
-| **Boundary:** | nothing leaves DoD365; the export is saved to your computer. |
-| **Verifiable:** | inspect the commented code yourself within a .txt before execution. |
-| **Accessible:** | paste and run via ISE; no download, no admin rights, no policy change. |
+<table>
+<tr><td><b>Universal:</b></td><td>Ion scans every type of file in the chosen directory.</td></tr>
+<tr><td><b>Credentials:</b></td><td>CAC sign-on is needed to scan cloud directories</td></tr>
+<tr><td><b>Access:</b></td><td>Only sees what your account can see</td></tr>
+<tr><td><b>Read-only:</b></td><td>it makes no changes to anything it scans.</td></tr>
+<tr><td><b>Accountable:</b></td><td>see who added or changed PII, and when.</td></tr>
+<tr><td><b>Boundary:</b></td><td>nothing leaves DoD365; the export is saved to your computer.</td></tr>
+<tr><td><b>Verifiable:</b></td><td>inspect the commented code yourself within a .txt before execution.</td></tr>
+<tr><td><b>Accessible:</b></td><td>paste and run via ISE; no download, no admin rights, no policy change.</td></tr>
+</table>
 
 > Have concerns? Speak with your WCO.
 <!-- /site:key-facts -->
@@ -60,6 +61,18 @@ The steps to run it are at the top of the script.
 
 | Not scanned | What to do |
 |---|---|
+| Channel posts and replies | Requires tenant admin rights. |
+| Private and shared channels | Each has its own SharePoint site: run Ion again with that site's link |
+| Subsites | Run Ion again with the subsite's link |
+| Style Library and Form Templates | SharePoint's own files, not people's: skipped on purpose |
+| Encrypted or password-protected files | Listed as NOT SCANNED: check them by hand |
+| Files over 25 MB | Listed as NOT SCANNED: check them by hand (the limit is a setting) |
+| Scripts, programs, audio, video and other file types Ion does not read | Listed as NOT SCANNED: check them by hand |
+| An archive or e-mail inside another archive or e-mail | Listed as NOT SCANNED: open it and check by hand |
+| Images and scanned PDFs on a computer without Windows OCR | Listed as NOT SCANNED: check them by hand |
+| Old .doc .xls .ppt and Outlook .msg | Read in part (numbers in an old .xls are not read): check these files by hand |
+
+---|---|
 | Channel posts and replies | Reading posts needs a Microsoft Graph permission that a tenant admin must approve; ask your privacy or cybersecurity office for a Microsoft Purview content search |
 | Private and shared channels | Each has its own SharePoint site: run Ion again with that site's link |
 | Subsites | Run Ion again with the subsite's link |
@@ -82,13 +95,13 @@ The steps to run it are at the top of the script.
 
 ### 🔺 Safety
 
-- **Read-only:** it never changes, moves or deletes anything in any directory it scans.
-- **One location only:** it only scans the directory you identify.
-- **No stored credentials:** your own CAC sign-in each run.
-- **Masked results:** every value Ion finds is masked. A link opens the file, or its folder, without showing PII.
-- **No formulas:** every text cell of the workbook is plain text, so text from a scanned file cannot run as a formula in Excel. The site folder name is masked like any other name.
-- **Stops cleanly:** if something fails part way or you press Ctrl+C, the workbook is still saved and says INCOMPLETE; the script signs out even if it cannot be saved.
-- **Handle the workbook as CUI anyway:** file names and masked fragments still point to where PII is.
+- **Read-only:** never changes, moves or deletes scanned content.
+- **Scoped:** scans only the location you give; lists no other sites, teams or users.
+- **No stored credentials:** you sign in with your CAC each run; no password or token is saved.
+- **Masked output:** every found value is masked on screen and in the workbook; links open the file or folder without showing PII.
+- **Formula-safe workbook:** all text is stored as plain text, so scanned content cannot run as an Excel formula.
+- **Fails safe:** on an error or Ctrl+C, the workbook is still saved and marked INCOMPLETE, and Ion signs out.
+- **Handle the workbook as CUI:** file names and masked fragments still show where PII is.
 
 ---
 
@@ -100,7 +113,11 @@ Each file starts with a header: purpose, inputs, outputs, how to run, run target
 |---|---|
 | `src/Find-ChannelPII.ps1` | Entry point: the five steps (address, sign-in, folders, files, results) |
 | `src/ChannelScan.psm1` | SharePoint and Teams steps: check the address, team or plain site, list folders, read files |
-| `src/TextExtract.psm1` | Text from Office files, text files and HTML, in memory |
+| `src/TextExtract.psm1` | Turns file bytes into plain text, in memory, and picks the reader for each file type |
+| `src/PdfCore.psm1`, `src/PdfObjects.psm1`, `src/PdfFonts.psm1`, `src/PdfLayout.psm1`, `src/PdfText.psm1` | The PDF reader, with .NET only: limits and stream filters, objects, fonts, word spacing, page text |
+| `src/OcrText.psm1` | Text in images and scanned PDFs, with Windows' built-in OCR |
+| `src/OleText.psm1` | Text from old .doc, .xls and .ppt files and Outlook .msg messages |
+| `src/ContainerText.psm1` | Opens .zip archives and .eml e-mails in memory, so each file inside is read |
 | `src/PiiDetectors.psm1` | One detector per PII type; finds positions and raw values |
 | `src/PiiMasking.psm1` | Masks every value and snippet; the only way results leave the detectors |
 | `src/Report.psm1` | Screen summary, the severity order, the workbook tabs and where the workbook is saved |
