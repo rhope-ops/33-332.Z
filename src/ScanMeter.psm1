@@ -240,7 +240,7 @@ function Write-FileStep {
         $percent = 0
     }
     else {
-        $percent = [int][Math]::Min(100, 100 * $Done / [Math]::Max(1, $Size))
+        $percent = [int][Math]::Floor([Math]::Min(100, 100 * $Done / [Math]::Max(1, $Size)))
         $status = '{0} {1,5:N1} of {2:N1} MB {3,3}%' -f $Step, ($Done / 1MB), $sizeMB, $percent
         $seconds = $Elapsed.TotalSeconds
         if ($Done -gt 0 -and $seconds -ge $script:RateAfterSeconds) {
@@ -321,4 +321,5 @@ function Write-RuleLine {
     Write-Ui ('  ' + ('-' * $script:RuleWidth)) 'Rule'
 }
 
-Export-ModuleMember -Function New-ScanMeter, Update-ScanMeter, Get-ScanMeterText, Get-MeterPercent, Get-NameWidth, Write-MeterLine, Test-FileBarSize, Write-FileStep, Copy-StreamWithProgress, Write-ChannelLine, Write-RuleLine
+Export-ModuleMember -Function New-ScanMeter, Update-ScanMeter, Get-ScanMeterText, Get-MeterPercent, Get-NameWidth, Write-MeterLine, Test-FileBarSize,
+    Write-FileStep, Copy-StreamWithProgress, Write-ChannelLine, Write-RuleLine

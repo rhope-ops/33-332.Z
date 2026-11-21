@@ -160,7 +160,7 @@ function Get-DriveHeader {
     .PARAMETER Used
       The whole run's time.
     .PARAMETER Reading
-      The time all workers spent reading and checking.
+      The time all workers spent reading.
     .PARAMETER Workers
       The number of files read at once at the end.
     .OUTPUTS

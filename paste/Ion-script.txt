@@ -32,11 +32,11 @@
     src/ReaderPool.psm1, sha256 8f8f73fda166
     src/XlsxWriter.psm1, sha256 e29becdc6a65
     src/Report.psm1, sha256 9a6fbc1c5935
-    src/ScanMeter.psm1, sha256 8538c6fd8575
+    src/ScanMeter.psm1, sha256 861bfca4b440
     src/ScanQueue.psm1, sha256 37e83cec1fd9
     src/Accountability.psm1, sha256 6a1d334dbbe3
     src/ChannelScan.psm1, sha256 8560dc75b285
-    src/DriveScan.psm1, sha256 803bef724c37
+    src/DriveScan.psm1, sha256 59ea6a456910
     src/Find-ChannelPII.ps1, sha256 b2d6bfd7a72b
 
   Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.
@@ -4897,7 +4897,7 @@ function Write-FileStep {
         $percent = 0
     }
     else {
-        $percent = [int][Math]::Min(100, 100 * $Done / [Math]::Max(1, $Size))
+        $percent = [int][Math]::Floor([Math]::Min(100, 100 * $Done / [Math]::Max(1, $Size)))
         $status = '{0} {1,5:N1} of {2:N1} MB {3,3}%' -f $Step, ($Done / 1MB), $sizeMB, $percent
         $seconds = $Elapsed.TotalSeconds
         if ($Done -gt 0 -and $seconds -ge $script:RateAfterSeconds) {
@@ -6244,7 +6244,7 @@ function Get-DriveHeader {
     .PARAMETER Used
       The whole run's time.
     .PARAMETER Reading
-      The time all workers spent reading and checking.
+      The time all workers spent reading.
     .PARAMETER Workers
       The number of files read at once at the end.
     .OUTPUTS
