@@ -27,3 +27,6 @@ Title: 33-332.Z · <task> · <date>. Read AGENTS.md first.
     not-scanned groups split (label, password, PDF time limit, PDF parts). Waits on the PAM: ISE layout test
     (docs/reviews/2026-11-21-ise-progress-test.md); the reason text of the "damaged" PDFs on the next run; decisions
     on item permissions/views and parallel SharePoint downloads (open questions of that chat).
+16. Plan approved 2026-11-21 (docs/DECISIONS.md, newest row): step 1 = Teams link alone (built) + 2 test snippets
+    (parallel download, view counts: docs/reviews/2026-11-21-ion-round2-tests.md); step 2 = permission columns;
+    step 3 = parallel downloads in a planned order, and version-history reads off the main thread (slow run 28:49).

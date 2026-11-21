@@ -38,8 +38,9 @@ The steps to run it are at the top of the script.
 
 <kbd>Sign in</kbd> → <kbd>List and confirm</kbd> → <kbd>Read files in memory</kbd> → <kbd>Find PII</kbd> → <kbd><b>Mask it</b></kbd> → <kbd>Report</kbd>
 
+- **Sign in:** paste a Teams link (... next to the team or channel name > Copy link), a SharePoint site address or a drive folder. A Teams link alone is enough: Ion looks up that one team's site, so two CAC sign-in windows open, one after the other. If the lookup fails, Ion asks for the site address.
 - **List and confirm:** Ion lists the files first and shows how many it found, their size, and how many it will list but not read. When it finds files, it asks "Scan now? [Y/n]"; Enter starts the scan, and "n" saves nothing.
-- **Progress:** one bar shows 3 lines: the folder, the run so far (files done, read, not scanned, possible PII, time elapsed and left), and the file in work. For a SharePoint or Teams file of 1 MB or more, a second bar, "Downloading...", shows the MB downloaded. A download goes into memory only, never to disk, and is gone when the file is read.
+- **Progress:** one bar shows the folder, the run so far (files done, read, not scanned, possible PII, time elapsed and left) and the file in work. For a SharePoint or Teams file of 1 MB or more, a second bar, "Downloading...", shows the MB downloaded. A download goes into memory only, never to disk, and is gone when the file is read.
 - **Report:** one Excel workbook per run, in `Documents\Ion\<site>\Ion <site> <yyyy-MM-dd HHmm>.xlsx` (a drive folder gets a folder of its own name; a site or folder name longer than 40 characters is cut to 40 in the path). It has a Summary tab, one tab per PII type (worst first), Low confidence, Not scanned, By account (when an account is named) and, last, Method. Each hit row shows when the file was created and by whom, when it was last saved and by whom, which account first saved a version with the PII and when, and a History note when the file's history cannot show that. Five empty columns are for the reviewer to fill in: Reviewed by, Review date, Is it PII? (Yes, No, Not sure), Action taken (Removed, Moved, Access limited, Left (not PII), Other) and Reported to Privacy Manager (Yes, No, Not needed). The By account tab counts files and High, Medium and Low hits per "first saved by" account. The Method tab explains, for each PII type, when a match is Low, Medium or High, and how each column is worked out: the "first saved by" account is evidence, not proof of who typed the PII.
 
 #### What it looks for
@@ -48,7 +49,7 @@ The steps to run it are at the top of the script.
 | Type | Found when | Shown as |
 |---|---|---|
 | SSN | 3-2-4 digits the SSA could issue | `***-**-1234` |
-| DoD ID | 10 digits after "DoD ID", "DODID", "EDIPI" or "CAC" | `******7890` |
+| DoD ID | 10 digits after "DoD ID", "DODID", "EDIPI" or "CAC", or at the end of a CAC name (LAST.FIRST.M. then 10 digits, as in e-signatures) | `******7890` |
 | Date of birth | A date after "DOB", "date of birth" or "born" | `[date masked]` |
 | Payment card | 13 to 19 digits with a card network's prefix that pass the card check | `************1111` |
 | Passport | 6 to 9 letters and digits after "passport" | `*****567` |
@@ -118,7 +119,8 @@ Each file starts with a header: purpose, inputs, outputs, how to run, run target
 | File | What it does |
 |---|---|
 | `src/Find-ChannelPII.ps1` | Entry point: address or folder, sign-in for cloud sites, folders, files, results |
-| `src/ChannelScan.psm1` | SharePoint and Teams steps: check the address, team or plain site, list folders, read files |
+| `src/SiteTarget.psm1` | What you paste (Teams link, site address or drive folder), the lookup of a team's site from a Teams link, and the sign-in to that one site |
+| `src/ChannelScan.psm1` | SharePoint and Teams steps after the sign-in: libraries, folders, read files |
 | `src/DriveScan.psm1` | Scans a folder on a mapped or network drive (`X:\folder` or `\\server\share\folder`) |
 | `src/ReaderPool.psm1` | Reads several files at once in PowerShell runspaces, and each identical file only once per run |
 | `src/ScanQueue.psm1` | Turns the reader pool's results into report rows, in the order files finish; the steps both scans share, and the "Scan now?" question |

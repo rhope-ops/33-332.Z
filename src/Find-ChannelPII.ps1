@@ -15,7 +15,8 @@
   Outputs:     progress and the summary on screen; <OutputFolder>\<site>\Ion <site> <yyyy-MM-dd HHmm>.xlsx.
   How to run:  .\Find-ChannelPII.ps1   (README.md "Run it" gives every step)
   Run target:  Windows PowerShell 5.1 (also PowerShell 7) with PnP.PowerShell 1.12.0. No other modules.
-  Network:     only the one SharePoint site, or the one drive folder's server, given. Channel posts are not read (the PAM, 2026-11-20).
+  Network:     only the one SharePoint site, or the one drive folder's server, given; for a Teams link also the tenant
+               root, for one lookup of that team's site (SiteTarget.psm1). Channel posts are not read (the PAM, 2026-11-20).
   Writes:      only the workbook in -OutputFolder (default Documents\Ion); nothing in Teams or SharePoint.
   Credentials: the person's own CAC sign-in in the PnP sign-in window (a drive folder: the Windows logon); nothing is stored.
 
@@ -58,7 +59,7 @@ $ErrorActionPreference = 'Stop'
 # The readers (the reader workers load the same files: ReaderPool.psm1), then the scan and report modules.
 $readerModules = @('PiiDetectors.psm1', 'PiiMasking.psm1', 'OcrText.psm1', 'OleText.psm1', 'ContainerText.psm1',
     'PdfCore.psm1', 'PdfObjects.psm1', 'PdfFonts.psm1', 'PdfLayout.psm1', 'PdfText.psm1', 'TextExtract.psm1', 'ReaderPool.psm1')
-foreach ($module in $readerModules + @('XlsxWriter.psm1', 'Report.psm1', 'ScanMeter.psm1', 'ScanQueue.psm1', 'Accountability.psm1', 'ChannelScan.psm1', 'DriveScan.psm1')) {
+foreach ($module in $readerModules + @('XlsxWriter.psm1', 'Report.psm1', 'ScanMeter.psm1', 'ScanQueue.psm1', 'Accountability.psm1', 'SiteTarget.psm1', 'ChannelScan.psm1', 'DriveScan.psm1')) {
     Import-Module (Join-Path $PSScriptRoot $module) -Force
 }
 $IonWorkerInit = @{ Paths = @($readerModules | ForEach-Object { Join-Path $PSScriptRoot $_ }) }

@@ -217,17 +217,17 @@ function Write-WaitBar {
 function Write-ScanBar {
     <#
     .SYNOPSIS
-      The scan bar's 3 lines (the PAM, 2026-11-21): the folder, the run so far, then the file in work on a line of its
-      own. Windows PowerShell ISE puts CurrentOperation after the status on the same line, so the third line is a
-      line break in the status text, not CurrentOperation (the PAM's gov run, 2026-11-21).
+      The scan bar: the folder, the run so far, then the file in work (CurrentOperation). ISE shows CurrentOperation
+      after the status, and a line break in the status does not show (the PAM's layout test, 2026-11-21); layout
+      test 2 (docs/reviews/2026-11-21-ise-progress-test.md) decides how the file gets a line of its own.
     .PARAMETER Queue
       Output of New-ScanQueue (Activity: the folder line; Meter).
     .PARAMETER Third
       The third line: the file in work, or what the scan waits for.
     #>
     param([hashtable]$Queue, [string]$Third)
-    $status = (Get-ScanMeterText $Queue.Meter 'file') + "`n" + $Third
-    Write-Progress -Id 1 -Activity $Queue.Activity -Status $status -PercentComplete (Get-MeterPercent $Queue.Meter)
+    Write-Progress -Id 1 -Activity $Queue.Activity -Status (Get-ScanMeterText $Queue.Meter 'file') -PercentComplete (Get-MeterPercent $Queue.Meter) `
+        -CurrentOperation $Third
 }
 
 function Close-ScanQueue {
