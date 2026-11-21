@@ -42,7 +42,7 @@ $script:DefaultScreenWidth = 120
 $script:MinScreenWidth = 60
 $script:MinLastColumn = 12
 # Under the table of types: what High, Medium and Low mean (the PAM, 2026-11-21: plain words for a unit member).
-$script:ConfidenceKey = 'High = labelled (for example "SSN:") or a sure pattern. Medium = the right form, no label. Low = a weak match: often not PII.'
+$script:ConfidenceKey = 'High = labelled ("SSN:") or a sure pattern. Medium = right form, no label. Low = weak match, often not PII.'
 
 # Screen colours (the PAM, 2026-11-20: less grey, more format). Write-Host has only the 16 console colours:
 # Cyan = headings and labels, White = values, Green = clean or done, Yellow = check by hand and Medium,
@@ -282,7 +282,7 @@ function Format-BoxTable {
     })
     # Too wide for the screen: the last column (a file path) is cut, with '...', so no line wraps (the PAM, 2026-11-21).
     $total = ($widths | Measure-Object -Sum).Sum + 3 * $widths.Count + 1
-    if ($MaxWidth -gt 0 -and $total -gt $MaxWidth) { $widths[-1] = [Math]::Max($script:MinLastColumn, $widths[-1] - ($total - $MaxWidth)) }
+    if ($MaxWidth -gt 0 -and $total -gt $MaxWidth) { $widths[-1] = [Math]::Max([Math]::Min($script:MinLastColumn, $widths[-1]), $widths[-1] - ($total - $MaxWidth)) }
     $border = '+' + ((@($widths) | ForEach-Object { '-' * ($_ + 2) }) -join '+') + '+'
     # One table line: each cell padded to its column width, numbers to the right.
     $line = {
@@ -354,7 +354,7 @@ function Get-ScanSummaryText {
     & $add '' 'Text'; & $add '==== Results ====' 'Title'
     # A scan that stopped early says so first, in red: its results cover only the files read so far.
     if (@($Rows | Where-Object { $_.Detector -eq 'INCOMPLETE' }).Count -gt 0) {
-        & $add ('INCOMPLETE: the scan stopped before the end. These results cover only the {0} files read; scan again for the rest.' -f $ItemsScanned) 'Alert'
+        & $add ('INCOMPLETE: the scan stopped early. Only the {0} files read are in these results; scan again.' -f $ItemsScanned) 'Alert'
     }
     # The values start in one column, after the longest label (labels differ: site, drive, timing lines).
     $pairs = @($Header.GetEnumerator()) + @((Get-ScanMetrics $Rows $ItemsScanned).GetEnumerator())
@@ -553,15 +553,15 @@ function Publish-ScanReport {
         if ($line.LabelLength -gt 0) { Write-Ui $line.Text.Substring(0, $line.LabelLength) 'Label' -NoNewline; Write-Ui $line.Text.Substring($line.LabelLength) $line.Kind }
         else { Write-Ui $line.Text $line.Kind }
     }
-    $path = Get-ResultPath $OutputFolder $SiteUrl
-    Export-Xlsx -Path $path -Sheets (Get-WorkbookSheets $Rows $ItemsScanned $Header $FolderLabel)
-    Write-Ui ''
-    Write-Ui "Saved (values masked): $path" 'Good'
-    Write-Ui 'Handle this file as CUI: it shows where PII is.' 'Accent'
-    # After the path, so the path is not lost under the long advice (the PAM, 2026-11-21).
-    Write-Ui ''
-    Write-Ui 'Confidence is a pattern guess, not proof: open each item and check it before you act.' 'Muted'
-    Write-Ui $script:BreachAdvice 'Accent'
+    # The advice comes after the saved path (the PAM, 2026-11-21), and also when the save fails ('finally').
+    try {
+        $path = Get-ResultPath $OutputFolder $SiteUrl
+        Export-Xlsx -Path $path -Sheets (Get-WorkbookSheets $Rows $ItemsScanned $Header $FolderLabel)
+        Write-Ui ''; Write-Ui "Saved (values masked): $path" 'Good'; Write-Ui 'Handle this file as CUI: it shows where PII is.' 'Accent'
+    }
+    finally {
+        Write-Ui ''; Write-Ui 'Confidence is a pattern guess, not proof: open each item and check it before you act.' 'Muted'; Write-Ui $script:BreachAdvice 'Accent'
+    }
     return $path
 }
 

@@ -39,6 +39,7 @@ function Reset-FakePnP {
         SiteFails   = $false                                      # Get-PnPSite fails (the site's group cannot be read)
         TypedSite   = New-Object System.Collections.Generic.Queue[string]   # the fake Read-Host's answers, in order; none = Enter
         NoAccess    = $false                                      # the site refuses the signed-in person (403)
+        StopInFolder2 = $false                                    # the scan stops (as at Ctrl+C) when it reaches folder 2
         SiteGroupId = [guid]'11111111-2222-3333-4444-555555555555'
         OpenAnswer  = ''                                          # the answer to "Open the workbook now?" ('' = Enter = yes)
         Calls       = New-Object System.Collections.Generic.List[string]
@@ -48,7 +49,7 @@ function Reset-FakePnP {
 
 function Set-FakePnPOption {
     # Changes one switch of the fake site: ListFails, ConnectFails, SiteFails or NoAccess.
-    param([ValidateSet('ListFails', 'ConnectFails', 'SiteFails', 'NoAccess')][string]$Name, [bool]$Value)
+    param([ValidateSet('ListFails', 'ConnectFails', 'SiteFails', 'NoAccess', 'StopInFolder2')][string]$Name, [bool]$Value)
     $global:FakePnP[$Name] = $Value
 }
 
@@ -201,6 +202,7 @@ function global:Write-Progress {
     # Fake: records the activity and status text instead of drawing a bar.
     [CmdletBinding()] param($Activity, $Status, $PercentComplete, [switch]$Completed, $Id, $ParentId, $CurrentOperation)
     $global:FakePnP.Progress.Add(('{0} {1} {2}' -f $Activity, $Status, $CurrentOperation))
+    if ($global:FakePnP.StopInFolder2 -and [string]$Activity -like 'Scanning files - folder 2*') { throw 'FAKE: the scan was stopped' }
     if ($Completed) { $global:FakePnP.Calls.Add('Progress done ' + $Id) }
     elseif ($null -ne $ParentId) { $global:FakePnP.Calls.Add('Progress ' + $Id + ' under ' + $ParentId) }
 }

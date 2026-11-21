@@ -31,13 +31,13 @@
     src/TextExtract.psm1, sha256 3b52ab6462e5
     src/ReaderPool.psm1, sha256 8f8f73fda166
     src/XlsxWriter.psm1, sha256 e29becdc6a65
-    src/Report.psm1, sha256 67d1f3010c3c
+    src/Report.psm1, sha256 bf59cd935625
     src/ScanMeter.psm1, sha256 739747d75471
     src/ScanQueue.psm1, sha256 37e83cec1fd9
     src/Accountability.psm1, sha256 15472f8fab6e
-    src/ChannelScan.psm1, sha256 2d31bc25c26c
+    src/ChannelScan.psm1, sha256 1055c746bb52
     src/DriveScan.psm1, sha256 9d9539409ff4
-    src/Find-ChannelPII.ps1, sha256 43f43297103f
+    src/Find-ChannelPII.ps1, sha256 ab9e06070142
 
   Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.
   Run target: Windows PowerShell 5.1 with PnP.PowerShell 1.12.0; no admin rights, no file to unblock.
@@ -67,9 +67,9 @@
     line  5178  Module ScanQueue.psm1
     line  5416  Module Accountability.psm1
     line  5710  Module ChannelScan.psm1
-    line  6306  Module DriveScan.psm1
-    line  6548  Body of Find-ChannelPII.ps1
-    line  6662  Clean-up
+    line  6307  Module DriveScan.psm1
+    line  6549  Body of Find-ChannelPII.ps1
+    line  6663  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -4299,7 +4299,7 @@ $script:DefaultScreenWidth = 120
 $script:MinScreenWidth = 60
 $script:MinLastColumn = 12
 # Under the table of types: what High, Medium and Low mean (the PAM, 2026-11-21: plain words for a unit member).
-$script:ConfidenceKey = 'High = labelled (for example "SSN:") or a sure pattern. Medium = the right form, no label. Low = a weak match: often not PII.'
+$script:ConfidenceKey = 'High = labelled ("SSN:") or a sure pattern. Medium = right form, no label. Low = weak match, often not PII.'
 
 # Screen colours (the PAM, 2026-11-20: less grey, more format). Write-Host has only the 16 console colours:
 # Cyan = headings and labels, White = values, Green = clean or done, Yellow = check by hand and Medium,
@@ -4539,7 +4539,7 @@ function Format-BoxTable {
     })
     # Too wide for the screen: the last column (a file path) is cut, with '...', so no line wraps (the PAM, 2026-11-21).
     $total = ($widths | Measure-Object -Sum).Sum + 3 * $widths.Count + 1
-    if ($MaxWidth -gt 0 -and $total -gt $MaxWidth) { $widths[-1] = [Math]::Max($script:MinLastColumn, $widths[-1] - ($total - $MaxWidth)) }
+    if ($MaxWidth -gt 0 -and $total -gt $MaxWidth) { $widths[-1] = [Math]::Max([Math]::Min($script:MinLastColumn, $widths[-1]), $widths[-1] - ($total - $MaxWidth)) }
     $border = '+' + ((@($widths) | ForEach-Object { '-' * ($_ + 2) }) -join '+') + '+'
     # One table line: each cell padded to its column width, numbers to the right.
     $line = {
@@ -4611,7 +4611,7 @@ function Get-ScanSummaryText {
     & $add '' 'Text'; & $add '==== Results ====' 'Title'
     # A scan that stopped early says so first, in red: its results cover only the files read so far.
     if (@($Rows | Where-Object { $_.Detector -eq 'INCOMPLETE' }).Count -gt 0) {
-        & $add ('INCOMPLETE: the scan stopped before the end. These results cover only the {0} files read; scan again for the rest.' -f $ItemsScanned) 'Alert'
+        & $add ('INCOMPLETE: the scan stopped early. Only the {0} files read are in these results; scan again.' -f $ItemsScanned) 'Alert'
     }
     # The values start in one column, after the longest label (labels differ: site, drive, timing lines).
     $pairs = @($Header.GetEnumerator()) + @((Get-ScanMetrics $Rows $ItemsScanned).GetEnumerator())
@@ -4810,15 +4810,15 @@ function Publish-ScanReport {
         if ($line.LabelLength -gt 0) { Write-Ui $line.Text.Substring(0, $line.LabelLength) 'Label' -NoNewline; Write-Ui $line.Text.Substring($line.LabelLength) $line.Kind }
         else { Write-Ui $line.Text $line.Kind }
     }
-    $path = Get-ResultPath $OutputFolder $SiteUrl
-    Export-Xlsx -Path $path -Sheets (Get-WorkbookSheets $Rows $ItemsScanned $Header $FolderLabel)
-    Write-Ui ''
-    Write-Ui "Saved (values masked): $path" 'Good'
-    Write-Ui 'Handle this file as CUI: it shows where PII is.' 'Accent'
-    # After the path, so the path is not lost under the long advice (the PAM, 2026-11-21).
-    Write-Ui ''
-    Write-Ui 'Confidence is a pattern guess, not proof: open each item and check it before you act.' 'Muted'
-    Write-Ui $script:BreachAdvice 'Accent'
+    # The advice comes after the saved path (the PAM, 2026-11-21), and also when the save fails ('finally').
+    try {
+        $path = Get-ResultPath $OutputFolder $SiteUrl
+        Export-Xlsx -Path $path -Sheets (Get-WorkbookSheets $Rows $ItemsScanned $Header $FolderLabel)
+        Write-Ui ''; Write-Ui "Saved (values masked): $path" 'Good'; Write-Ui 'Handle this file as CUI: it shows where PII is.' 'Accent'
+    }
+    finally {
+        Write-Ui ''; Write-Ui 'Confidence is a pattern guess, not proof: open each item and check it before you act.' 'Muted'; Write-Ui $script:BreachAdvice 'Accent'
+    }
     return $path
 }
 
@@ -5748,23 +5748,19 @@ $script:NotChannelFolders = @('Forms')
 # Time spent downloading and spent reading, for the summary (it shows where a slow scan loses its time).
 $script:Timing = @{ Download = [TimeSpan]::Zero; Check = [TimeSpan]::Zero }
 
-# The streamed download of a large file (Get-FileBytes): the SharePoint client call File.OpenBinaryDirect on the
-# signed-in connection gives the file as a stream, so the per-file bar can count the bytes (the PAM, 2026-11-21).
-# Set to $false for the rest of a scan when it fails once; tests replace the opener.
+# Streamed download (Get-FileBytes, the PAM 2026-11-21): File.OpenBinaryDirect on the signed-in connection, so the bar
+# counts bytes; $false for the rest of a scan after one failure. Tests replace the opener.
 $script:DirectDownload = $true
 # Opens the file as a stream on the signed-in PnP connection.
 $script:OpenDirectStream = {
     param([string]$ServerRelativeUrl)
-    $fileType = 'Microsoft.SharePoint.Client.File' -as [type]
-    if (-not $fileType) { throw 'The SharePoint client library is not loaded.' }
+    if (-not ($fileType = 'Microsoft.SharePoint.Client.File' -as [type])) { throw 'The SharePoint client library is not loaded.' }
     return $fileType::OpenBinaryDirect((Get-PnPContext), $ServerRelativeUrl).Stream
 }
 
 # What Ion can scan, for the first question and after a wrong paste (the PAM, 2026-11-21: one short block, not one long line).
-$script:TargetHelp = "Paste one of these, or press Enter to exit:`n" +
-    "  - a Teams link: in Teams, ... next to the team or channel > Copy link`n" +
-    "  - a SharePoint site address: https://usaf.dps.mil/teams/<team-site> (or /sites/)`n" +
-    "  - a drive folder: X:\<folder> or \\<server>\<share>\<folder>"
+$script:TargetHelp = "Paste one of these, or press Enter to exit:`n  - a Teams link: in Teams, ... next to the team or channel > Copy link`n" +
+    "  - a SharePoint site address: https://usaf.dps.mil/teams/<team-site> (or /sites/)`n  - a drive folder: X:\<folder> or \\<server>\<share>\<folder>"
 
 # How the report and the screen name the files at the top of the library (in no folder).
 $script:RootGroupName = '(top of the library)'
@@ -5894,12 +5890,14 @@ function Read-ScanTarget {
       An address given up front (the -SiteUrl setting); used first, without asking.
     .PARAMETER Prompt
       The question to ask.
+    .PARAMETER NoHelp
+      Do not list what can be pasted first (after a scan; a wrong paste still lists it).
     .OUTPUTS
       Output of Get-ScanTarget, or $null when the person pressed Enter.
     #>
-    param([string]$Given, [string]$Prompt)
+    param([string]$Given, [string]$Prompt, [switch]$NoHelp)
     $answer = $Given
-    if (-not $answer) { Write-Ui $script:TargetHelp 'Muted' }
+    if (-not $answer -and -not $NoHelp) { Write-Ui $script:TargetHelp 'Muted' }
     while ($true) {
         if (-not $answer) { $answer = Read-Host $Prompt }
         if (-not $answer -or -not $answer.Trim()) { return $null }
@@ -6252,10 +6250,12 @@ function Invoke-FileScan {
       The list that receives the rows.
     .PARAMETER Init
       How the reader workers load their code (New-ReaderPool).
+    .PARAMETER Progress
+      Optional; gets the live meter (Progress.Meter), so a scan stopped part way can still say how many files were read.
     .OUTPUTS
       [int] the number of files whose text was scanned.
     #>
-    param($Library, [string[]]$Channels, [string]$SiteUrl, [int]$MaxFileMB, $Rows, [hashtable]$Init)
+    param($Library, [string[]]$Channels, [string]$SiteUrl, [int]$MaxFileMB, $Rows, [hashtable]$Init, [hashtable]$Progress)
     $origin = ([uri]$SiteUrl).GetLeftPart([System.UriPartial]::Authority)
     $script:Timing = @{ Download = [TimeSpan]::Zero; Check = [TimeSpan]::Zero }
     $script:DirectDownload = $true   # tried again on each site
@@ -6273,6 +6273,7 @@ function Invoke-FileScan {
     foreach ($group in $groups) { $total += $group.Files.Count }
     Write-Ui ('==== Scanning {0} files in {1} folders ====' -f $total, $groups.Count) 'Title'
     $meter = New-ScanMeter $total
+    if ($Progress) { $Progress.Meter = $meter }
     $meter.NameWidth = Get-NameWidth @($groups | ForEach-Object { Protect-PiiName $_.Name })
     $queue = New-ScanQueue $Init $Rows $meter
     # Starts one file of a group (Invoke-GroupScan calls it); then the file's masked path for the progress bar.
@@ -6566,10 +6567,10 @@ function Invoke-SiteFiles {
     $path = $null
     $clock = [Diagnostics.Stopwatch]::StartNew()
     $rows = New-Object System.Collections.Generic.List[object]
-    $scanned = 0
-    $selected = @()
+    $scanned = 0; $selected = @()
     $folderLabel = 'Folder'   # 'Channel' when the site belongs to a team (the PAM, 2026-11-20)
     $listName = ''            # what the header lists: 'Channels', 'Folders' or 'Libraries'
+    $progress = @{}      # Invoke-FileScan puts its live meter here
     $finished = $false   # set only after the last step; a cancelled run (Ctrl+C) skips 'catch' but not 'finally'
     try {
         # Only the column name depends on it: if the site's group cannot be read, the scan goes on with 'Folder'.
@@ -6581,7 +6582,7 @@ function Invoke-SiteFiles {
         $listName = $folderLabel + 's'; if ($libraries.Count -gt 1) { $listName = 'Libraries' }
         Write-Ui ($listName + ' to scan: ') 'Label' -NoNewline
         Write-Ui ((($selected | ForEach-Object { Protect-PiiName $_ }) -join ', ') + '; also any files at the top of each library') 'Text'
-        $scanned += Invoke-FileScan -Library $libraries -Channels $selected -SiteUrl $SiteUrl -MaxFileMB $MaxFileMB -Rows $rows -Init $IonWorkerInit
+        $scanned += Invoke-FileScan -Library $libraries -Channels $selected -SiteUrl $SiteUrl -MaxFileMB $MaxFileMB -Rows $rows -Init $IonWorkerInit -Progress $progress
         $finished = $true
     }
     catch {
@@ -6591,9 +6592,9 @@ function Invoke-SiteFiles {
         $rows.Add((New-ReportRow 'Scan' '(all)' '(scan)' '' '' 'INCOMPLETE' '' '' ('Stopped early: ' + $reason)))
     }
     finally {
+        if (-not $finished -and $progress.ContainsKey('Meter')) { $scanned = $progress.Meter.Read }   # stopped part way: the live count
         Add-IncompleteRow -Rows $rows -Finished $finished
-        $header = [ordered]@{}
-        $header['Site'] = $SiteUrl
+        $header = [ordered]@{ Site = $SiteUrl }
         if (-not $listName) { $listName = $folderLabel + 's' }
         $header[$listName] = ($selected | ForEach-Object { Protect-PiiName $_ }) -join ', '
         $header['Run'] = Get-Date -Format 'yyyy-MM-dd HH:mm'
@@ -6643,7 +6644,7 @@ while ($null -ne $target) {
         try { Open-ScanResult (Invoke-DriveScan -Path $target.DrivePath -OutputFolder $OutputFolder -MaxFileMB $MaxFileMB -Init $IonWorkerInit) }
         catch { Write-Ui ('The results could not be saved: ' + (Protect-PiiText $_.Exception.Message)) 'Alert' }
         Write-Ui ''
-        $target = Read-ScanTarget '' 'Scan another (or Enter to exit)'
+        $target = Read-ScanTarget '' 'Scan another: paste it, or press Enter to exit' -NoHelp
         continue
     }
     $signedIn = $true   # a sign-in is tried (Connect-TeamSite signs out again on every path)
@@ -6655,7 +6656,7 @@ while ($null -ne $target) {
         catch { Write-Ui ('The results could not be saved: ' + (Protect-PiiText $_.Exception.Message)) 'Alert' }
     }
     Write-Ui ''
-    $target = Read-ScanTarget '' 'Scan another (or Enter to exit)'
+    $target = Read-ScanTarget '' 'Scan another: paste it, or press Enter to exit' -NoHelp
 }
 if ($signedIn) { Write-Ui 'Ion is done: nothing stays signed in.' 'Good' } else { Write-Ui 'Ion is done.' 'Good' }
 

@@ -80,6 +80,12 @@ Assert-Equal 1 $failBook.Count 'Results saved after a failure'
 Assert-Equal 'INCOMPLETE' (Get-XlsxSheets $failBook[0].FullName)['Not scanned'][1][0] 'Results say INCOMPLETE'
 Assert-Equal $true (Test-FakePnPCall 'Disconnect-PnPOnline') 'Signed out after a failure'
 
+# Stopped part way, after folder 1 was read: the red line counts the files read so far (review of PR 36).
+Reset-FakePnP @{ "$library/General/notes.txt" = $Txt; "$library/Ops/a.txt" = $Txt }
+Set-FakePnPOption StopInFolder2 $true
+$stopShown = (& $script -SiteUrl $Sample.Site -OutputFolder (Join-Path $runFolder 'stop') 6>&1 | ForEach-Object { [string]$_ }) -join ' '
+Assert-Equal $true ($stopShown -match 'INCOMPLETE: the scan stopped early\. Only the 1 files read') 'Stopped part way: the red line counts the files read'
+
 # ---- A report that cannot be saved: the script still signs out ----
 Reset-FakePnP @{}
 $blocker = Join-Path $runFolder 'not-a-folder.txt'
