@@ -1,7 +1,7 @@
 <#
 Report.Tests.ps1 - tests of Report.psm1 and XlsxWriter.psm1: the screen summary and the results workbook.
 
-  Purpose:     The workbook goes to <site>\<day>, never overwrites, has the Summary tab first and one tab per PII
+  Purpose:     The workbook goes to <site> as "Ion <site> <date time>", never overwrites, has the Summary tab first and one tab per PII
                type worst first, holds masked values only and no formula; the folder column is named for a team
                or a site; the screen shows hits per type.
   Inputs:      $Sample (TestKit.ps1).
@@ -26,12 +26,11 @@ $dob = @(Find-PiiInText 'DOB: 03/14/1985')[0]
 $reportRows += (New-ReportRow 'File' 'Ops' 'Recall.xlsx' '' '' $dob.Detector $dob.Confidence $dob.MaskedValue $dob.Context)
 $header = [ordered]@{ Site = 'https://tenant.example.com/teams/TeamA'; Channels = 'General, Ops' }
 $path = Publish-ScanReport -Rows $reportRows -ItemsScanned 2 -Header $header -OutputFolder $reportFolder -SiteUrl $header.Site -FolderLabel 'Channel' 6>$null
-$day = Split-Path $path -Parent
-Assert-Equal ('TeamA/' + (Get-Date -Format 'yyyy-MM-dd')) ((Split-Path (Split-Path $day -Parent) -Leaf) + '/' + (Split-Path $day -Leaf)) 'Saved in <site>\<day>'
-Assert-Equal $true ((Split-Path $path -Leaf) -match '^Ion Results \d\d-\d\d-\d\d\.xlsx$') 'Named Ion Results <time>.xlsx'
+Assert-Equal 'TeamA' (Split-Path (Split-Path $path -Parent) -Leaf) 'Saved in <site>, no day folder'
+Assert-Equal $true ((Split-Path $path -Leaf) -match ('^Ion TeamA ' + (Get-Date -Format 'yyyy-MM-dd') + ' \d{4}( \(\d+\))?\.xlsx$')) 'Named Ion <site> <date time>.xlsx'
 $book = Get-XlsxSheets $path
-Assert-Equal 'Summary|SSN|Date of birth|Low confidence|Not scanned' (@($book.Keys) -join '|') 'Tabs: Summary, types worst first, Low, Not scanned'
-$hitHeader = 'Confidence|Channel|File|Masked value|Context|Last saved|Link|Found in|Created|Created by|Last saved by|PII added|PII added by|History note'
+Assert-Equal 'Summary|SSN|Date of birth|Low confidence|Not scanned|Method' (@($book.Keys) -join '|') 'Tabs: Summary, types worst first, Low, Not scanned, Method last'
+$hitHeader = 'Confidence|Channel|File|Masked value|Context|Last saved|Link|Found in|Created|Created by|Last saved by|PII first saved|PII first saved by|History note'
 Assert-Equal $hitHeader ($book['SSN'][0] -join '|') 'Hit tab header, folder column named Channel for a team'
 Assert-Equal 'High|General|Roster.docx|***-**-6789' (($book['SSN'][1] | Select-Object -First 4) -join '|') 'SSN tab row'
 Assert-Equal 'Phone' $book['Low confidence'][1][0] 'Low hit in the Low confidence tab, with its type'
@@ -61,7 +60,7 @@ $again = Publish-ScanReport -Rows $reportRows -ItemsScanned 2 -Header $header -O
 Assert-Equal $true ($again -ne $path) 'A second run never overwrites the first'
 Assert-Equal 'Folder' (Get-XlsxSheets $again)['SSN'][0][1] 'Folder column named Folder for a plain site'
 $plain = @(Get-WorkbookSheets @() 0 ([ordered]@{}) 'Folder')
-Assert-Equal 'Summary' (@($plain | ForEach-Object { $_.Name }) -join '|') 'No hits: only the Summary tab'
+Assert-Equal 'Summary|Method' (@($plain | ForEach-Object { $_.Name }) -join '|') 'No hits: only the Summary and Method tabs'
 
 # ---- The workbook writer: odd text and odd tab names ----
 $oddPath = Join-Path $reportFolder 'odd.xlsx'
@@ -122,4 +121,13 @@ $adviceShown = (Publish-ScanReport -Rows $reportRows -ItemsScanned 2 -Header $he
     Where-Object { $_ -isnot [string] } | ForEach-Object { [string]$_ })
 Assert-Equal $true (@($adviceShown | Where-Object { $_ -match '^Source: AFI 33-332 para 3\.1\.2' }).Count -eq 1) 'Advice: the AFI reference is its own line'
 $sourceBook = Get-XlsxSheets (@(Get-ResultFiles $reportFolder) | Sort-Object LastWriteTime | Select-Object -Last 1).FullName
-Assert-Equal 1 @($sourceBook['Summary'] | Where-Object { $_[0] -eq 'Source' -and $_[1] -match '^Source: AFI 33-332' }).Count 'Advice: the Summary tab has the reference as its own row'
+Assert-Equal 1 @($sourceBook['Summary'] | Where-Object { $_[0] -eq 'Rule source' -and $_[1] -match '^AFI 33-332' }).Count 'Advice: the Summary tab has the reference as its own row'
+# The Method tab explains the who-and-when columns and says the first-saved account is evidence, not proof (the PAM, 2026-11-21).
+$methodText = (@($sourceBook['Method']) | ForEach-Object { $_ -join ' ' }) -join "`n"
+$methodOk = $methodText -match 'PII first saved by' -and $methodText -match 'evidence, not proof' -and $methodText -match 'Version history' -and
+    $methodText -match 'SSN Numbers the SSA never issues' -and $methodText -match 'DoD ID A 10-digit number, found only with' -and
+    $methodText -match '10 digits in a row are not found'
+Assert-Equal $true $methodOk 'Method tab: how the columns are worked out, and the limits'
+# A long site name is cut so the workbook path stays under 260 characters (review of PR 41).
+$longPath = & (Get-Module Report) { param($f) Get-ResultPath $f ('https://tenant.example.com/sites/' + ('a' * 150)) } $reportFolder
+Assert-Equal $true ((Split-Path $longPath -Leaf).Length -lt 70 -and $longPath.Length -lt ($reportFolder.Length + 120)) 'Long site name: cut in the folder and the file name'

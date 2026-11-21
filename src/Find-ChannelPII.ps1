@@ -12,7 +12,7 @@
   Purpose:     Help a team or site member (owner rights are not needed) find files that may hold PII, so they can
                review them. A spot check, not a replacement for Microsoft Purview DLP or Content Search.
   Inputs:      the Teams link, SharePoint site address or drive folder (X:\<folder>, \\<server>\<share>\<folder>), asked when not given.
-  Outputs:     progress and the summary on screen; <OutputFolder>\<site>\<yyyy-MM-dd>\Ion Results <HH-mm-ss>.xlsx.
+  Outputs:     progress and the summary on screen; <OutputFolder>\<site>\Ion <site> <yyyy-MM-dd HHmm>.xlsx.
   How to run:  .\Find-ChannelPII.ps1   (README.md "Run it" gives every step)
   Run target:  Windows PowerShell 5.1 (also PowerShell 7) with PnP.PowerShell 1.12.0. No other modules.
   Network:     only the one SharePoint site, or the one drive folder's server, given. Channel posts are not read (the PAM, 2026-11-20).

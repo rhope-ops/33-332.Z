@@ -8,7 +8,7 @@ Accountability.psm1 - who made and changed a file with PII, and who put the PII 
                name, which Windows looks up from the owner's ID; no search of the directory: "No reconnaissance"), its times, and the names an Office file stores.
   Inputs:      the file's list item, path or reader result, and its hits.
   Outputs:     @{ ModifiedBy; Created; CreatedBy; AddedOn; AddedBy; HistoryNote; ByHit } for Report.psm1 Set-RowAccountability.
-               "PII added" and "PII added by" hold only a date and a person (or "Not recorded"); every caveat goes in
+               "PII first saved" and "PII first saved by" hold only a date and a person (or "Not recorded"); every caveat goes in
                "History note" (the PAM, 2026-11-21: the columns must be easy to understand).
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
   Depends on:  TextExtract.psm1 (Get-TextFromBytes), PiiDetectors.psm1 (Find-PiiInText) and, for SharePoint,
@@ -30,6 +30,9 @@ $script:MaxPutBacks = 3
 $script:MaybeEarlier = 'An older version could not be read: it may have been added earlier'
 $script:PartHistory = "Not in the old versions read: check the file's version history by hand"
 $script:DriveNoHistory = 'A drive keeps no file history'
+# The two fallbacks of "PII first saved by" say so in the History note (review of PR 41).
+$script:NoOlderVersion = "No older version: the file's creator is named"
+$script:OnlyCurrentVersion = 'In no older version: the current version is named'
 
 function Get-PersonText {
     <#
@@ -103,8 +106,8 @@ function Complete-CurrentVersion {
     }
     foreach ($key in @($Keys | Where-Object { -not $ByHit.ContainsKey($_) })) {
         if (-not $Read.Complete) { $ByHit[$key] = New-AddedEntry $script:NotRecorded $script:NotRecorded $script:PartHistory }
-        elseif ($Read.Versions -eq 0) { $ByHit[$key] = New-AddedEntry $Who.Created $Who.CreatedBy }
-        else { $ByHit[$key] = New-AddedEntry $Who.Modified $Who.ModifiedBy }
+        elseif ($Read.Versions -eq 0) { $ByHit[$key] = New-AddedEntry $Who.Created $Who.CreatedBy $script:NoOlderVersion }
+        else { $ByHit[$key] = New-AddedEntry $Who.Modified $Who.ModifiedBy $script:OnlyCurrentVersion }
     }
 }
 
@@ -177,7 +180,7 @@ function Add-PutBackText {
         if ($more -eq 1) { $text += '; and 1 more time' } elseif ($more -gt 1) { $text += ('; and {0} more times' -f $more) }
         Add-HistoryNote $ByHit[$key] $text
     }
-    # Say what the history read cannot show, so "PII added by" never reads as complete when it is not (review).
+    # Say what the history read cannot show, so "PII first saved by" never reads as complete when it is not (review).
     foreach ($key in @($ByHit.Keys | Where-Object { $ByHit[$_].AddedBy -ne $script:NotRecorded })) {
         if ($Unsure.ContainsKey($key)) { Add-HistoryNote $ByHit[$key] 'It may have been removed and put back (a version could not be read)' }
         if (-not $AllRead) { Add-HistoryNote $ByHit[$key] "Versions after the $script:MaxVersionsRead oldest were not checked" }
@@ -292,4 +295,50 @@ function Get-DriveWho {
         HistoryNote = $script:DriveNoHistory }
 }
 
-Export-ModuleMember -Function Get-PersonText, Get-SharePointWho, Find-PiiAddedVersion, Get-DriveWho
+function Get-MethodRows {
+    <#
+    .SYNOPSIS
+      The rows of the workbook's Method tab: how Ion finds possible PII, how sure each confidence is for each type (as
+      src/PiiDetectors.psm1 decides it), and how it fills the who-and-when columns, with what that evidence can and
+      cannot show (the PAM, 2026-11-21: the method on its own page; "PII first saved by" is evidence, not proof).
+    .OUTPUTS
+      [object[]] rows of two cells (topic, text).
+    #>
+    , @('How Ion finds possible PII', ('Ion reads the text of each file in memory and looks for patterns. A match is a lead, not proof: ' +
+        'open each file and check it. The confidence (High, Medium, Low) depends on the type, as below.'))
+    , @('SSN', ('Numbers the SSA never issues (000, 666 or 9xx first; 00 in the middle; 0000 last) are skipped. High: "SSN", "SSAN", ' +
+        '"social security" or "soc sec" just before it. Medium: 3-2-4 digits with dashes or spaces. Low: 9 digits in a row.'))
+    , @('DoD ID', 'A 10-digit number, found only with a label just before it ("DoD ID", "DODID", "EDIPI", "CAC", "DoD #", "DoD number"): always High.')
+    , @('Date of birth', 'A date, found only with a label just before it ("DOB", "D.O.B.", "date of birth", "birth date", "birthdate", "born"): always High.')
+    , @('Payment card', ('Medium: 13 to 19 digits with a card network''s first digits that pass the card check digit (Luhn). ' +
+        'High: the same with a card word ("card", "Visa", "Amex", "GTC", "GPC" ...) before it.'))
+    , @('Passport', 'Found only with "passport" just before it: always Medium.')
+    , @('Phone', ('A US number written with separators: (###) ###-####, ###-###-####, ###.###.#### or ### ### ####; 10 digits in a row ' +
+        'are not found. Low: no label (office numbers are common). Medium: "cell", "mobile", "home", "personal" or "my number" just before it.'))
+    , @('Personal e-mail', 'Low: an address that does not end in .gov or .mil. Medium: a personal mail service (Gmail, Yahoo and the like).')
+    , @('Home address', 'Low: number, street name and street type. Medium: it ends with a state and ZIP code. High: "home address" or similar before it.')
+    , @('Name', 'Low: a name after "Name:", "Member:", "Spouse:" and the like. High: the same, with an SSN, DoD ID, date of birth, passport or card number close by.')
+    , @('Noise', ('A Low match is dropped when, of the visible characters within 40 on each side (at least 20 of them), 30% or more are ' +
+        'unreadable signs (symbols, a font read wrong). High and Medium matches are always kept.'))
+    , @('')
+    , @('Created, Created by', 'From SharePoint: when the file was first saved to the site, and by which account. On a drive: the file time and its owner.')
+    , @('Last saved, Last saved by', 'The last save of the whole file, by anyone, for any reason. It says nothing about the PII; it shows who works on the file now.')
+    , @('PII first saved, PII first saved by', (('Ion reads the file''s SharePoint version history, oldest first (at most {0} versions), and finds ' +
+        'the first version whose text holds the same type and masked value. These columns name the account that saved that version, and when. ' +
+        'If every older version was read and none holds the value, they name the current version (the same as Last saved). If the file has no ' +
+        'older versions at all (version history off or never used), they name the file''s creator. If not every version could be read, they ' +
+        'say "Not recorded".') -f $script:MaxVersionsRead))
+    , @('What that shows', ('SharePoint records which account saved each version. So these columns show which account first saved a version ' +
+        'that holds the value: strong evidence, not proof of who typed it.'))
+    , @('Why it can be wrong', ('The person who saves or uploads a file is not always the one who wrote the text: it may be pasted from an e-mail, ' +
+        'copied from another file, or uploaded by OneDrive. When several people edit at once, SharePoint names one of them. Old versions may have ' +
+        'been deleted. Two different values can look the same once masked (for example the same last 4 digits). A file copied in starts a new ' +
+        'history. A drive keeps no history at all.'))
+    , @('History note', ('Says how sure the two columns are: no version history; not in the versions read; a version that could not be read; ' +
+        'a value removed and put back; more versions than were read; "No older version: the file''s creator is named"; or "In no older ' +
+        'version: the current version is named".'))
+    , @('Before you name a person', ('Open the file in SharePoint > Version history. Open the version Ion names and the one before it, and check ' +
+        'that the full value first appears in that version.'))
+}
+
+Export-ModuleMember -Function Get-PersonText, Get-SharePointWho, Find-PiiAddedVersion, Get-DriveWho, Get-MethodRows

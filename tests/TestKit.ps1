@@ -174,9 +174,9 @@ function Get-XlsxSheets {
 }
 
 function Get-ResultFiles {
-    # Every results workbook under a folder (the script saves them in <site>\<day> folders).
+    # Every results workbook under a folder (the script saves them in <site> folders as "Ion <site> <date time>.xlsx").
     param([string]$Folder)
-    return @(Get-ChildItem -LiteralPath $Folder -Recurse -Filter 'Ion Results *.xlsx' -ErrorAction SilentlyContinue)
+    return @(Get-ChildItem -LiteralPath $Folder -Recurse -Filter 'Ion *.xlsx' -ErrorAction SilentlyContinue)
 }
 
 function Get-WorkbookTypes {
@@ -193,7 +193,7 @@ function Get-WorkbookTypes {
     $book = Get-XlsxSheets $Path
     $types = foreach ($tab in $book.Keys) {
         if ($tab -eq 'Low confidence' -or $tab -eq 'Not scanned') { $book[$tab] | Select-Object -Skip 1 | ForEach-Object { $_[0] } }
-        elseif ($tab -ne 'Summary') { $tab }
+        elseif ($tab -notin @('Summary', 'Method')) { $tab }
     }
     return (@($types | Sort-Object -Unique) -join ' ')
 }

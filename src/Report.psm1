@@ -5,7 +5,7 @@ Report.psm1 - the scan results for a person: a summary on screen and one Excel w
                and saves the workbook: Summary tab first, one tab per type, Low confidence, Not scanned
                (the PAM, 2026-11-20: tabs to cut noise; no .txt or .csv).
   Inputs:      report rows (New-ReportRow) from ChannelScan.psm1; values in them are already masked.
-  Outputs:     the summary on screen; <OutputFolder>\<site>\<yyyy-MM-dd>\Ion Results <HH-mm-ss>.xlsx.
+  Outputs:     the summary on screen; <OutputFolder>\<site>\Ion <site> <yyyy-MM-dd HHmm>.xlsx.
   Depends on:  PiiDetectors.psm1 (Find-PiiInText), PiiMasking.psm1 (Protect-PiiName, Protect-PiiText), XlsxWriter.psm1,
                imported first by Find-ChannelPII.ps1.
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
@@ -33,9 +33,8 @@ $script:ToolTitle = 'Ion - DoD365 PII Reporter'
 # first, then identity documents and accounts, then contact details.
 $script:SeverityOrder = @('SSN', 'Date of birth', 'Passport', 'Payment card', 'DoD ID', 'Home address', 'Name', 'Phone', 'Personal e-mail')
 
-# How many files the screen summary lists (the workbook lists all).
-$script:TopItems = 10
-
+$script:TopItems = 10   # how many files the screen summary lists (the workbook lists all)
+$script:MaxNameInPath = 40   # the site name is in the path twice: at most 40 characters keeps it under 260 (review of PR 41)
 # Screen tables fit the window: under 60 characters or unknown = 120; the last column keeps 12 (the author's choice, 2026-11-21).
 $script:DefaultScreenWidth = 120
 $script:MinScreenWidth = 60
@@ -73,8 +72,9 @@ $script:NotScannedGroups = [ordered]@{
 $script:BreachAdvice = 'PII where it should not be is a potential or actual breach; report it to your servicing Privacy ' +
                        'Manager/Monitor without delay (AFI 33-332 para 3.1.2, as changed by AFI33-332_DAFGM2026-01 (7 July 2026), ' +
                        'page 1, second paragraph).'
-# Shown as two lines, the advice and then its rule source (the PAM, 2026-11-21); the text stays README.md's, word for word.
-$script:BreachLines = @(($script:BreachAdvice -replace ' \(AFI .*$', '.'), ('Source: ' + ($script:BreachAdvice -replace '^.*\((AFI .*)\)\.$', '$1') + '.'))
+# Shown as two lines, the advice and its rule source (the PAM, 2026-11-21); one line if no "(AFI ...)." part is found.
+$script:BreachLines = @($script:BreachAdvice)
+if ($script:BreachAdvice -match '^(.*) \((AFI .*)\)\.$') { $script:BreachLines = @(($Matches[1] + '.'), ('Source: ' + $Matches[2] + '.')) }
 
 # =====================================================================================
 # Rows and summary
@@ -391,9 +391,9 @@ function Get-ScanSummaryText {
 function Get-ResultPath {
     <#
     .SYNOPSIS
-      A new workbook path: <OutputFolder>\<site>\<yyyy-MM-dd>\Ion Results <HH-mm-ss>.xlsx, with (2), (3) ... added
-      if the name exists, so a result is never overwritten. Creates the folders. The site name is masked like any
-      name the tool shows (found PII only), and characters Windows refuses in a folder name are replaced.
+      A new workbook path: <OutputFolder>\<site>\Ion <site> <yyyy-MM-dd HHmm>.xlsx (the PAM, 2026-11-21), with (2), (3) ...
+      if the name exists, so a result is never overwritten. Creates the folder. The site name is masked like any name the
+      tool shows (found PII only); characters Windows refuses in a folder name are replaced.
     .PARAMETER OutputFolder
       The base folder.
     .PARAMETER SiteUrl
@@ -405,11 +405,12 @@ function Get-ResultPath {
     $siteName = [uri]::UnescapeDataString(($SiteUrl.TrimEnd('/') -split '/')[-1])
     $siteName = ((Protect-PiiName $siteName) -replace '[\\/:*?"<>|]', '-').Trim(' .')
     if (-not $siteName) { $siteName = 'site' }
+    if ($siteName.Length -gt $script:MaxNameInPath) { $siteName = $siteName.Substring(0, $script:MaxNameInPath).Trim(' .') }   # MAX_PATH 260
     if ($siteName -match '^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\..*)?$') { $siteName = '_' + $siteName }   # names Windows keeps for devices
     $now = Get-Date
-    $folder = Join-Path (Join-Path $OutputFolder $siteName) ($now.ToString('yyyy-MM-dd'))
+    $folder = Join-Path $OutputFolder $siteName
     if (-not (Test-Path -LiteralPath $folder)) { New-Item -ItemType Directory -Path $folder -Force -ErrorAction Stop | Out-Null }
-    $base = 'Ion Results ' + $now.ToString('HH-mm-ss')
+    $base = 'Ion {0} {1}' -f $siteName, $now.ToString('yyyy-MM-dd HHmm')
     $path = Join-Path $folder ($base + '.xlsx')
     $copy = 2
     while (Test-Path -LiteralPath $path) { $path = Join-Path $folder ('{0} ({1}).xlsx' -f $base, $copy); $copy++ }
@@ -467,11 +468,9 @@ function Get-WorkbookSheets {
     #>
     param([object[]]$Rows, [int]$ItemsScanned, [System.Collections.IDictionary]$Header, [string]$FolderLabel)
     $hits = @($Rows | Where-Object { $script:Rank.ContainsKey($_.Confidence) })
-    # Accountability (the PAM, 2026-11-21): who made and changed the file, and who put the PII in and when (by e-mail).
-    # Created and Created by come before Last saved by; Last saved stays in its place. "Modified" is named "Last saved"
-    # (any save, not only the PII), and the caveats of "PII added by" have their own column (the PAM, 2026-11-21).
+    # Accountability columns, names and order: the PAM, 2026-11-21 (docs/DECISIONS.md); the Method tab explains them.
     $columns = @('Confidence', $FolderLabel, 'File', 'Masked value', 'Context', 'Last saved', 'Link', 'Found in',
-        'Created', 'Created by', 'Last saved by', 'PII added', 'PII added by', 'History note')
+        'Created', 'Created by', 'Last saved by', 'PII first saved', 'PII first saved by', 'History note')
     $widths = @(11, 22, 45, 18, 60, 17, 50, 10, 17, 30, 30, 17, 30, 50)
     $byRank = @{ Expression = { $script:Rank[$_.Confidence] }; Descending = $true }
     $sheets = New-Object System.Collections.Generic.List[object]
@@ -489,6 +488,7 @@ function Get-WorkbookSheets {
         $sheets.Add((New-XlsxSheet 'Not scanned' @('Status', $FolderLabel, 'File', 'Reason', 'Link') `
             @($notes | ForEach-Object { , @($_.Detector, $_.Channel, $_.Item, $_.Context, $_.Link) }) @(14, 22, 45, 70, 50) -List -LinkColumn 4))
     }
+    $sheets.Add((New-XlsxSheet 'Method' @('Topic', 'How Ion works it out') @(Get-MethodRows) @(34, 130) -List))   # the PAM, 2026-11-21
     return $sheets.ToArray()
 }
 
@@ -520,10 +520,10 @@ function Get-SummaryRows {
         foreach ($group in $skipped) { , @($group.Reason, $group.Count) }
     }
     , @('')
-    , @('Tabs', 'One tab per type with High or Medium hits, worst type first; then Low confidence; then Not scanned.')
+    , @('Tabs', 'One tab per type with High or Medium hits, worst type first; then Low confidence; then Not scanned; then Method (how each column is worked out).')
     , @('Confidence', 'A pattern guess, not proof: open each item and check it before you act.')
     , @('If you find PII', $script:BreachLines[0])
-    , @('Source', $script:BreachLines[1])
+    if ($script:BreachLines.Count -gt 1) { , @('Rule source', ($script:BreachLines[1] -replace '^Source: ', '')) }
     , @('Handling', 'Handle this file as CUI: it shows where PII is. Every value in it is masked.')
 }
 
@@ -538,7 +538,7 @@ function Publish-ScanReport {
     .PARAMETER Header
       Label and value pairs for the top of the summary.
     .PARAMETER OutputFolder
-      The base folder; the workbook goes in <site>\<day> under it.
+      The base folder; the workbook goes in <site> under it.
     .PARAMETER SiteUrl
       The site address (names the site folder).
     .PARAMETER FolderLabel
@@ -559,8 +559,8 @@ function Publish-ScanReport {
         Write-Ui ''; Write-Ui "Saved (values masked): $path" 'Good'; Write-Ui 'Handle this file as CUI: it shows where PII is.' 'Accent'
     }
     finally {
-        Write-Ui ''; Write-Ui 'Confidence is a pattern guess, not proof: open each item and check it before you act.' 'Muted'; Write-Ui $script:BreachLines[0] 'Accent'
-        Write-Ui $script:BreachLines[1] 'Muted'
+        Write-Ui ''; Write-Ui 'Confidence is a pattern guess, not proof: open each item and check it before you act.' 'Muted'
+        Write-Ui $script:BreachLines[0] 'Accent'; if ($script:BreachLines.Count -gt 1) { Write-Ui $script:BreachLines[1] 'Muted' }
     }
     return $path
 }

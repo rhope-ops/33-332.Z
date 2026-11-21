@@ -91,9 +91,13 @@ $meter.Clock = [pscustomobject]@{ Elapsed = [TimeSpan]::FromMinutes(65) }
 Assert-Equal $true ((Get-ScanMeterText $meter 'file') -match '\| 65:00 elapsed, about 195:00 left$') 'Meter time past an hour does not wrap'
 $meter.Total = 0
 Assert-Equal 0 (Get-MeterPercent $meter) 'Meter percent with no total'
-Assert-Equal '10 posts | read 8 | not scanned 2 | possible PII 3 in 2 posts | 65:00 elapsed' (Get-ScanMeterText $meter 'post')
+Assert-Equal '10 posts | read 8 | not scanned 2 | possible PII 3 in 2 posts | 65:00 elapsed' (Get-ScanMeterText $meter 'post') 'Meter text: no total, no time left'
 $meter.HitItems = 1
-Assert-Equal $true ((Get-ScanMeterText $meter 'file') -match 'possible PII 3 in 1 file \|') 'Meter text: "in 1 file", not "in 1 files"' 'Meter text: no total, no time left'
+Assert-Equal $true ((Get-ScanMeterText $meter 'file') -match 'possible PII 3 in 1 file \|') 'Meter text: "in 1 file", not "in 1 files"'
+$oneMeter = @{ Total = 1; Done = 1; Read = 1; Skipped = 0; Hits = 0; HitItems = 0; Clock = [pscustomobject]@{ Elapsed = [TimeSpan]::FromSeconds(3) } }
+Assert-Equal $true ((Get-ScanMeterText $oneMeter 'file') -match '^1 of 1 file \(100%\)') 'Meter text: "1 of 1 file"'
+$nearMeter = @{ Total = 400; Done = 399; Read = 399; Skipped = 0; Hits = 0; HitItems = 0; Clock = [pscustomobject]@{ Elapsed = [TimeSpan]::FromSeconds(3) } }
+Assert-Equal 99 (Get-MeterPercent $nearMeter) 'Meter percent rounds down: 100% only when every file is done'
 
 # ---- File scan ----
 $library = '/sites/TeamA/Shared Documents'
