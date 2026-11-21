@@ -61,6 +61,12 @@ function Get-PdfStringError {
     return $script:PdfStringError
 }
 
+function Stop-PdfHostile {
+    # Ends the read of a PDF with more operands or array entries than any real one has: it is reported as NOT SCANNED
+    # ("part could not be read"), so a hostile file cannot hold gigabytes (reviews r14, r18).
+    throw (New-Object System.FormatException (Get-PdfStringError))
+}
+
 function Reset-PdfOldObjects {
     # Forgets the older object versions of the last PDF (Get-PdfText, before each PDF).
     $script:PdfOldObjects.Clear()
@@ -79,7 +85,7 @@ function Get-PdfObjects {
     .PARAMETER Text
       The PDF bytes as Latin-1 text.
     .OUTPUTS
-      [System.Collections.Specialized.OrderedDictionary] number -> @{ Dict; Stream }, in file order.
+      [System.Collections.Specialized.OrderedDictionary] number -> @{ Dict; Stream; Pos; Image (JPEG data or $null) }, in file order.
     #>
     param([string]$Text)
     $objects = New-Object System.Collections.Specialized.OrderedDictionary
@@ -97,12 +103,17 @@ function Get-PdfObjects {
         $body = $Text.Substring($start, $stop - $start)
         $stream = $null
         $parts = Split-PdfStreamBody $body
-        if ($parts) { $body = $parts.Dict; $stream = Read-PdfStream $body $parts.Data }
+        $image = $null
+        if ($parts) {
+            $body = $parts.Dict; $stream = Read-PdfStream $body $parts.Data
+            # A JPEG page image (a scanned page): kept as it is, for OCR when the PDF has no text (Get-ScanPagesText).
+            if ($body -match '/Subtype\s*/Image\b' -and $body -match '/Filter\s*\[?\s*/DCTDecode\s*\]?') { $image = $parts.Data }
+        }
         $number = $heads[$h].Groups[1].Value
         # A file saved with added edits (an incremental update) defines an object again further on: the later one is
         # the one in use; the earlier one's text is still in the file, so it is kept (Get-PdfDictText, Get-PdfLooseText).
         if ($objects.Contains($number)) { $script:PdfOldObjects.Add($objects[$number]) }
-        $objects[$number] = @{ Dict = $body; Stream = $stream; Pos = $heads[$h].Index }
+        $objects[$number] = @{ Dict = $body; Stream = $stream; Pos = $heads[$h].Index; Image = $image }
     }
     foreach ($packed in @($objects.Values | Where-Object { $_.Dict -match '/Type\s*/ObjStm' -and $_.Stream })) { Add-PackedObjects $objects $packed }
     return $objects
@@ -346,4 +357,4 @@ function Get-PdfXfaText {
 }
 
 Export-ModuleMember -Function Get-PdfObjects, ConvertFrom-PdfString, ConvertFrom-PdfTextString, Assert-PdfGap, Get-PdfDictText, Get-PdfXfaText, Get-PdfStringPattern,
-Get-PdfStringError, Reset-PdfOldObjects, Get-PdfOldObjects
+Get-PdfStringError, Stop-PdfHostile, Reset-PdfOldObjects, Get-PdfOldObjects

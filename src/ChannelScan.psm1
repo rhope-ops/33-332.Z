@@ -472,6 +472,8 @@ function Invoke-OneFileScan {
     foreach ($hit in @(Find-PiiInText $text.Text)) {
         $Rows.Add((New-ReportRow 'File' $Channel $item $link $modified $hit.Detector $hit.Confidence $hit.MaskedValue $hit.Context))
     }
+    # No @() here: @() around an empty generic list property fails in PowerShell ("Argument types do not match").
+    if ($null -ne $text.Parts) { foreach ($part in $text.Parts) { Add-PartRows $part $Channel $item $link $modified $Rows } }
     $script:Timing.Check += $clock.Elapsed
     return 1
 }

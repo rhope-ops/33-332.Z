@@ -72,9 +72,9 @@ function Get-HitSummary {
 function New-ZipBytes {
     <#
     .SYNOPSIS
-      Builds a minimal Office file (a zip of XML parts) in memory.
+      Builds a minimal Office file or zip archive in memory.
     .PARAMETER Entries
-      Part name -> XML text.
+      Part name -> XML text, or file bytes.
     .OUTPUTS
       [byte[]]
     #>
@@ -83,7 +83,10 @@ function New-ZipBytes {
     $memory = New-Object System.IO.MemoryStream
     $zip = New-Object System.IO.Compression.ZipArchive($memory, [System.IO.Compression.ZipArchiveMode]::Create, $true)
     foreach ($name in $Entries.Keys) {
-        $writer = New-Object System.IO.StreamWriter($zip.CreateEntry($name).Open())
+        $stream = $zip.CreateEntry($name).Open()
+        # File bytes (a function's byte[] can arrive as object[]: PowerShell unrolls arrays on return).
+        if ($Entries[$name] -is [array]) { $data = [byte[]]$Entries[$name]; $stream.Write($data, 0, $data.Length); $stream.Dispose(); continue }
+        $writer = New-Object System.IO.StreamWriter($stream)
         $writer.Write($Entries[$name])
         $writer.Dispose()
     }

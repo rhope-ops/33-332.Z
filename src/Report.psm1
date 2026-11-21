@@ -6,7 +6,8 @@ Report.psm1 - the scan results for a person: a summary on screen and one Excel w
                (the PAM, 2026-11-20: tabs to cut noise; no .txt or .csv).
   Inputs:      report rows (New-ReportRow) from ChannelScan.psm1; values in them are already masked.
   Outputs:     the summary on screen; <OutputFolder>\<site>\<yyyy-MM-dd>\Ion Results <HH-mm-ss>.xlsx.
-  Depends on:  PiiMasking.psm1 (Protect-PiiName), XlsxWriter.psm1, imported first by Find-ChannelPII.ps1.
+  Depends on:  PiiDetectors.psm1 (Find-PiiInText), PiiMasking.psm1 (Protect-PiiName, Protect-PiiText), XlsxWriter.psm1,
+               imported first by Find-ChannelPII.ps1.
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7).
   Network:     none.
@@ -55,6 +56,11 @@ $script:NotScannedGroups = [ordered]@{
     '^Not a valid (Office file|PDF)|^Could not read|too large or damaged to read in time|^Part of this PDF' = 'Damaged or not readable'
     'could not be fully read|^A font in this PDF|^Some characters in this PDF' = 'PDF fonts not fully readable'
     '^Files attached inside this PDF' = 'PDF attachments'
+    '^Image: Windows OCR|^Scanned PDF: Image: Windows OCR' = 'Images: OCR not available'
+    '^Image:|^Scanned PDF' = 'Images and scans not fully read'
+    '^Old Excel file' = 'Old Excel: numbers not read'
+    'old Office or Outlook' = 'Old Office or Outlook not readable'
+    '^An archive or e-mail inside another|in this archive|Too large to unpack|Could not unpack' = 'Archives: files not unpacked'
 }
 
 
@@ -496,5 +502,35 @@ function Publish-ScanReport {
     return $path
 }
 
+function Add-PartRows {
+    <#
+    .SYNOPSIS
+      The rows of one file inside a zip or an e-mail, named "<file>/<inner path>" (PII in the name masked): its
+      hits, a hit for PII in its name, and a NOT SCANNED row when it was not read or read only in part.
+    .PARAMETER Part
+      One result of Get-TextFromBytes Parts (with its Name).
+    .PARAMETER Channel
+      The channel name as the report shows it.
+    .PARAMETER Item
+      The container file as the report shows it.
+    .PARAMETER Link
+      The container file's link (an inner file has no link of its own).
+    .PARAMETER Modified
+      The container file's change time.
+    .PARAMETER Rows
+      The list that receives the rows.
+    #>
+    param($Part, [string]$Channel, [string]$Item, [string]$Link, [string]$Modified, $Rows)
+    $name = $Item + '/' + (Protect-PiiName $Part.Name)
+    foreach ($hit in @(Find-PiiInText $Part.Name)) {
+        $Rows.Add((New-ReportRow 'File name' $Channel $name $Link $Modified $hit.Detector $hit.Confidence $hit.MaskedValue 'In the name of a file inside it'))
+    }
+    if ($Part.Status -ne 'OK') { $Rows.Add((New-ReportRow 'File' $Channel $name $Link $Modified 'NOT SCANNED' '' '' (Protect-PiiText $Part.Reason))); return }
+    if ($Part.Note) { $Rows.Add((New-ReportRow 'File' $Channel $name $Link $Modified 'NOT SCANNED' '' '' (Protect-PiiText $Part.Note))) }
+    foreach ($hit in @(Find-PiiInText $Part.Text)) {
+        $Rows.Add((New-ReportRow 'File' $Channel $name $Link $Modified $hit.Detector $hit.Confidence $hit.MaskedValue $hit.Context))
+    }
+}
+
 Export-ModuleMember -Function Write-Ui, Get-SeverityIndex, New-ReportRow, Add-IncompleteRow, Get-ReportSummary, Get-TypeCounts, Get-NotScannedCounts, Get-ScanSummaryText, Get-WorkbookSheets,
-Get-ResultPath, Publish-ScanReport
+Get-ResultPath, Publish-ScanReport, Add-PartRows

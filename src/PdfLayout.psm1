@@ -138,10 +138,4 @@ function Complete-PdfTextBlock {
     $State.Shown.Clear()
 }
 
-function Stop-PdfHostile {
-    # Ends the read of a PDF with more operands or array entries than any real one has: it is reported as NOT SCANNED
-    # ("part could not be read"), so a hostile file cannot hold gigabytes (reviews r14, r18).
-    throw (New-Object System.FormatException (Get-PdfStringError))
-}
-
-Export-ModuleMember -Function Complete-PdfTextBlock, Stop-PdfHostile
+Export-ModuleMember -Function Complete-PdfTextBlock

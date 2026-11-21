@@ -7,9 +7,9 @@ PdfText.psm1 - the text of a PDF file, in memory, with .NET only (no module; the
   Inputs:      the file bytes.
   Outputs:     a hashtable with Text and Reason (Get-PdfText).
   How to run:  imported by Find-ChannelPII.ps1 (used by TextExtract.psm1); not run on its own.
-  Depends on:  PdfCore.psm1 (limits, stream filters), PdfObjects.psm1 (objects, strings, dictionary text) and
-               PdfFonts.psm1 (font maps and widths) and PdfLayout.psm1 (spaces and line breaks), imported first by
-               Find-ChannelPII.ps1.
+  Depends on:  PdfCore.psm1 (limits, stream filters), PdfObjects.psm1 (objects, strings, dictionary text),
+               PdfFonts.psm1 (font maps and widths), PdfLayout.psm1 (spaces and line breaks) and OcrText.psm1
+               (scanned pages), imported first by Find-ChannelPII.ps1.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7); .NET System.IO.Compression only.
   Network:     none.
   Writes:      none. Bytes stay in memory; nothing is saved to disk.
@@ -51,6 +51,8 @@ $script:Invariant = [Globalization.CultureInfo]::InvariantCulture
 $script:InlineImageEnd = '\sEI(?=[\s/\[<(%]|$)'
 
 $script:PdfNoTextReason = 'No text in this PDF (a scanned image?): check by hand'
+# A scanned PDF's JPEG page images, found by Get-PdfAllText: read with Windows OCR when the PDF has no text.
+$script:PdfScanImages = @()
 $script:PdfSlowReason = 'This PDF is too large or damaged to read in time: check by hand'
 $script:PdfPartReason = 'Part of this PDF could not be read (a damaged or unusual string): check by hand'
 $script:PdfEncryptedReason = 'Encrypted PDF (password or label): check by hand'
@@ -187,11 +189,12 @@ function Add-PdfStackText {
         elseif ($item -is [string] -and $item.Length -ge 2 -and ($item[0] -eq '(' -or ($item[0] -eq '<' -and $item[1] -ne '<'))) { $texts.Add($item) }
     }
     if ($texts.Count -eq 0) { return $false }
-    $usual = $texts.Count -eq 1 -and $texts[0] -eq $Stack[$Stack.Count - 1] -and (($Operator -ceq 'TJ') -eq ($texts[0] -is [System.Collections.Generic.List[string]]))
+    $usual = $texts.Count -eq 1 -and [object]::ReferenceEquals($texts[0], $Stack[$Stack.Count - 1]) -and (($Operator -ceq 'TJ') -eq ($texts[0] -is [System.Collections.Generic.List[string]]))
     if ($usual) { return $false }
     Add-PdfNote 'Part of this PDF is damaged (text with stray operands): check by hand'
     $gap = $false
     foreach ($text in $texts) {
+        Assert-PdfTime   # up to $MaxArrayItems operands: the clock is checked for each (review r19)
         if ($gap) { $State.Pieces.Add(' ') }   # separate operands: never one word
         if ($text -is [System.Collections.Generic.List[string]]) { Add-PdfArrayPieces $text $State } else { Add-PdfArrayPieces @($text) $State }
         $gap = $true
@@ -356,6 +359,7 @@ function Get-PdfText {
     }
     if ($text -match '/Encrypt\s*(?:\d+\s+\d+\s+R|<<)') { return @{ Text = ''; Reason = $script:PdfEncryptedReason } }
     Reset-PdfOldObjects   # this PDF's own older versions only
+    $script:PdfScanImages = @()   # and its own scanned pages
     Start-PdfBudget
     try { $all = Get-PdfAllText $text }
     catch {
@@ -372,6 +376,11 @@ function Get-PdfText {
     # otherwise cost the later checks a gigabyte (fresh review, 2026-11-21).
     $all = [regex]::Replace($all, '[ \t]{2,}', ' ')
     if (-not $all.Trim()) {
+        if ($script:PdfScanImages.Count -gt 0) {
+            $scan = Get-ScanPagesText $script:PdfScanImages $note
+            if (-not $scan.Reason -and -not $scan.Text.Trim()) { $scan.Reason = $script:PdfNoTextReason }
+            return $scan
+        }
         $reason = $script:PdfNoTextReason; if ($note) { $reason = $note }
         return @{ Text = ''; Reason = $reason; Note = '' }
     }
@@ -447,6 +456,7 @@ function Get-PdfAllText {
     #>
     param([string]$Text)
     $objects = Get-PdfObjects $Text
+    $script:PdfScanImages = @($objects.Values | Where-Object { $_.ContainsKey('Image') -and $_.Image } | ForEach-Object { $_.Image })
     Assert-PdfTime
     $allFonts = Get-PdfFonts $objects
     Assert-PdfTime

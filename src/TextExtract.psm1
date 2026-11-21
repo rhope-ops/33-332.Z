@@ -1,14 +1,16 @@
 <#
 TextExtract.psm1 - turns file bytes into plain text, in memory.
 
-  Purpose:     Plain text from Word, Excel and PowerPoint files (.docx/.xlsx/.pptx and macro versions),
-               PDF (page text and form fields; the PAM, 2026-11-20), text files and HTML. Other types (images,
-               legacy .doc/.xls/.ppt, scripts and anything else), encrypted files and PDFs without text are
-               reported as NOT SCANNED, so a person checks them by hand.
+  Purpose:     Plain text from Word, Excel and PowerPoint files (.docx/.xlsx/.pptx and macro versions), PDF,
+               OpenDocument, Visio, RTF, text and HTML; images (OCR), old .doc/.xls/.ppt and .msg; and each file
+               inside a .zip or an .eml (the PAM, 2026-11-20). Other types (scripts and anything else), encrypted
+               files and files that cannot be read are reported as NOT SCANNED, so a person checks them by hand.
   Inputs:      file bytes and the file name (for its extension).
-  Outputs:     an object with Status ('OK' or 'NOT SCANNED'), Reason and Text.
+  Outputs:     an object with Status ('OK' or 'NOT SCANNED'), Reason, Text, Note and Parts (Get-TextFromBytes).
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
-  Depends on:  PdfText.psm1 (Get-PdfText), imported first by Find-ChannelPII.ps1.
+  Depends on:  PdfText.psm1 (Get-PdfText), OcrText.psm1 (Get-ImageText), OleText.psm1 (Get-OleText) and
+               ContainerText.psm1 (Get-ArchiveParts, Get-EmailParts, Read-LimitedStream), imported first by
+               Find-ChannelPII.ps1.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7); .NET System.IO.Compression only.
   Network:     none.
   Writes:      none. Bytes stay in memory; nothing is saved to disk.
@@ -31,6 +33,9 @@ $script:HtmlExtensions = @('.html', '.htm')
 # Office Open XML types (a zip of XML parts, ECMA-376) and the parts that hold their text:
 # body, headers, footers, comments, notes; worksheets and cell comments; slides and speaker notes.
 # A worksheet is read cell by cell (Convert-SheetXmlToText), with its shared strings put back into their cells.
+# The most one part of an Office, OpenDocument or Visio file may unpack to (its stated size; a zip bomb is refused).
+$script:MaxZipEntryBytes = 64MB
+
 $script:OfficeParts = @{
     '.docx' = '^word/(document|header\d*|footer\d*|comments|footnotes|endnotes)\.xml$'
     '.docm' = '^word/(document|header\d*|footer\d*|comments|footnotes|endnotes)\.xml$'
@@ -38,7 +43,19 @@ $script:OfficeParts = @{
     '.xlsm' = '^xl/(worksheets/sheet\d+|comments\d*)\.xml$'
     '.pptx' = '^ppt/(slides/slide\d+|notesSlides/notesSlide\d+|comments/comment\d+)\.xml$'
     '.pptm' = '^ppt/(slides/slide\d+|notesSlides/notesSlide\d+|comments/comment\d+)\.xml$'
+    # OpenDocument (ODF: a zip with content.xml) and Visio (pages in visio/pages); the PAM, 2026-11-20: round 3.
+    '.odt' = '^content\.xml$'
+    '.ods' = '^content\.xml$'
+    '.odp' = '^content\.xml$'
+    '.vsdx' = '^visio/pages/page\d+\.xml$'
 }
+
+# Images, read with Windows OCR (OcrText.psm1); old binary Office and Outlook files (OleText.psm1); files that
+# hold other files (ContainerText.psm1): their parts are read one by one, at most $MaxContainerDepth levels deep.
+$script:ImageExtensions = @('.jpg', '.jpeg', '.png', '.tif', '.tiff', '.bmp', '.gif')
+$script:OleExtensions = @('.doc', '.xls', '.ppt', '.msg')
+$script:ContainerExtensions = @('.zip', '.eml')
+$script:MaxContainerDepth = 2
 
 # First bytes of a zip (every .docx/.xlsx/.pptx) and of an OLE compound file. Office saves a file in OLE form when it
 # is encrypted: a password, or a sensitivity label (CUI) with encryption; an old .doc/.xls/.ppt renamed is OLE too.
@@ -103,7 +120,9 @@ function Convert-XmlToText {
     # false positives (a 9-digit bookmark number read as an SSN), so their text is dropped (the PAM, 2026-11-20).
     $text = $Xml -replace '(?s)<w:instrText\b[^>]*?(?:/>|>.*?</w:instrText>)', ''
     $text = $text -replace '<w:tab/>|<w:br/>|<a:br/>', ' '
-    $text = $text -replace '</w:p>|</a:p>|</row>', "`n"
+    $text = $text -replace '<text:(?:s|tab|line-break)\b[^>]*/>', ' '
+    $text = $text -replace '</w:p>|</a:p>|</row>|</text:p>|</text:h>|</table:table-row>|</Text>', "`n"
+    $text = $text -replace '</table:table-cell>', $script:CellBreak   # ODF cells: never joined into one number
     $text = $text -replace '</si>|</c>|</w:tc>|</a:tc>', ' '
     $text = $text -replace '<[^>]+>', ''
     return [System.Net.WebUtility]::HtmlDecode($text)
@@ -132,10 +151,35 @@ function Convert-HtmlToText {
 # Reading bytes
 # =====================================================================================
 
+function Get-OdfEncryptedReason {
+    <#
+    .SYNOPSIS
+      Why an OpenDocument file cannot be read: saved with a password (its manifest lists encryption-data, and
+      its content is scrambled); empty when it is not (review of PR 19).
+    .PARAMETER Bytes
+      The file bytes (a zip).
+    .OUTPUTS
+      [string]
+    #>
+    param([byte[]]$Bytes)
+    $memory = New-Object System.IO.MemoryStream(, $Bytes)
+    $zip = New-Object System.IO.Compression.ZipArchive($memory, [System.IO.Compression.ZipArchiveMode]::Read)
+    try {
+        $manifest = $zip.GetEntry('META-INF/manifest.xml')
+        if ($manifest -and (Read-ZipEntry $manifest) -match 'encryption-data') { return 'Encrypted (password-protected): check by hand' }
+        return ''
+    }
+    finally { $zip.Dispose(); $memory.Dispose() }
+}
+
 function Read-ZipEntry {
-    # The text of one zip entry (UTF-8, as Office writes its XML).
+    # The text of one zip entry (UTF-8, as Office writes its XML), at most $MaxZipEntryBytes (a zip bomb throws).
     param($Entry)
-    $reader = New-Object System.IO.StreamReader($Entry.Open())
+    # Read through the bounded reader: a zip can state a false size, and .NET Framework unpacks past it.
+    $bytes = $null
+    if ($Entry.Length -le $script:MaxZipEntryBytes) { $bytes = Read-LimitedStream $Entry.Open() $script:MaxZipEntryBytes }
+    if ($null -eq $bytes) { throw 'A part of this file is too large to unpack in memory' }
+    $reader = New-Object System.IO.StreamReader((New-Object System.IO.MemoryStream(, $bytes)), [System.Text.Encoding]::UTF8, $true)   # a BOM wins
     try { return $reader.ReadToEnd() } finally { $reader.Dispose() }
 }
 
@@ -172,6 +216,38 @@ function Get-ZipPartText {
         return ($texts -join "`n")
     }
     finally { $zip.Dispose(); $memory.Dispose() }
+}
+
+function Convert-RtfToText {
+    <#
+    .SYNOPSIS
+      Rich text (.rtf) as plain text: groups that hold no page text (font and colour tables, pictures, \*
+      destinations) dropped; \par, \line and \tab as breaks; \'hh and \uN characters decoded; other control
+      words and braces removed.
+    .PARAMETER Rtf
+      The RTF text.
+    .OUTPUTS
+      [string]
+    #>
+    param([string]$Rtf)
+    # Drop whole groups that are not page text, with the groups nested in them (a balancing group counts the braces).
+    $skip = '\{\\(?:\*|fonttbl|colortbl|stylesheet|pict|themedata|colorschememapping|datastore|latentstyles)' +
+        '(?>[^{}]+|\{(?<d>)|\}(?<-d>))*(?(d)(?!))\}'
+    $Rtf = (New-Object System.Text.RegularExpressions.Regex($skip, 'None', [TimeSpan]::FromSeconds(10))).Replace($Rtf, '')
+    $text = $Rtf -replace '\\(?:par|line|row|sect|page)\b ?', "`n" -replace '\\(?:tab|cell)\b ?', ' '
+    # \uN (with its fallback character, \'hh or ?, dropped) and \'hh in one pass, so a fallback is never decoded twice.
+    $out = New-Object System.Text.StringBuilder
+    $at = 0
+    foreach ($m in [regex]::Matches($text, '\\u(-?\d+) ?(?:\\''[0-9A-Fa-f]{2}|\?)?|\\''([0-9A-Fa-f]{2})')) {
+        [void]$out.Append($text, $at, $m.Index - $at)
+        if ($m.Groups[1].Success) { [void]$out.Append([char](([int]$m.Groups[1].Value) -band 0xFFFF)) }
+        else { [void]$out.Append([char][Convert]::ToInt32($m.Groups[2].Value, 16)) }
+        $at = $m.Index + $m.Length
+    }
+    [void]$out.Append($text, $at, $text.Length - $at)
+    $text = $out.ToString()
+    $text = $text -replace '\\[A-Za-z]+-?\d* ?', '' -replace '\\([{}\\])', '$1' -replace '[{}]', ''
+    return $text
 }
 
 function Get-PlainText {
@@ -214,39 +290,50 @@ function Test-SupportedFile {
     param([string]$FileName)
     $extension = [System.IO.Path]::GetExtension($FileName).ToLower()
     return ($script:PlainTextExtensions -contains $extension) -or ($script:HtmlExtensions -contains $extension) -or
-        $script:OfficeParts.ContainsKey($extension) -or $extension -eq '.pdf'
+        $script:OfficeParts.ContainsKey($extension) -or $extension -in @('.pdf', '.rtf') -or $script:ImageExtensions -contains $extension -or
+        $script:OleExtensions -contains $extension -or $script:ContainerExtensions -contains $extension
 }
 
 function Get-TextFromBytes {
     <#
     .SYNOPSIS
-      Returns the text of one file, or why it was not scanned.
+      Returns the text of one file, or why it was not scanned. A zip or an e-mail gives Parts: the result of each
+      file inside it (read the same way, up to $MaxContainerDepth levels deep).
     .PARAMETER Bytes
       The file bytes.
     .PARAMETER FileName
       The file name; only its extension is used.
+    .PARAMETER Depth
+      How many containers this file sits in (0 for a file in the library).
     .OUTPUTS
-      [pscustomobject] Status ('OK' or 'NOT SCANNED'), Reason, Text, Note (a part of a read file that was not read).
+      [pscustomobject] Status ('OK' or 'NOT SCANNED'), Reason, Text, Note (a part of a read file that was not read),
+      Parts (the results of the files inside, each with a Name; empty for other files).
     #>
-    param([byte[]]$Bytes, [string]$FileName)
+    param([byte[]]$Bytes, [string]$FileName, [int]$Depth = 0)
     $extension = [System.IO.Path]::GetExtension($FileName).ToLower()
-    $result = [pscustomobject]@{ Status = 'OK'; Reason = ''; Text = ''; Note = '' }
+    $result = [pscustomobject]@{ Status = 'OK'; Reason = ''; Text = ''; Note = ''; Parts = (New-Object System.Collections.Generic.List[object]) }
     try {
+        $read = $null   # a reader's hashtable (Text, Reason, Note) for the types that give one
         if ($script:PlainTextExtensions -contains $extension) { $result.Text = Get-PlainText $Bytes }
         elseif ($script:HtmlExtensions -contains $extension) { $result.Text = Convert-HtmlToText (Get-PlainText $Bytes) }
-        elseif ($extension -eq '.pdf') {
-            $pdf = Get-PdfText $Bytes
-            if ($pdf.Reason) { $result.Status = 'NOT SCANNED'; $result.Reason = $pdf.Reason }
-            else { $result.Text = $pdf.Text; $result.Note = $pdf.Note }
-        }
+        elseif ($extension -eq '.rtf') { $result.Text = Convert-RtfToText (Get-PlainText $Bytes) }
+        elseif ($extension -eq '.pdf') { $read = Get-PdfText $Bytes }
+        elseif ($script:ImageExtensions -contains $extension) { $read = Get-ImageText $Bytes }
+        elseif ($script:OleExtensions -contains $extension) { $read = Get-OleText $Bytes $extension }
+        elseif ($script:ContainerExtensions -contains $extension) { Add-ContainerParts $result $Bytes $extension $Depth }
         elseif ($script:OfficeParts.ContainsKey($extension)) {
             $notZip = Get-NotZipReason $Bytes
+            if (-not $notZip -and $extension -like '.od?') { $notZip = Get-OdfEncryptedReason $Bytes }
             if ($notZip) { $result.Status = 'NOT SCANNED'; $result.Reason = $notZip }
             else { $result.Text = Get-ZipPartText $Bytes $script:OfficeParts[$extension] }
         }
         else {
             $result.Status = 'NOT SCANNED'
             $result.Reason = "File type '$extension' is not read by this script: check by hand"
+        }
+        if ($read) {
+            if ($read.Reason) { $result.Status = 'NOT SCANNED'; $result.Reason = $read.Reason }
+            else { $result.Text = $read.Text; if ($read.ContainsKey('Note')) { $result.Note = $read.Note } }
         }
     }
     catch {
@@ -255,6 +342,43 @@ function Get-TextFromBytes {
         $result.Reason = 'Could not read the file (damaged or protected?): ' + $_.Exception.Message
     }
     return $result
+}
+
+function Add-ContainerParts {
+    <#
+    .SYNOPSIS
+      Reads each file in a zip or e-mail into $Result.Parts, named "inner/path" (a part's own parts are flattened
+      as "inner.zip/file"). A container deeper than $MaxContainerDepth is not opened: NOT SCANNED with a reason.
+    .PARAMETER Result
+      The container's result (Get-TextFromBytes).
+    .PARAMETER Bytes
+      The container bytes.
+    .PARAMETER Extension
+      The container's extension: zip or eml, with its point.
+    .PARAMETER Depth
+      How many containers the container sits in.
+    #>
+    param($Result, [byte[]]$Bytes, [string]$Extension, [int]$Depth)
+    if ($Depth -ge $script:MaxContainerDepth) {
+        $Result.Status = 'NOT SCANNED'; $Result.Reason = 'An archive or e-mail inside another: open it and check by hand'
+        return
+    }
+    $parts = if ($Extension -eq '.zip') { @(Get-ArchiveParts $Bytes) } else { @(Get-EmailParts $Bytes) }
+    foreach ($part in $parts) {
+        if ($part.Reason) { $one = [pscustomobject]@{ Status = 'NOT SCANNED'; Reason = $part.Reason; Text = ''; Note = ''; Parts = (New-Object System.Collections.Generic.List[object]) } }
+        elseif ($null -ne $part.Text) {
+            $text = $part.Text; if ($part.Name -like '*.html') { $text = Convert-HtmlToText $text }
+            $one = [pscustomobject]@{ Status = 'OK'; Reason = ''; Text = $text; Note = ''; Parts = (New-Object System.Collections.Generic.List[object]) }
+        }
+        else { $one = Get-TextFromBytes -Bytes $part.Bytes -FileName $part.Name -Depth ($Depth + 1) }
+        $one | Add-Member -NotePropertyName Name -NotePropertyValue ([string]$part.Name) -Force
+        $Result.Parts.Add($one)
+        $inners = @(); if ($null -ne $one.Parts -and $one.Parts.Count -gt 0) { $inners = $one.Parts.ToArray() }
+        foreach ($inner in $inners) {
+            $inner.Name = $part.Name + '/' + $inner.Name
+            $Result.Parts.Add($inner)
+        }
+    }
 }
 
 Export-ModuleMember -Function Get-TextFromBytes, Convert-HtmlToText, Test-SupportedFile

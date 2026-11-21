@@ -16,8 +16,8 @@ Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
 
 $sourceFolder = Join-Path (Split-Path $PSScriptRoot -Parent) 'src'
-foreach ($module in @('PiiDetectors.psm1', 'PiiMasking.psm1', 'PdfCore.psm1', 'PdfObjects.psm1', 'PdfFonts.psm1', 'PdfLayout.psm1',
-    'PdfText.psm1',
+foreach ($module in @('PiiDetectors.psm1', 'PiiMasking.psm1', 'OcrText.psm1', 'OleText.psm1', 'ContainerText.psm1',
+    'PdfCore.psm1', 'PdfObjects.psm1', 'PdfFonts.psm1', 'PdfLayout.psm1', 'PdfText.psm1',
     'TextExtract.psm1', 'XlsxWriter.psm1', 'Report.psm1', 'ScanMeter.psm1', 'ChannelScan.psm1')) {
     Import-Module (Join-Path $sourceFolder $module) -Force
 }
