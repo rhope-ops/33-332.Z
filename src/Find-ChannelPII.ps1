@@ -83,10 +83,10 @@ function Invoke-SiteFiles {
     $path = $null
     $clock = [Diagnostics.Stopwatch]::StartNew()
     $rows = New-Object System.Collections.Generic.List[object]
-    $scanned = 0
-    $selected = @()
+    $scanned = 0; $selected = @()
     $folderLabel = 'Folder'   # 'Channel' when the site belongs to a team (the PAM, 2026-11-20)
     $listName = ''            # what the header lists: 'Channels', 'Folders' or 'Libraries'
+    $progress = @{}      # Invoke-FileScan puts its live meter here
     $finished = $false   # set only after the last step; a cancelled run (Ctrl+C) skips 'catch' but not 'finally'
     try {
         # Only the column name depends on it: if the site's group cannot be read, the scan goes on with 'Folder'.
@@ -98,7 +98,7 @@ function Invoke-SiteFiles {
         $listName = $folderLabel + 's'; if ($libraries.Count -gt 1) { $listName = 'Libraries' }
         Write-Ui ($listName + ' to scan: ') 'Label' -NoNewline
         Write-Ui ((($selected | ForEach-Object { Protect-PiiName $_ }) -join ', ') + '; also any files at the top of each library') 'Text'
-        $scanned += Invoke-FileScan -Library $libraries -Channels $selected -SiteUrl $SiteUrl -MaxFileMB $MaxFileMB -Rows $rows -Init $IonWorkerInit
+        $scanned += Invoke-FileScan -Library $libraries -Channels $selected -SiteUrl $SiteUrl -MaxFileMB $MaxFileMB -Rows $rows -Init $IonWorkerInit -Progress $progress
         $finished = $true
     }
     catch {
@@ -108,9 +108,9 @@ function Invoke-SiteFiles {
         $rows.Add((New-ReportRow 'Scan' '(all)' '(scan)' '' '' 'INCOMPLETE' '' '' ('Stopped early: ' + $reason)))
     }
     finally {
+        if (-not $finished -and $progress.ContainsKey('Meter')) { $scanned = $progress.Meter.Read }   # stopped part way: the live count
         Add-IncompleteRow -Rows $rows -Finished $finished
-        $header = [ordered]@{}
-        $header['Site'] = $SiteUrl
+        $header = [ordered]@{ Site = $SiteUrl }
         if (-not $listName) { $listName = $folderLabel + 's' }
         $header[$listName] = ($selected | ForEach-Object { Protect-PiiName $_ }) -join ', '
         $header['Run'] = Get-Date -Format 'yyyy-MM-dd HH:mm'
@@ -144,11 +144,15 @@ function Open-ScanResult {
 
 Write-Ui '==== Ion - DoD365 PII Reporter ====' 'Title'
 Write-Ui 'Read-only. Every PII value found is masked on screen and in the results.' 'Muted'
+# What it scans and how to stop early (the PAM, 2026-11-21): a cancel still saves the results so far ('finally').
+Write-Ui ('Scans the files of one Teams team, SharePoint site or drive folder. Files over {0} MB are listed, not read.' -f $MaxFileMB) 'Muted'
+Write-Ui 'To stop early: Ctrl+C (in ISE: the red Stop button). The results so far are still saved.' 'Muted'
+$signedIn = $false   # the closing line says "nothing stays signed in" only after a site scan (a drive needs no sign-in)
 
 # ---- Ask for a site, sign in, scan, save; then offer another site, until the person presses Enter ----
 # A wrong paste is explained and asked again (Read-ScanTarget); a site the person cannot open is reported as
 # "no access" and nothing is saved for it (Connect-TeamSite); only the one site given is touched each time.
-$target = Read-ScanTarget $SiteUrl 'Teams link, SharePoint site address (https://usaf.dps.mil/teams/<team-site>) or folder (X:\<folder>), or Enter to exit'
+$target = Read-ScanTarget $SiteUrl 'What to scan'
 while ($null -ne $target) {
     $site = $null
     if ($target.DrivePath) {
@@ -156,9 +160,10 @@ while ($null -ne $target) {
         try { Open-ScanResult (Invoke-DriveScan -Path $target.DrivePath -OutputFolder $OutputFolder -MaxFileMB $MaxFileMB -Init $IonWorkerInit) }
         catch { Write-Ui ('The results could not be saved: ' + (Protect-PiiText $_.Exception.Message)) 'Alert' }
         Write-Ui ''
-        $target = Read-ScanTarget '' 'Scan another? Paste a Teams link, a site address or a folder (X:\<folder>), or press Enter to exit'
+        $target = Read-ScanTarget '' 'Scan another: paste it, or press Enter to exit' -NoHelp
         continue
     }
+    $signedIn = $true   # a sign-in is tried (Connect-TeamSite signs out again on every path)
     try { $site = Connect-TeamSite $target }
     catch { Write-Ui $_.Exception.Message 'Alert' }
     if ($site) {
@@ -167,6 +172,6 @@ while ($null -ne $target) {
         catch { Write-Ui ('The results could not be saved: ' + (Protect-PiiText $_.Exception.Message)) 'Alert' }
     }
     Write-Ui ''
-    $target = Read-ScanTarget '' 'Scan another? Paste a Teams link, a site address or a folder (X:\<folder>), or press Enter to exit'
+    $target = Read-ScanTarget '' 'Scan another: paste it, or press Enter to exit' -NoHelp
 }
-Write-Ui 'Ion is done: nothing stays signed in.' 'Good'
+if ($signedIn) { Write-Ui 'Ion is done: nothing stays signed in.' 'Good' } else { Write-Ui 'Ion is done.' 'Good' }

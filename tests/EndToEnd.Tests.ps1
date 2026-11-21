@@ -64,7 +64,9 @@ Reset-FakePnP @{ "$library/General/notes.txt" = $Txt }
 Set-FakeSiteAnswer -TypedSite @('not a link', $Sample.Site)
 $retryFolder = Join-Path $runFolder 'retry'
 $shown = (& $script -OutputFolder $retryFolder 6>&1 | ForEach-Object { [string]$_ }) -join ' '
-Assert-Equal $true ($shown -match 'That is not a Teams link or a site address') 'Wrong paste: explained'
+Assert-Equal $true ($shown -match "Not read: 'not a link' is not a SharePoint site address") 'Wrong paste: explained'
+Assert-Equal $true ($shown -match 'a drive folder: X:') 'Wrong paste: what can be pasted is listed'
+Assert-Equal $true ($shown -match 'To stop early: Ctrl\+C' -and $shown -match 'Ion is done: nothing stays signed in') 'Start: how to stop; end: signed out after a site'
 Assert-Equal 1 @(Get-ResultFiles $retryFolder).Count 'Wrong paste: asked again, then the right one scanned'
 Assert-Equal 3 (Get-FakeCallCount 'Read-Host') 'Wrong paste, right paste, then Enter to exit'
 
@@ -77,6 +79,12 @@ $failBook = @(Get-ResultFiles $failFolder)
 Assert-Equal 1 $failBook.Count 'Results saved after a failure'
 Assert-Equal 'INCOMPLETE' (Get-XlsxSheets $failBook[0].FullName)['Not scanned'][1][0] 'Results say INCOMPLETE'
 Assert-Equal $true (Test-FakePnPCall 'Disconnect-PnPOnline') 'Signed out after a failure'
+
+# Stopped part way, after folder 1 was read: the red line counts the files read so far (review of PR 36).
+Reset-FakePnP @{ "$library/General/notes.txt" = $Txt; "$library/Ops/a.txt" = $Txt }
+Set-FakePnPOption StopInFolder2 $true
+$stopShown = (& $script -SiteUrl $Sample.Site -OutputFolder (Join-Path $runFolder 'stop') 6>&1 | ForEach-Object { [string]$_ }) -join ' '
+Assert-Equal $true ($stopShown -match 'INCOMPLETE: the scan stopped early\. Only the 1 files read') 'Stopped part way: the red line counts the files read'
 
 # ---- A report that cannot be saved: the script still signs out ----
 Reset-FakePnP @{}

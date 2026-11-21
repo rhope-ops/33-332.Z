@@ -372,6 +372,10 @@ $realNamesRead = Get-TextFromBytes -Bytes $realNames -FileName 'rn.pdf'
 Assert-Equal 'ABCDM|True' ($realNamesRead.Text.Trim() + '|' + ($realNamesRead.Note -match 'could not be read')) `
     'PDF: Adobe names with digits read as before; a #xx escape decoded; a later name for a code replaces the earlier one'
 
+$caseNames = New-PdfBytes 'BT /F1 12 Tf (ABC) Tj ET' -Plain -FontDict '<< /Type /Font /Subtype /Type1 /BaseFont /X /Encoding << /Differences [65 /h12 /u3 /uni00410042] >> >>'
+Assert-Equal 'C' (Get-TextFromBytes -Bytes $caseNames -FileName 'cn.pdf').Text.Trim() `
+    'PDF: lowercase made-up names (h12) and short u names (u3) read as spaces; a two-character uni name reads as before'
+
 # ---- PDF review round 9 (2026-11-21): gaps decided per text block ----
 # Places text glyph by glyph as a PDF writer does: each move is the glyph's real Helvetica width at 12 pt plus the
 # letter spacing (in points).
