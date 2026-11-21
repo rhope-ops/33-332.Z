@@ -306,31 +306,37 @@ function Get-MethodRows {
     #>
     , @('How Ion finds possible PII', ('Ion reads the text of each file in memory and looks for patterns. A match is a lead, not proof: ' +
         'open each file and check it. The confidence (High, Medium, Low) depends on the type, as below.'))
-    , @('SSN', 'High: "SSN", "SSAN" or "social security" just before it. Medium: 3-2-4 digits with dashes or spaces. Low: 9 digits in a row.')
-    , @('DoD ID', 'Found only with "DoD ID", "DODID", "EDIPI" or "CAC" just before it: always High.')
-    , @('Date of birth', 'Found only with "DOB", "date of birth" or "born" just before it: always High.')
-    , @('Payment card', 'Medium: a card number that passes the card check. High: the same with a card word (card, Visa, GTC ...) before it.')
+    , @('SSN', ('Numbers the SSA never issues (000, 666 or 9xx first; 00 in the middle; 0000 last) are skipped. High: "SSN", "SSAN", ' +
+        '"social security" or "soc sec" just before it. Medium: 3-2-4 digits with dashes or spaces. Low: 9 digits in a row.'))
+    , @('DoD ID', 'A 10-digit number, found only with a label just before it ("DoD ID", "DODID", "EDIPI", "CAC", "DoD #", "DoD number"): always High.')
+    , @('Date of birth', 'A date, found only with a label just before it ("DOB", "D.O.B.", "date of birth", "birth date", "birthdate", "born"): always High.')
+    , @('Payment card', ('Medium: 13 to 19 digits with a card network''s first digits that pass the card check digit (Luhn). ' +
+        'High: the same with a card word ("card", "Visa", "Amex", "GTC", "GPC" ...) before it.'))
     , @('Passport', 'Found only with "passport" just before it: always Medium.')
-    , @('Phone', 'Low: any US 10-digit number (office numbers are common). Medium: "cell", "mobile", "home" or "personal" just before it.')
+    , @('Phone', ('A US number written with separators: (###) ###-####, ###-###-####, ###.###.#### or ### ### ####; 10 digits in a row ' +
+        'are not found. Low: no label (office numbers are common). Medium: "cell", "mobile", "home", "personal" or "my number" just before it.'))
     , @('Personal e-mail', 'Low: an address that does not end in .gov or .mil. Medium: a personal mail service (Gmail, Yahoo and the like).')
     , @('Home address', 'Low: number, street name and street type. Medium: it ends with a state and ZIP code. High: "home address" or similar before it.')
     , @('Name', 'Low: a name after "Name:", "Member:", "Spouse:" and the like. High: the same, with an SSN, DoD ID, date of birth, passport or card number close by.')
-    , @('Noise', 'A Low match inside text that is mostly unreadable characters (symbols, a font read wrong) is dropped. High and Medium are always kept.')
+    , @('Noise', ('A Low match is dropped when, of the visible characters within 40 on each side (at least 20 of them), 30% or more are ' +
+        'unreadable signs (symbols, a font read wrong). High and Medium matches are always kept.'))
     , @('')
     , @('Created, Created by', 'From SharePoint: when the file was first saved to the site, and by which account. On a drive: the file time and its owner.')
     , @('Last saved, Last saved by', 'The last save of the whole file, by anyone, for any reason. It says nothing about the PII; it shows who works on the file now.')
     , @('PII first saved, PII first saved by', (('Ion reads the file''s SharePoint version history, oldest first (at most {0} versions), and finds ' +
         'the first version whose text holds the same type and masked value. These columns name the account that saved that version, and when. ' +
-        'If the value is in no older version, they name the current version (the same as Last saved). If the file has no older versions at all ' +
-        '(version history off or never used), they name the file''s creator.') -f $script:MaxVersionsRead))
+        'If every older version was read and none holds the value, they name the current version (the same as Last saved). If the file has no ' +
+        'older versions at all (version history off or never used), they name the file''s creator. If not every version could be read, they ' +
+        'say "Not recorded".') -f $script:MaxVersionsRead))
     , @('What that shows', ('SharePoint records which account saved each version. So these columns show which account first saved a version ' +
         'that holds the value: strong evidence, not proof of who typed it.'))
     , @('Why it can be wrong', ('The person who saves or uploads a file is not always the one who wrote the text: it may be pasted from an e-mail, ' +
         'copied from another file, or uploaded by OneDrive. When several people edit at once, SharePoint names one of them. Old versions may have ' +
         'been deleted. Two different values can look the same once masked (for example the same last 4 digits). A file copied in starts a new ' +
         'history. A drive keeps no history at all.'))
-    , @('History note', ('Says when the history could not show the answer: no version history, not in the versions read, a version that could ' +
-        'not be read, a value removed and put back, or more versions than were read.'))
+    , @('History note', ('Says how sure the two columns are: no version history; not in the versions read; a version that could not be read; ' +
+        'a value removed and put back; more versions than were read; "No older version: the file''s creator is named"; or "In no older ' +
+        'version: the current version is named".'))
     , @('Before you name a person', ('Open the file in SharePoint > Version history. Open the version Ion names and the one before it, and check ' +
         'that the full value first appears in that version.'))
 }

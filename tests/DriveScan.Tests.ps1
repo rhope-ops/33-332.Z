@@ -145,6 +145,10 @@ try {
     $versionList = @((New-FakeVersion ([datetime]'2026-01-01') 'none' $plain), $hidden, (New-FakeVersion ([datetime]'2026-01-03') 'a3' $withSsn))
     $laterNote = (Find-PiiAddedVersion '/sites/x/Shared Documents/a.txt' 'a.txt' $hits $who)[$hits[0].Detector + '|' + $hits[0].MaskedValue].Note
     Assert-Equal $false ($laterNote -match 'put back') 'Who: no put-back note for a hit first seen after an unread version'
+    # Every old version read, none holds the SSN: the current version is named, and the note says so.
+    $versionList = @((New-FakeVersion ([datetime]'2026-01-01') 'early.saver' $plain), (New-FakeVersion ([datetime]'2026-01-02') 'early.saver' $plain))
+    $currentEntry = (Find-PiiAddedVersion '/sites/x/Shared Documents/a.txt' 'a.txt' $hits $who)[$hits[0].Detector + '|' + $hits[0].MaskedValue]
+    Assert-Equal 'last.editor|In no older version: the current version is named' ($currentEntry.AddedBy + '|' + $currentEntry.Note) 'Who: the current-version fallback is noted'
     $versionList = @()
     $byHit = Find-PiiAddedVersion '/sites/x/Shared Documents/a.txt' 'a.txt' $hits $who
     Assert-Equal 'first.saver' $byHit[$hits[0].Detector + '|' + $hits[0].MaskedValue].AddedBy 'Who: with no older version, the maker added it'
