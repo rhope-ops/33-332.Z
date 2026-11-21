@@ -147,7 +147,7 @@ function Invoke-GroupScan {
         foreach ($file in $group.Files) {
             # The file in work, with PII masked (the PAM, 2026-11-20: a slow file is then visible).
             # The scan bar's 3 lines (the PAM, 2026-11-21): the folder, the run so far, the file.
-            $Queue.Activity = 'Folder {0} of {1}: {2}' -f ($c + 1), $Groups.Count, (Protect-PiiName $group.Name)
+            $Queue.Activity = '{0} Folder {1} of {2}: {3}' -f (Get-IonMark), ($c + 1), $Groups.Count, (Protect-PiiName $group.Name)
             Write-Progress -Id 1 -Activity $Queue.Activity -Status (Get-ScanMeterText $meter 'file') -PercentComplete (Get-MeterPercent $meter) `
                 -CurrentOperation ('File: ' + (& $ShownFile $group $file))
             $firstRow = $Queue.Rows.Count
@@ -331,7 +331,7 @@ function Invoke-ScanRun {
     $Run.Meter = New-ScanMeter 0; $Run.Reading = [TimeSpan]::Zero; $Run.Workers = 0; $Run.Declined = $false
     # Declined until a yes: a cancel (Ctrl+C) at the question saves nothing either, as nothing was read (review of PR 37).
     if ($Facts) { $Run.Declined = $true; if (-not (Confirm-ScanStart $Groups $Facts $MaxFileMB)) { return }; $Run.Declined = $false }
-    Write-Ui ('==== Scanning {0} files in {1} folders ====' -f $total, $Groups.Count) 'Title'
+    Write-Banner ('Scanning {0} files in {1} folders' -f $total, $Groups.Count)
     $meter = New-ScanMeter $total
     $meter.NameWidth = Get-NameWidth @($Groups | ForEach-Object { Protect-PiiName $_.Name })
     $Run.Meter = $meter; $Run.Reading = [TimeSpan]::Zero; $Run.Workers = 0

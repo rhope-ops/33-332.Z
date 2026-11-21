@@ -256,7 +256,7 @@ function Write-FileStep {
         }
     }
     # No -ParentId: Windows PowerShell ISE indents a child bar; the PAM wants both bars aligned (2026-11-20).
-    Write-Progress -Id 2 -Activity $Step -Status $status -PercentComplete $percent
+    Write-Progress -Id 2 -Activity ((Get-IonMark) + ' ' + $Step) -Status $status -PercentComplete $percent
 }
 
 function Copy-StreamWithProgress {
