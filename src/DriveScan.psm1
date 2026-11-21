@@ -112,7 +112,7 @@ function Invoke-DriveFile {
     if (-not (Test-SupportedFile $File.Name)) { $skipReason = 'File type is not read by this script: check by hand' }
     elseif ($File.Size -gt ($MaxFileMB * 1MB)) { $skipReason = "Larger than $MaxFileMB MB: check by hand" }
     if ($skipReason) { $rows.Add((New-ReportRow 'File' $channel $item $link $File.Modified 'NOT SCANNED' '' '' $skipReason)); return $false }
-    Submit-ScanFile $Queue @{ Channel = $channel; Item = $item; Link = $link; Modified = $File.Modified } $File.Name $null $File.Path
+    Submit-ScanFile $Queue @{ Channel = $channel; Item = $item; Link = $link; Modified = $File.Modified; DrivePath = $File.Path } $File.Name $null $File.Path
     return $true
 }
 

@@ -57,7 +57,7 @@ $ErrorActionPreference = 'Stop'
 # The readers (the reader workers load the same files: ReaderPool.psm1), then the scan and report modules.
 $readerModules = @('PiiDetectors.psm1', 'PiiMasking.psm1', 'OcrText.psm1', 'OleText.psm1', 'ContainerText.psm1',
     'PdfCore.psm1', 'PdfObjects.psm1', 'PdfFonts.psm1', 'PdfText.psm1', 'TextExtract.psm1', 'ReaderPool.psm1')
-foreach ($module in $readerModules + @('XlsxWriter.psm1', 'Report.psm1', 'ScanMeter.psm1', 'ScanQueue.psm1', 'ChannelScan.psm1', 'DriveScan.psm1')) {
+foreach ($module in $readerModules + @('XlsxWriter.psm1', 'Report.psm1', 'ScanMeter.psm1', 'ScanQueue.psm1', 'Accountability.psm1', 'ChannelScan.psm1', 'DriveScan.psm1')) {
     Import-Module (Join-Path $PSScriptRoot $module) -Force
 }
 $IonWorkerInit = @{ Paths = @($readerModules | ForEach-Object { Join-Path $PSScriptRoot $_ }) }

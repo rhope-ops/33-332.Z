@@ -116,6 +116,7 @@ function Add-QueuedRows {
             $rows.Add((New-ReportRow 'File' $info.Channel $info.Item $info.Link $info.Modified $hit.Detector $hit.Confidence $hit.MaskedValue $hit.Context))
         }
         foreach ($part in $Result.Parts) { Add-PartRows $part $info.Channel $info.Item $info.Link $info.Modified $rows }
+        if ($Result.Hits.Count -gt 0 -or $rows.Count -gt $first) { Add-WhoToRows $info $Result @($rows | Select-Object -Skip $first) }
     }
     Update-ScanMeter $Queue.Meter $rows $first $read
     Write-MeterLine $Queue.Meter 'file'
@@ -154,6 +155,29 @@ function Invoke-GroupScan {
         Write-ChannelLine $group.Name $before $meter 'file'
     }
     Write-Progress -Id 1 -Activity 'Scanning files' -Completed
+}
+
+function Add-WhoToRows {
+    <#
+    .SYNOPSIS
+      The accountability columns of a file's rows (the PAM, 2026-11-21): from its SharePoint fields and version
+      history (Info.Who and Info.Added), or from the drive file (Info.DrivePath), plus the names an Office file stores.
+    .PARAMETER Info
+      The file's queue info.
+    .PARAMETER Result
+      Its reader result (Hits, Props).
+    .PARAMETER FileRows
+      The rows of this file.
+    #>
+    param([hashtable]$Info, [hashtable]$Result, [object[]]$FileRows)
+    $props = $null; if ($Result.ContainsKey('Props')) { $props = $Result.Props }
+    if ($Info.ContainsKey('DrivePath')) { $who = Get-DriveWho $Info.DrivePath $props }
+    elseif ($Info.ContainsKey('Who')) {
+        $who = $Info.Who.Clone()
+        if ($Info.ContainsKey('Added') -and $Result.Hits.Count -gt 0) { $who.ByHit = (& $Info.Added $Result.Hits) }
+    }
+    else { return }
+    Set-RowAccountability $FileRows $who
 }
 
 function Wait-ScanQueue {

@@ -98,12 +98,12 @@ function Invoke-PooledRead {
     .PARAMETER Seen
       A synchronized hashtable shared by all workers: content hash and extension -> the Id of the job that reads it.
     .OUTPUTS
-      [hashtable] Id, Status, Reason, Note, Hits, Parts, Hash, Duplicate, Original, Seconds, Size.
+      [hashtable] Id, Status, Reason, Note, Hits, Parts, Hash, Duplicate, Original, Seconds, Size, Props.
     #>
     param([hashtable]$Job, [hashtable]$Seen)
     $clock = [Diagnostics.Stopwatch]::StartNew()
     $result = @{ Id = $Job.Id; Status = 'OK'; Reason = ''; Note = ''; Hits = @(); Parts = @(); Hash = ''; Duplicate = $false
-        Original = $null; Seconds = 0.0; Size = 0 }
+        Original = $null; Seconds = 0.0; Size = 0; Props = $null }
     try {
         $bytes = $Job.Bytes
         if ($null -eq $bytes) { $bytes = Read-LocalFileBytes $Job.Path }
@@ -121,6 +121,7 @@ function Invoke-PooledRead {
         $text = Get-TextFromBytes -Bytes $bytes -FileName $Job.Name
         $result.Status = $text.Status; $result.Reason = $text.Reason; $result.Note = $text.Note
         if ($text.Status -eq 'OK') { $result.Hits = @(Find-PiiInText $text.Text) }
+        if ($result.Hits.Count -gt 0) { $result.Props = Get-OfficeProps $bytes }   # who made and changed it (Office files)
         # No @() around the list itself: @() around an empty generic list property fails in PowerShell.
         if ($null -ne $text.Parts -and $text.Parts.Count -gt 0) { $result.Parts = $text.Parts.ToArray() }
     }

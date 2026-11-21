@@ -26,15 +26,16 @@
     src/PdfObjects.psm1, sha256 c5dc0f478de1
     src/PdfFonts.psm1, sha256 af2a8ea37ea4
     src/PdfText.psm1, sha256 392a85c300cf
-    src/TextExtract.psm1, sha256 6e7fbfb4f688
-    src/ReaderPool.psm1, sha256 b2cdd7ddab45
+    src/TextExtract.psm1, sha256 f27467e1e75a
+    src/ReaderPool.psm1, sha256 0b40c1fe0897
     src/XlsxWriter.psm1, sha256 e29becdc6a65
-    src/Report.psm1, sha256 c5cca8f8cdf7
+    src/Report.psm1, sha256 3d03734f62fd
     src/ScanMeter.psm1, sha256 2c2a5a750104
-    src/ScanQueue.psm1, sha256 dade7ed80137
-    src/ChannelScan.psm1, sha256 349321738110
-    src/DriveScan.psm1, sha256 6b058c4a9694
-    src/Find-ChannelPII.ps1, sha256 e0089e5e0184
+    src/ScanQueue.psm1, sha256 1ec233b97fc7
+    src/Accountability.psm1, sha256 2cced6e1f2d1
+    src/ChannelScan.psm1, sha256 0a32b46dcc63
+    src/DriveScan.psm1, sha256 097672c6cd08
+    src/Find-ChannelPII.ps1, sha256 ffaee6b7c116
 
   Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.
   Run target: Windows PowerShell 5.1 with PnP.PowerShell 1.12.0; no admin rights, no file to unblock.
@@ -43,28 +44,29 @@
   Credentials: your own CAC sign-in in the PnP sign-in window; nothing is stored.
 
   Contents (line numbers of this file):
-    line    70  Settings
-    line    81  Reader block
-    line    87  Module PiiDetectors.psm1
-    line   575  Module PiiMasking.psm1
-    line   775  Module OcrText.psm1
-    line   928  Module OleText.psm1
-    line  1032  Module ContainerText.psm1
-    line  1272  Module PdfCore.psm1
-    line  1631  Module PdfObjects.psm1
-    line  1977  Module PdfFonts.psm1
-    line  2351  Module PdfText.psm1
-    line  2897  Module TextExtract.psm1
-    line  3250  Module ReaderPool.psm1
-    line  3496  Reader block end
-    line  3500  Module XlsxWriter.psm1
-    line  3771  Module Report.psm1
-    line  4305  Module ScanMeter.psm1
-    line  4570  Module ScanQueue.psm1
-    line  4762  Module ChannelScan.psm1
-    line  5313  Module DriveScan.psm1
-    line  5543  Body of Find-ChannelPII.ps1
-    line  5652  Clean-up
+    line    72  Settings
+    line    83  Reader block
+    line    89  Module PiiDetectors.psm1
+    line   577  Module PiiMasking.psm1
+    line   777  Module OcrText.psm1
+    line   930  Module OleText.psm1
+    line  1034  Module ContainerText.psm1
+    line  1274  Module PdfCore.psm1
+    line  1633  Module PdfObjects.psm1
+    line  1979  Module PdfFonts.psm1
+    line  2353  Module PdfText.psm1
+    line  2899  Module TextExtract.psm1
+    line  3282  Module ReaderPool.psm1
+    line  3529  Reader block end
+    line  3533  Module XlsxWriter.psm1
+    line  3804  Module Report.psm1
+    line  4367  Module ScanMeter.psm1
+    line  4632  Module ScanQueue.psm1
+    line  4848  Module Accountability.psm1
+    line  5000  Module ChannelScan.psm1
+    line  5555  Module DriveScan.psm1
+    line  5785  Body of Find-ChannelPII.ps1
+    line  5894  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -3058,6 +3060,36 @@ function Get-SharedStrings {
     foreach ($item in [regex]::Matches((Read-ZipEntry $entry), '(?s)<(?:\w+:)?si>(.*?)</(?:\w+:)?si>')) { Convert-XmlToText $item.Groups[1].Value }
 }
 
+function Get-OfficeProps {
+    <#
+    .SYNOPSIS
+      The names an Office file stores about itself (docProps/core.xml: creator, last modified by), as Office saved
+      them; empty for other files (the accountability columns, the PAM 2026-11-21).
+    .PARAMETER Bytes
+      The file bytes.
+    .OUTPUTS
+      [hashtable] Creator, LastModifiedBy.
+    #>
+    param([byte[]]$Bytes)
+    $props = @{ Creator = ''; LastModifiedBy = '' }
+    if ($Bytes.Length -lt 4 -or $Bytes[0] -ne 0x50 -or $Bytes[1] -ne 0x4B) { return $props }   # not a zip
+    try {
+        $memory = New-Object System.IO.MemoryStream(, $Bytes)
+        $zip = New-Object System.IO.Compression.ZipArchive($memory, [System.IO.Compression.ZipArchiveMode]::Read)
+        try {
+            $core = $zip.GetEntry('docProps/core.xml')
+            if ($core) {
+                $xml = Read-ZipEntry $core
+                $props.Creator = [System.Net.WebUtility]::HtmlDecode([regex]::Match($xml, '<dc:creator>([^<]*)</dc:creator>').Groups[1].Value)
+                $props.LastModifiedBy = [System.Net.WebUtility]::HtmlDecode([regex]::Match($xml, '<cp:lastModifiedBy>([^<]*)</cp:lastModifiedBy>').Groups[1].Value)
+            }
+        }
+        finally { $zip.Dispose(); $memory.Dispose() }
+    }
+    catch { return @{ Creator = ''; LastModifiedBy = '' } }   # a damaged zip: its reader reports it
+    return $props
+}
+
 function Get-ZipPartText {
     <#
     .SYNOPSIS
@@ -3347,12 +3379,12 @@ function Invoke-PooledRead {
     .PARAMETER Seen
       A synchronized hashtable shared by all workers: content hash and extension -> the Id of the job that reads it.
     .OUTPUTS
-      [hashtable] Id, Status, Reason, Note, Hits, Parts, Hash, Duplicate, Original, Seconds, Size.
+      [hashtable] Id, Status, Reason, Note, Hits, Parts, Hash, Duplicate, Original, Seconds, Size, Props.
     #>
     param([hashtable]$Job, [hashtable]$Seen)
     $clock = [Diagnostics.Stopwatch]::StartNew()
     $result = @{ Id = $Job.Id; Status = 'OK'; Reason = ''; Note = ''; Hits = @(); Parts = @(); Hash = ''; Duplicate = $false
-        Original = $null; Seconds = 0.0; Size = 0 }
+        Original = $null; Seconds = 0.0; Size = 0; Props = $null }
     try {
         $bytes = $Job.Bytes
         if ($null -eq $bytes) { $bytes = Read-LocalFileBytes $Job.Path }
@@ -3370,6 +3402,7 @@ function Invoke-PooledRead {
         $text = Get-TextFromBytes -Bytes $bytes -FileName $Job.Name
         $result.Status = $text.Status; $result.Reason = $text.Reason; $result.Note = $text.Note
         if ($text.Status -eq 'OK') { $result.Hits = @(Find-PiiInText $text.Text) }
+        if ($result.Hits.Count -gt 0) { $result.Props = Get-OfficeProps $bytes }   # who made and changed it (Office files)
         # No @() around the list itself: @() around an empty generic list property fails in PowerShell.
         if ($null -ne $text.Parts -and $text.Parts.Count -gt 0) { $result.Parts = $text.Parts.ToArray() }
     }
@@ -3868,7 +3901,8 @@ function New-ReportRow {
     .PARAMETER Context
       The masked snippet, or the reason for a note.
     .OUTPUTS
-      [pscustomobject] Source, Channel, Item, Detector, Confidence, MaskedValue, Context, Modified, Link.
+      [pscustomobject] Source, Channel, Item, Detector, Confidence, MaskedValue, Context, Modified, Link, and the
+      accountability fields (empty until Set-RowAccountability fills them): ModifiedBy, Created, CreatedBy, AddedOn, AddedBy.
     #>
     param(
         [string]$Source, [string]$Channel, [string]$Item, [string]$Link, [string]$Modified,
@@ -3877,6 +3911,7 @@ function New-ReportRow {
     [pscustomobject]@{
         Source = $Source; Channel = $Channel; Item = $Item; Detector = $Detector; Confidence = $Confidence
         MaskedValue = $MaskedValue; Context = $Context; Modified = $Modified; Link = $Link
+        ModifiedBy = ''; Created = ''; CreatedBy = ''; AddedOn = ''; AddedBy = ''
     }
 }
 
@@ -4163,7 +4198,32 @@ function Get-ResultPath {
 function Get-HitCells {
     # One row of a hit tab: the hit's cells in the order of $HitColumns.
     param($Hit)
-    @($Hit.Confidence, $Hit.Channel, $Hit.Item, $Hit.MaskedValue, $Hit.Context, $Hit.Modified, $Hit.Link, $Hit.Source)
+    @($Hit.Confidence, $Hit.Channel, $Hit.Item, $Hit.MaskedValue, $Hit.Context, $Hit.Modified, $Hit.Link, $Hit.Source,
+        $Hit.ModifiedBy, $Hit.Created, $Hit.CreatedBy, $Hit.AddedOn, $Hit.AddedBy)
+}
+
+function Set-RowAccountability {
+    <#
+    .SYNOPSIS
+      Fills the accountability fields of a file's rows: who last changed it, when it was made and by whom, and who
+      put the PII in and when (where the file's history shows it; else the file's maker or "not recorded").
+    .PARAMETER Rows
+      The file's rows (New-ReportRow).
+    .PARAMETER Who
+      @{ ModifiedBy; Created; CreatedBy; AddedOn; AddedBy; ByHit } (any may be missing); ByHit: "type|masked value"
+      -> @{ AddedOn; AddedBy } for each hit dated from the file's history.
+    #>
+    param([object[]]$Rows, [hashtable]$Who)
+    if (-not $Who) { return }
+    foreach ($row in $Rows) {
+        foreach ($key in @('ModifiedBy', 'Created', 'CreatedBy', 'AddedOn', 'AddedBy')) {
+            if ($Who.ContainsKey($key) -and $Who[$key]) { $row.$key = [string]$Who[$key] }
+        }
+        $hitKey = $row.Detector + '|' + $row.MaskedValue
+        if ($Who.ContainsKey('ByHit') -and $Who.ByHit -and $Who.ByHit.ContainsKey($hitKey)) {
+            $row.AddedOn = [string]$Who.ByHit[$hitKey].AddedOn; $row.AddedBy = [string]$Who.ByHit[$hitKey].AddedBy
+        }
+    }
 }
 
 function Get-WorkbookSheets {
@@ -4184,8 +4244,10 @@ function Get-WorkbookSheets {
     #>
     param([object[]]$Rows, [int]$ItemsScanned, [System.Collections.IDictionary]$Header, [string]$FolderLabel)
     $hits = @($Rows | Where-Object { $script:Rank.ContainsKey($_.Confidence) })
-    $columns = @('Confidence', $FolderLabel, 'File', 'Masked value', 'Context', 'Modified', 'Link', 'Found in')
-    $widths = @(11, 22, 45, 18, 60, 17, 50, 10)
+    # Accountability (the PAM, 2026-11-21): who changed and made the file, and who put the PII in and when (by e-mail).
+    $columns = @('Confidence', $FolderLabel, 'File', 'Masked value', 'Context', 'Modified', 'Link', 'Found in',
+        'Modified by', 'Created', 'Created by', 'PII added', 'PII added by')
+    $widths = @(11, 22, 45, 18, 60, 17, 50, 10, 30, 17, 30, 17, 30)
     $byRank = @{ Expression = { $script:Rank[$_.Confidence] }; Descending = $true }
     $sheets = New-Object System.Collections.Generic.List[object]
     $sheets.Add((New-XlsxSheet 'Summary' @($script:ToolTitle, '', '', '', '') (Get-SummaryRows $Rows $ItemsScanned $Header) @(28, 70, 9, 9, 9)))
@@ -4685,6 +4747,7 @@ function Add-QueuedRows {
             $rows.Add((New-ReportRow 'File' $info.Channel $info.Item $info.Link $info.Modified $hit.Detector $hit.Confidence $hit.MaskedValue $hit.Context))
         }
         foreach ($part in $Result.Parts) { Add-PartRows $part $info.Channel $info.Item $info.Link $info.Modified $rows }
+        if ($Result.Hits.Count -gt 0 -or $rows.Count -gt $first) { Add-WhoToRows $info $Result @($rows | Select-Object -Skip $first) }
     }
     Update-ScanMeter $Queue.Meter $rows $first $read
     Write-MeterLine $Queue.Meter 'file'
@@ -4725,6 +4788,29 @@ function Invoke-GroupScan {
     Write-Progress -Id 1 -Activity 'Scanning files' -Completed
 }
 
+function Add-WhoToRows {
+    <#
+    .SYNOPSIS
+      The accountability columns of a file's rows (the PAM, 2026-11-21): from its SharePoint fields and version
+      history (Info.Who and Info.Added), or from the drive file (Info.DrivePath), plus the names an Office file stores.
+    .PARAMETER Info
+      The file's queue info.
+    .PARAMETER Result
+      Its reader result (Hits, Props).
+    .PARAMETER FileRows
+      The rows of this file.
+    #>
+    param([hashtable]$Info, [hashtable]$Result, [object[]]$FileRows)
+    $props = $null; if ($Result.ContainsKey('Props')) { $props = $Result.Props }
+    if ($Info.ContainsKey('DrivePath')) { $who = Get-DriveWho $Info.DrivePath $props }
+    elseif ($Info.ContainsKey('Who')) {
+        $who = $Info.Who.Clone()
+        if ($Info.ContainsKey('Added') -and $Result.Hits.Count -gt 0) { $who.ByHit = (& $Info.Added $Result.Hits) }
+    }
+    else { return }
+    Set-RowAccountability $FileRows $who
+}
+
 function Wait-ScanQueue {
     <#
     .SYNOPSIS
@@ -4757,6 +4843,158 @@ function Get-QueueWorkers {
     # The number of files read at once now (for the live line and the header).
     param([hashtable]$Queue)
     return $Queue.Pool.Target
+}
+
+# ==== Module Accountability.psm1 ====
+<#
+Accountability.psm1 - who made and changed a file with PII, and who put the PII in and when.
+
+  Purpose:     The PAM, 2026-11-21: for accountability and to date a possible incident, each file with a hit shows
+               who last modified it, when it was made and by whom, and who added the PII and when, by e-mail
+               address (the report is CUI and stays in DoD365). SharePoint and Teams: the file's fields and its
+               version history (the first version that holds each hit). Drives: the file's owner (a Windows logon
+               name; no directory lookup: "No reconnaissance"), its times, and the names an Office file stores.
+  Inputs:      the file's list item, path or reader result, and its hits.
+  Outputs:     @{ ModifiedBy; Created; CreatedBy; AddedOn; AddedBy; ByHit } for Report.psm1 Set-RowAccountability.
+  How to run:  imported by Find-ChannelPII.ps1; not run on its own.
+  Depends on:  TextExtract.psm1 (Get-TextFromBytes), PiiDetectors.psm1 (Find-PiiInText) and, for SharePoint,
+               PnP.PowerShell 1.12.0 (Get-PnPFileVersion, Get-PnPContext; read-only), imported first.
+  Run target:  Windows PowerShell 5.1 (also PowerShell 7).
+  Network:     only the signed-in site (version history of files with a hit).
+  Writes:      none. Old versions are read in memory only.
+  Credentials: none (the PnP sign-in of the scan).
+#>
+
+
+# Old versions read per file with a hit, oldest first (a file with more is dated from the oldest ones read).
+$script:MaxVersionsRead = 30
+$script:NoHistory = 'Not recorded (no version history)'
+$script:DriveNoHistory = 'Not recorded (a drive keeps no file history)'
+
+function Get-PersonText {
+    <#
+    .SYNOPSIS
+      A person field as text: the e-mail address of a SharePoint user value, else its name, else the text itself.
+    .PARAMETER Value
+      A field value (FieldUserValue, User or text).
+    .OUTPUTS
+      [string]
+    #>
+    param($Value)
+    if ($null -eq $Value) { return '' }
+    foreach ($name in @('Email', 'LookupValue', 'Title')) {
+        $property = $Value.PSObject.Properties[$name]
+        if ($property -and $property.Value) { return [string]$property.Value }
+    }
+    return [string]$Value
+}
+
+function Get-DateText {
+    # A date as yyyy-MM-dd HH:mm (the report's form); empty when missing.
+    param($Value)
+    if ($Value -is [datetime]) { return $Value.ToString('yyyy-MM-dd HH:mm') }
+    if ($null -eq $Value) { return '' }
+    return [string]$Value
+}
+
+function Get-SharePointWho {
+    <#
+    .SYNOPSIS
+      Who made and last changed a SharePoint file, from its list item (Author, Created, Editor).
+    .PARAMETER File
+      The list item.
+    .OUTPUTS
+      [hashtable] ModifiedBy, Created, CreatedBy.
+    #>
+    param($File)
+    return @{ ModifiedBy = (Get-PersonText $File['Editor']); Created = (Get-DateText $File['Created']); CreatedBy = (Get-PersonText $File['Author']) }
+}
+
+function Get-HitKey {
+    # The same hit in two versions: its type and masked value.
+    param($Hit)
+    return ([string]$Hit.Detector + '|' + [string]$Hit.MaskedValue)
+}
+
+function Find-PiiAddedVersion {
+    <#
+    .SYNOPSIS
+      For each hit of a SharePoint file, the first version that holds it: who saved that version and when. A hit
+      in no older version came with the current one (the last modifier). Read-only; versions stay in memory.
+    .PARAMETER Ref
+      The file's server-relative path.
+    .PARAMETER Name
+      The file name (for its reader).
+    .PARAMETER Hits
+      The current hits (Detector, MaskedValue).
+    .PARAMETER Who
+      Get-SharePointWho of the file, with Modified (the current version's time).
+    .OUTPUTS
+      [hashtable] hit key -> @{ AddedOn; AddedBy }.
+    #>
+    param([string]$Ref, [string]$Name, [object[]]$Hits, [hashtable]$Who)
+    $byHit = @{}
+    $open = @($Hits | ForEach-Object { Get-HitKey $_ } | Sort-Object -Unique)
+    try {
+        $versions = @(Get-PnPFileVersion -Url $Ref -ErrorAction Stop | Sort-Object Created | Select-Object -First $script:MaxVersionsRead)
+        $context = Get-PnPContext
+        foreach ($version in $versions) { $context.Load($version.CreatedBy) }
+        if ($versions.Count -gt 0) { $context.ExecuteQuery() }
+    }
+    catch { $versions = $null }
+    if ($null -eq $versions) {
+        foreach ($key in $open) { $byHit[$key] = @{ AddedOn = $script:NoHistory; AddedBy = $script:NoHistory } }
+        return $byHit
+    }
+    foreach ($version in $versions) {
+        if ($open.Count -eq 0) { break }
+        try {
+            $stream = $version.OpenBinaryStream(); $context.ExecuteQuery()
+            $memory = New-Object System.IO.MemoryStream
+            try { $stream.Value.CopyTo($memory); $bytes = $memory.ToArray() } finally { $memory.Dispose() }
+            $text = Get-TextFromBytes -Bytes $bytes -FileName $Name
+        }
+        catch { continue }   # a version that cannot be read: the next one dates the hit
+        if ($text.Status -ne 'OK') { continue }
+        $found = @(Find-PiiInText $text.Text | ForEach-Object { Get-HitKey $_ })
+        foreach ($key in @($open | Where-Object { $found -contains $_ })) {
+            $byHit[$key] = @{ AddedOn = (Get-DateText $version.Created); AddedBy = (Get-PersonText $version.CreatedBy) }
+        }
+        $open = @($open | Where-Object { -not $byHit.ContainsKey($_) })
+    }
+    # Not in any older version: the current version added it (or, with no older version, the file's maker).
+    foreach ($key in $open) {
+        if ($versions.Count -eq 0) { $byHit[$key] = @{ AddedOn = $Who.Created; AddedBy = $Who.CreatedBy } }
+        else { $byHit[$key] = @{ AddedOn = $Who.Modified; AddedBy = $Who.ModifiedBy } }
+    }
+    return $byHit
+}
+
+function Get-DriveWho {
+    <#
+    .SYNOPSIS
+      Who made and changed a file on a drive: its owner (usually its maker; a Windows logon name), its creation
+      time, and the names an Office file stores (creator, last modified by). Windows does not record who last
+      changed other files.
+    .PARAMETER Path
+      The file path.
+    .PARAMETER Props
+      The Office names of the reader result (Creator, LastModifiedBy), or $null.
+    .OUTPUTS
+      [hashtable] ModifiedBy, Created, CreatedBy, AddedOn, AddedBy.
+    #>
+    param([string]$Path, [hashtable]$Props)
+    $owner = ''
+    try { $owner = (Get-Acl -LiteralPath $Path -ErrorAction Stop).Owner } catch { $owner = '' }   # no owner where the system keeps none
+    $created = ''
+    try { $created = (Get-Item -LiteralPath $Path -ErrorAction Stop).CreationTime.ToString('yyyy-MM-dd HH:mm') } catch { $created = '' }
+    $modifiedBy = 'Not recorded (Windows keeps no last editor)'
+    $createdBy = $owner
+    if ($Props) {
+        if ($Props.LastModifiedBy) { $modifiedBy = $Props.LastModifiedBy + ' (as saved in the file)' }
+        if (-not $createdBy -and $Props.Creator) { $createdBy = $Props.Creator + ' (as saved in the file)' }
+    }
+    return @{ ModifiedBy = $modifiedBy; Created = $created; CreatedBy = $createdBy; AddedOn = $script:DriveNoHistory; AddedBy = $script:DriveNoHistory }
 }
 
 # ==== Module ChannelScan.psm1 ====
@@ -5207,7 +5445,11 @@ function Invoke-OneFileScan {
     }
     finally { $script:Timing.Download += $clock.Elapsed; Write-Progress -Id 2 -Activity 'This file' -Completed }
     # The main thread downloads the next file while workers read this one (speed, the PAM 2026-11-21).
-    Submit-ScanFile $Queue @{ Channel = $Channel; Item = $item; Link = $link; Modified = $modified } $name $bytes ''
+    # Accountability: who made and changed the file; for a file with a hit, who added each hit (version history).
+    $who = Get-SharePointWho $File
+    $who.Modified = $modified
+    $added = { param($hits) Find-PiiAddedVersion $ref $name $hits $who }.GetNewClosure()
+    Submit-ScanFile $Queue @{ Channel = $Channel; Item = $item; Link = $link; Modified = $modified; Who = $who; Added = $added } $name $bytes ''
     return $true
 }
 
@@ -5231,7 +5473,7 @@ function Get-ScanGroups {
       [pscustomobject] Name, Prefix, Files; a group without files is kept only when it is a folder.
     #>
     param($Library, [string[]]$Folders, [string]$Label)
-    $fields = @('FileLeafRef', 'FileRef', 'FSObjType', 'File_x0020_Size', 'Modified', 'UniqueId')
+    $fields = @('FileLeafRef', 'FileRef', 'FSObjType', 'File_x0020_Size', 'Modified', 'UniqueId', 'Created', 'Author', 'Editor')
     $allItems = @(Get-PnPListItem -List $Library.List -PageSize $script:ListPageSize -Fields $fields -ErrorAction Stop)
     foreach ($folder in $Folders) {
         $prefix = $Library.ServerRelativeUrl + '/' + $folder + '/'
@@ -5424,7 +5666,7 @@ function Invoke-DriveFile {
     if (-not (Test-SupportedFile $File.Name)) { $skipReason = 'File type is not read by this script: check by hand' }
     elseif ($File.Size -gt ($MaxFileMB * 1MB)) { $skipReason = "Larger than $MaxFileMB MB: check by hand" }
     if ($skipReason) { $rows.Add((New-ReportRow 'File' $channel $item $link $File.Modified 'NOT SCANNED' '' '' $skipReason)); return $false }
-    Submit-ScanFile $Queue @{ Channel = $channel; Item = $item; Link = $link; Modified = $File.Modified } $File.Name $null $File.Path
+    Submit-ScanFile $Queue @{ Channel = $channel; Item = $item; Link = $link; Modified = $File.Modified; DrivePath = $File.Path } $File.Name $null $File.Path
     return $true
 }
 

@@ -446,7 +446,11 @@ function Invoke-OneFileScan {
     }
     finally { $script:Timing.Download += $clock.Elapsed; Write-Progress -Id 2 -Activity 'This file' -Completed }
     # The main thread downloads the next file while workers read this one (speed, the PAM 2026-11-21).
-    Submit-ScanFile $Queue @{ Channel = $Channel; Item = $item; Link = $link; Modified = $modified } $name $bytes ''
+    # Accountability: who made and changed the file; for a file with a hit, who added each hit (version history).
+    $who = Get-SharePointWho $File
+    $who.Modified = $modified
+    $added = { param($hits) Find-PiiAddedVersion $ref $name $hits $who }.GetNewClosure()
+    Submit-ScanFile $Queue @{ Channel = $Channel; Item = $item; Link = $link; Modified = $modified; Who = $who; Added = $added } $name $bytes ''
     return $true
 }
 
@@ -470,7 +474,7 @@ function Get-ScanGroups {
       [pscustomobject] Name, Prefix, Files; a group without files is kept only when it is a folder.
     #>
     param($Library, [string[]]$Folders, [string]$Label)
-    $fields = @('FileLeafRef', 'FileRef', 'FSObjType', 'File_x0020_Size', 'Modified', 'UniqueId')
+    $fields = @('FileLeafRef', 'FileRef', 'FSObjType', 'File_x0020_Size', 'Modified', 'UniqueId', 'Created', 'Author', 'Editor')
     $allItems = @(Get-PnPListItem -List $Library.List -PageSize $script:ListPageSize -Fields $fields -ErrorAction Stop)
     foreach ($folder in $Folders) {
         $prefix = $Library.ServerRelativeUrl + '/' + $folder + '/'
