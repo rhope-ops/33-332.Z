@@ -166,3 +166,14 @@ Assert-Equal 'SSN/High' ((Get-HitSummary ($noise + ' SSN ' + $Sample.Ssn + ' ' +
 $privateNoise = -join @(1..40 | ForEach-Object { [char](0xE000 + $_) })
 Assert-Equal 0 @(Find-PiiInText ($privateNoise + ' ' + $Sample.Phone + ' ' + $privateNoise)).Count 'Garbled: private-use characters count as noise'
 Assert-Equal 'Phone/Low' ((Get-HitSummary $Sample.Phone) -replace '/[^/]*$', '') 'Garbled: a hit with little text around it is kept'
+# Normal layouts are not noise (review of PR 31): line lists, tab-separated rows, sheet cells, box-drawing tables.
+$phone = $Sample.Phone
+$layouts = [ordered]@{
+    'a CRLF list of short lines' = "Ops`r`nRm 2`r`nBldg 5`r`nDSN`r`n$phone`r`nFax`r`nN/A`r`nRm 3`r`nOK"
+    'tab-separated rows'         = "10`t20`t30`t40`r`n50`t$phone`t60`t70`r`n80`t90`t11`t12"
+    'sheet cells'                = "SSgt | Doe | Y | N | 1 | $phone | Y | Y | N | 2 | 3 | N"
+    'a box-drawing table'        = ([string][char]0x2502 + ' Phone ' + [char]0x2502 + " $phone " + [char]0x2502 + "`n" + ([string][char]0x2500 * 30))
+}
+foreach ($layout in $layouts.Keys) {
+    Assert-Equal 'Phone/Low' ((Get-HitSummary $layouts[$layout]) -replace '/[^/]*$', '') ('Garbled: ' + $layout + ' keeps its Low hit')
+}

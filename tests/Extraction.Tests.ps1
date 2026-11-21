@@ -341,6 +341,11 @@ $symbolPdf = New-PdfBytes "BT /F1 12 Tf ($digits) Tj ET" -Plain -FontDict '<< /T
 Assert-Equal '' (Get-TextFromBytes -Bytes $symbolPdf -FileName 's.pdf').Text.Trim() 'PDF: a Symbol font run reads as spaces'
 $plainPdf = New-PdfBytes "BT /F1 12 Tf ($digits) Tj ET" -Plain -FontDict '<< /Type /Font /Subtype /Type1 /BaseFont /SymbolicSans >>'
 Assert-Equal $digits (Get-TextFromBytes -Bytes $plainPdf -FileName 'p.pdf').Text.Trim() 'PDF: a font name that only starts with Symbol is read'
+$boldSymbol = New-PdfBytes "BT /F1 12 Tf ($digits) Tj ET" -Plain -FontDict '<< /Type /Font /Subtype /TrueType /BaseFont /ABCDEF+Symbol,Bold >>'
+Assert-Equal '' (Get-TextFromBytes -Bytes $boldSymbol -FileName 'sb.pdf').Text.Trim() 'PDF: a bold Symbol font with a subset prefix reads as spaces'
+$wideWing = New-PdfBytes 'BT /F1 12 Tf <00350035> Tj ET' -Plain -FontDict '<< /Type /Font /Subtype /Type0 /BaseFont /Wingdings-Regular /Encoding /Identity-H /ToUnicode 6 0 R >>' `
+    -ToUnicode 'begincmap 1 beginbfrange <0000> <FFFF> <0000> endbfrange endcmap'
+Assert-Equal '' (Get-TextFromBytes -Bytes $wideWing -FileName 'ww.pdf').Text.Trim() 'PDF: a 2-byte Wingdings font reads as spaces'
 
 # ---- PDF review round 9 (2026-11-21): gaps decided per text block ----
 # Places text glyph by glyph as a PDF writer does: each move is the glyph's real Helvetica width at 12 pt plus the

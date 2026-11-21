@@ -18,7 +18,7 @@
   the files at each library's top), or the drive folder and all its subfolders. Channel posts are not read.
 
   Built from these files; to change it, change them and rebuild with: python3 scripts/build_paste.py
-    src/PiiDetectors.psm1, sha256 c160c259f9bb
+    src/PiiDetectors.psm1, sha256 0c1ea11519a9
     src/PiiMasking.psm1, sha256 752c251a94b2
     src/OcrText.psm1, sha256 a39acab441d4
     src/OleText.psm1, sha256 84041f86a020
@@ -49,27 +49,27 @@
     line    75  Settings
     line    86  Reader block
     line    92  Module PiiDetectors.psm1
-    line   616  Module PiiMasking.psm1
-    line   816  Module OcrText.psm1
-    line   969  Module OleText.psm1
-    line  1078  Module ContainerText.psm1
-    line  1417  Module PdfCore.psm1
-    line  1776  Module PdfObjects.psm1
-    line  2134  Module PdfFonts.psm1
-    line  2564  Module PdfLayout.psm1
-    line  2704  Module PdfText.psm1
-    line  3197  Module TextExtract.psm1
-    line  3610  Module ReaderPool.psm1
-    line  3862  Reader block end
-    line  3866  Module XlsxWriter.psm1
-    line  4137  Module Report.psm1
-    line  4704  Module ScanMeter.psm1
-    line  5027  Module ScanQueue.psm1
-    line  5265  Module Accountability.psm1
-    line  5543  Module ChannelScan.psm1
-    line  6131  Module DriveScan.psm1
-    line  6373  Body of Find-ChannelPII.ps1
-    line  6482  Clean-up
+    line   619  Module PiiMasking.psm1
+    line   819  Module OcrText.psm1
+    line   972  Module OleText.psm1
+    line  1081  Module ContainerText.psm1
+    line  1420  Module PdfCore.psm1
+    line  1779  Module PdfObjects.psm1
+    line  2137  Module PdfFonts.psm1
+    line  2567  Module PdfLayout.psm1
+    line  2707  Module PdfText.psm1
+    line  3200  Module TextExtract.psm1
+    line  3613  Module ReaderPool.psm1
+    line  3865  Reader block end
+    line  3869  Module XlsxWriter.psm1
+    line  4140  Module Report.psm1
+    line  4707  Module ScanMeter.psm1
+    line  5030  Module ScanQueue.psm1
+    line  5268  Module Accountability.psm1
+    line  5546  Module ChannelScan.psm1
+    line  6134  Module DriveScan.psm1
+    line  6376  Body of Find-ChannelPII.ps1
+    line  6485  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -130,7 +130,10 @@ $script:GarbledWindowChars = 40
 $script:GarbledMinChars = 20
 $script:GarbledShare = 0.3
 $script:VisibleChar = [regex]'\S'
-$script:GarbledChar = [regex]'[\p{S}\p{Co}\p{Cc}\uFFFD\u0080-\u00BF]'
+# Unreadable: private-use characters, the replacement character, control characters other than NUL, tab, CR and LF,
+# and the Latin-1 signs a symbol font read as text gives (not the degree sign or the middle dot). Symbols that normal
+# text uses (|, the cell break of a sheet; box drawing; maths; currency) are not counted (review of PR 31).
+$script:GarbledChar = [regex]'[\p{Co}\uFFFD\x01-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F\u00A4-\u00A6\u00A8-\u00AF\u00B1-\u00B6\u00B8-\u00BF]'
 
 
 # Regular expressions: .NET keeps the last 15 patterns compiled; the detectors and the masking use more, so each file
@@ -570,7 +573,7 @@ function Test-GarbledNear {
     <#
     .SYNOPSIS
       True when the text around a hit is mostly unreadable: at least $GarbledShare of its visible characters are
-      symbols, private-use or control characters, or Latin-1 signs (U+0080-U+00BF), as when a symbol font is read
+      private-use, replacement or control characters or Latin-1 signs ($GarbledChar), as when a symbol font is read
       as text (the PAM, 2026-11-21: 50-100 characters of Wingdings flagged as Low hits).
     .PARAMETER Text
       The text searched.

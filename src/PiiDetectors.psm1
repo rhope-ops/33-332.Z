@@ -39,7 +39,10 @@ $script:GarbledWindowChars = 40
 $script:GarbledMinChars = 20
 $script:GarbledShare = 0.3
 $script:VisibleChar = [regex]'\S'
-$script:GarbledChar = [regex]'[\p{S}\p{Co}\p{Cc}\uFFFD\u0080-\u00BF]'
+# Unreadable: private-use characters, the replacement character, control characters other than NUL, tab, CR and LF,
+# and the Latin-1 signs a symbol font read as text gives (not the degree sign or the middle dot). Symbols that normal
+# text uses (|, the cell break of a sheet; box drawing; maths; currency) are not counted (review of PR 31).
+$script:GarbledChar = [regex]'[\p{Co}\uFFFD\x01-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F\u00A4-\u00A6\u00A8-\u00AF\u00B1-\u00B6\u00B8-\u00BF]'
 
 
 # Regular expressions: .NET keeps the last 15 patterns compiled; the detectors and the masking use more, so each file
@@ -479,7 +482,7 @@ function Test-GarbledNear {
     <#
     .SYNOPSIS
       True when the text around a hit is mostly unreadable: at least $GarbledShare of its visible characters are
-      symbols, private-use or control characters, or Latin-1 signs (U+0080-U+00BF), as when a symbol font is read
+      private-use, replacement or control characters or Latin-1 signs ($GarbledChar), as when a symbol font is read
       as text (the PAM, 2026-11-21: 50-100 characters of Wingdings flagged as Low hits).
     .PARAMETER Text
       The text searched.
