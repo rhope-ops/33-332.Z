@@ -71,18 +71,11 @@ ul.plain{margin:0;padding-left:1.15em;display:flex;flex-direction:column;gap:4px
 .facts dd{margin:0;min-width:0}
 @media (max-width:420px){.facts{grid-template-columns:1fr;gap:0}.facts dd{margin-bottom:8px}}
 
-/* The two buttons and the status line. */
+/* The one button: "Open the script" opens the script as a .txt in a new tab (the PAM, 2026-11-21). */
 .go{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
-.btn{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:8px 18px;border-radius:8px;border:0;background:var(--btn);color:var(--btn-fg);font:600 1rem var(--text);cursor:pointer}
-.btn:hover{background:var(--btn-hover)}
-.btn[disabled]{opacity:.55;cursor:not-allowed}
+.btn,a.btn{display:inline-flex;text-decoration:none;align-items:center;gap:8px;min-height:44px;padding:8px 18px;border-radius:8px;border:0;background:var(--btn);color:var(--btn-fg);font:600 1rem var(--text);cursor:pointer}
+.btn:hover{background:var(--btn-hover);color:var(--btn-fg)}
 .btn svg{width:18px;height:18px}
-/* The second button: outlined, so "Copy the script" stays the main action. */
-.btn.ghost{background:transparent;color:var(--fg);border:1px solid var(--field)}
-.btn.ghost:hover{border-color:var(--fg)}
-.status{font-size:.9rem}
-.status.ok{color:var(--fg);font-weight:600}
-.status.err{color:var(--err)}
 /* The "What it looks for" box and its table. */
 /* What it looks for: always shown (the PAM, 2026-11-20), in a framed box. */
 .looks{border:1px solid var(--line);border-radius:8px;background:var(--bg)}
@@ -158,9 +151,7 @@ tr:last-child td{border-bottom:0}
 
       <section aria-label="Get the script">
         <div class="go">
-          <button type="button" class="btn" id="copy" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M4 16V6a2 2 0 0 1 2-2h10"/></svg>Copy the script</button>
-          <button type="button" class="btn ghost" id="open" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><path d="M8 13h8M8 17h6"/></svg>Open the script</button>
-          <span class="status" id="status" role="status"></span>
+          <a class="btn" href="paste/Ion-script.txt" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><path d="M8 13h8M8 17h6"/></svg>Open the script</a>
         </div>
         <p class="small mut">The steps to run it are at the top of the script.</p>
       </section>
@@ -203,98 +194,5 @@ tr:last-child td{border-bottom:0}
 </main>
 
 
-<script>
-/*
-  The two buttons of this page.
-
-  What it does: loads the Ion paste script from this site (paste/33332Z-pii-spot-check.ps1) as it is, and then
-  either copies the whole script ("Copy the script") or saves it as a .txt file to read first ("Open the script").
-  The page adds nothing to the script: the script asks for the Teams link or site address when it runs.
-  Text is only ever shown with textContent, never as HTML.
-*/
-(function () {
-  'use strict';
-
-  // ---- Settings ----------------------------------------------------------------------------------------------
-  var SCRIPT_PATH = 'paste/33332Z-pii-spot-check.ps1';                     // served next to this page
-  var RAW_URL = 'https://raw.githubusercontent.com/rhope-ops/33-332.Z/main/' + SCRIPT_PATH;   // the fallback link
-  var TXT_NAME = 'Ion-script.txt';                                         // the name of the saved .txt file
-
-  // ---- The page elements -------------------------------------------------------------------------------------
-  var copyButton = document.getElementById('copy');
-  var openButton = document.getElementById('open');
-  var statusLine = document.getElementById('status');
-  var scriptText = null;   // the script as loaded
-
-  // Shows a short message next to the buttons; kind is '' (neutral), 'ok' or 'err'.
-  function showStatus(text, kind) {
-    statusLine.textContent = text;
-    statusLine.className = 'status' + (kind ? ' ' + kind : '');
-  }
-
-  // ---- The two buttons ---------------------------------------------------------------------------------------
-
-  // Copies the script to the clipboard; falls back to a hidden text box when the clipboard is refused.
-  function copyScript() {
-    var text = scriptText;
-    if (text === null) return;
-    var done = function () { showStatus('Copied. Now paste it into ISE (File > New, Ctrl+V) and press F5.', 'ok'); };
-    var fallback = function () {
-      var box = document.createElement('textarea');
-      box.value = text;
-      box.setAttribute('readonly', '');
-      box.style.position = 'fixed';
-      box.style.opacity = '0';
-      document.body.appendChild(box);
-      box.select();
-      var copied = false;
-      try { copied = document.execCommand('copy'); } catch (e) { copied = false; }   // older browsers only
-      document.body.removeChild(box);
-      if (copied) done();
-      else showStatus('Copy was blocked here. Use "Open the script", or copy it from ' + RAW_URL, 'err');
-    };
-    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback);
-    else fallback();
-  }
-
-  // Saves the script as a .txt file, so it can be read in Notepad before it is run.
-  function openScript() {
-    if (scriptText === null) return;
-    var file = new Blob([scriptText], { type: 'text/plain;charset=utf-8' });
-    var link = document.createElement('a');
-    link.href = URL.createObjectURL(file);
-    link.download = TXT_NAME;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    setTimeout(function () { URL.revokeObjectURL(link.href); }, 10000);   // free the file once the save has started
-    showStatus('Saved as ' + TXT_NAME + '. Open the file to read the script before you run it.', 'ok');
-  }
-
-  // ---- Loading the script ------------------------------------------------------------------------------------
-
-  // Loads the script from this site and turns the buttons on; on failure, shows the link to open it by hand.
-  function loadScript() {
-    fetch(SCRIPT_PATH, { cache: 'no-cache' })
-      .then(function (response) {
-        if (!response.ok) throw new Error('HTTP ' + response.status);
-        return response.text();
-      })
-      .then(function (text) {
-        scriptText = text;
-        copyButton.disabled = false;
-        openButton.disabled = false;
-      })
-      .catch(function (error) {
-        showStatus('Could not load the script (' + error.message + '). Open it here and copy it by hand: ' + RAW_URL, 'err');
-      });
-  }
-
-  // ---- Start -------------------------------------------------------------------------------------------------
-  copyButton.addEventListener('click', copyScript);
-  openButton.addEventListener('click', openScript);
-  loadScript();
-})();
-</script>
 </body>
 </html>
