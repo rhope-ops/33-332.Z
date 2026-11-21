@@ -13,7 +13,7 @@ Title: 33-332.Z · <task> · <date>. Read AGENTS.md first.
    long.pdf: PowerShell's cost per statement, not the comparisons); the xref table would save only the 0.11 s header
    scan of a 2.1 s object read (old object versions must still be read). Workers gave 1.5x on 4 cores (GC bound?).
 12. Tracked minors (PR bodies of #14, #19, #20): short spaced line under a heading of another size; OCR time outside
-   the PDF limit; a PDF with text and scans not OCR'd; symlinked files followed in drive folders; meter misses
+   the PDF limit; a PDF with text and scans not OCR'd; meter misses
    file-name hits; no time limit per worker; old versions not size-capped; masked dates/addresses compare equal.
    A second address pasted after a Teams link without a groupId can supply that groupId (the site check holds).
    Teams-link lookup and OCR wait on the PAM's test snippet results.
