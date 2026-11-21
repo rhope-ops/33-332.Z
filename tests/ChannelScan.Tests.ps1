@@ -220,7 +220,7 @@ Assert-Equal $live.IndexOf('| read') $wide.IndexOf('| read') 'Live line: columns
 Assert-Equal $live.IndexOf('| possible PII') $wide.IndexOf('| possible PII') 'Live line: PII column stays in place'
 $liveMeter.Clock = [pscustomobject]@{ Elapsed = [TimeSpan]::FromSeconds(25) }
 Assert-Equal '' ((Write-MeterLine $liveMeter 'file' 6>&1 | ForEach-Object { [string]$_ }) -join '') 'Live line: not again within 10 seconds'
-Assert-Equal 'Time downloading|Time reading and checking' (@((Get-ScanTiming).Keys) -join '|') 'Timing: download and check times'
+Assert-Equal 'Time downloading|Time reading and checking (all workers)' (@((Get-ScanTiming).Keys) -join '|') 'Timing: download and check times'
 
 # ---- Team or plain site: names the folder column ----
 Reset-FakePnP @{}

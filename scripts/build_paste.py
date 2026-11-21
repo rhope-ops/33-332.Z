@@ -7,15 +7,13 @@ module file and runs no script file, so the execution policy does not apply to i
 What it writes: paste/33332Z-pii-spot-check.ps1, in this order:
   1. a header (how to run first, then GENERATED, the sources with their SHA-256, Network/Writes/Credentials, a contents list);
   2. the Settings block: plain variables a person may set in ISE (site, results folder, file size limit);
-  3. the seven modules of src/, inline (no Import-Module), in dependency order;
+  3. the modules of src/, inline (no module file is loaded), in dependency order: the reader modules inside one
+     script block ($IonReaderBlock), loaded as an in-memory module by the script and by each reader worker
+     (ReaderPool.psm1 gets the block's text as $IonWorkerInit), then the scan and report modules;
   4. the body of src/Find-ChannelPII.ps1 (from its "# ==== Body ====" line to the end);
   5. a Clean-up block: parts 3 and 4 run inside try/finally, which turns strict mode off and puts the ISE session's
      error setting back when the run ends.
-Inputs:  src/PiiDetectors.psm1, src/PiiMasking.psm1, src/OcrText.psm1, src/OleText.psm1, src/ContainerText.psm1,
-         src/PdfCore.psm1, src/PdfObjects.psm1, src/PdfFonts.psm1, src/PdfText.psm1, src/TextExtract.psm1,
-         src/XlsxWriter.psm1, src/Report.psm1, src/ScanMeter.psm1,
-         src/ChannelScan.psm1,
-         src/Find-ChannelPII.ps1.
+Inputs:  the files in READERS and MODULES below (src/*.psm1) and src/Find-ChannelPII.ps1.
 Outputs: the bundle file; with --check, nothing: exit 1 when the committed bundle differs from a fresh build.
 Usage:   python3 scripts/build_paste.py            build
          python3 scripts/build_paste.py --check    check (scripts/check.local.sh runs it)
@@ -34,10 +32,22 @@ ROOT = Path(__file__).resolve().parent.parent
 BUNDLE = ROOT / 'paste' / '33332Z-pii-spot-check.ps1'
 MAIN = 'src/Find-ChannelPII.ps1'
 # Dependency order: each module uses only those listed before it (their headers say so).
-MODULES = ('src/PiiDetectors.psm1', 'src/PiiMasking.psm1', 'src/OcrText.psm1', 'src/OleText.psm1', 'src/ContainerText.psm1',
+# The reader modules come first; the reader workers (ReaderPool.psm1) load exactly these.
+READERS = ('src/PiiDetectors.psm1', 'src/PiiMasking.psm1', 'src/OcrText.psm1', 'src/OleText.psm1', 'src/ContainerText.psm1',
            'src/PdfCore.psm1', 'src/PdfObjects.psm1', 'src/PdfFonts.psm1', 'src/PdfText.psm1', 'src/TextExtract.psm1',
-           'src/XlsxWriter.psm1', 'src/Report.psm1',
-           'src/ScanMeter.psm1', 'src/ChannelScan.psm1')
+           'src/ReaderPool.psm1')
+MODULES = READERS + ('src/XlsxWriter.psm1', 'src/Report.psm1', 'src/ScanMeter.psm1', 'src/ScanQueue.psm1',
+                     'src/ChannelScan.psm1', 'src/DriveScan.psm1')
+READER_START = """# ==== Reader modules ==== (one script block: this script loads it as an in-memory module, and each reader
+# worker loads the same text; nothing is read from a file)
+$IonReaderBlock = {
+Set-StrictMode -Version 2.0
+$ErrorActionPreference = 'Stop'
+"""
+READER_END = """}
+$null = New-Module -Name IonReaders -ScriptBlock $IonReaderBlock
+$IonWorkerInit = @{ Code = $IonReaderBlock.ToString() }
+"""
 BODY_MARK = '# ==== Body ===='
 # The end of the bundle: strict mode off and the session's error setting back, also after an error or Ctrl+C, so
 # the ISE session the person keeps working in is as it was before F5.
@@ -176,8 +186,11 @@ def build():
     """
     modules = [(rel, module_code(rel)) for rel in MODULES]
     check_names(modules)
-    parts = [('Settings', SETTINGS)]
-    parts += [('Module %s' % Path(rel).name, '# ==== Module %s ====\n%s' % (Path(rel).name, code)) for rel, code in modules]
+    parts = [('Settings', SETTINGS), ('Reader block', READER_START)]
+    for rel, code in modules:
+        parts.append(('Module %s' % Path(rel).name, '# ==== Module %s ====\n%s' % (Path(rel).name, code)))
+        if rel == READERS[-1]:
+            parts.append(('Reader block end', READER_END))
     parts.append(('Body of Find-ChannelPII.ps1', body_code()))
     parts.append(('Clean-up', CLEANUP))
     sources = [(rel, sha256(read(rel))) for rel in MODULES + (MAIN,)]

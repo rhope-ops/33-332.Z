@@ -75,6 +75,7 @@ A read-only PowerShell script that a **member** runs to find files that may hold
 | .zip and .eml (e-mail) | Yes | Each file inside is read with its own reader and named `file.zip/inner/file`; a zip in a zip in a zip is not opened |
 | Files over 25 MB | No | Listed as **NOT SCANNED**: check them by hand |
 | Channel posts and replies | No | One sign-in only (the PAM, 2026-11-20). Reading posts needs a Microsoft Graph permission (ChannelMessage.Read.All) that a tenant admin must approve; ask your privacy or cybersecurity office for a Microsoft Purview content search |
+| A folder on a mapped or network drive (`X:\<folder>` or `\\<server>\<share>\<folder>`) | Yes | The folder and all its subfolders, read-only with your Windows logon; nothing above it; a folder you cannot open is one BLOCKED row; a link to another folder is not followed |
 | Private and shared channels | Run again with that channel's own site URL | Each one has its own SharePoint site |
 | 1:1 chats, group chats, meeting chats | No | Admin / Purview only |
 
