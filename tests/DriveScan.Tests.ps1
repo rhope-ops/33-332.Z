@@ -105,12 +105,19 @@ try {
     # More old versions than are read, all readable, the SSN in the oldest: a plain credit, no "could not be read".
     $versionList = @(New-FakeVersion ([datetime]'2026-01-01') 'true.adder' $withSsn) + @(2..31 | ForEach-Object { New-FakeVersion ([datetime]'2026-01-01').AddDays($_) 'other' $withSsn })
     $plainBy = (Find-PiiAddedVersion '/sites/x/Shared Documents/a.txt' 'a.txt' $hits $who)[$hits[0].Detector + '|' + $hits[0].MaskedValue].AddedBy
-    Assert-Equal 'true.adder' $plainBy 'Who: past the version cap, the oldest version with the hit is a plain credit'
+    Assert-Equal "true.adder; versions after the 30 read were not checked" $plainBy 'Who: past the version cap, the oldest version with the hit is credited, with a note'
     # Removed, then put back: the first adder is named, and who put it back (the PAM, 2026-11-21).
     $versionList = @((New-FakeVersion ([datetime]'2026-01-01') 'orig.adder' $withSsn), (New-FakeVersion ([datetime]'2026-01-02') 'remover' $plain),
         (New-FakeVersion ([datetime]'2026-01-03') 'readder' $withSsn))
     $backBy = (Find-PiiAddedVersion '/sites/x/Shared Documents/a.txt' 'a.txt' $hits $who)[$hits[0].Detector + '|' + $hits[0].MaskedValue].AddedBy
     Assert-Equal 'orig.adder; put back by readder on 2026-01-03 00:00' $backBy 'Who: a hit put back after a removal names who put it back'
+    # Removed, then a version not read, then back: the put-back cannot be named, and the report says so.
+    $gapVersion = New-FakeVersion ([datetime]'2026-01-03') 'unread' $withSsn
+    $gapVersion | Add-Member -MemberType ScriptMethod -Name OpenBinaryStream -Value { throw 'version not available' } -Force
+    $versionList = @((New-FakeVersion ([datetime]'2026-01-01') 'orig.adder' $withSsn), (New-FakeVersion ([datetime]'2026-01-02') 'remover' $plain),
+        $gapVersion, (New-FakeVersion ([datetime]'2026-01-04') 'back' $withSsn))
+    $unsureBy = (Find-PiiAddedVersion '/sites/x/Shared Documents/a.txt' 'a.txt' $hits $who)[$hits[0].Detector + '|' + $hits[0].MaskedValue].AddedBy
+    Assert-Equal 'orig.adder; it may have been put back again (a version could not be read)' $unsureBy 'Who: a put-back next to an unread version is noted'
     $versionList = @()
     $byHit = Find-PiiAddedVersion '/sites/x/Shared Documents/a.txt' 'a.txt' $hits $who
     Assert-Equal 'first.saver' $byHit[$hits[0].Detector + '|' + $hits[0].MaskedValue].AddedBy 'Who: with no older version, the maker added it'

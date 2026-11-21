@@ -34,7 +34,7 @@
     src/Report.psm1, sha256 4c5c871cb5c5
     src/ScanMeter.psm1, sha256 2c2a5a750104
     src/ScanQueue.psm1, sha256 1ec233b97fc7
-    src/Accountability.psm1, sha256 ea667d5a11a4
+    src/Accountability.psm1, sha256 6e4f5dcfac67
     src/ChannelScan.psm1, sha256 0a32b46dcc63
     src/DriveScan.psm1, sha256 27925138f3c7
     src/Find-ChannelPII.ps1, sha256 b2d6bfd7a72b
@@ -66,10 +66,10 @@
     line  4650  Module ScanMeter.psm1
     line  4915  Module ScanQueue.psm1
     line  5131  Module Accountability.psm1
-    line  5395  Module ChannelScan.psm1
-    line  5950  Module DriveScan.psm1
-    line  6180  Body of Find-ChannelPII.ps1
-    line  6289  Clean-up
+    line  5409  Module ChannelScan.psm1
+    line  5964  Module DriveScan.psm1
+    line  6194  Body of Find-ChannelPII.ps1
+    line  6303  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -5286,18 +5286,28 @@ function Add-PutBackText {
     <#
     .SYNOPSIS
       Adds the put-backs to "PII added by": "first adder; put back by X on D" (at most $MaxPutBacks named, the rest
-      counted).
+      counted), and notes what the history read cannot show.
     .PARAMETER ByHit
       Hit key -> @{ AddedOn; AddedBy }.
     .PARAMETER Back
       Hit key -> the put-back texts (Add-PutBack).
+    .PARAMETER Unsure
+      Hit keys removed and then not seen (a version not read): a put-back there cannot be named.
+    .PARAMETER AllRead
+      Whether every old version was read (else later ones were not checked).
     #>
-    param([hashtable]$ByHit, [hashtable]$Back)
+    param([hashtable]$ByHit, [hashtable]$Back, [hashtable]$Unsure, [bool]$AllRead)
     foreach ($key in $Back.Keys) {
         $list = $Back[$key]
         $text = @($list | Select-Object -First $script:MaxPutBacks) -join '; '
-        if ($list.Count -gt $script:MaxPutBacks) { $text += ('; and {0} more times' -f ($list.Count - $script:MaxPutBacks)) }
+        $more = $list.Count - $script:MaxPutBacks
+        if ($more -eq 1) { $text += '; and 1 more time' } elseif ($more -gt 1) { $text += ('; and {0} more times' -f $more) }
         $ByHit[$key].AddedBy = $ByHit[$key].AddedBy + '; ' + $text
+    }
+    # Say what the history read cannot show, so "PII added by" never reads as complete when it is not (review).
+    foreach ($key in @($ByHit.Keys | Where-Object { $ByHit[$_].AddedBy -ne $script:PartHistory })) {
+        if ($Unsure.ContainsKey($key)) { $ByHit[$key].AddedBy += '; it may have been put back again (a version could not be read)' }
+        if (-not $AllRead) { $ByHit[$key].AddedBy += "; versions after the $script:MaxVersionsRead read were not checked" }
     }
 }
 
@@ -5340,11 +5350,15 @@ function Find-PiiAddedVersion {
     $keys = $open
     $present = @{}   # per hit: in the last version read ($true/$false), or not known after a version not read ($null)
     $back = @{}      # per hit: when it was put back after a version without it (the PAM, 2026-11-21)
+    $unsure = @{}    # per hit: removed, then a version not read: a put-back there cannot be named
     foreach ($version in $versions) {   # every version read (not only to the first with each hit): put-backs count too
         $text = Read-VersionText $version $context $Name
         if ($null -eq $text) {   # not read: later versions can neither be first nor a put-back for sure
             $complete = $false; $readFailed = $true
-            foreach ($key in $keys) { $present[$key] = $null }
+            foreach ($key in $keys) {
+                if ($present.ContainsKey($key) -and $present[$key] -eq $false) { $unsure[$key] = $true }   # removed, then not seen
+                $present[$key] = $null
+            }
             continue
         }
         $found = @(Find-PiiInText $text.Text | ForEach-Object { Get-HitKey $_ })
@@ -5361,7 +5375,7 @@ function Find-PiiAddedVersion {
         }
     }
     Complete-CurrentVersion $byHit $back $present $keys $Who @{ AllRead = $allRead; Complete = $complete; Versions = $versions.Count }
-    Add-PutBackText $byHit $back
+    Add-PutBackText $byHit $back $unsure $allRead
     return $byHit
 }
 
