@@ -107,7 +107,10 @@ foreach ($case in @("CARDHOLDER $capsName $amex", "$cacName$($amex -replace ' ',
     $types = @(Find-PiiInText $case | ForEach-Object { $_.Detector })
     Assert-Equal 'True False' ('{0} {1}' -f ($types -contains 'Payment card'), ($types -contains 'DoD ID')) "A card after a name shape stays a card: $($case -replace '\d', '#')"
 }
-Assert-Equal 0 @(Get-HitSummary 'Signed: 11-23-26 1015' | Where-Object { $_ -like 'DoD ID/*' }).Count 'A date with a 2-digit year after Signed: is no DoD ID'
+foreach ($date in @('11-23-26 1015', '1-5-2026 1015', '2026-1-5 1015')) {
+    Assert-Equal 0 @(Get-HitSummary "Signed: $date" | Where-Object { $_ -like 'DoD ID/*' }).Count "A date after Signed: is no DoD ID: $($date -replace '\d', '#')"
+    Assert-Equal 0 @(Get-HitSummary "$cacName$date" | Where-Object { $_ -like 'DoD ID/*' }).Count "A date after a CAC name is no DoD ID: $($date -replace '\d', '#')"
+}
 $rows = (1..2000 | ForEach-Object { "$capsName $($d.Substring(0, 3)) $($d.Substring(3, 2)) $($d.Substring(5, 4)) $tenth" }) -join "`n"
 $clock = [Diagnostics.Stopwatch]::StartNew()
 $rowHits = Get-HitSummary $rows

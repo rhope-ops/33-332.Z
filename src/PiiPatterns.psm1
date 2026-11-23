@@ -58,8 +58,8 @@ $script:SignatureNamePattern = '(?<![\w.])(?:(?:' + $script:CapsDotted + '(?:\.'
     $script:AnyCaseDotted + '\.' + $script:SignatureGap + '?)' + $script:DodIdDigits + '|(?<spaced>' + $script:CapsSpaced + ')\.?[ \t]{1,3}' +
     $script:DodIdDigitsInline + ')'
 # Digit shapes that are something else, never an e-signature DoD ID (reviews of PR 57): a phone number (3-3-4, any
-# separators), a date (yyyy-mm-dd, mm/dd/yyyy), and a dashed SSN followed by a separate digit (a count).
-$script:NotDodIdShape = '^(?:\d{3}[ .\-\r\n]+\d{3}[ .\-\r\n]+\d{4}$|\d{4}[-./]\d{2}[-./]\d{2}|\d{2}[-./]\d{2}[-./]\d{2}|\d{3}-\d{2}-\d{4}(?!-))'
+# separators), a date (y-m-d, m-d-y; 1 or 2 digits for month and day), and a dashed SSN followed by a separate digit (a count).
+$script:NotDodIdShape = '^(?:\d{3}[ .\-\r\n]+\d{3}[ .\-\r\n]+\d{4}$|\d{4}[-./]\d{1,2}[-./]\d{1,2}|\d{1,2}[-./]\d{1,2}[-./](?:\d{4}|\d{2})|\d{3}-\d{2}-\d{4}(?!-))'
 $script:DigitsBeforeNamePattern = '(?<![\w-])(?<id>\d(?:(?:[ -]|[ \t]*\r?\n[ \t]*)?\d){9})[ \t]*\r?\n[ \t]*(?:' +
     $script:CapsDotted + '|' + $script:AnyCaseDotted + ')\.'
 $script:SignatureDigitsPattern = '(?<![\w-])' + $script:DodIdDigits

@@ -14,6 +14,8 @@ Notation: `#` = one digit (tests build invented values at run time); `\n` = line
   word with a one-letter last part ("www.site.a." then 10 digits) reads as a name; a row number on the line before a
   dotted name, or a capitals line such as "GRAND TOTAL" then gapped 9+1 digits on the same line, reads as an
   e-signature (DoD ID Low, not SSN); a run of 40,000+ capitals joined by hyphens with no space is slow (5 s at 78k).
+  Fourth review: a card split so that the 10 digits start inside it ("Signed by ###### ##########", a 6-10 split) is a
+  DoD ID, not a card; a DoD ID followed on the same line by 3+ digits that pass the card check reads as a card.
 
 ## Three pull requests, disjoint files
 
