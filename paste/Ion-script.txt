@@ -18,27 +18,31 @@
   the files at each library's top), or the drive folder and all its subfolders. Channel posts are not read.
 
   Built from these files; to change it, change them and rebuild with: python3 scripts/build_paste.py
-    src/PiiDetectors.psm1, sha256 4f6da5461023
+    src/PiiPatterns.psm1, sha256 299242c1cb6a
+    src/PiiDetectors.psm1, sha256 6b0997e42a97
     src/PiiMasking.psm1, sha256 752c251a94b2
     src/OcrText.psm1, sha256 a39acab441d4
     src/OleText.psm1, sha256 2f5d0a036e97
     src/ContainerText.psm1, sha256 7378569bd7e6
     src/PdfCore.psm1, sha256 2911c3a19ab3
     src/PdfObjects.psm1, sha256 085efef3e4fb
-    src/PdfFonts.psm1, sha256 f88c366cf09e
+    src/PdfFonts.psm1, sha256 6a318cc45e10
+    src/PdfShown.psm1, sha256 aa3553826fc1
     src/PdfLayout.psm1, sha256 feafecd946b7
-    src/PdfText.psm1, sha256 72a237fd9599
+    src/PdfContent.psm1, sha256 85ee6cfeaf8f
+    src/PdfText.psm1, sha256 dffef7dc6f8b
     src/TextExtract.psm1, sha256 5e02d07ddf10
-    src/ReaderPool.psm1, sha256 8f8f73fda166
+    src/ReaderPool.psm1, sha256 9b83b515d231
     src/XlsxWriter.psm1, sha256 0d8b1a3e1de1
-    src/Report.psm1, sha256 64da7afe875f
+    src/Report.psm1, sha256 fe79d83f6d80
+    src/ReportBook.psm1, sha256 58f16c6c65fb
     src/ScanMeter.psm1, sha256 18c82f0b37c3
     src/ScanQueue.psm1, sha256 ae11c97d5b8b
     src/Accountability.psm1, sha256 0f9f669ef687
     src/SiteTarget.psm1, sha256 339a273b6fb2
     src/ChannelScan.psm1, sha256 0cd4894c7c7b
     src/DriveScan.psm1, sha256 f307e810f8f5
-    src/Find-ChannelPII.ps1, sha256 5dbc5d6e0879
+    src/Find-ChannelPII.ps1, sha256 bee2123e2ec3
 
   Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.
   Run target: Windows PowerShell 5.1 with PnP.PowerShell 1.12.0; no admin rights, no file to unblock.
@@ -47,31 +51,35 @@
   Credentials: your own CAC sign-in in the PnP sign-in window (a drive folder: your Windows logon); nothing is stored.
 
   Contents (line numbers of this file):
-    line    77  Settings
-    line    88  Reader block
-    line    94  Module PiiDetectors.psm1
-    line   672  Module PiiMasking.psm1
-    line   872  Module OcrText.psm1
-    line  1025  Module OleText.psm1
-    line  1164  Module ContainerText.psm1
-    line  1503  Module PdfCore.psm1
-    line  1865  Module PdfObjects.psm1
-    line  2223  Module PdfFonts.psm1
-    line  2771  Module PdfLayout.psm1
-    line  2911  Module PdfText.psm1
-    line  3413  Module TextExtract.psm1
-    line  3831  Module ReaderPool.psm1
-    line  4083  Reader block end
-    line  4087  Module XlsxWriter.psm1
-    line  4394  Module Report.psm1
-    line  4956  Module ScanMeter.psm1
-    line  5353  Module ScanQueue.psm1
-    line  5743  Module Accountability.psm1
-    line  6125  Module SiteTarget.psm1
-    line  6377  Module ChannelScan.psm1
-    line  6779  Module DriveScan.psm1
-    line  7011  Body of Find-ChannelPII.ps1
-    line  7152  Clean-up
+    line    85  Settings
+    line    96  Reader block
+    line   102  Module PiiPatterns.psm1
+    line   494  Module PiiDetectors.psm1
+    line   708  Module PiiMasking.psm1
+    line   908  Module OcrText.psm1
+    line  1061  Module OleText.psm1
+    line  1200  Module ContainerText.psm1
+    line  1539  Module PdfCore.psm1
+    line  1901  Module PdfObjects.psm1
+    line  2259  Module PdfFonts.psm1
+    line  2576  Module PdfShown.psm1
+    line  2826  Module PdfLayout.psm1
+    line  2966  Module PdfContent.psm1
+    line  3296  Module PdfText.psm1
+    line  3488  Module TextExtract.psm1
+    line  3906  Module ReaderPool.psm1
+    line  4158  Reader block end
+    line  4162  Module XlsxWriter.psm1
+    line  4469  Module Report.psm1
+    line  4844  Module ReportBook.psm1
+    line  5055  Module ScanMeter.psm1
+    line  5452  Module ScanQueue.psm1
+    line  5842  Module Accountability.psm1
+    line  6224  Module SiteTarget.psm1
+    line  6476  Module ChannelScan.psm1
+    line  6878  Module DriveScan.psm1
+    line  7110  Body of Find-ChannelPII.ps1
+    line  7251  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -91,16 +99,17 @@ $IonReaderBlock = {
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
 
-# ==== Module PiiDetectors.psm1 ====
+# ==== Module PiiPatterns.psm1 ====
 <#
-PiiDetectors.psm1 - finds text that looks like PII and returns where it is.
+PiiPatterns.psm1 - the patterns and the one-type detectors that PiiDetectors.psm1 runs together.
 
-  Purpose:     One detector function per PII type (SSN, DoD ID, date of birth, payment card, passport,
-               phone, personal e-mail, home address, labelled name). Get-PiiSpan runs them all, removes
-               overlaps and returns each hit with its position and raw value.
+  Purpose:     One detector function per PII type (SSN, DoD ID, date of birth, payment card, passport, phone,
+               personal e-mail, home address), the label test before a match, the SSN and Luhn checks, and the
+               hit object. Split from PiiDetectors.psm1 (fleet v2 DEC 6, 2026-11-23: 450 lines for hand-written code).
   Inputs:      plain text (from TextExtract.psm1).
   Outputs:     hit objects WITH the raw value. Only PiiMasking.psm1 reads them; it masks every value
                before anything is shown or saved (the PAM, 2026-11-20: all values masked).
+  Depends on:  nothing (PiiDetectors.psm1 imports it next and runs these detectors).
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7).
   Network:     none.
@@ -121,29 +130,10 @@ $script:KeywordWindowChars = 40
 # A shorter window for labels that sit right next to their value ("DOB 01/02/1990", "cell 555-...").
 $script:ShortKeywordWindowChars = 30
 
-# A labelled name within this many characters of an identifier is raised to High. DoD privacy
-# guidance treats a name together with an identifier (SSN, DoD ID, date of birth) as sensitive PII.
-$script:NameToIdentifierChars = 80
-
-# Unreadable text around a Low hit (Test-GarbledNear): the characters looked at on each side of the hit, the fewest
-# visible ones needed to judge, and the share of unreadable ones that drops the hit. 30% and 20 characters: the
-# author's choice, 2026-11-21 (normal prose has almost none; a run of symbol-font characters is nearly all).
-$script:GarbledWindowChars = 40
-$script:GarbledMinChars = 20
-$script:GarbledShare = 0.3
-$script:VisibleChar = [regex]'\S'
-# Unreadable: private-use characters, the replacement character, control characters other than NUL, tab, CR and LF,
-# and the Latin-1 signs a symbol font read as text gives (not the degree sign or the middle dot). Symbols that normal
-# text uses (|, the cell break of a sheet; box drawing; maths; currency) are not counted (review of PR 31).
-$script:GarbledChar = [regex]'[\p{Co}\uFFFD\x01-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F\u00A4-\u00A6\u00A8-\u00AF\u00B1-\u00B6\u00B8-\u00BF]'
-
-
 # Regular expressions: .NET keeps the last 15 patterns compiled; the detectors and the masking use more, so each file
 # re-parsed them. A larger cache keeps them all (a speed-up for many files; the author's choice, 2026-11-20).
 [regex]::CacheSize = 64
 
-# Overlap priority: when two hits cover the same characters, the type earlier in this list wins.
-# Specific identifiers first, broad patterns (phone, address, name) last.
 # A CAC name as certificates and digital signatures write it: 2 to 4 name parts, each ending in a dot, then the 10-digit
 # DoD ID (single spaces allowed between digits: PDF signature blocks are often drawn with gaps). $CacNameEnd is the
 # same name part alone, at the end of the text before an SSN-shaped match; $CacNameChars is how far back it is looked for.
@@ -156,15 +146,6 @@ $script:SignatureWords = '(?i:\bsigned\b|\bCN\s*=|\bDN\s*:)'
 $script:CacNamePattern = $script:CacNamePrefix + '(?<id>\d(?: ?\d){9})(?![\w-]| \d)'
 $script:CacNameEnd = $script:CacNamePrefix + '$'
 $script:CacNameChars = 120
-
-$script:DetectorOrder = @('SSN', 'DoD ID', 'Payment card', 'Date of birth', 'Passport', 'Phone',
-    'Personal e-mail', 'Home address', 'Name')
-
-# Types that make a nearby name sensitive (see $NameToIdentifierChars).
-$script:IdentifierTypes = @('SSN', 'DoD ID', 'Date of birth', 'Passport', 'Payment card')
-
-# Confidence labels as numbers, for sorting (High first).
-$script:ConfidenceRank = @{ 'High' = 3; 'Medium' = 2; 'Low' = 1 }
 
 # E-mail top-level labels that mark a government address (not reported as personal e-mail).
 $script:GovernmentMailLabels = @('gov', 'mil')
@@ -185,13 +166,6 @@ $script:CardIssuerPattern = '^(?:4(?:\d{12}|\d{15}|\d{18})|(?:5[1-5]\d{2}|222[1-
 # =====================================================================================
 # Small helpers
 # =====================================================================================
-
-function Get-ConfidenceRank {
-    # Returns 3, 2 or 1 for High, Medium or Low (0 for anything else), for sorting.
-    param([string]$Confidence)
-    if ($script:ConfidenceRank.ContainsKey($Confidence)) { return $script:ConfidenceRank[$Confidence] }
-    return 0
-}
 
 function Test-KeywordBefore {
     <#
@@ -515,6 +489,68 @@ function Find-HomeAddressHits {
         if (Test-KeywordBefore $Text $m.Index $labels) { $confidence = 'High' }
         New-PiiHit 'Home address' $confidence $m.Index $m.Value
     }
+}
+
+# ==== Module PiiDetectors.psm1 ====
+<#
+PiiDetectors.psm1 - finds text that looks like PII and returns where it is.
+
+  Purpose:     Get-PiiSpan runs every detector (PiiPatterns.psm1, and the labelled-name detector here), removes
+               overlaps, raises a name near an identifier, drops Low hits in unreadable text, and returns each hit
+               with its position and raw value.
+  Inputs:      plain text (from TextExtract.psm1).
+  Outputs:     hit objects WITH the raw value. Only PiiMasking.psm1 reads them; it masks every value
+               before anything is shown or saved (the PAM, 2026-11-20: all values masked).
+  Depends on:  PiiPatterns.psm1 (the one-type detectors, New-PiiHit, Test-Luhn, Test-SsnValid), imported first.
+  How to run:  imported by Find-ChannelPII.ps1; not run on its own.
+  Run target:  Windows PowerShell 5.1 (also PowerShell 7).
+  Network:     none.
+  Writes:      none (pure functions on strings).
+  Credentials: none.
+#>
+
+
+# =====================================================================================
+# Settings (named values; each says where it comes from)
+# =====================================================================================
+
+# A labelled name within this many characters of an identifier is raised to High. DoD privacy
+# guidance treats a name together with an identifier (SSN, DoD ID, date of birth) as sensitive PII.
+$script:NameToIdentifierChars = 80
+
+# Unreadable text around a Low hit (Test-GarbledNear): the characters looked at on each side of the hit, the fewest
+# visible ones needed to judge, and the share of unreadable ones that drops the hit. 30% and 20 characters: the
+# author's choice, 2026-11-21 (normal prose has almost none; a run of symbol-font characters is nearly all).
+$script:GarbledWindowChars = 40
+$script:GarbledMinChars = 20
+$script:GarbledShare = 0.3
+$script:VisibleChar = [regex]'\S'
+# Unreadable: private-use characters, the replacement character, control characters other than NUL, tab, CR and LF,
+# and the Latin-1 signs a symbol font read as text gives (not the degree sign or the middle dot). Symbols that normal
+# text uses (|, the cell break of a sheet; box drawing; maths; currency) are not counted (review of PR 31).
+$script:GarbledChar = [regex]'[\p{Co}\uFFFD\x01-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F\u00A4-\u00A6\u00A8-\u00AF\u00B1-\u00B6\u00B8-\u00BF]'
+
+
+# Overlap priority: when two hits cover the same characters, the type earlier in this list wins.
+# Specific identifiers first, broad patterns (phone, address, name) last.
+$script:DetectorOrder = @('SSN', 'DoD ID', 'Payment card', 'Date of birth', 'Passport', 'Phone',
+    'Personal e-mail', 'Home address', 'Name')
+
+# Types that make a nearby name sensitive (see $NameToIdentifierChars).
+$script:IdentifierTypes = @('SSN', 'DoD ID', 'Date of birth', 'Passport', 'Payment card')
+
+# Confidence labels as numbers, for sorting (High first).
+$script:ConfidenceRank = @{ 'High' = 3; 'Medium' = 2; 'Low' = 1 }
+
+# =====================================================================================
+# Small helper and the labelled-name detector (it calls Get-PiiSpan, so it stays here)
+# =====================================================================================
+
+function Get-ConfidenceRank {
+    # Returns 3, 2 or 1 for High, Medium or Low (0 for anything else), for sorting.
+    param([string]$Confidence)
+    if ($script:ConfidenceRank.ContainsKey($Confidence)) { return $script:ConfidenceRank[$Confidence] }
+    return 0
 }
 
 function Find-NameHits {
@@ -2286,15 +2322,6 @@ $script:TimesWidths = @(250, 333, 408, 500, 500, 833, 778, 180, 333, 333, 500, 5
 # A /W array (a composite font's widths) is read for at most this many glyphs (a hostile array cannot fill the memory).
 $script:MaxWidthEntries = 65536
 
-# Per font: shown strings decoded and measured before (text and width in ems), up to this many each (speed).
-$script:MaxFontCache = 20000
-# Entries of what a line showed before they are summed (Compress-PdfShown).
-$script:MaxShownItems = 1024
-$script:MaxCacheKey = 256   # longer strings are rarely shown twice: not kept (memory)
-# Shown hex strings decoded before (speed): short tokens only, emptied when full.
-$script:ShownHex = New-Object 'System.Collections.Generic.Dictionary[string,string]'
-$script:MaxShownHex = 50000
-
 function Get-PdfFonts {
     <#
     .SYNOPSIS
@@ -2545,6 +2572,34 @@ function Add-PdfCidWidths {
         if ($token.Success) { $token = $token.NextMatch() }
     }
 }
+
+# ==== Module PdfShown.psm1 ====
+<#
+PdfShown.psm1 - a PDF's shown strings: their text through the font's map, and their widths in ems.
+
+  Purpose:     Decodes a shown string with its font record (ToUnicode map, glyph names, one- or two-byte codes),
+               measures it with the font's widths, and sums the pieces a line showed, so PdfText.psm1 can tell a word
+               gap from a glyph placed one by one. Caches per font (speed). Split from PdfFonts.psm1 (fleet v2 DEC 6,
+               2026-11-23: 450 lines for hand-written code).
+  Inputs:      font records (PdfFonts.psm1 Get-PdfFontTable) and shown strings.
+  Outputs:     decoded text and widths.
+  Depends on:  PdfFonts.psm1 (the font records it reads), imported first.
+  How to run:  imported by Find-ChannelPII.ps1 (used by PdfText.psm1); not run on its own.
+  Run target:  Windows PowerShell 5.1 (also PowerShell 7); .NET only.
+  Network:     none.
+  Writes:      none.
+  Credentials: none.
+#>
+
+
+# Per font: shown strings decoded and measured before (text and width in ems), up to this many each (speed).
+$script:MaxFontCache = 20000
+# Entries of what a line showed before they are summed (Compress-PdfShown).
+$script:MaxShownItems = 1024
+$script:MaxCacheKey = 256   # longer strings are rarely shown twice: not kept (memory)
+# Shown hex strings decoded before (speed): short tokens only, emptied when full.
+$script:ShownHex = New-Object 'System.Collections.Generic.Dictionary[string,string]'
+$script:MaxShownHex = 50000
 
 function ConvertFrom-PdfGlyphs {
     <#
@@ -2908,30 +2963,25 @@ function Complete-PdfTextBlock {
     $State.Shown.Clear()
 }
 
-# ==== Module PdfText.psm1 ====
+# ==== Module PdfContent.psm1 ====
 <#
-PdfText.psm1 - the text of a PDF file, in memory, with .NET only (no module; the PAM, 2026-11-20).
+PdfContent.psm1 - a PDF content stream walked for its text: tokens, text operators, moves and shown strings.
 
-  Purpose:     Page text (Tj/TJ text in Flate, ASCII85 or hex streams, with ToUnicode font maps), filled-in form-field
-               values, comments and file info, so the detectors can check a PDF (ISO 32000). An encrypted PDF,
-               a PDF with no text (a scanned image) or a file that is not a PDF gets a reason instead.
-  Inputs:      the file bytes.
-  Outputs:     a hashtable with Text and Reason (Get-PdfText).
-  How to run:  imported by Find-ChannelPII.ps1 (used by TextExtract.psm1); not run on its own.
-  Depends on:  PdfCore.psm1 (limits, stream filters), PdfObjects.psm1 (objects, strings, dictionary text),
-               PdfFonts.psm1 (font maps and widths), PdfLayout.psm1 (spaces and line breaks) and OcrText.psm1
-               (scanned pages), imported first by Find-ChannelPII.ps1.
-  Run target:  Windows PowerShell 5.1 (also PowerShell 7); .NET System.IO.Compression only.
+  Purpose:     Reads one content stream's tokens (strings, arrays, names, numbers, operators), runs the text
+               operators (Tf, Tc, Tw, Tz, TJ, Tj, ', ", Td, TD, T*, Tm, ET) on a text state, steps over inline image
+               bytes, and returns the page text with its spaces and line breaks (ISO 32000-1, 9.4). Split from
+               PdfText.psm1 (fleet v2 DEC 6, 2026-11-23: 450 lines for hand-written code).
+  Inputs:      a decoded content stream and the page's fonts (PdfFonts.psm1 Get-PdfFontTable).
+  Outputs:     the text of the stream (Convert-PdfContentToText).
+  Depends on:  PdfCore.psm1 (Assert-PdfTime, Add-PdfNote), PdfObjects.psm1 (Get-PdfStringPattern, Assert-PdfGap),
+               PdfShown.psm1 (shown text and widths) and PdfLayout.psm1 (Complete-PdfTextBlock), imported first.
+  How to run:  imported by Find-ChannelPII.ps1 (used by PdfText.psm1); not run on its own.
+  Run target:  Windows PowerShell 5.1 (also PowerShell 7).
   Network:     none.
-  Writes:      none. Bytes stay in memory; nothing is saved to disk.
+  Writes:      none.
   Credentials: none.
 #>
 
-Add-Type -AssemblyName System.IO.Compression
-
-
-# Bytes as characters one to one (ISO-8859-1), so binary PDF parts can be cut with string functions.
-$script:PdfLatin1 = [System.Text.Encoding]::GetEncoding(28591)
 
 # The tokens of a content stream that matter for text: strings, array brackets, names, numbers and operators.
 $script:PdfTokenPattern = (Get-PdfStringPattern) + '|%[^\r\n]*|\[|\]|/[^\s/\[\]()<>{}%]+|[-+]?(?:\d+\.?\d*|\.\d+)|[A-Za-z''"*]+'
@@ -2959,21 +3009,6 @@ $script:Invariant = [Globalization.CultureInfo]::InvariantCulture
 # BI operator (a token, never the word BI in a string) the reader steps over the bytes to here, so image bytes never
 # join with page text into one token (fresh reviews, 2026-11-21).
 $script:InlineImageEnd = '\sEI(?=[\s/\[<(%]|$)'
-
-$script:PdfNoTextReason = 'No text in this PDF (a scanned image?): check by hand'
-# A scanned PDF's JPEG page images, found by Get-PdfAllText: read with Windows OCR when the PDF has no text.
-$script:PdfScanImages = @()
-# Not-scanned reasons, each its own group on the Not scanned tab (the PAM, 2026-11-21: tell labels from passwords, and
-# a time limit from damage: many PDFs called damaged open fine). The limits are $PdfSecondsLimit and $PdfRegexTimeout of PdfCore.psm1.
-$script:PdfSlowReason = 'This PDF took longer than the time limit to read (2 minutes; the file may be fine): check by hand'
-$script:PdfSearchSlowReason = 'One search in this PDF took longer than its time limit (2 seconds; the file may be fine): check by hand'
-$script:PdfPartReason = 'Part of this PDF could not be read (an unusual string; the file may still open fine): check by hand'
-$script:PdfEncryptedReason = 'Encrypted PDF (a password, or limits set by its author; it may open without one): check by hand'
-# Microsoft Purview protection: an encrypted PDF whose security handler is Microsoft's, or a wrapper PDF that holds the
-# protected document as an encrypted payload (ISO 32000-2; its own pages only say the file is protected).
-$script:PdfLabelReason = 'Sensitivity label with encryption (Microsoft Purview): open it and check by hand'
-$script:PdfLabelPattern = '/Filter\s*/MicrosoftIRMServices\b|/EncryptedPayload\b'
-
 function Convert-PdfContentToText {
     <#
     .SYNOPSIS
@@ -3257,6 +3292,46 @@ function Add-PdfArrayPieces {
         }
     }
 }
+
+# ==== Module PdfText.psm1 ====
+<#
+PdfText.psm1 - the text of a PDF file, in memory, with .NET only (no module; the PAM, 2026-11-20).
+
+  Purpose:     Page text (Tj/TJ text in Flate, ASCII85 or hex streams, with ToUnicode font maps), filled-in form-field
+               values, comments and file info, so the detectors can check a PDF (ISO 32000). An encrypted PDF,
+               a PDF with no text (a scanned image) or a file that is not a PDF gets a reason instead.
+  Inputs:      the file bytes.
+  Outputs:     a hashtable with Text and Reason (Get-PdfText).
+  How to run:  imported by Find-ChannelPII.ps1 (used by TextExtract.psm1); not run on its own.
+  Depends on:  PdfCore.psm1 (limits, stream filters), PdfObjects.psm1 (objects, strings, dictionary text),
+               PdfFonts.psm1 (font maps), PdfContent.psm1 (the text of a content stream; split from this file,
+               fleet v2 DEC 6, 2026-11-23) and OcrText.psm1 (scanned pages), imported first by Find-ChannelPII.ps1.
+  Run target:  Windows PowerShell 5.1 (also PowerShell 7); .NET System.IO.Compression only.
+  Network:     none.
+  Writes:      none. Bytes stay in memory; nothing is saved to disk.
+  Credentials: none.
+#>
+
+Add-Type -AssemblyName System.IO.Compression
+
+
+# Bytes as characters one to one (ISO-8859-1), so binary PDF parts can be cut with string functions.
+$script:PdfLatin1 = [System.Text.Encoding]::GetEncoding(28591)
+
+
+$script:PdfNoTextReason = 'No text in this PDF (a scanned image?): check by hand'
+# A scanned PDF's JPEG page images, found by Get-PdfAllText: read with Windows OCR when the PDF has no text.
+$script:PdfScanImages = @()
+# Not-scanned reasons, each its own group on the Not scanned tab (the PAM, 2026-11-21: tell labels from passwords, and
+# a time limit from damage: many PDFs called damaged open fine). The limits are $PdfSecondsLimit and $PdfRegexTimeout of PdfCore.psm1.
+$script:PdfSlowReason = 'This PDF took longer than the time limit to read (2 minutes; the file may be fine): check by hand'
+$script:PdfSearchSlowReason = 'One search in this PDF took longer than its time limit (2 seconds; the file may be fine): check by hand'
+$script:PdfPartReason = 'Part of this PDF could not be read (an unusual string; the file may still open fine): check by hand'
+$script:PdfEncryptedReason = 'Encrypted PDF (a password, or limits set by its author; it may open without one): check by hand'
+# Microsoft Purview protection: an encrypted PDF whose security handler is Microsoft's, or a wrapper PDF that holds the
+# protected document as an encrypted payload (ISO 32000-2; its own pages only say the file is protected).
+$script:PdfLabelReason = 'Sensitivity label with encryption (Microsoft Purview): open it and check by hand'
+$script:PdfLabelPattern = '/Filter\s*/MicrosoftIRMServices\b|/EncryptedPayload\b'
 
 function Get-PdfText {
     <#
@@ -3863,8 +3938,8 @@ $script:WaitSliceMs = 250
 $script:LongPathAt = 240
 
 # The reader modules, in load order, for a development run (the bundle gives the reader block's text instead).
-$script:ReaderModules = @('PiiDetectors', 'PiiMasking', 'OcrText', 'OleText', 'ContainerText', 'PdfCore', 'PdfObjects', 'PdfFonts',
-    'PdfLayout', 'PdfText', 'TextExtract', 'ReaderPool')
+$script:ReaderModules = @('PiiPatterns', 'PiiDetectors', 'PiiMasking', 'OcrText', 'OleText', 'ContainerText', 'PdfCore', 'PdfObjects', 'PdfFonts',
+    'PdfShown', 'PdfLayout', 'PdfContent', 'PdfText', 'TextExtract', 'ReaderPool')
 
 # The script each worker runs per job: it loads the reader code once per runspace, then reads one file.
 $script:PoolWorkerScript = @'
@@ -4393,21 +4468,19 @@ function Export-Xlsx {
 
 # ==== Module Report.psm1 ====
 <#
-Report.psm1 - the scan results for a person: a summary on screen and one Excel workbook with tabs.
+Report.psm1 - the scan results for a person: the report rows and the summary on screen.
 
-  Purpose:     Holds the report rows, sorts them worst PII type first, shows the summary (totals and hits per type)
-               and saves the workbook: Summary tab first, one tab per type, Low confidence, Not scanned
-               (the PAM, 2026-11-20: tabs to cut noise; no .txt or .csv).
+  Purpose:     Holds the report rows, sorts them worst PII type first and shows the summary (totals and hits per type).
+               The workbook (Summary tab first, one tab per type, Low confidence, Not scanned; the PAM, 2026-11-20: tabs
+               to cut noise; no .txt or .csv) is built by ReportBook.psm1, split from this file (fleet v2 DEC 6, 2026-11-23).
   Inputs:      report rows (New-ReportRow) from ChannelScan.psm1; values in them are already masked.
-  Outputs:     the summary on screen; <OutputFolder>\<site>\Ion <site> <yyyy-MM-dd HHmm>.xlsx.
-  Depends on:  PiiDetectors.psm1 (Find-PiiInText), PiiMasking.psm1 (Protect-PiiName, Protect-PiiText), XlsxWriter.psm1,
-               imported first; at run time also ScanMeter.psm1 (the screen tables) and Accountability.psm1 (the By account
-               and Method tabs), imported later by Find-ChannelPII.ps1.
+  Outputs:     the summary on screen; report rows.
+  Depends on:  PiiDetectors.psm1 (Find-PiiInText), PiiMasking.psm1 (Protect-PiiName, Protect-PiiText), imported first;
+               at run time also ScanMeter.psm1 (the screen tables), imported later by Find-ChannelPII.ps1.
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7).
   Network:     none.
-  Writes:      the workbook and its site and day folders under the output folder (default Documents\Ion).
-               A new file each run; an existing result is never overwritten.
+  Writes:      none (ReportBook.psm1 saves the workbook).
   Credentials: none.
 #>
 
@@ -4419,20 +4492,12 @@ Report.psm1 - the scan results for a person: a summary on screen and one Excel w
 # Confidence labels as numbers, for sorting (High first). Rows with other labels are notes (NOT SCANNED, BLOCKED, INCOMPLETE).
 $script:Rank = @{ 'High' = 3; 'Medium' = 2; 'Low' = 1 }
 
-# The tool's name on screen and in the workbook (the PAM, 2026-11-20).
-$script:ToolTitle = 'Ion - DoD365 PII Reporter'
-
 # PII types from most to least damaging, for sorting and for the order of the tabs. AFI 33-332 gives no ranking
 # (A3.1 lists only the factors for judging harm), so this is the PAM's order (2026-11-20): SSN and date of birth
 # first, then identity documents and accounts, then contact details.
 $script:SeverityOrder = @('SSN', 'Date of birth', 'Passport', 'Payment card', 'DoD ID', 'Home address', 'Name', 'Phone', 'Personal e-mail')
 
 $script:TopItems = 10   # how many files the screen summary lists (the workbook lists all)
-$script:MaxNameInPath = 40   # the site name is in the path twice: at most 40 characters keeps it under 260 (review of PR 41)
-# C6, the review columns the person fills in (the PAM, 2026-11-21), each with its dropdown (empty = free text); Ion never fills them.
-$script:ReviewColumns = [ordered]@{ 'Reviewed by' = @(); 'Review date' = @(); 'Is it PII?' = @('Yes', 'No', 'Not sure')
-    'Action taken' = @('Removed', 'Moved', 'Access limited', 'Left (not PII)', 'Other')
-    'Reported to Privacy Manager' = @('Yes', 'No', 'Not needed') }
 # Under the table of types: what High, Medium and Low mean (the PAM, 2026-11-21: plain words for a unit member).
 $script:ConfidenceKey = @('High = labelled ("SSN:") or a sure pattern. Medium = right form, no label.', 'Low = weak match, often not PII.')
 
@@ -4466,15 +4531,6 @@ $script:NotScannedGroups = [ordered]@{
     'old Office or Outlook' = 'Old Office or Outlook not readable'
     '^An archive or e-mail inside another|in this archive|Too large to unpack|Could not unpack' = 'Archives: files not unpacked'
 }
-
-# What to do with PII found where it should not be (rule source: AFI 33-332 para 3.1.2 as changed by AFI33-332_DAFGM2026-01,
-# 7 July 2026; edition: docs/DECISIONS.md). The wording is the README's "If it finds PII" section; scripts/build_site.py --check fails when they differ (the PAM, 2026-11-20).
-$script:BreachAdvice = 'PII where it should not be is a potential or actual breach; report it to your servicing Privacy ' +
-                       'Manager/Monitor without delay (AFI 33-332 para 3.1.2, as changed by AFI33-332_DAFGM2026-01 (7 July 2026), ' +
-                       'page 1, second paragraph).'
-# Shown as two lines, the advice and its rule source (the PAM, 2026-11-21); one line if no "(AFI ...)." part is found.
-$script:BreachLines = @($script:BreachAdvice)
-if ($script:BreachAdvice -match '^(.*) \((AFI .*)\)\.$') { $script:BreachLines = @(($Matches[1] + '.'), ('Source: ' + $Matches[2] + '.')) }
 
 # =====================================================================================
 # Rows and summary
@@ -4729,6 +4785,105 @@ function Get-ScanSummaryText {
     return $out.ToArray()
 }
 
+function Set-RowAccountability {
+    <#
+    .SYNOPSIS
+      Fills the accountability fields of a file's rows: who last changed it, when it was made and by whom, and who
+      put the PII in and when (where the file's history shows it; else the file's maker or "not recorded").
+    .PARAMETER Rows
+      The file's rows (New-ReportRow).
+    .PARAMETER Who
+      @{ ModifiedBy; Created; CreatedBy; AddedOn; AddedBy; HistoryNote; ByHit } (any may be missing); ByHit:
+      "type|masked value" -> @{ AddedOn; AddedBy; Note } for each hit dated from the file's history.
+    #>
+    param([object[]]$Rows, [hashtable]$Who)
+    if (-not $Who) { return }
+    foreach ($row in $Rows) {
+        foreach ($key in @('ModifiedBy', 'Created', 'CreatedBy', 'AddedOn', 'AddedBy', 'HistoryNote')) {
+            if ($Who.ContainsKey($key) -and $Who[$key]) { $row.$key = [string]$Who[$key] }
+        }
+        $hitKey = $row.Detector + '|' + $row.MaskedValue
+        if ($Who.ContainsKey('ByHit') -and $Who.ByHit -and $Who.ByHit.ContainsKey($hitKey)) {
+            $entry = $Who.ByHit[$hitKey]
+            $row.AddedOn = [string]$entry.AddedOn; $row.AddedBy = [string]$entry.AddedBy
+            if ($entry.ContainsKey('Note')) { $row.HistoryNote = [string]$entry.Note }
+        }
+    }
+}
+
+function Add-PartRows {
+    <#
+    .SYNOPSIS
+      The rows of one file inside a zip or an e-mail, named "<file>/<inner path>" (PII in the name masked): its
+      hits, a hit for PII in its name, and a NOT SCANNED row when it was not read or read only in part.
+    .PARAMETER Part
+      One result of Get-TextFromBytes Parts (with its Name).
+    .PARAMETER Channel
+      The channel name as the report shows it.
+    .PARAMETER Item
+      The container file as the report shows it.
+    .PARAMETER Link
+      The container file's link (an inner file has no link of its own).
+    .PARAMETER Modified
+      The container file's change time.
+    .PARAMETER Rows
+      The list that receives the rows.
+    #>
+    param($Part, [string]$Channel, [string]$Item, [string]$Link, [string]$Modified, $Rows)
+    $name = $Item + '/' + (Protect-PiiName $Part.Name)
+    foreach ($hit in @(Find-PiiInText $Part.Name)) {
+        $Rows.Add((New-ReportRow 'File name' $Channel $name $Link $Modified $hit.Detector $hit.Confidence $hit.MaskedValue 'In the name of a file inside it'))
+    }
+    if ($Part.Status -ne 'OK') { $Rows.Add((New-ReportRow 'File' $Channel $name $Link $Modified 'NOT SCANNED' '' '' (Protect-PiiText $Part.Reason))); return }
+    if ($Part.Note) { $Rows.Add((New-ReportRow 'File' $Channel $name $Link $Modified 'NOT SCANNED' '' '' (Protect-PiiText $Part.Note))) }
+    foreach ($hit in @(Find-PiiInText $Part.Text)) {
+        $Rows.Add((New-ReportRow 'File' $Channel $name $Link $Modified $hit.Detector $hit.Confidence $hit.MaskedValue $hit.Context))
+    }
+}
+
+# ==== Module ReportBook.psm1 ====
+<#
+ReportBook.psm1 - the results workbook: its tabs, its Summary rows and where it is saved.
+
+  Purpose:     Builds the workbook tabs (Summary first, one tab per PII type, Low confidence, Not scanned) with the
+               review columns, and saves it as a new file under the output folder; the breach advice is on the Summary
+               tab and on screen at the end. Split from Report.psm1 (fleet v2 DEC 6, 2026-11-23: 450 lines for
+               hand-written code).
+  Inputs:      report rows (Report.psm1 New-ReportRow); values in them are already masked.
+  Outputs:     <OutputFolder>\<site>\Ion <site> <yyyy-MM-dd HHmm>.xlsx, and its path.
+  Depends on:  PiiDetectors.psm1 (Get-ConfidenceRank), XlsxWriter.psm1, Report.psm1 (Write-Ui, Get-SeverityIndex,
+               Get-TypeCounts, Get-NotScannedGroup, Get-NotScannedCounts, Get-ScanMetrics, Get-ScanSummaryText),
+               imported first; at run time also ScanMeter.psm1 and Accountability.psm1 (the By account and Method tabs).
+  How to run:  imported by Find-ChannelPII.ps1; not run on its own.
+  Run target:  Windows PowerShell 5.1 (also PowerShell 7).
+  Network:     none.
+  Writes:      the workbook and its site and day folders under the output folder (default Documents\Ion).
+               A new file each run; an existing result is never overwritten.
+  Credentials: none.
+#>
+
+
+# =====================================================================================
+# Settings
+# =====================================================================================
+
+# The tool's name on screen and in the workbook (the PAM, 2026-11-20).
+$script:ToolTitle = 'Ion - DoD365 PII Reporter'
+
+$script:MaxNameInPath = 40   # the site name is in the path twice: at most 40 characters keeps it under 260 (review of PR 41)
+# C6, the review columns the person fills in (the PAM, 2026-11-21), each with its dropdown (empty = free text); Ion never fills them.
+$script:ReviewColumns = [ordered]@{ 'Reviewed by' = @(); 'Review date' = @(); 'Is it PII?' = @('Yes', 'No', 'Not sure')
+    'Action taken' = @('Removed', 'Moved', 'Access limited', 'Left (not PII)', 'Other')
+    'Reported to Privacy Manager' = @('Yes', 'No', 'Not needed') }
+# What to do with PII found where it should not be (rule source: AFI 33-332 para 3.1.2 as changed by AFI33-332_DAFGM2026-01,
+# 7 July 2026; edition: docs/DECISIONS.md). The wording is the README's "If it finds PII" section; scripts/build_site.py --check fails when they differ (the PAM, 2026-11-20).
+$script:BreachAdvice = 'PII where it should not be is a potential or actual breach; report it to your servicing Privacy ' +
+                       'Manager/Monitor without delay (AFI 33-332 para 3.1.2, as changed by AFI33-332_DAFGM2026-01 (7 July 2026), ' +
+                       'page 1, second paragraph).'
+# Shown as two lines, the advice and its rule source (the PAM, 2026-11-21); one line if no "(AFI ...)." part is found.
+$script:BreachLines = @($script:BreachAdvice)
+if ($script:BreachAdvice -match '^(.*) \((AFI .*)\)\.$') { $script:BreachLines = @(($Matches[1] + '.'), ('Source: ' + $Matches[2] + '.')) }
+
 # =====================================================================================
 # The workbook
 # =====================================================================================
@@ -4769,32 +4924,6 @@ function Get-HitCells {
         $Hit.Created, $Hit.CreatedBy, $Hit.ModifiedBy, $Hit.AddedOn, $Hit.AddedBy, $Hit.HistoryNote) + @('') * $script:ReviewColumns.Count
 }
 
-function Set-RowAccountability {
-    <#
-    .SYNOPSIS
-      Fills the accountability fields of a file's rows: who last changed it, when it was made and by whom, and who
-      put the PII in and when (where the file's history shows it; else the file's maker or "not recorded").
-    .PARAMETER Rows
-      The file's rows (New-ReportRow).
-    .PARAMETER Who
-      @{ ModifiedBy; Created; CreatedBy; AddedOn; AddedBy; HistoryNote; ByHit } (any may be missing); ByHit:
-      "type|masked value" -> @{ AddedOn; AddedBy; Note } for each hit dated from the file's history.
-    #>
-    param([object[]]$Rows, [hashtable]$Who)
-    if (-not $Who) { return }
-    foreach ($row in $Rows) {
-        foreach ($key in @('ModifiedBy', 'Created', 'CreatedBy', 'AddedOn', 'AddedBy', 'HistoryNote')) {
-            if ($Who.ContainsKey($key) -and $Who[$key]) { $row.$key = [string]$Who[$key] }
-        }
-        $hitKey = $row.Detector + '|' + $row.MaskedValue
-        if ($Who.ContainsKey('ByHit') -and $Who.ByHit -and $Who.ByHit.ContainsKey($hitKey)) {
-            $entry = $Who.ByHit[$hitKey]
-            $row.AddedOn = [string]$entry.AddedOn; $row.AddedBy = [string]$entry.AddedBy
-            if ($entry.ContainsKey('Note')) { $row.HistoryNote = [string]$entry.Note }
-        }
-    }
-}
-
 function Get-WorkbookSheets {
     <#
     .SYNOPSIS
@@ -4812,7 +4941,7 @@ function Get-WorkbookSheets {
       [object[]] New-XlsxSheet objects.
     #>
     param([object[]]$Rows, [int]$ItemsScanned, [System.Collections.IDictionary]$Header, [string]$FolderLabel)
-    $hits = @($Rows | Where-Object { $script:Rank.ContainsKey($_.Confidence) })
+    $hits = @($Rows | Where-Object { (Get-ConfidenceRank $_.Confidence) -gt 0 })
     # Accountability columns, names and order: the PAM, 2026-11-21 (docs/DECISIONS.md); the Method tab explains them.
     $columns = @('Confidence', $FolderLabel, 'File', 'Masked value', 'Context', 'Last saved', 'Link', 'Found in',
         'Created', 'Created by', 'Last saved by', 'PII first saved', 'PII first saved by', 'History note') + @($script:ReviewColumns.Keys)
@@ -4822,7 +4951,7 @@ function Get-WorkbookSheets {
         if ($script:ReviewColumns[$name]) { $choices[$offset] = $script:ReviewColumns[$name]; $lowChoices[$offset + 1] = $script:ReviewColumns[$name] }
         $offset++
     }
-    $byRank = @{ Expression = { $script:Rank[$_.Confidence] }; Descending = $true }
+    $byRank = @{ Expression = { Get-ConfidenceRank $_.Confidence }; Descending = $true }
     $sheets = New-Object System.Collections.Generic.List[object]
     $sheets.Add((New-XlsxSheet 'Summary' @($script:ToolTitle, '', '', '', '') (Get-SummaryRows $Rows $ItemsScanned $Header) @(28, 70, 9, 9, 9)))
     foreach ($type in @(Get-TypeCounts $hits | Where-Object { $_.High + $_.Medium -gt 0 } | ForEach-Object { $_.Type })) {
@@ -4834,7 +4963,7 @@ function Get-WorkbookSheets {
         $lowCells = @($low | ForEach-Object { , (@($_.Detector) + (Get-HitCells $_)) })
         $sheets.Add((New-XlsxSheet 'Low confidence' (@('Type') + $columns) $lowCells (@(16) + $widths) -List -LinkColumn 7 -Choices $lowChoices))
     }
-    $notes = @($Rows | Where-Object { -not $script:Rank.ContainsKey($_.Confidence) })
+    $notes = @($Rows | Where-Object { (Get-ConfidenceRank $_.Confidence) -eq 0 })
     if ($notes.Count -gt 0) {
         # A Group column, so the tab filters by the groups the Summary counts (the PAM, 2026-11-21).
         $sheets.Add((New-XlsxSheet 'Not scanned' @('Status', $FolderLabel, 'File', 'Reason', 'Group', 'Link') `
@@ -4865,7 +4994,7 @@ function Get-SummaryRows {
       [object[]] rows, each an array of cells.
     #>
     param([object[]]$Rows, [int]$ItemsScanned, [System.Collections.IDictionary]$Header)
-    $hits = @($Rows | Where-Object { $script:Rank.ContainsKey($_.Confidence) })
+    $hits = @($Rows | Where-Object { (Get-ConfidenceRank $_.Confidence) -gt 0 })
     foreach ($pair in @($Header.GetEnumerator()) + @((Get-ScanMetrics $Rows $ItemsScanned).GetEnumerator())) { , @($pair.Key, $pair.Value) }
     , @('')
     , @('Possible PII by type (worst first)', 'High', 'Medium', 'Low', 'Total')
@@ -4921,36 +5050,6 @@ function Publish-ScanReport {
         Write-Ui $script:BreachLines[0] 'Accent'; if ($script:BreachLines.Count -gt 1) { Write-Ui $script:BreachLines[1] 'Muted' }
     }
     return $path
-}
-
-function Add-PartRows {
-    <#
-    .SYNOPSIS
-      The rows of one file inside a zip or an e-mail, named "<file>/<inner path>" (PII in the name masked): its
-      hits, a hit for PII in its name, and a NOT SCANNED row when it was not read or read only in part.
-    .PARAMETER Part
-      One result of Get-TextFromBytes Parts (with its Name).
-    .PARAMETER Channel
-      The channel name as the report shows it.
-    .PARAMETER Item
-      The container file as the report shows it.
-    .PARAMETER Link
-      The container file's link (an inner file has no link of its own).
-    .PARAMETER Modified
-      The container file's change time.
-    .PARAMETER Rows
-      The list that receives the rows.
-    #>
-    param($Part, [string]$Channel, [string]$Item, [string]$Link, [string]$Modified, $Rows)
-    $name = $Item + '/' + (Protect-PiiName $Part.Name)
-    foreach ($hit in @(Find-PiiInText $Part.Name)) {
-        $Rows.Add((New-ReportRow 'File name' $Channel $name $Link $Modified $hit.Detector $hit.Confidence $hit.MaskedValue 'In the name of a file inside it'))
-    }
-    if ($Part.Status -ne 'OK') { $Rows.Add((New-ReportRow 'File' $Channel $name $Link $Modified 'NOT SCANNED' '' '' (Protect-PiiText $Part.Reason))); return }
-    if ($Part.Note) { $Rows.Add((New-ReportRow 'File' $Channel $name $Link $Modified 'NOT SCANNED' '' '' (Protect-PiiText $Part.Note))) }
-    foreach ($hit in @(Find-PiiInText $Part.Text)) {
-        $Rows.Add((New-ReportRow 'File' $Channel $name $Link $Modified $hit.Detector $hit.Confidence $hit.MaskedValue $hit.Context))
-    }
 }
 
 # ==== Module ScanMeter.psm1 ====

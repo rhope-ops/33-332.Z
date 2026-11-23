@@ -133,7 +133,7 @@ $methodOk = $methodText -match 'PII first saved by' -and $methodText -match 'evi
     $methodText -match '10 digits in a row are not found'
 Assert-Equal $true $methodOk 'Method tab: how the columns are worked out, and the limits'
 # A long site name is cut so the workbook path stays under 260 characters (review of PR 41).
-$longPath = & (Get-Module Report) { param($f) Get-ResultPath $f ('https://tenant.example.com/sites/' + ('a' * 150)) } $reportFolder
+$longPath = & (Get-Module ReportBook) { param($f) Get-ResultPath $f ('https://tenant.example.com/sites/' + ('a' * 150)) } $reportFolder
 Assert-Equal $true ((Split-Path $longPath -Leaf).Length -lt 70 -and $longPath.Length -lt ($reportFolder.Length + 120)) 'Long site name: cut in the folder and the file name'
 # C6 (the PAM, 2026-11-21): the review columns have dropdowns; the Method tab wraps its text; By account counts per account.
 $piiChoice = $sheetXml -match '<dataValidation type="list" allowBlank="1" showErrorMessage="1" sqref="Q2:Q\d+"><formula1>"Yes,No,Not sure"</formula1>'

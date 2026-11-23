@@ -7,9 +7,9 @@ Run target: any machine with Python 3 (a build tool, never run on a gov device).
 What it does: the kit's build_site.py loads this file and uses
   looks-for  a table Type | Found when | Shown as | Confidence   -> the table's rows (the first three columns)
   breach     the advice, a blank line, its citation               -> the breach note
-  extra_checks: the tool's breach text (src/Report.psm1, $script:BreachAdvice) must say the README's breach section,
+  extra_checks: the tool's breach text (src/ReportBook.psm1, $script:BreachAdvice) must say the README's breach section,
              word for word (the advice, then its citation in brackets).
-Inputs:  README.md, index.html, src/Report.psm1 (through the kit's build_site.py); with --test, invented files only.
+Inputs:  README.md, index.html, src/ReportBook.psm1 (through the kit's build_site.py); with --test, invented files only.
 Outputs: with --test, one line per case and "SITE LOCAL TEST PASS" (or "... FAIL"); the checks run in build_site.py.
 Usage:   python3 scripts/build_site_local.py --test    self-test (scripts/check.sh runs it); the build itself:
          python3 scripts/build_site.py --write | --check
@@ -28,7 +28,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # the kit's helpers: scripts/build_site.py
 from build_site import COMMAND, README, SITE, inline, paragraphs, readme_sections, run  # noqa: E402
 
-TOOL = 'src/Report.psm1'
+TOOL = 'src/ReportBook.psm1'
 # The site shows the first three columns of the README's "What it looks for" table (Confidence stays README only);
 # their names must be these, as the site's hand-written table head says them (index.html <thead>).
 SITE_HEAD = ('Type', 'Found when', 'Shown as')

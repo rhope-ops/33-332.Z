@@ -37,10 +37,10 @@ RETIRED = ROOT / 'paste' / '33332Z-pii-spot-check.ps1'
 MAIN = 'src/Find-ChannelPII.ps1'
 # Dependency order: each module uses only those listed before it (their headers say so).
 # The reader modules come first; the reader workers (ReaderPool.psm1) load exactly these.
-READERS = ('src/PiiDetectors.psm1', 'src/PiiMasking.psm1', 'src/OcrText.psm1', 'src/OleText.psm1', 'src/ContainerText.psm1',
-           'src/PdfCore.psm1', 'src/PdfObjects.psm1', 'src/PdfFonts.psm1', 'src/PdfLayout.psm1', 'src/PdfText.psm1', 'src/TextExtract.psm1',
+READERS = ('src/PiiPatterns.psm1', 'src/PiiDetectors.psm1', 'src/PiiMasking.psm1', 'src/OcrText.psm1', 'src/OleText.psm1', 'src/ContainerText.psm1',
+           'src/PdfCore.psm1', 'src/PdfObjects.psm1', 'src/PdfFonts.psm1', 'src/PdfShown.psm1', 'src/PdfLayout.psm1', 'src/PdfContent.psm1', 'src/PdfText.psm1', 'src/TextExtract.psm1',
            'src/ReaderPool.psm1')
-MODULES = READERS + ('src/XlsxWriter.psm1', 'src/Report.psm1', 'src/ScanMeter.psm1', 'src/ScanQueue.psm1', 'src/Accountability.psm1',
+MODULES = READERS + ('src/XlsxWriter.psm1', 'src/Report.psm1', 'src/ReportBook.psm1', 'src/ScanMeter.psm1', 'src/ScanQueue.psm1', 'src/Accountability.psm1',
                      'src/SiteTarget.psm1', 'src/ChannelScan.psm1', 'src/DriveScan.psm1')
 READER_START = """# ==== Reader modules ==== (one script block: this script loads it as an in-memory module, and each reader
 # worker loads the same text; nothing is read from a file)
@@ -219,7 +219,7 @@ def main():
     rel = BUNDLE.relative_to(ROOT)
     if args.check:
         if RETIRED.exists():
-            print('PASTE FAIL: %s is retired (DEC 8); delete it' % RETIRED.relative_to(ROOT))
+            print('PASTE FAIL: paste/%s is retired (DEC 8); delete it' % RETIRED.name)
             sys.exit(1)
         if not BUNDLE.is_file() or BUNDLE.read_text(encoding='utf-8') != text:
             print('PASTE FAIL: %s is not the fresh build; run python3 scripts/build_paste.py and commit it' % rel)
