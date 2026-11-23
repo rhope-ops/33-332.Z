@@ -94,6 +94,52 @@ Select-OnlineFiles $onlineGroups (New-Object System.Collections.Generic.List[obj
 Assert-Equal 2 $onlineGroups[0].Files.Count 'Online only, answer y: both files are read'
 Set-FakeOnlineAnswer ''
 
+# A normal old-version read while a scan's pool is open, then the close: no error, and the next scan starts clean
+# (second review of PR 58: the close threw, and every later scan ended INCOMPLETE).
+$livePool = New-ReaderPool $null
+$closeError = ''
+try {
+    $versionText = Invoke-LimitedRead ([System.Text.Encoding]::UTF8.GetBytes('old version text')) 'old.txt'
+    Assert-Equal 'OK' $versionText.Status 'Old version: read in its own runspace while the scan runs'
+}
+finally { try { Close-ReaderPool $livePool } catch { $closeError = $_.Exception.Message } }
+Assert-Equal '' $closeError 'Pool: closes without error after an old-version read'
+$livePool = New-ReaderPool $null
+try { Assert-Equal 'OK' (Invoke-LimitedRead ([System.Text.Encoding]::UTF8.GetBytes('next scan')) 'next.txt').Status 'Old version: the next scan reads again' }
+finally { Close-ReaderPool $livePool }
+
+# A worker stuck inside a .NET call (it does not stop; here for 15 s, so the test run can end): the file is NOT SCANNED after the time limit, and closing the pool
+# (as after Ctrl+C) does not wait for it (the PAM's gov run, 2026-11-23: a scan hung and Ctrl+C did not stop it).
+$readerPool = Get-Module ReaderPool
+$savedLimit = & $readerPool { $script:FileSecondsLimit }
+& $readerPool { $script:FileSecondsLimit = 2 }
+$stuckCode = 'function Invoke-PooledRead { param($Job, $Seen) if ($Job.Id -eq 7) { [System.Threading.Thread]::Sleep(15000) }; @{ Id = $Job.Id; Status = "OK" } }' +
+    "`nfunction Get-TextFromBytes { param(`$Bytes, `$FileName) [System.Threading.Thread]::Sleep(15000) }"
+$stuckPool = New-ReaderPool @{ Code = $stuckCode }
+# One worker only: the next file can run only when the pool gets a worker in place of the stuck one.
+[void]$stuckPool.Pool.SetMaxRunspaces(1); $stuckPool.Max = 1; $stuckPool.Target = 1
+$clock = [Diagnostics.Stopwatch]::StartNew()
+try {
+    Add-PoolJob $stuckPool @{ Id = 7; Name = 'stuck.txt'; Bytes = $null; Path = 'stuck.txt' }
+    $slow = @(Receive-PoolResult $stuckPool -Wait)
+    Assert-Equal '7 NOT SCANNED True' ('{0} {1} {2}' -f $slow[0].Id, $slow[0].Status, $slow[0].Reason.StartsWith('Reading took longer')) 'Pool: a stuck worker gives NOT SCANNED after the limit'
+    Assert-Equal $true ($clock.Elapsed.TotalSeconds -lt 15) 'Pool: the stuck worker does not hold the scan'
+    Add-PoolJob $stuckPool @{ Id = 8; Name = 'next.txt'; Bytes = $null; Path = 'next.txt' }
+    $next = @(Receive-PoolResult $stuckPool -Wait)
+    Assert-Equal '8 OK' ('{0} {1}' -f $next[0].Id, $next[0].Status) 'Pool: the next file runs after a stuck one (one worker)'
+    # An old SharePoint version is read off the main thread, with the same limit (review of PR 58).
+    $clock.Restart()
+    $timedOut = $false
+    try { $null = Invoke-LimitedRead ([byte[]](1, 2, 3)) 'old.pdf' } catch [System.TimeoutException] { $timedOut = $true }
+    Assert-Equal 'True True' ('{0} {1}' -f $timedOut, ($clock.Elapsed.TotalSeconds -lt 10)) 'Old version: a stuck read stops at the limit'
+}
+finally {
+    $clock.Restart()
+    Close-ReaderPool $stuckPool
+    Assert-Equal $true ($clock.Elapsed.TotalSeconds -lt 5) 'Pool: closing does not wait for stuck workers (Ctrl+C ends)'
+    & $readerPool { param($limit) $script:FileSecondsLimit = $limit } $savedLimit
+}
+
 # ---- Accountability (the PAM, 2026-11-21): who changed the file, who added the PII and when ----
 Assert-Equal $Sample.Email (Get-PersonText ([pscustomobject]@{ Email = $Sample.Email; LookupValue = 'Tom Mims' })) 'Who: a SharePoint person is shown by e-mail address'
 # Version history: the first version that holds the SSN dates it, and names who saved that version.

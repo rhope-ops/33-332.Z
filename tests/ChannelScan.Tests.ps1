@@ -40,6 +40,7 @@ Assert-Equal $true $refused 'Teams link without groupId refused'
 Reset-FakePnP @{}
 Set-FakeSiteAnswer -TypedSite 'https://tenant.example.com/teams/TeamA/Shared%20Documents'
 Assert-Equal 'https://tenant.example.com/teams/TeamA' (Connect-TeamSite (Get-ScanTarget $teamLink) 6>$null) 'Teams link: the typed address, cut to the site'
+Assert-Equal 300000 (Get-PnPContext).RequestTimeout 'Sign-in: each SharePoint call has a 5-minute limit (a stalled call cannot hang the scan)'
 Assert-Equal $true (Test-FakePnPCall 'Read-Host') 'Teams link, lookup gives no site: the site address is asked for'
 Assert-Equal 'https://usaf.dps.mil https://tenant.example.com/teams/TeamA' ((Get-FakePnPConnection) -join ' ') 'Teams link: the tenant root for the lookup, then the team site'
 Assert-Equal $true (Test-FakePnPCall ('Lookup /_api/GroupSiteManager/GetSiteStatus ' + $groupId)) 'Teams link: one lookup, of the group in the link'

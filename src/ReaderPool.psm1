@@ -27,6 +27,13 @@ $script:FirstWorkers = 2
 $script:ReviewEvery = 6
 $script:GrowthStep = 0.05
 $script:DropStep = 0.15
+# The longest one file may take in a worker (seconds). Above the PDF reader's own limit (120 s, PdfCore.psm1), so that
+# limit, with its own reason, fires first. A worker over it is stopped without waiting, and the scan goes on (the PAM's
+# gov run, 2026-11-23: a SharePoint scan hung after 50 minutes and Ctrl+C did not stop it).
+$script:FileSecondsLimit = 180
+$script:FileSlowReason = 'Reading took longer than 3 minutes (the file may be fine): check by hand'
+$script:LastInit = $null      # the reader set-up of the last New-ReaderPool (Invoke-LimitedRead uses it)
+$script:LimitedRunspace = $null
 # How long the main thread waits for a worker between screen updates (milliseconds).
 $script:WaitSliceMs = 250
 # Paths longer than this are opened with the \\?\ prefix (Windows' classic limit is 260 characters).
@@ -36,16 +43,18 @@ $script:LongPathAt = 240
 $script:ReaderModules = @('PiiPatterns', 'PiiDetectors', 'PiiMasking', 'OcrText', 'OleText', 'ContainerText', 'PdfCore', 'PdfObjects', 'PdfFonts',
     'PdfShown', 'PdfLayout', 'PdfContent', 'PdfText', 'TextExtract', 'ReaderPool')
 
-# The script each worker runs per job: it loads the reader code once per runspace, then reads one file.
-$script:PoolWorkerScript = @'
-param($Init, $Job, $Seen)
+# The scripts each runspace runs (a worker per file; Invoke-LimitedRead per old version): load the reader code, then read.
+$script:ReaderLoader = @'
 if (-not $global:IonReaderReady) {
     if ($Init.ContainsKey('Code')) { New-Module -Name IonReaders -ScriptBlock ([scriptblock]::Create($Init.Code)) | Import-Module -Global }
     else { Import-Module $Init.Paths -Global -Force }
     $global:IonReaderReady = $true
 }
-Invoke-PooledRead $Job $Seen
 '@
+$script:PoolWorkerScript = "param(`$Init, `$Job, `$Seen)`n" + $script:ReaderLoader + "`nInvoke-PooledRead `$Job `$Seen"
+# The script that reads one old SharePoint version in its own runspace (Invoke-LimitedRead), so a stuck read cannot
+# hang the main thread (review of PR 58). It loads the reader code once per runspace, as a worker does.
+$script:LimitedReadScript = "param(`$Init, `$Bytes, `$Name)`n" + $script:ReaderLoader + "`nGet-TextFromBytes -Bytes `$Bytes -FileName `$Name"
 
 function Read-LocalFileBytes {
     <#
@@ -145,11 +154,12 @@ function New-ReaderPool {
     #>
     param([hashtable]$Init)
     if (-not $Init) { $Init = @{ Paths = @(Get-Module $script:ReaderModules | ForEach-Object { $_.Path }) } }
+    $script:LastInit = $Init
     $max = [Math]::Max(1, [Math]::Min($script:MaxWorkers, [Environment]::ProcessorCount))
     $pool = [runspacefactory]::CreateRunspacePool(1, $max)
     $pool.Open()
     return @{ Pool = $pool; Init = $Init; Jobs = (New-Object System.Collections.Generic.List[object]); Max = $max
-        Target = [Math]::Min($script:FirstWorkers, $max); Seen = [hashtable]::Synchronized(@{}); Done = 0
+        Target = [Math]::Min($script:FirstWorkers, $max); Seen = [hashtable]::Synchronized(@{}); Done = 0; Stuck = 0
         WindowBytes = 0L; WindowClock = [Diagnostics.Stopwatch]::StartNew(); LastRate = 0.0 }
 }
 
@@ -172,7 +182,7 @@ function Add-PoolJob {
     $shell = [powershell]::Create()
     $shell.RunspacePool = $State.Pool
     [void]$shell.AddScript($script:PoolWorkerScript).AddArgument($State.Init).AddArgument($Job).AddArgument($State.Seen)
-    $State.Jobs.Add(@{ Shell = $shell; Handle = $shell.BeginInvoke(); Id = $Job.Id })
+    $State.Jobs.Add(@{ Shell = $shell; Handle = $shell.BeginInvoke(); Id = $Job.Id; Clock = [Diagnostics.Stopwatch]::StartNew() })
 }
 
 function Receive-PoolResult {
@@ -189,9 +199,18 @@ function Receive-PoolResult {
       [hashtable] results of Invoke-PooledRead.
     #>
     param([hashtable]$State, [switch]$Wait, [scriptblock]$OnWait)
+    $slow = 0
     while ($true) {
         $ready = @($State.Jobs | Where-Object { $_.Handle.IsCompleted })
-        if ($ready.Count -gt 0 -or -not $Wait -or $State.Jobs.Count -eq 0) { break }
+        # A worker over the time limit: stopped without waiting; its file gets a NOT SCANNED result now.
+        foreach ($job in @($State.Jobs | Where-Object { -not $_.Handle.IsCompleted -and $_.Clock.Elapsed.TotalSeconds -gt $script:FileSecondsLimit })) {
+            Stop-PoolJob $State $job
+            $slow++
+            $result = @{ Id = $job.Id; Status = 'NOT SCANNED'; Reason = $script:FileSlowReason }
+            Update-PoolTarget $State $result
+            $result
+        }
+        if ($ready.Count -gt 0 -or $slow -gt 0 -or -not $Wait -or $State.Jobs.Count -eq 0) { break }
         if ($OnWait) { & $OnWait $State.Jobs.Count }
         [void]$State.Jobs[0].Handle.AsyncWaitHandle.WaitOne($script:WaitSliceMs)
     }
@@ -233,21 +252,76 @@ function Update-PoolTarget {
     $State.WindowClock.Restart()
 }
 
+function Stop-PoolJob {
+    <#
+    .SYNOPSIS
+      Stops one worker without waiting for it: a worker stuck inside a .NET call does not stop, and a wait for it would
+      hang the scan (and Ctrl+C). The pool gets one more worker in its place; the stuck one ends with the pool.
+    .PARAMETER State
+      The pool of New-ReaderPool.
+    .PARAMETER Job
+      The job (from $State.Jobs).
+    #>
+    param([hashtable]$State, [hashtable]$Job)
+    [void]$State.Jobs.Remove($Job)
+    try { [void]$Job.Shell.BeginStop($null, $null) } catch { Write-Verbose 'A worker had already stopped.' }   # nothing left to stop
+    $State.Stuck++
+    [void]$State.Pool.SetMaxRunspaces($State.Max + $State.Stuck)
+}
+
+function Invoke-LimitedRead {
+    <#
+    .SYNOPSIS
+      Get-TextFromBytes in a runspace of its own, with the per-file time limit ($FileSecondsLimit): for reads on the
+      main thread (old SharePoint versions). The wait is in short slices, so Ctrl+C still stops the scan. Over the
+      limit the runspace is stopped without waiting and left; the next read gets a new one.
+    .PARAMETER Bytes
+      The file bytes.
+    .PARAMETER Name
+      The file name (for its reader).
+    .OUTPUTS
+      Output of Get-TextFromBytes. Throws [TimeoutException] over the limit.
+    #>
+    param([byte[]]$Bytes, [string]$Name)
+    if (-not $script:LastInit) { return Get-TextFromBytes -Bytes $Bytes -FileName $Name }   # no scan set-up: read here
+    if (-not $script:LimitedRunspace) { $script:LimitedRunspace = [runspacefactory]::CreateRunspace(); $script:LimitedRunspace.Open() }
+    $shell = [powershell]::Create()
+    $shell.Runspace = $script:LimitedRunspace
+    [void]$shell.AddScript($script:LimitedReadScript).AddArgument($script:LastInit).AddArgument($Bytes).AddArgument($Name)
+    $handle = $shell.BeginInvoke()
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    while (-not $handle.AsyncWaitHandle.WaitOne($script:WaitSliceMs)) {
+        if ($clock.Elapsed.TotalSeconds -gt $script:FileSecondsLimit) {
+            try { [void]$shell.BeginStop($null, $null) } catch { Write-Verbose 'The read had already stopped.' }   # nothing to stop
+            $script:LimitedRunspace = $null
+            throw (New-Object System.TimeoutException $script:FileSlowReason)
+        }
+    }
+    try { return (@($shell.EndInvoke($handle)) | Select-Object -Last 1) } finally { $shell.Dispose() }
+}
+
 function Close-ReaderPool {
     <#
     .SYNOPSIS
-      Stops the workers that still run (after a cancel or an error) and closes the pool.
+      Stops the workers that still run (after a cancel or an error) and closes the pool, without waiting for a stuck
+      worker (Stop-PoolJob): a cancel always ends.
     .PARAMETER State
       The pool of New-ReaderPool.
     #>
     param([hashtable]$State)
+    $script:LastInit = $null   # no scan now: a later old-version read is done on the calling thread
+    $limited = $script:LimitedRunspace
+    $script:LimitedRunspace = $null
+    # A Runspace closes with CloseAsync (BeginClose is a RunspacePool method: review of PR 58); it never stops the close.
+    if ($limited) { try { $limited.CloseAsync() } catch { Write-Verbose 'The old-version reader was already closed.' } }
     foreach ($job in $State.Jobs.ToArray()) {
-        try { $job.Shell.Stop() } catch { Write-Verbose 'A worker had already stopped.' }   # nothing left to stop
-        $job.Shell.Dispose()
+        if ($job.Handle.IsCompleted) { $job.Shell.Dispose(); [void]$State.Jobs.Remove($job) }
+        else { Stop-PoolJob $State $job }
     }
-    $State.Jobs.Clear()
+    if ($State.Stuck -gt 0) { [void]$State.Pool.BeginClose($null, $null); return }   # it closes when the stuck workers end
     $State.Pool.Close()
     $State.Pool.Dispose()
 }
 
-Export-ModuleMember -Function Read-LocalFileBytes, Get-ContentHash, Invoke-PooledRead, New-ReaderPool, Add-PoolJob, Receive-PoolResult, Close-ReaderPool
+Export-ModuleMember -Function Read-LocalFileBytes, Get-ContentHash, Invoke-PooledRead, New-ReaderPool, Add-PoolJob, Receive-PoolResult, Close-ReaderPool,
+    Invoke-LimitedRead
