@@ -68,6 +68,20 @@ try {
 }
 finally { Close-ReaderPool $pool }
 
+# A normal old-version read while a scan's pool is open, then the close: no error, and the next scan starts clean
+# (second review of PR 58: the close threw, and every later scan ended INCOMPLETE).
+$livePool = New-ReaderPool $null
+$closeError = ''
+try {
+    $versionText = Invoke-LimitedRead ([System.Text.Encoding]::UTF8.GetBytes('old version text')) 'old.txt'
+    Assert-Equal 'OK' $versionText.Status 'Old version: read in its own runspace while the scan runs'
+}
+finally { try { Close-ReaderPool $livePool } catch { $closeError = $_.Exception.Message } }
+Assert-Equal '' $closeError 'Pool: closes without error after an old-version read'
+$livePool = New-ReaderPool $null
+try { Assert-Equal 'OK' (Invoke-LimitedRead ([System.Text.Encoding]::UTF8.GetBytes('next scan')) 'next.txt').Status 'Old version: the next scan reads again' }
+finally { Close-ReaderPool $livePool }
+
 # A worker stuck inside a .NET call (it does not stop; here for 15 s, so the test run can end): the file is NOT SCANNED after the time limit, and closing the pool
 # (as after Ctrl+C) does not wait for it (the PAM's gov run, 2026-11-23: a scan hung and Ctrl+C did not stop it).
 $readerPool = Get-Module ReaderPool

@@ -32,14 +32,14 @@
     src/PdfContent.psm1, sha256 85ee6cfeaf8f
     src/PdfText.psm1, sha256 dffef7dc6f8b
     src/TextExtract.psm1, sha256 5e02d07ddf10
-    src/ReaderPool.psm1, sha256 980e7f13c730
+    src/ReaderPool.psm1, sha256 d459889e74b7
     src/XlsxWriter.psm1, sha256 0d8b1a3e1de1
     src/Report.psm1, sha256 a3d308b542e7
     src/ReportBook.psm1, sha256 63fb7318eda3
     src/ScanMeter.psm1, sha256 18c82f0b37c3
     src/ScanQueue.psm1, sha256 ae11c97d5b8b
     src/Accountability.psm1, sha256 8025033d2736
-    src/SiteTarget.psm1, sha256 7f08b53f17d9
+    src/SiteTarget.psm1, sha256 3ffe3086e86b
     src/ChannelScan.psm1, sha256 0cd4894c7c7b
     src/DriveScan.psm1, sha256 f307e810f8f5
     src/Find-ChannelPII.ps1, sha256 bee2123e2ec3
@@ -68,18 +68,18 @@
     line  3298  Module PdfText.psm1
     line  3490  Module TextExtract.psm1
     line  3908  Module ReaderPool.psm1
-    line  4230  Reader block end
-    line  4234  Module XlsxWriter.psm1
-    line  4541  Module Report.psm1
-    line  4917  Module ReportBook.psm1
-    line  5129  Module ScanMeter.psm1
-    line  5526  Module ScanQueue.psm1
-    line  5916  Module Accountability.psm1
-    line  6298  Module SiteTarget.psm1
-    line  6569  Module ChannelScan.psm1
-    line  6971  Module DriveScan.psm1
-    line  7203  Body of Find-ChannelPII.ps1
-    line  7344  Clean-up
+    line  4233  Reader block end
+    line  4237  Module XlsxWriter.psm1
+    line  4544  Module Report.psm1
+    line  4920  Module ReportBook.psm1
+    line  5132  Module ScanMeter.psm1
+    line  5529  Module ScanQueue.psm1
+    line  5919  Module Accountability.psm1
+    line  6301  Module SiteTarget.psm1
+    line  6572  Module ChannelScan.psm1
+    line  6974  Module DriveScan.psm1
+    line  7206  Body of Find-ChannelPII.ps1
+    line  7347  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -4217,7 +4217,10 @@ function Close-ReaderPool {
     #>
     param([hashtable]$State)
     $script:LastInit = $null   # no scan now: a later old-version read is done on the calling thread
-    if ($script:LimitedRunspace) { [void]$script:LimitedRunspace.BeginClose($null, $null); $script:LimitedRunspace = $null }
+    $limited = $script:LimitedRunspace
+    $script:LimitedRunspace = $null
+    # A Runspace closes with CloseAsync (BeginClose is a RunspacePool method: review of PR 58); it never stops the close.
+    if ($limited) { try { $limited.CloseAsync() } catch { Write-Verbose 'The old-version reader was already closed.' } }
     foreach ($job in $State.Jobs.ToArray()) {
         if ($job.Handle.IsCompleted) { $job.Shell.Dispose(); [void]$State.Jobs.Remove($job) }
         else { Stop-PoolJob $State $job }
@@ -6516,7 +6519,7 @@ function Set-SharePointTimeout {
       Sets the time limit of each SharePoint call on the signed-in connection ($SharePointCallMs). A call over it fails
       with a time-out: a download then gets a NOT SCANNED row, and the scan goes on.
     #>
-    $context = Get-PnPContext
+    try { $context = Get-PnPContext } catch { Write-Verbose 'No client context: no time limit set.'; return }   # never a sign-in error
     if (-not ($context -and $context.PSObject.Properties['RequestTimeout'])) { return }
     if ($context.RequestTimeout -le 0 -or $context.RequestTimeout -gt $script:SharePointCallMs) { $context.RequestTimeout = $script:SharePointCallMs }
 }

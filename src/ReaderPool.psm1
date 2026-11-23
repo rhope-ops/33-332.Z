@@ -310,7 +310,10 @@ function Close-ReaderPool {
     #>
     param([hashtable]$State)
     $script:LastInit = $null   # no scan now: a later old-version read is done on the calling thread
-    if ($script:LimitedRunspace) { [void]$script:LimitedRunspace.BeginClose($null, $null); $script:LimitedRunspace = $null }
+    $limited = $script:LimitedRunspace
+    $script:LimitedRunspace = $null
+    # A Runspace closes with CloseAsync (BeginClose is a RunspacePool method: review of PR 58); it never stops the close.
+    if ($limited) { try { $limited.CloseAsync() } catch { Write-Verbose 'The old-version reader was already closed.' } }
     foreach ($job in $State.Jobs.ToArray()) {
         if ($job.Handle.IsCompleted) { $job.Shell.Dispose(); [void]$State.Jobs.Remove($job) }
         else { Stop-PoolJob $State $job }

@@ -219,7 +219,7 @@ function Set-SharePointTimeout {
       Sets the time limit of each SharePoint call on the signed-in connection ($SharePointCallMs). A call over it fails
       with a time-out: a download then gets a NOT SCANNED row, and the scan goes on.
     #>
-    $context = Get-PnPContext
+    try { $context = Get-PnPContext } catch { Write-Verbose 'No client context: no time limit set.'; return }   # never a sign-in error
     if (-not ($context -and $context.PSObject.Properties['RequestTimeout'])) { return }
     if ($context.RequestTimeout -le 0 -or $context.RequestTimeout -gt $script:SharePointCallMs) { $context.RequestTimeout = $script:SharePointCallMs }
 }
