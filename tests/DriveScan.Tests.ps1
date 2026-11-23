@@ -84,15 +84,15 @@ function New-OnlineGroups {
 }
 $onlineGroups = New-OnlineGroups
 $onlineRows = New-Object System.Collections.Generic.List[object]
-$global:FakePnP.OnlineAnswer = ''
+Set-FakeOnlineAnswer ''
 Select-OnlineFiles $onlineGroups $onlineRows 25 6>$null
 Assert-Equal '1 local.docx' ('{0} {1}' -f $onlineGroups[0].Files.Count, $onlineGroups[0].Files[0].Name) 'Online only, answer Enter: only the file on the disk is read'
 Assert-Equal 1 @($onlineRows | Where-Object { $_.Context -like 'Online only*' }).Count 'Online only, answer Enter: one NOT SCANNED row'
 $onlineGroups = New-OnlineGroups
-$global:FakePnP.OnlineAnswer = 'y'
+Set-FakeOnlineAnswer 'y'
 Select-OnlineFiles $onlineGroups (New-Object System.Collections.Generic.List[object]) 25 6>$null
 Assert-Equal 2 $onlineGroups[0].Files.Count 'Online only, answer y: both files are read'
-$global:FakePnP.OnlineAnswer = ''
+Set-FakeOnlineAnswer ''
 
 # ---- Accountability (the PAM, 2026-11-21): who changed the file, who added the PII and when ----
 Assert-Equal $Sample.Email (Get-PersonText ([pscustomobject]@{ Email = $Sample.Email; LookupValue = 'Tom Mims' })) 'Who: a SharePoint person is shown by e-mail address'

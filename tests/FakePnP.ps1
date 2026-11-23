@@ -56,6 +56,12 @@ function Set-FakePnPOption {
     $global:FakePnP[$Name] = $Value
 }
 
+function Set-FakeOnlineAnswer {
+    # Sets the answer to "Download and read them?" for online-only OneDrive files ('' = Enter = no; 'y' = yes).
+    param([string]$Answer)
+    $global:FakePnP.OnlineAnswer = $Answer
+}
+
 function Set-FakeLookupSite {
     # Sets the tenant root's answer to the group-site lookup of a Teams link ('' = no site; 'fail' = refused).
     param([string]$Site)
