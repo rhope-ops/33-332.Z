@@ -30,4 +30,6 @@ What this repo does for each rule it follows, and where the proof is. The rule s
 | Threat model | `docs/threat-model.md` |
 | Dependency updates (GitHub Actions) | `.github/dependabot.yml` |
 | Line ends and text files | `.gitattributes`, `.editorconfig` |
-| Rule source copies | `ref/SHA256SUMS` |
+| Rule source copies | `ref/SHA256SUMS` (checked by `scripts/check.local.sh`) |
+| Static security scans | `.github/workflows/security.yml` (bandit, gitleaks) |
+| Lint tool pin | `scripts/check.local.sh` (PSScriptAnalyzer 1.23.0, SHA-256 of its code files) |

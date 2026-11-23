@@ -33,4 +33,5 @@ A short STRIDE model of Ion (the DoD365 PII Reporter), its paste bundle and this
 
 - The bundle is not signed. The person trusts the GitHub link and the review of the pull request that changed `src/`.
 - The Pages site has no Content-Security-Policy yet (fleet v2 Stage 3B adds it).
-- No static security scan (bandit, gitleaks) runs yet (fleet v2 Stage 3B adds `security.yml`).
+- `.github/workflows/security.yml` (bandit on `scripts/`, gitleaks on the tree) runs on pull requests and manual runs only. bandit reports one High finding in the kit file `scripts/bloat_check.py` (`shell=True`) until the kit 11.0.0 sync fixes it. gitleaks is checked against the checksums of its own release: this finds a damaged download, not a bad release.
+- PSScriptAnalyzer 1.23.0 is pinned by the SHA-256 of 5 code files in `scripts/check.local.sh`; the pins came from a local 1.23.0 copy (the PowerShell Gallery was not reachable from the build host), and the GitHub runner, which installs from the Gallery, is the proof that they match.
