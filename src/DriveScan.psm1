@@ -69,15 +69,18 @@ function Confirm-OneDriveRoot {
     #>
     param([string]$Path)
     $folder = [System.IO.Path]::GetFullPath($Path).TrimEnd('\', '/')   # "<folder>\." and "<sub>\.." count as the folder
-    $holds = $false   # the pasted folder is a OneDrive folder, or holds one (review of PR 59)
+    $held = @()   # the OneDrive folders that are the pasted folder or are inside it (review of PR 59)
     foreach ($oneDriveHome in @(Get-OneDriveHomes)) {
         try { $full = [System.IO.Path]::GetFullPath($oneDriveHome).TrimEnd('\', '/') } catch { continue }   # a bad variable: not a OneDrive folder
-        if ($full -ieq $folder -or $full.StartsWith($folder + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)) { $holds = $true }
+        if ($full -ieq $folder -or $full.StartsWith($folder + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)) { $held += $full }
     }
-    if (-not $holds) { return $true }
-    $tops = @((New-Object System.IO.DirectoryInfo($folder)).GetDirectories() | ForEach-Object { Protect-PiiName $_.Name })
-    Write-Ui 'This folder holds your whole OneDrive folder. Folders in it can be shortcuts to the libraries of other teams.' 'Accent'
-    Write-Ui ('  Its top folders: ' + ($tops -join ', ')) 'Muted'
+    if ($held.Count -eq 0) { return $true }
+    # The top folders of the OneDrive folder itself: the ones that can be shortcuts (also when a parent folder was pasted).
+    $tops = @(foreach ($oneDrive in $held) { (New-Object System.IO.DirectoryInfo($oneDrive + [System.IO.Path]::DirectorySeparatorChar)).GetDirectories() |
+                ForEach-Object { Protect-PiiName $_.Name } })
+    if ($held -icontains $folder) { Write-Ui 'This is your whole OneDrive folder. Folders in it can be shortcuts to the libraries of other teams.' 'Accent' }
+    else { Write-Ui 'This folder holds your whole OneDrive folder. Folders in OneDrive can be shortcuts to the libraries of other teams.' 'Accent' }
+    Write-Ui ('  The top folders in OneDrive: ' + ($tops -join ', ')) 'Muted'
     Write-Ui '  To scan one team only, press Enter, then paste the folder of that team.' 'Muted'
     return ((Read-Host 'Scan all of them? [y/N]') -match '^\s*y')
 }

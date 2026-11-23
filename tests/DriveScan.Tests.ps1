@@ -163,6 +163,9 @@ try {
     $sibling = $odRoot + '-library'   # a synced team library next to OneDrive (registry list, not the variable)
     New-Item -ItemType Directory -Path $sibling -Force | Out-Null
     Assert-Equal $true (Confirm-OneDriveRoot $sibling 6>$null) 'A synced team library folder: no question'
+    $env:OneDrive = 'bad' + [char]0 + 'path'   # a path .NET cannot read: skipped, the scan is not stopped
+    Assert-Equal $true (Confirm-OneDriveRoot $sibling 6>$null) 'A bad OneDrive variable: skipped, no error'
+    $env:OneDrive = $odRoot
     Remove-Item -LiteralPath $sibling -Recurse -Force -ErrorAction SilentlyContinue
     # A cancel at the question saves nothing (as at "Scan now?"): Invoke-DriveScan returns no workbook.
     Set-FakeRootAnswer 'cancel'
