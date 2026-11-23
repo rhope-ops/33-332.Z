@@ -126,13 +126,13 @@ Each file starts with a header: purpose, inputs, outputs, how to run, run target
 | `src/ScanQueue.psm1` | Turns the reader pool's results into report rows, in the order files finish; the steps both scans share, and the "Scan now?" question |
 | `src/Accountability.psm1` | Who made and changed a file with PII, and who put the PII in and when |
 | `src/TextExtract.psm1` | Turns file bytes into plain text, in memory, and picks the reader for each file type |
-| `src/PdfCore.psm1`, `src/PdfObjects.psm1`, `src/PdfFonts.psm1`, `src/PdfLayout.psm1`, `src/PdfText.psm1` | The PDF reader, with .NET only: limits and stream filters, objects, fonts, word spacing, page text |
+| `src/PdfCore.psm1`, `src/PdfObjects.psm1`, `src/PdfFonts.psm1`, `src/PdfShown.psm1`, `src/PdfLayout.psm1`, `src/PdfContent.psm1`, `src/PdfText.psm1` | The PDF reader, with .NET only: limits and stream filters, objects, fonts, word spacing, page text |
 | `src/OcrText.psm1` | Text in images and in a scanned PDF's JPEG pages, with Windows' built-in OCR |
 | `src/OleText.psm1` | Text from old .doc, .xls and .ppt files and Outlook .msg messages |
 | `src/ContainerText.psm1` | Opens .zip archives and .eml e-mails in memory, so each file inside is read |
-| `src/PiiDetectors.psm1` | One detector per PII type; finds positions and raw values |
+| `src/PiiPatterns.psm1`, `src/PiiDetectors.psm1` | One detector per PII type; finds positions and raw values |
 | `src/PiiMasking.psm1` | Masks every value and snippet; the only way results leave the detectors |
-| `src/Report.psm1` | Screen summary, the severity order, the workbook tabs and where the workbook is saved |
+| `src/Report.psm1`, `src/ReportBook.psm1` | Screen summary and the severity order; the workbook tabs and where the workbook is saved |
 | `src/XlsxWriter.psm1` | Writes the .xlsx workbook with .NET only (no Excel, no module) |
 | `src/ScanMeter.psm1` | The two progress bars and the line per folder: counts, and the MB downloaded of a large file; folder names masked |
 | `tests/Run-Tests.ps1` | Runs all tests (invented data, fake PnP cmdlets, no network) |
@@ -142,5 +142,5 @@ Each file starts with a header: purpose, inputs, outputs, how to run, run target
 | `paste/Ion-script.txt` | GENERATED: the one text you paste into ISE (the run steps, a Settings block, the modules and the script); the README and the site link it |
 | `scripts/build_paste.py` | Builds the paste text from `src/`; `--check` fails when it is out of date |
 | `scripts/build_paste_test.py` | Self-test of the paste build and of the script links |
-| `site.config.json` | The one home of the repo's GitHub owner, name, branch and script path (the links are checked against it) |
+| `site.config.json` | The one home of the repo's GitHub owner, name, branch and script path (`scripts/build_paste_test.py` checks the links against it) |
 | `ref/afi33-332.pdf`, `ref/afi33-332.txt` | The rule source: AFI 33-332 with AFI33-332_DAFGM2026-01 |

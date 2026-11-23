@@ -16,9 +16,11 @@ Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
 
 $sourceFolder = Join-Path (Split-Path $PSScriptRoot -Parent) 'src'
-$readerModules = @('PiiDetectors.psm1', 'PiiMasking.psm1', 'OcrText.psm1', 'OleText.psm1', 'ContainerText.psm1',
-    'PdfCore.psm1', 'PdfObjects.psm1', 'PdfFonts.psm1', 'PdfLayout.psm1', 'PdfText.psm1', 'TextExtract.psm1', 'ReaderPool.psm1')
-foreach ($module in $readerModules + @('XlsxWriter.psm1', 'Report.psm1', 'ScanMeter.psm1', 'ScanQueue.psm1', 'Accountability.psm1', 'SiteTarget.psm1', 'ChannelScan.psm1', 'DriveScan.psm1')) {
+$readerModules = @('PiiPatterns.psm1', 'PiiDetectors.psm1', 'PiiMasking.psm1', 'OcrText.psm1', 'OleText.psm1', 'ContainerText.psm1',
+    'PdfCore.psm1', 'PdfObjects.psm1', 'PdfFonts.psm1', 'PdfShown.psm1', 'PdfLayout.psm1', 'PdfContent.psm1', 'PdfText.psm1', 'TextExtract.psm1', 'ReaderPool.psm1')
+$otherModules = @('XlsxWriter.psm1', 'Report.psm1', 'ReportBook.psm1',
+    'ScanMeter.psm1', 'ScanQueue.psm1', 'Accountability.psm1', 'SiteTarget.psm1', 'ChannelScan.psm1', 'DriveScan.psm1')
+foreach ($module in $readerModules + $otherModules) {
     Import-Module (Join-Path $sourceFolder $module) -Force
 }
 
@@ -26,7 +28,7 @@ foreach ($module in $readerModules + @('XlsxWriter.psm1', 'Report.psm1', 'ScanMe
 . (Join-Path $PSScriptRoot 'FakePnP.ps1')
 
 # Order matters: Extraction builds $Docx and $Txt, which the later files use.
-$testFiles = @('Detectors.Tests.ps1', 'Extraction.Tests.ps1', 'Protection.Tests.ps1', 'ChannelScan.Tests.ps1', 'DriveScan.Tests.ps1',
+$testFiles = @('Detectors.Tests.ps1', 'Extraction.Tests.ps1', 'ReaderRounds.Tests.ps1', 'Protection.Tests.ps1', 'ChannelScan.Tests.ps1', 'DriveScan.Tests.ps1',
     'Report.Tests.ps1', 'EndToEnd.Tests.ps1', 'Bundle.Tests.ps1')
 foreach ($testFile in $testFiles) {
     . (Join-Path $PSScriptRoot $testFile)

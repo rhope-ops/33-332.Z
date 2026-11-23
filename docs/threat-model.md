@@ -21,7 +21,7 @@ A short STRIDE model of Ion (the DoD365 PII Reporter), its paste bundle and this
 
 | Threat | Example | Control |
 |---|---|---|
-| Spoofing | A changed copy of the bundle from another source | The person opens it only from this repo's README or site link; the header lists each source file with its SHA-256 |
+| Spoofing | A changed copy of the bundle from another source | The person opens it only from this repo's README or site link (GitHub over HTTPS); a copy from anywhere else is not trusted |
 | Tampering | A pull request that changes the bundle by hand | `scripts/build_paste.py --check` fails when `paste/Ion-script.txt` is not the fresh build of `src/`; guard files change only on the PAM's request |
 | Repudiation | Who put PII in a file | The report names the first version that holds the PII (version history), Created By and Modified By |
 | Information disclosure | A found SSN shown in full in the report or the console | Masked output (Project rule; `src/PiiMasking.psm1`; tests in `tests/`); `.check` blocks report files; the content check on push |

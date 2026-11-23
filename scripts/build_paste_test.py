@@ -98,6 +98,20 @@ class BuildPasteTest(unittest.TestCase):
         self.assertFalse(bp.RETIRED.exists())
         self.assertEqual(bp.BUNDLE.name, 'Ion-script.txt')
 
+    def test_check_fails_when_retired_copy_is_back(self):
+        """build_paste.py --check exits 1 when the retired .ps1 exists (a stand-in path in a temporary folder)."""
+        saved_retired, saved_argv = bp.RETIRED, sys.argv
+        with tempfile.TemporaryDirectory() as tmp:
+            try:
+                bp.RETIRED = pathlib.Path(tmp) / 'retired.ps1'
+                bp.RETIRED.write_text('x')
+                sys.argv = ['build_paste.py', '--check']
+                with self.assertRaises(SystemExit) as stop:
+                    bp.main()
+            finally:
+                bp.RETIRED, sys.argv = saved_retired, saved_argv
+        self.assertEqual(stop.exception.code, 1)
+
     def test_links_follow_site_config(self):
         """The README raw link and the site button match site.config.json."""
         config = json.loads((ROOT / 'site.config.json').read_text(encoding='utf-8'))
