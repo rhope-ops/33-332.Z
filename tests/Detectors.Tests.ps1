@@ -85,6 +85,25 @@ Assert-Equal 0 @(Get-HitSummary 'Signed 2026-11-23 10:15' | Where-Object { $_ -l
 foreach ($case in @("$capsName $($Sample.Ssn) 3", "DOE, JANE $($Sample.Ssn) 3", "NAME LIST`n$($Sample.Ssn)`n5 ITEMS")) {
     Assert-Equal 'SSN/Medium/***-**-6789' ((Get-HitSummary $case) -join ',') "Dashed SSN and a count after a name shape stays an SSN: $($case -replace '\d', '#')"
 }
+# Second review of PR 57: mixed phone separators, a date and time, a sentence with "signed", a comma heading, roster rows.
+$phoneMixed = $d.Substring(0, 3) + ' ' + $d.Substring(3, 3) + '-' + $d.Substring(6)
+foreach ($case in @("POC: JANE DOE $phoneMixed", "CALL DSN $($phoneDashed.Substring(0, 7)) $($d.Substring(6))", "Signed by the commander. Call $phoneMixed")) {
+    $types = @(Find-PiiInText $case | ForEach-Object { $_.Detector })
+    Assert-Equal 'True False' ('{0} {1}' -f ($types -contains 'Phone'), ($types -contains 'DoD ID')) "Phone with mixed separators stays a phone: $($case -replace '\d', '#')"
+}
+# A phone number split over two lines is no hit (as before), and no DoD ID.
+Assert-Equal 0 @(Get-HitSummary "CALL DSN $($phone.Substring(0, 7))`n$($d.Substring(6))" | Where-Object { $_ -like 'DoD ID/*' }).Count 'Phone over two lines: no DoD ID'
+foreach ($case in @('Signed 20261123 10:15', "The contract was signed. Tracking $d", "TOTAL, ALL UNITS $d")) {
+    Assert-Equal 0 @(Get-HitSummary $case | Where-Object { $_ -like 'DoD ID/*' }).Count "No e-signature: $($case -replace '\d', '#')"
+}
+foreach ($case in @("1 $capsName $nine`n2 DOE JOHN", "TOTAL FOR UNIT`n$nine $tenth")) {
+    Assert-Equal 'SSN/Low/***-**-6789' ((Get-HitSummary $case) -join ',') "Roster row or heading line: the SSN stays: $($case -replace '\d', '#')"
+}
+Assert-Equal 'DoD ID/Low/******7890' ((Get-HitSummary "$($cacName.ToLower()) $d") -join ',') 'Lower-case dotted name, a space, the digits'
+$rows = (1..2000 | ForEach-Object { "$capsName $($d.Substring(0, 3)) $($d.Substring(3, 2)) $($d.Substring(5, 4)) $tenth" }) -join "`n"
+$clock = [Diagnostics.Stopwatch]::StartNew()
+$rowHits = Get-HitSummary $rows
+Assert-Equal '2000 True' ('{0} {1}' -f $rowHits.Count, ($clock.Elapsed.TotalSeconds -lt 15)) '2,000 signature rows: 2,000 DoD IDs in under 15 s (no quadratic check)'
 foreach ($case in @("report.final.v $nine $tenth", "THE UNIT A $nine-$tenth")) {
     Assert-Equal 0 @(Get-HitSummary $case | Where-Object { $_ -like 'DoD ID/*' }).Count "No e-signature: $($case -replace '\d', '#')"
 }

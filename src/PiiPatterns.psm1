@@ -34,34 +34,37 @@ $script:ShortKeywordWindowChars = 30
 [regex]::CacheSize = 64
 
 # E-signatures (a CAC name, then the 10-digit DoD ID). PDF text extraction drops the dots, adds spaces and breaks lines
-# in a signature box (the PAM, 2026-11-23), so a name is one of these shapes:
-#  - dotted capitals, 2 to 4 parts: DOE.JANE.Q. (the last name has 2 letters or more, so "J.A." and "U.S." are no name;
-#    nor are abbreviations such as "REF.NO.": review of PR 49);
-#  - dotted, any letter case, with a one-letter middle initial: doe.jane.q. ("backup.config." and "e.g." are no name);
+# in a signature box (the PAM, 2026-11-23). Decisions: docs/DECISIONS.md 2026-11-21 and 2026-11-23. A name is one of:
+#  - dotted capitals, 2 to 4 parts: DOE.JANE.Q. ("J.A.", "U.S." and "REF.NO." are no name: review of PR 49);
+#  - dotted, any letter case, with a one-letter middle initial and its dot: doe.jane.q. ("backup.config." is no name);
 #  - capitals without dots, 2 to 4 words, a comma allowed after the last name: DOE JANE Q, DOE, JANE Q.
-# An apostrophe (straight or typographic) and a hyphen may be in a name part. A name without its last dot, or without
-# dots, needs a gap before the digits: spaces, or one line break. A dotted name that is not all capitals needs its last
-# dot, then the digits right after it or after one line break ("report.final.v ######### #" is a file name). The digits may have one space, dash or line break
-# between any two of them, or stand on the line before a dotted name. After capitals without dots and without a comma,
-# the digits must have a space or line break ("DOE JANE Q 123 45 6789 0"): a heading such as "THE UNIT A" then a plain 10-digit number
-# is no e-signature (measured 2026-11-23: 2,861 false DoD IDs in 2 MB of invented prose without this limit). Without a name, a signature word just before the digits
-# (signed, CN=, DN:, Signature:) also makes them a DoD ID. Decisions: docs/DECISIONS.md 2026-11-21 and 2026-11-23.
+# A name part may hold an apostrophe (straight or typographic) or a hyphen. Between a dotted name and the digits:
+# nothing, spaces or one line break (a capitals name without its last dot needs the gap). The digits may have one
+# space, dash or line break between any two of them, or stand on the line before a dotted name.
+# Capitals without dots: the same line only, and the digits must have a space in them ("DOE JANE Q 123 45 6789 0"):
+# a heading or roster row ("THE UNIT A", then a plain number or the next row's number) is no e-signature (2026-11-23:
+# 2,861 false DoD IDs in 2 MB of invented prose without this limit; review of PR 57).
+# Without a name, a signature phrase just before the digits (signed by, signed:, Signature:, CN=, DN:) is enough.
 $script:NotNamePart = '(?!(?:NO|NR|NUM|REF|ACCT|ACC|TEL|PH|FAX|ID|DOC|REV|VER)\.)'
 $script:CapsDotted = $script:NotNamePart + "[A-Z][A-Z'\u2019-]+\." + $script:NotNamePart + "[A-Z][A-Z'\u2019-]*(?:\.[A-Z][A-Z'\u2019-]*){0,2}"
 $script:AnyCaseDotted = "(?i:$($script:NotNamePart)[a-z][a-z'\u2019-]+(?:\.[a-z][a-z'\u2019-]*){1,2}\.[a-z](?:\.(?:jr|sr|ii|iii|iv))?)"
 $script:CapsSpaced = "[A-Z][A-Z'\u2019-]+,?(?: +[A-Z][A-Z'\u2019-]*){1,3}"
 $script:SignatureGap = '(?:[ \t]{1,3}|[ \t]*\r?\n[ \t]*)'
-$script:DodIdDigits = '(?<id>\d(?:(?:[ -]|[ \t]*\r?\n[ \t]*)?\d){9})(?!\w|[ -]\d(?!\d))'
-$script:SignatureNamePattern = '(?<![\w.])(?:' + $script:CapsDotted + '(?:\.' + $script:SignatureGap + '?|' + $script:SignatureGap + ')|' +
-    $script:AnyCaseDotted + '\.(?:[ \t]*\r?\n[ \t]*)?|(?<spaced>' + $script:CapsSpaced + ')\.?' + $script:SignatureGap + ')' + $script:DodIdDigits
-# Digit shapes that are something else, never an e-signature DoD ID (review of PR 57): a phone number (3-3-4), a date
-# (yyyy-mm-dd, mm/dd/yyyy), and a dashed SSN followed by a separate digit (a count): these stay what the other detectors say.
-$script:NotDodIdShape = '^(?:\d{3}([ .-])\d{3}\1\d{4}|\d{4}[-./]\d{2}[-./]\d{2}|\d{2}[-./]\d{2}[-./]\d{4}|\d{3}-\d{2}-\d{4}(?!-))'
-$script:DigitsBeforeNamePattern = '(?<![\w-])' + $script:DodIdDigits.Replace('(?!\w|[ -]\d(?!\d))', '') + '[ \t]*\r?\n[ \t]*(?:' +
+# After the 10 digits: no letter, digit, time (":") or lone digit (an 11th digit).
+$script:DodIdEnd = '(?!\w|:|[ -]\d(?!\d))'
+$script:DodIdDigits = '(?<id>\d(?:(?:[ -]|[ \t]*\r?\n[ \t]*)?\d){9})' + $script:DodIdEnd
+$script:DodIdDigitsInline = '(?<id>\d(?:[ -]?\d){9})' + $script:DodIdEnd
+$script:SignatureNamePattern = '(?<![\w.])(?:(?:' + $script:CapsDotted + '(?:\.' + $script:SignatureGap + '?|' + $script:SignatureGap + ')|' +
+    $script:AnyCaseDotted + '\.' + $script:SignatureGap + '?)' + $script:DodIdDigits + '|(?<spaced>' + $script:CapsSpaced + ')\.?[ \t]{1,3}' +
+    $script:DodIdDigitsInline + ')'
+# Digit shapes that are something else, never an e-signature DoD ID (reviews of PR 57): a phone number (3-3-4, any
+# separators), a date (yyyy-mm-dd, mm/dd/yyyy), and a dashed SSN followed by a separate digit (a count).
+$script:NotDodIdShape = '^(?:\d{3}[ .\-\r\n]+\d{3}[ .\-\r\n]+\d{4}$|\d{4}[-./]\d{2}[-./]\d{2}|\d{2}[-./]\d{2}[-./]\d{4}|\d{3}-\d{2}-\d{4}(?!-))'
+$script:DigitsBeforeNamePattern = '(?<![\w-])(?<id>\d(?:(?:[ -]|[ \t]*\r?\n[ \t]*)?\d){9})[ \t]*\r?\n[ \t]*(?:' +
     $script:CapsDotted + '|' + $script:AnyCaseDotted + ')\.'
 $script:SignatureDigitsPattern = '(?<![\w-])' + $script:DodIdDigits
-# Words that put a number in a digital signature, looked for just before the digits (Test-KeywordBefore, 40 characters).
-$script:SignatureWords = '(?i:\bsigned\b|\bCN\s*=|\bDN\s*:|\bsignature\s*:)'
+# Signature phrases that put a number in a digital signature, looked for just before the digits (Test-KeywordBefore).
+$script:SignatureWords = '(?i:\bsigned\s+by\b|\bsigned\s*:|\bCN\s*=|\bDN\s*:|\bsignature\s*:)'
 
 # E-mail top-level labels that mark a government address (not reported as personal e-mail).
 $script:GovernmentMailLabels = @('gov', 'mil')
@@ -194,8 +197,7 @@ function Get-ESignatureDigits {
             $spaced = $m.Groups['spaced']
             $value = $m.Groups['id'].Value
             if ($value -match $script:NotDodIdShape) { continue }
-            # Capitals without dots and without a comma: only digits with a space or line break in them (a heading).
-            if ($spaced.Success -and -not $spaced.Value.Contains(',') -and $value -notmatch '\s') { continue }
+            if ($spaced.Success -and -not $value.Contains(' ')) { continue }   # capitals without dots: digits with a space
             $found[$m.Groups['id'].Index] = $value
         }
     }
@@ -226,16 +228,23 @@ function Find-SsnHits {
     # No letter, digit, underscore or dash may touch the number: Word bookmarks (_Toc123456789) and IDs (ABC123456789)
     # are not SSNs (the PAM, 2026-11-20: trim false positives).
     $pattern = '(?<![\w-])(\d{3})([- ]?)(\d{2})\2(\d{4})(?![\w-])'
-    $signatures = $null
+    $signatureEnd = $null
     foreach ($m in [regex]::Matches($Text, $pattern)) {
         if (-not (Test-SsnValid $m.Groups[1].Value $m.Groups[3].Value $m.Groups[4].Value)) { continue }
         $labelled = Test-KeywordBefore $Text $m.Index $labels
         # Without a label, 9 digits inside an e-signature DoD ID are no SSN (the PAM's gov runs, 2026-11-21 and
         # 2026-11-23: DoD IDs in PDF signature blocks were shown as SSNs). The e-signatures are found once per text.
         if (-not $labelled) {
-            if ($null -eq $signatures) { $signatures = @(Get-ESignatureDigits $Text) }
-            $inside = @($signatures | Where-Object { $m.Index -ge $_.Index -and $m.Index + $m.Length -le $_.Index + $_.Value.Length })
-            if ($inside.Count -gt 0) { continue }
+            # Where each e-signature's digits end, by each of their positions: one lookup per match (a list scan per
+            # match was quadratic: 20 s for 2,000 signature rows, review of PR 57).
+            if ($null -eq $signatureEnd) {
+                $signatureEnd = @{}
+                foreach ($signature in @(Get-ESignatureDigits $Text)) {
+                    $end = $signature.Index + $signature.Value.Length
+                    for ($at = $signature.Index; $at -lt $end; $at++) { $signatureEnd[$at] = $end }
+                }
+            }
+            if ($signatureEnd.ContainsKey($m.Index) -and $m.Index + $m.Length -le $signatureEnd[$m.Index]) { continue }
         }
         $confidence = 'Low'
         if ($m.Groups[2].Value -ne '') { $confidence = 'Medium' }
