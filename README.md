@@ -142,5 +142,8 @@ Each file starts with a header: purpose, inputs, outputs, how to run, run target
 | `paste/Ion-script.txt` | GENERATED: the one text you paste into ISE (the run steps, a Settings block, the modules and the script); the README and the site link it |
 | `scripts/build_paste.py` | Builds the paste text from `src/`; `--check` fails when it is out of date |
 | `scripts/build_paste_test.py` | Self-test of the paste build and of the script links |
+| `scripts/site_page.py` | Checks the site page: size, security metas, skip link, live region, image files and the WCAG contrast of its colours (run by the site check) |
+| `assets/logo-33-332z.svg`, `assets/logo-core.svg` | The two logos of the site page |
+| `docs/MAINTAINER_GUIDE.md` | Steps to change Ion, rebuild the paste text, change the site page and check the work |
 | `site.config.json` | The one home of the repo's GitHub owner, name, branch and script path (`scripts/build_paste_test.py` checks the links against it) |
 | `ref/afi33-332.pdf`, `ref/afi33-332.txt` | The rule source: AFI 33-332 with AFI33-332_DAFGM2026-01 |
