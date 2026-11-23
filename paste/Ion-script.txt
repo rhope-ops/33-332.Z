@@ -41,7 +41,7 @@
     src/Accountability.psm1, sha256 8025033d2736
     src/SiteTarget.psm1, sha256 94ec51d69912
     src/ChannelScan.psm1, sha256 0cd4894c7c7b
-    src/DriveScan.psm1, sha256 3a77d660a722
+    src/DriveScan.psm1, sha256 c5aad7eded25
     src/Find-ChannelPII.ps1, sha256 bee2123e2ec3
 
   Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.
@@ -78,8 +78,8 @@
     line  6301  Module SiteTarget.psm1
     line  6593  Module ChannelScan.psm1
     line  6995  Module DriveScan.psm1
-    line  7314  Body of Find-ChannelPII.ps1
-    line  7455  Clean-up
+    line  7338  Body of Find-ChannelPII.ps1
+    line  7479  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -7041,6 +7041,28 @@ function Get-OneDriveRoots {
     return @($roots | Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\') })
 }
 
+function Confirm-OneDriveRoot {
+    <#
+    .SYNOPSIS
+      When the pasted folder is itself a OneDrive sync folder (Get-OneDriveRoots), its top folders can be shortcuts to
+      other teams' libraries ("Add shortcut to My files"), which look like normal folders. Ion says so, lists the top
+      folders (names masked) and asks before it scans them all (the PAM, 2026-11-23: "Warn, then ask"; the rule
+      "No reconnaissance"). Any other folder: true without a question.
+    .PARAMETER Path
+      The pasted folder.
+    .OUTPUTS
+      [bool] true to scan.
+    #>
+    param([string]$Path)
+    $folder = $Path.TrimEnd('\', '/')
+    if (-not (@(Get-OneDriveRoots) | Where-Object { $_ -ieq $folder })) { return $true }
+    $tops = @((New-Object System.IO.DirectoryInfo($folder)).GetDirectories() | ForEach-Object { Protect-PiiName $_.Name })
+    Write-Ui 'This is a whole OneDrive folder. Folders in it can be shortcuts to the libraries of other teams.' 'Accent'
+    Write-Ui ('  Its top folders: ' + ($tops -join ', ')) 'Muted'
+    Write-Ui '  To scan one team only, press Enter, then paste the folder of that team.' 'Muted'
+    return ((Read-Host 'Scan all of them? [y/N]') -match '^\s*y')
+}
+
 function Get-ReparseKind {
     <#
     .SYNOPSIS
@@ -7279,6 +7301,8 @@ function Invoke-DriveScan {
     $run = @{ Meter = (New-ScanMeter 0); Reading = [TimeSpan]::Zero; Workers = 0 }   # filled by Invoke-ScanRun
     try {
         if (-not (Test-Path -LiteralPath $Path -PathType Container)) { throw 'This folder cannot be opened (check the path, and that you can open it in File Explorer).' }
+        # A whole OneDrive folder can hold shortcuts to other teams' libraries ("No reconnaissance"): ask first.
+        if (-not (Confirm-OneDriveRoot $Path)) { $run.Declined = $true; return $null }
         Write-Ui 'Listing the files ...' 'Muted'
         $found = Get-DriveGroups $Path
         $groups = $found.Groups.ToArray()

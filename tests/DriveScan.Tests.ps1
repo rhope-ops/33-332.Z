@@ -145,6 +145,25 @@ finally {
     & $readerPool { param($limit) $script:FileSecondsLimit = $limit } $savedLimit
 }
 
+# A whole OneDrive folder (the PAM, 2026-11-23: "Warn, then ask"): its top folders can be shortcuts to other teams'
+# libraries ("No reconnaissance"), so Ion asks first; Enter = no. A folder inside it, or any other folder: no question.
+$odRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('ion-od-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path (Join-Path $odRoot 'Team A') -Force | Out-Null
+$savedOneDrive = $env:OneDrive
+try {
+    $env:OneDrive = $odRoot
+    Set-FakeRootAnswer ''
+    Assert-Equal $false (Confirm-OneDriveRoot $odRoot 6>$null) 'Whole OneDrive folder, answer Enter: not scanned'
+    Set-FakeRootAnswer 'y'
+    Assert-Equal $true (Confirm-OneDriveRoot ($odRoot + [System.IO.Path]::DirectorySeparatorChar) 6>$null) 'Whole OneDrive folder, answer y: scanned'
+    Set-FakeRootAnswer ''
+    Assert-Equal $true (Confirm-OneDriveRoot (Join-Path $odRoot 'Team A') 6>$null) 'A folder inside OneDrive: no question'
+}
+finally {
+    $env:OneDrive = $savedOneDrive
+    Remove-Item -LiteralPath $odRoot -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 # ---- Accountability (the PAM, 2026-11-21): who changed the file, who added the PII and when ----
 Assert-Equal $Sample.Email (Get-PersonText ([pscustomobject]@{ Email = $Sample.Email; LookupValue = 'Tom Mims' })) 'Who: a SharePoint person is shown by e-mail address'
 # Version history: the first version that holds the SSN dates it, and names who saved that version.

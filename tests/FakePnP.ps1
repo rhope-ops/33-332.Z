@@ -37,6 +37,7 @@ function Reset-FakePnP {
         ListFails   = $false
         ConnectFails = $false                                     # the web login to a site fails (an error before the scan)
         OnlineAnswer = ''                                         # the answer to "Download and read them?" (Enter = no)
+        RootAnswer  = ''                                          # the answer to "Scan all of them?" (a whole OneDrive folder)
         SiteFails   = $false                                      # Get-PnPSite fails (the site's group cannot be read)
         TypedSite   = New-Object System.Collections.Generic.Queue[string]   # the fake Read-Host's answers, in order; none = Enter
         NoAccess    = $false                                      # the site refuses the signed-in person (403)
@@ -54,6 +55,12 @@ function Set-FakePnPOption {
     # Changes one switch of the fake site: ListFails, ConnectFails, SiteFails or NoAccess.
     param([ValidateSet('ListFails', 'ConnectFails', 'SiteFails', 'NoAccess', 'StopInFolder2')][string]$Name, [bool]$Value)
     $global:FakePnP[$Name] = $Value
+}
+
+function Set-FakeRootAnswer {
+    # Sets the answer to "Scan all of them?" for a whole OneDrive folder ('' = Enter = no; 'y' = yes).
+    param([string]$Answer)
+    $global:FakePnP.RootAnswer = $Answer
 }
 
 function Set-FakeOnlineAnswer {
@@ -276,6 +283,7 @@ function global:Read-Host {
     [CmdletBinding()] param($Prompt)
     # The open-the-workbook question has its own answer (Enter = open), so the queued addresses stay in order.
     if ([string]$Prompt -like 'Open the workbook*') { $global:FakePnP.Calls.Add('Open question'); return $global:FakePnP.OpenAnswer }
+    if ([string]$Prompt -like 'Scan all of them*') { $global:FakePnP.Calls.Add('Root question'); return $global:FakePnP.RootAnswer }
     if ([string]$Prompt -like 'Download and read them*') { $global:FakePnP.Calls.Add('Online question'); return $global:FakePnP.OnlineAnswer }
     if ([string]$Prompt -like 'Scan now*') {
         $global:FakePnP.Calls.Add('Scan question')

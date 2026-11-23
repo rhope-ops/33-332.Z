@@ -47,6 +47,28 @@ function Get-OneDriveRoots {
     return @($roots | Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\') })
 }
 
+function Confirm-OneDriveRoot {
+    <#
+    .SYNOPSIS
+      When the pasted folder is itself a OneDrive sync folder (Get-OneDriveRoots), its top folders can be shortcuts to
+      other teams' libraries ("Add shortcut to My files"), which look like normal folders. Ion says so, lists the top
+      folders (names masked) and asks before it scans them all (the PAM, 2026-11-23: "Warn, then ask"; the rule
+      "No reconnaissance"). Any other folder: true without a question.
+    .PARAMETER Path
+      The pasted folder.
+    .OUTPUTS
+      [bool] true to scan.
+    #>
+    param([string]$Path)
+    $folder = $Path.TrimEnd('\', '/')
+    if (-not (@(Get-OneDriveRoots) | Where-Object { $_ -ieq $folder })) { return $true }
+    $tops = @((New-Object System.IO.DirectoryInfo($folder)).GetDirectories() | ForEach-Object { Protect-PiiName $_.Name })
+    Write-Ui 'This is a whole OneDrive folder. Folders in it can be shortcuts to the libraries of other teams.' 'Accent'
+    Write-Ui ('  Its top folders: ' + ($tops -join ', ')) 'Muted'
+    Write-Ui '  To scan one team only, press Enter, then paste the folder of that team.' 'Muted'
+    return ((Read-Host 'Scan all of them? [y/N]') -match '^\s*y')
+}
+
 function Get-ReparseKind {
     <#
     .SYNOPSIS
@@ -285,6 +307,8 @@ function Invoke-DriveScan {
     $run = @{ Meter = (New-ScanMeter 0); Reading = [TimeSpan]::Zero; Workers = 0 }   # filled by Invoke-ScanRun
     try {
         if (-not (Test-Path -LiteralPath $Path -PathType Container)) { throw 'This folder cannot be opened (check the path, and that you can open it in File Explorer).' }
+        # A whole OneDrive folder can hold shortcuts to other teams' libraries ("No reconnaissance"): ask first.
+        if (-not (Confirm-OneDriveRoot $Path)) { $run.Declined = $true; return $null }
         Write-Ui 'Listing the files ...' 'Muted'
         $found = Get-DriveGroups $Path
         $groups = $found.Groups.ToArray()
@@ -317,4 +341,5 @@ function Invoke-DriveScan {
     return $workbook
 }
 
-Export-ModuleMember -Function Get-DriveGroups, Invoke-DriveScan, Get-ReparseKind, Select-OnlineFiles, Get-OneDriveRoots
+Export-ModuleMember -Function Get-DriveGroups, Invoke-DriveScan, Get-ReparseKind, Select-OnlineFiles, Get-OneDriveRoots,
+    Confirm-OneDriveRoot
