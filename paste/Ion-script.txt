@@ -26,7 +26,7 @@
     src/ContainerText.psm1, sha256 7378569bd7e6
     src/PdfCore.psm1, sha256 2911c3a19ab3
     src/PdfObjects.psm1, sha256 085efef3e4fb
-    src/PdfFonts.psm1, sha256 21b8c948e5b4
+    src/PdfFonts.psm1, sha256 b637776a0111
     src/PdfShown.psm1, sha256 abcac9ee7a8f
     src/PdfLayout.psm1, sha256 feafecd946b7
     src/PdfContent.psm1, sha256 85ee6cfeaf8f
@@ -35,7 +35,7 @@
     src/ReaderPool.psm1, sha256 9b83b515d231
     src/XlsxWriter.psm1, sha256 0d8b1a3e1de1
     src/Report.psm1, sha256 fe79d83f6d80
-    src/ReportBook.psm1, sha256 0c545855062a
+    src/ReportBook.psm1, sha256 63fb7318eda3
     src/ScanMeter.psm1, sha256 18c82f0b37c3
     src/ScanQueue.psm1, sha256 ae11c97d5b8b
     src/Accountability.psm1, sha256 0f9f669ef687
@@ -72,14 +72,14 @@
     line  4164  Module XlsxWriter.psm1
     line  4471  Module Report.psm1
     line  4846  Module ReportBook.psm1
-    line  5057  Module ScanMeter.psm1
-    line  5454  Module ScanQueue.psm1
-    line  5844  Module Accountability.psm1
-    line  6226  Module SiteTarget.psm1
-    line  6478  Module ChannelScan.psm1
-    line  6880  Module DriveScan.psm1
-    line  7112  Body of Find-ChannelPII.ps1
-    line  7253  Clean-up
+    line  5058  Module ScanMeter.psm1
+    line  5455  Module ScanQueue.psm1
+    line  5845  Module Accountability.psm1
+    line  6227  Module SiteTarget.psm1
+    line  6479  Module ChannelScan.psm1
+    line  6881  Module DriveScan.psm1
+    line  7113  Body of Find-ChannelPII.ps1
+    line  7254  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -2268,7 +2268,7 @@ PdfFonts.psm1 - the fonts of a PDF: their character maps and their real glyph wi
   Outputs:     font records (CMap, Bytes, Widths, DefaultWidth, Standard); PdfShown.psm1 decodes and measures shown
                strings with them.
   How to run:  imported by Find-ChannelPII.ps1 (used by PdfText.psm1); not run on its own.
-  Depends on:  PdfCore.psm1 (Get-PdfCMap, ConvertFrom-Utf16Hex, Assert-PdfTime, Add-PdfNote), imported first.
+  Depends on:  PdfCore.psm1 (Get-PdfCMap, Get-PdfRegex, Assert-PdfTime, Add-PdfNote), imported first.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7); .NET only.
   Network:     none.
   Writes:      none.
@@ -4853,7 +4853,8 @@ ReportBook.psm1 - the results workbook: its tabs, its Summary rows and where it 
                hand-written code).
   Inputs:      report rows (Report.psm1 New-ReportRow); values in them are already masked.
   Outputs:     <OutputFolder>\<site>\Ion <site> <yyyy-MM-dd HHmm>.xlsx, and its path.
-  Depends on:  PiiDetectors.psm1 (Get-ConfidenceRank), PiiMasking.psm1 (Protect-PiiName), XlsxWriter.psm1, Report.psm1 (Write-Ui, Get-SeverityIndex,
+  Depends on:  PiiDetectors.psm1 (Get-ConfidenceRank), PiiMasking.psm1 (Protect-PiiName), XlsxWriter.psm1,
+               Report.psm1 (Write-Ui, Get-SeverityIndex,
                Get-TypeCounts, Get-NotScannedGroup, Get-NotScannedCounts, Get-ScanMetrics, Get-ScanSummaryText),
                imported first; at run time also ScanMeter.psm1 and Accountability.psm1 (the By account and Method tabs).
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
