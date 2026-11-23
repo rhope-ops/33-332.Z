@@ -95,7 +95,13 @@ def themes(html):
 
 
 def contrast_problems(html):
-    """Return one line per contrast pair below its minimum, or with a token missing."""
+    """Return one line per contrast pair below its minimum, or with a token missing.
+
+    Args:
+        html: the page text.
+    Returns:
+        A list of problem lines (empty = every pair passes).
+    """
     sets, problems = themes(html), []
     for fore, back, minimum, scope in PAIRS:
         for theme in ('light', 'dark'):
@@ -136,7 +142,11 @@ def check_page(root):
 
 
 def self_test():
-    """Run the cases on invented pages; return True when all pass."""
+    """Run the cases on invented pages and print one line each.
+
+    Returns:
+        True when every case passes.
+    """
     import tempfile
     good = Path(__file__).resolve().parent.parent / PAGE
     cases = (
