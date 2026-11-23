@@ -32,7 +32,7 @@
     src/PdfContent.psm1, sha256 85ee6cfeaf8f
     src/PdfText.psm1, sha256 dffef7dc6f8b
     src/TextExtract.psm1, sha256 5e02d07ddf10
-    src/ReaderPool.psm1, sha256 f6042e2a96af
+    src/ReaderPool.psm1, sha256 980e7f13c730
     src/XlsxWriter.psm1, sha256 0d8b1a3e1de1
     src/Report.psm1, sha256 a3d308b542e7
     src/ReportBook.psm1, sha256 63fb7318eda3
@@ -68,18 +68,18 @@
     line  3298  Module PdfText.psm1
     line  3490  Module TextExtract.psm1
     line  3908  Module ReaderPool.psm1
-    line  4239  Reader block end
-    line  4243  Module XlsxWriter.psm1
-    line  4550  Module Report.psm1
-    line  4926  Module ReportBook.psm1
-    line  5138  Module ScanMeter.psm1
-    line  5535  Module ScanQueue.psm1
-    line  5925  Module Accountability.psm1
-    line  6307  Module SiteTarget.psm1
-    line  6578  Module ChannelScan.psm1
-    line  6980  Module DriveScan.psm1
-    line  7212  Body of Find-ChannelPII.ps1
-    line  7353  Clean-up
+    line  4230  Reader block end
+    line  4234  Module XlsxWriter.psm1
+    line  4541  Module Report.psm1
+    line  4917  Module ReportBook.psm1
+    line  5129  Module ScanMeter.psm1
+    line  5526  Module ScanQueue.psm1
+    line  5916  Module Accountability.psm1
+    line  6298  Module SiteTarget.psm1
+    line  6569  Module ChannelScan.psm1
+    line  6971  Module DriveScan.psm1
+    line  7203  Body of Find-ChannelPII.ps1
+    line  7344  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -3939,17 +3939,6 @@ $script:DropStep = 0.15
 # gov run, 2026-11-23: a SharePoint scan hung after 50 minutes and Ctrl+C did not stop it).
 $script:FileSecondsLimit = 180
 $script:FileSlowReason = 'Reading took longer than 3 minutes (the file may be fine): check by hand'
-# The script that reads one old SharePoint version in its own runspace (Invoke-LimitedRead), so a stuck read cannot
-# hang the main thread (review of PR 58). It loads the reader code once per runspace, as a worker does.
-$script:LimitedReadScript = @'
-param($Init, $Bytes, $Name)
-if (-not $global:IonReaderReady) {
-    if ($Init.ContainsKey('Code')) { New-Module -Name IonReaders -ScriptBlock ([scriptblock]::Create($Init.Code)) | Import-Module -Global }
-    else { Import-Module $Init.Paths -Global -Force }
-    $global:IonReaderReady = $true
-}
-Get-TextFromBytes -Bytes $Bytes -FileName $Name
-'@
 $script:LastInit = $null      # the reader set-up of the last New-ReaderPool (Invoke-LimitedRead uses it)
 $script:LimitedRunspace = $null
 # How long the main thread waits for a worker between screen updates (milliseconds).
@@ -3961,16 +3950,18 @@ $script:LongPathAt = 240
 $script:ReaderModules = @('PiiPatterns', 'PiiDetectors', 'PiiMasking', 'OcrText', 'OleText', 'ContainerText', 'PdfCore', 'PdfObjects', 'PdfFonts',
     'PdfShown', 'PdfLayout', 'PdfContent', 'PdfText', 'TextExtract', 'ReaderPool')
 
-# The script each worker runs per job: it loads the reader code once per runspace, then reads one file.
-$script:PoolWorkerScript = @'
-param($Init, $Job, $Seen)
+# The scripts each runspace runs (a worker per file; Invoke-LimitedRead per old version): load the reader code, then read.
+$script:ReaderLoader = @'
 if (-not $global:IonReaderReady) {
     if ($Init.ContainsKey('Code')) { New-Module -Name IonReaders -ScriptBlock ([scriptblock]::Create($Init.Code)) | Import-Module -Global }
     else { Import-Module $Init.Paths -Global -Force }
     $global:IonReaderReady = $true
 }
-Invoke-PooledRead $Job $Seen
 '@
+$script:PoolWorkerScript = "param(`$Init, `$Job, `$Seen)`n" + $script:ReaderLoader + "`nInvoke-PooledRead `$Job `$Seen"
+# The script that reads one old SharePoint version in its own runspace (Invoke-LimitedRead), so a stuck read cannot
+# hang the main thread (review of PR 58). It loads the reader code once per runspace, as a worker does.
+$script:LimitedReadScript = "param(`$Init, `$Bytes, `$Name)`n" + $script:ReaderLoader + "`nGet-TextFromBytes -Bytes `$Bytes -FileName `$Name"
 
 function Read-LocalFileBytes {
     <#

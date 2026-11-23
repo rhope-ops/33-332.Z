@@ -32,17 +32,6 @@ $script:DropStep = 0.15
 # gov run, 2026-11-23: a SharePoint scan hung after 50 minutes and Ctrl+C did not stop it).
 $script:FileSecondsLimit = 180
 $script:FileSlowReason = 'Reading took longer than 3 minutes (the file may be fine): check by hand'
-# The script that reads one old SharePoint version in its own runspace (Invoke-LimitedRead), so a stuck read cannot
-# hang the main thread (review of PR 58). It loads the reader code once per runspace, as a worker does.
-$script:LimitedReadScript = @'
-param($Init, $Bytes, $Name)
-if (-not $global:IonReaderReady) {
-    if ($Init.ContainsKey('Code')) { New-Module -Name IonReaders -ScriptBlock ([scriptblock]::Create($Init.Code)) | Import-Module -Global }
-    else { Import-Module $Init.Paths -Global -Force }
-    $global:IonReaderReady = $true
-}
-Get-TextFromBytes -Bytes $Bytes -FileName $Name
-'@
 $script:LastInit = $null      # the reader set-up of the last New-ReaderPool (Invoke-LimitedRead uses it)
 $script:LimitedRunspace = $null
 # How long the main thread waits for a worker between screen updates (milliseconds).
@@ -54,16 +43,18 @@ $script:LongPathAt = 240
 $script:ReaderModules = @('PiiPatterns', 'PiiDetectors', 'PiiMasking', 'OcrText', 'OleText', 'ContainerText', 'PdfCore', 'PdfObjects', 'PdfFonts',
     'PdfShown', 'PdfLayout', 'PdfContent', 'PdfText', 'TextExtract', 'ReaderPool')
 
-# The script each worker runs per job: it loads the reader code once per runspace, then reads one file.
-$script:PoolWorkerScript = @'
-param($Init, $Job, $Seen)
+# The scripts each runspace runs (a worker per file; Invoke-LimitedRead per old version): load the reader code, then read.
+$script:ReaderLoader = @'
 if (-not $global:IonReaderReady) {
     if ($Init.ContainsKey('Code')) { New-Module -Name IonReaders -ScriptBlock ([scriptblock]::Create($Init.Code)) | Import-Module -Global }
     else { Import-Module $Init.Paths -Global -Force }
     $global:IonReaderReady = $true
 }
-Invoke-PooledRead $Job $Seen
 '@
+$script:PoolWorkerScript = "param(`$Init, `$Job, `$Seen)`n" + $script:ReaderLoader + "`nInvoke-PooledRead `$Job `$Seen"
+# The script that reads one old SharePoint version in its own runspace (Invoke-LimitedRead), so a stuck read cannot
+# hang the main thread (review of PR 58). It loads the reader code once per runspace, as a worker does.
+$script:LimitedReadScript = "param(`$Init, `$Bytes, `$Name)`n" + $script:ReaderLoader + "`nGet-TextFromBytes -Bytes `$Bytes -FileName `$Name"
 
 function Read-LocalFileBytes {
     <#
