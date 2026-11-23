@@ -1,12 +1,12 @@
 <#
-Bundle.Tests.ps1 - runs the paste bundle (paste/33332Z-pii-spot-check.ps1) from start to end, as ISE would, against
+Bundle.Tests.ps1 - runs the paste bundle (paste/Ion-script.txt) from start to end, as ISE would, against
 the fake site.
 
   Purpose:     The text a person pastes works by itself: no module files, no script file of its own (the modules of
                the earlier test files are unloaded first). The Settings block is filled in as a person would edit it
                in ISE (plain value replacement); the text then runs dot-sourced, as ISE runs an untitled pane, and must
                leave the session's error setting and strict mode as they were.
-  Inputs:      paste/33332Z-pii-spot-check.ps1; $Sample, $Docx, $Txt (earlier test files); the fakes.
+  Inputs:      paste/Ion-script.txt; $Sample, $Docx, $Txt (earlier test files); the fakes.
   Outputs:     passes and failures counted by Assert-Equal.
   How to run:  dot-sourced by tests/Run-Tests.ps1, after EndToEnd.Tests.ps1.
   Run target:  PowerShell 7 (CI and dev machine); written to also parse on Windows PowerShell 5.1.
@@ -15,7 +15,7 @@ the fake site.
   Credentials: none.
 #>
 
-$bundlePath = Join-Path (Join-Path (Split-Path $PSScriptRoot -Parent) 'paste') '33332Z-pii-spot-check.ps1'
+$bundlePath = Join-Path (Join-Path (Split-Path $PSScriptRoot -Parent) 'paste') 'Ion-script.txt'
 $bundleFolder = Join-Path ([System.IO.Path]::GetTempPath()) ('piitest-bundle-' + [guid]::NewGuid())
 New-Item -ItemType Directory -Path $bundleFolder | Out-Null
 $library = '/sites/TeamA/Shared Documents'
