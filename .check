@@ -16,6 +16,10 @@ code-max-line-chars: 200
 code-c1-safety: on
 code-c2: full
 code-generated: paste/*.ps1
+# Kit 11.0.0 (fleet v2 plan B.4 and DEC 4, 2026-11-23): the kit's strict gate replaces scripts/code_standard_gate.py;
+# this is a DoD repo, so the kit's DoD security files sync here.
+code-strict-gate: on
+dod-security: on
 audit-ignore: paste/**
 # SharePoint host names: usaf.dps.mil is the site address people type; sharepoint-mil.us is the tenant host (the PAM, 2026-11-20).
 sharepoint-mil.us
