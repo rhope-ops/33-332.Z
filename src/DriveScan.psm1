@@ -72,6 +72,7 @@ function Confirm-OneDriveRoot {
     $held = @()   # the OneDrive folders that are the pasted folder or are inside it (review of PR 59)
     foreach ($oneDriveHome in @(Get-OneDriveHomes)) {
         try { $full = [System.IO.Path]::GetFullPath($oneDriveHome).TrimEnd('\', '/') } catch { continue }   # a bad variable: not a OneDrive folder
+        if (-not [System.IO.Directory]::Exists($full) -or $held -icontains $full) { continue }   # a folder that is gone, or listed twice
         if ($full -ieq $folder -or $full.StartsWith($folder + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)) { $held += $full }
     }
     if ($held.Count -eq 0) { return $true }

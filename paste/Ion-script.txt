@@ -41,7 +41,7 @@
     src/Accountability.psm1, sha256 8025033d2736
     src/SiteTarget.psm1, sha256 3f6ba813d84e
     src/ChannelScan.psm1, sha256 0cd4894c7c7b
-    src/DriveScan.psm1, sha256 e307053705c0
+    src/DriveScan.psm1, sha256 ed91cca7d7e5
     src/Find-ChannelPII.ps1, sha256 bee2123e2ec3
 
   Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.
@@ -78,8 +78,8 @@
     line  6301  Module SiteTarget.psm1
     line  6596  Module ChannelScan.psm1
     line  6998  Module DriveScan.psm1
-    line  7362  Body of Find-ChannelPII.ps1
-    line  7503  Clean-up
+    line  7363  Body of Find-ChannelPII.ps1
+    line  7504  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -7069,6 +7069,7 @@ function Confirm-OneDriveRoot {
     $held = @()   # the OneDrive folders that are the pasted folder or are inside it (review of PR 59)
     foreach ($oneDriveHome in @(Get-OneDriveHomes)) {
         try { $full = [System.IO.Path]::GetFullPath($oneDriveHome).TrimEnd('\', '/') } catch { continue }   # a bad variable: not a OneDrive folder
+        if (-not [System.IO.Directory]::Exists($full) -or $held -icontains $full) { continue }   # a folder that is gone, or listed twice
         if ($full -ieq $folder -or $full.StartsWith($folder + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)) { $held += $full }
     }
     if ($held.Count -eq 0) { return $true }

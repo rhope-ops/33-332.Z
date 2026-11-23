@@ -152,6 +152,12 @@ New-Item -ItemType Directory -Path (Join-Path $odRoot 'Team A') -Force | Out-Nul
 $savedOneDrive = $env:OneDrive
 try {
     $env:OneDrive = $odRoot
+    # Two variables for one folder (common on a work PC) and one for a folder that is gone: each top folder once, no error.
+    $env:OneDriveCommercial = $odRoot
+    $env:OneDriveConsumer = Join-Path $odRoot 'gone'
+    Set-FakeRootAnswer ''
+    Assert-Equal $false (Confirm-OneDriveRoot (Split-Path $odRoot -Parent) 6>$null) 'Same folder twice and a gone folder: still asked, no error'
+    $env:OneDriveCommercial = $null; $env:OneDriveConsumer = $null
     Set-FakeRootAnswer ''
     Assert-Equal $false (Confirm-OneDriveRoot $odRoot 6>$null) 'Whole OneDrive folder, answer Enter: not scanned'
     Set-FakeRootAnswer 'y'
