@@ -30,3 +30,6 @@ Title: 33-332.Z · <task> · <date>. Read AGENTS.md first.
 16. Plan approved 2026-11-21 (docs/DECISIONS.md, newest row): step 1 = Teams link alone (built) + 2 test snippets
     (parallel download, view counts: docs/reviews/2026-11-21-ion-round2-tests.md); step 2 = permission columns;
     step 3 = parallel downloads in a planned order, and version-history reads off the main thread (slow run 28:49).
+17. 2026-11-23 plan approved (docs/reviews/2026-11-23-ion-esignature-onedrive-plan.md; one branch, PRs in order):
+    PR 57 e-signature DoD IDs built and reviewed; waits on the PAM's shape lines (docs/reviews/2026-11-23-esignature-shape-test.md)
+    before merge. Next: PR 2 hang (SharePoint download and per-file time limits), PR 3 OneDrive (probe first; online-only: ask).
