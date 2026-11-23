@@ -182,17 +182,8 @@ function New-PiiHit {
 # =====================================================================================
 
 function Test-CardAt {
-    <#
-    .SYNOPSIS
-      True when a payment card number (as Find-CardHits finds it: 13-19 digits, Luhn, an issuer prefix) starts at this
-      position: such digits are a card, never an e-signature DoD ID (third review of PR 57: Amex 4-6-5, Diners 4-6-4).
-    .PARAMETER Text
-      The text searched.
-    .PARAMETER Index
-      Where the digits start.
-    .OUTPUTS
-      [bool]
-    #>
+    # True when a payment card (as Find-CardHits reads one: 13-19 digits, Luhn, an issuer prefix) starts at Index: such
+    # digits are a card, never an e-signature DoD ID (third review of PR 57: Amex 4-6-5, Diners 4-6-4).
     param([string]$Text, [int]$Index)
     $card = $script:CardAtPattern.Match($Text, $Index)
     if (-not $card.Success) { return $false }

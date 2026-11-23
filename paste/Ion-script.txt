@@ -18,7 +18,7 @@
   the files at each library's top), or the drive folder and all its subfolders. Channel posts are not read.
 
   Built from these files; to change it, change them and rebuild with: python3 scripts/build_paste.py
-    src/PiiPatterns.psm1, sha256 8145b773cd40
+    src/PiiPatterns.psm1, sha256 619490062570
     src/PiiDetectors.psm1, sha256 a457daf74a21
     src/PiiMasking.psm1, sha256 752c251a94b2
     src/OcrText.psm1, sha256 a39acab441d4
@@ -54,32 +54,32 @@
     line    85  Settings
     line    96  Reader block
     line   102  Module PiiPatterns.psm1
-    line   552  Module PiiDetectors.psm1
-    line   766  Module PiiMasking.psm1
-    line   966  Module OcrText.psm1
-    line  1119  Module OleText.psm1
-    line  1258  Module ContainerText.psm1
-    line  1597  Module PdfCore.psm1
-    line  1959  Module PdfObjects.psm1
-    line  2317  Module PdfFonts.psm1
-    line  2635  Module PdfShown.psm1
-    line  2886  Module PdfLayout.psm1
-    line  3026  Module PdfContent.psm1
-    line  3356  Module PdfText.psm1
-    line  3548  Module TextExtract.psm1
-    line  3966  Module ReaderPool.psm1
-    line  4218  Reader block end
-    line  4222  Module XlsxWriter.psm1
-    line  4529  Module Report.psm1
-    line  4904  Module ReportBook.psm1
-    line  5116  Module ScanMeter.psm1
-    line  5513  Module ScanQueue.psm1
-    line  5903  Module Accountability.psm1
-    line  6285  Module SiteTarget.psm1
-    line  6537  Module ChannelScan.psm1
-    line  6939  Module DriveScan.psm1
-    line  7171  Body of Find-ChannelPII.ps1
-    line  7312  Clean-up
+    line   543  Module PiiDetectors.psm1
+    line   757  Module PiiMasking.psm1
+    line   957  Module OcrText.psm1
+    line  1110  Module OleText.psm1
+    line  1249  Module ContainerText.psm1
+    line  1588  Module PdfCore.psm1
+    line  1950  Module PdfObjects.psm1
+    line  2308  Module PdfFonts.psm1
+    line  2626  Module PdfShown.psm1
+    line  2877  Module PdfLayout.psm1
+    line  3017  Module PdfContent.psm1
+    line  3347  Module PdfText.psm1
+    line  3539  Module TextExtract.psm1
+    line  3957  Module ReaderPool.psm1
+    line  4209  Reader block end
+    line  4213  Module XlsxWriter.psm1
+    line  4520  Module Report.psm1
+    line  4895  Module ReportBook.psm1
+    line  5107  Module ScanMeter.psm1
+    line  5504  Module ScanQueue.psm1
+    line  5894  Module Accountability.psm1
+    line  6276  Module SiteTarget.psm1
+    line  6528  Module ChannelScan.psm1
+    line  6930  Module DriveScan.psm1
+    line  7162  Body of Find-ChannelPII.ps1
+    line  7303  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -283,17 +283,8 @@ function New-PiiHit {
 # =====================================================================================
 
 function Test-CardAt {
-    <#
-    .SYNOPSIS
-      True when a payment card number (as Find-CardHits finds it: 13-19 digits, Luhn, an issuer prefix) starts at this
-      position: such digits are a card, never an e-signature DoD ID (third review of PR 57: Amex 4-6-5, Diners 4-6-4).
-    .PARAMETER Text
-      The text searched.
-    .PARAMETER Index
-      Where the digits start.
-    .OUTPUTS
-      [bool]
-    #>
+    # True when a payment card (as Find-CardHits reads one: 13-19 digits, Luhn, an issuer prefix) starts at Index: such
+    # digits are a card, never an e-signature DoD ID (third review of PR 57: Amex 4-6-5, Diners 4-6-4).
     param([string]$Text, [int]$Index)
     $card = $script:CardAtPattern.Match($Text, $Index)
     if (-not $card.Success) { return $false }
