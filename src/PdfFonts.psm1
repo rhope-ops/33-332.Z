@@ -9,7 +9,7 @@ PdfFonts.psm1 - the fonts of a PDF: their character maps and their real glyph wi
   Outputs:     font records (CMap, Bytes, Widths, DefaultWidth, Standard); PdfShown.psm1 decodes and measures shown
                strings with them.
   How to run:  imported by Find-ChannelPII.ps1 (used by PdfText.psm1); not run on its own.
-  Depends on:  PdfCore.psm1 (Get-PdfCMap, ConvertFrom-Utf16Hex, Assert-PdfTime, Add-PdfNote), imported first.
+  Depends on:  PdfCore.psm1 (Get-PdfCMap, Get-PdfRegex, Assert-PdfTime, Add-PdfNote), imported first.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7); .NET only.
   Network:     none.
   Writes:      none.

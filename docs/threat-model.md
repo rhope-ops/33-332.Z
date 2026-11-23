@@ -29,9 +29,12 @@ A short STRIDE model of Ion (the DoD365 PII Reporter), its paste bundle and this
 | Denial of service | A very large or crafted PDF stalls the scan | File size limit (`$MaxFileMB`), a time and work budget per PDF, NOT SCANNED rows instead of a stop |
 | Elevation of privilege | A script that asks for admin rights or changes the execution policy | Platform rule: no admin, no service account, no policy change; read-only calls only; no compiled code (`tests/Bundle.Tests.ps1`) |
 
+## Site
+
+The Pages site is one static page with no script and no network calls. Its controls: a Content-Security-Policy meta (`default-src 'none'`, images only from the site, `connect-src 'none'`), a `no-referrer` policy, and `rel="noopener noreferrer"` on the link that opens a new tab. `scripts/site_page.py` fails the site check when one of them is gone. A meta CSP cannot set `frame-ancestors`; GitHub Pages sends no such header.
+
 ## Known gaps
 
 - The bundle is not signed. The person trusts the GitHub link and the review of the pull request that changed `src/`.
-- The Pages site has no Content-Security-Policy yet (fleet v2 Stage 3B adds it).
-- `.github/workflows/security.yml` (bandit on `scripts/`, gitleaks on the tree) runs on pull requests and manual runs only. bandit reports one High finding in the kit file `scripts/bloat_check.py` (`shell=True`) until the kit 11.0.0 sync fixes it. gitleaks is checked against the checksums of its own release: this finds a damaged download, not a bad release.
+- `.github/workflows/security.yml` (bandit on `scripts/`, gitleaks on the tree) runs on pull requests and manual runs only. gitleaks is checked against the checksums of its own release: this finds a damaged download, not a bad release.
 - PSScriptAnalyzer 1.23.0 is pinned by the SHA-256 of all 30 of its code files (`scripts/pssa-1.23.0.sha256`, checked by `scripts/check.local.sh`; an unlisted code file also fails), and `tests/Lint.ps1` loads exactly 1.23.0; the pins came from a local 1.23.0 copy (the PowerShell Gallery was not reachable from the build host), and the GitHub runner, which installs from the Gallery, is the proof that they match.

@@ -70,11 +70,12 @@ try {
     Add-Type -AssemblyName System.IO.Compression
     # ZipArchive on a stream, as TestKit.ps1 reads workbooks: Windows PowerShell 5.1 has no ZipFile type without an extra assembly.
     $leakStream = [System.IO.File]::OpenRead($leakBook[0].FullName)
-    $leakZip = New-Object System.IO.Compression.ZipArchive($leakStream, [System.IO.Compression.ZipArchiveMode]::Read)
+    $leakZip = $null
     try {
+        $leakZip = New-Object System.IO.Compression.ZipArchive($leakStream, [System.IO.Compression.ZipArchiveMode]::Read)
         $leakXml = ($leakZip.Entries | ForEach-Object { $r = New-Object System.IO.StreamReader($_.Open()); try { $r.ReadToEnd() } finally { $r.Dispose() } }) -join "`n"
     }
-    finally { $leakZip.Dispose(); $leakStream.Dispose() }
+    finally { if ($leakZip) { $leakZip.Dispose() }; $leakStream.Dispose() }
     Assert-Equal 0 @(& $leakIn ([System.Net.WebUtility]::HtmlDecode($leakXml))).Count 'No leak: every part of the workbook is free of raw values'
 }
 finally { Remove-Item -LiteralPath $leakFolder -Recurse -Force -ErrorAction SilentlyContinue }

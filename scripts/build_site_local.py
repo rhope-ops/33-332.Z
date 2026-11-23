@@ -8,7 +8,8 @@ What it does: the kit's build_site.py loads this file and uses
   looks-for  a table Type | Found when | Shown as | Confidence   -> the table's rows (the first three columns)
   breach     the advice, a blank line, its citation               -> the breach note
   extra_checks: the tool's breach text (src/ReportBook.psm1, $script:BreachAdvice) must say the README's breach section,
-             word for word (the advice, then its citation in brackets).
+             word for word (the advice, then its citation in brackets); and the page checks of scripts/site_page.py
+             (size, security metas, accessibility parts, WCAG contrast of the tokens).
 Inputs:  README.md, index.html, src/ReportBook.psm1 (through the kit's build_site.py); with --test, invented files only.
 Outputs: with --test, one line per case and "SITE LOCAL TEST PASS" (or "... FAIL"); the checks run in build_site.py.
 Usage:   python3 scripts/build_site_local.py --test    self-test (scripts/check.sh runs it); the build itself:
@@ -19,6 +20,7 @@ Credentials: none.
 """
 
 import argparse
+import importlib.util
 import re
 import shutil
 import sys
@@ -36,6 +38,8 @@ SITE_COLUMNS = len(SITE_HEAD)
 # Where the tool keeps its breach text: one PowerShell string, written as single-quoted parts joined with "+".
 TOOL_VAR = re.compile(r"\$script:BreachAdvice\s*=\s*((?:'(?:[^']|'')*'\s*\+?\s*)+)")
 TOOL_PART = re.compile(r"'((?:[^']|'')*)'")
+# The start of each finding of the page checks (scripts/site_page.py).
+PAGE_TAG = 'site page: '
 # A table's delimiter row (GFM): cells of dashes with optional alignment colons.
 DELIMITER_ROW = r'\|(\s*:?-+:?\s*\|)+'
 
@@ -128,8 +132,19 @@ def tool_text(advice, citation):
     return f'{advice.removesuffix(".")} ({citation.removesuffix(".")}).'
 
 
+def page_findings(root):
+    """Return the findings of scripts/site_page.py for the page under root; a missing checker is a finding."""
+    checker = root / 'scripts' / 'site_page.py'
+    if not checker.is_file():
+        return [PAGE_TAG + f'{checker.name}: the page checker is missing']
+    spec = importlib.util.spec_from_file_location('site_page', checker)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return [PAGE_TAG + line for line in module.check_page(root)]
+
+
 def extra_checks(root, readme):
-    """Return findings when the tool's breach text differs from the README's breach section.
+    """Return findings when the tool's breach text differs from the README's breach section, and the page findings.
 
     Args:
         root: the repository folder.
@@ -141,12 +156,13 @@ def extra_checks(root, readme):
         tool = (root / TOOL).read_text(encoding='utf-8')
         wanted = tool_text(*breach_parts(readme_sections(readme)['breach']))
     except (OSError, KeyError, ValueError) as err:
-        return [f'{TOOL}: breach text cannot be checked: {type(err).__name__}: {err}']
+        return [f'{TOOL}: breach text cannot be checked: {type(err).__name__}: {err}'] + page_findings(root)
     match = TOOL_VAR.search(tool)
     if not match:
-        return [f'{TOOL}: no $script:BreachAdvice string found']
+        return [f'{TOOL}: no $script:BreachAdvice string found'] + page_findings(root)
     said = ''.join(part.replace("''", "'") for part in TOOL_PART.findall(match.group(1)))
-    return [] if said == wanted else [f'{TOOL}: $script:BreachAdvice differs from {README} site:breach; it must say: {wanted}']
+    found = [] if said == wanted else [f'{TOOL}: $script:BreachAdvice differs from {README} site:breach; it must say: {wanted}']
+    return found + page_findings(root)
 
 
 # The self-test's invented README and tool text, and its cases: (label, README edit as (old, new) or None, tool edit
@@ -157,6 +173,8 @@ TEST_README = ('<!-- site:intro -->\nA safe_tool & more.\n<!-- /site:intro -->\n
                '<!-- site:breach -->\nReport it now.\n\nRule para 1.\n<!-- /site:breach -->\n')
 TEST_TOOL = "$script:BreachAdvice = 'Report it now ' +\n    '(Rule para 1).'\n"
 UNSUPPORTED_WORDS = 'unsupported Markdown'
+# The invented page is no real page: its site_page.py findings are left out of each case except the one that asks for them.
+PAGE_WORD = 'Content-Security-Policy'
 TEST_CASES = (
     ('a fresh build passes', None, None, [], True),
     ('a stale site fails', None, None, ['out of date'], False),
@@ -172,6 +190,7 @@ TEST_CASES = (
     ('a breach with one paragraph fails', ('\n\nRule para 1.', ''), None, ['advice, a blank line'], True),
     ('unsupported Markdown in the breach fails', ('Report it now.', 'Report it *now*.'), None, [UNSUPPORTED_WORDS], True),
     ('a link in the breach fails', ('Rule para 1.', 'Rule [para 1](x).'), None, [UNSUPPORTED_WORDS], True),
+    ('the page checks run: the invented page has no security metas', None, None, [PAGE_WORD], True),
     ('a quote and a GitHub Caution box are read as their plain text',
      ('Report it now.\n\nRule para 1.', '> [!CAUTION]\n> Report it now.\n>\n> Rule para 1.'), None, [], True))
 # What the fresh build must write: the row's first three cells with code kept, the Confidence column left out.
@@ -198,10 +217,13 @@ def test_case(edit, tool_edit, expect, write):
         (root / 'src').mkdir()
         (root / 'scripts').mkdir()
         shutil.copy(Path(__file__).resolve(), root / 'scripts' / Path(__file__).name)  # the kit's build loads it from here
+        shutil.copy(Path(__file__).resolve().parent / 'site_page.py', root / 'scripts' / 'site_page.py')
         (root / README).write_text(readme, encoding='utf-8')
         (root / SITE).write_text(marks, encoding='utf-8')
         (root / TOOL).write_text(tool, encoding='utf-8')
         found, _ = run(root, write)
+        if PAGE_WORD not in expect:
+            found = [line for line in found if PAGE_TAG not in line]
         if expect:
             return all(any(word in line for line in found) for word in expect), found
         built = (root / SITE).read_text(encoding='utf-8')
@@ -219,6 +241,10 @@ def self_test():
         ok, found = test_case(edit, tool_edit, expect, write)
         failed += not ok
         print(('ok   ' if ok else 'FAIL ') + label + ('' if ok else f': {found}'))
+    spec = importlib.util.spec_from_file_location('site_page', Path(__file__).resolve().parent / 'site_page.py')
+    page = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(page)
+    failed += not page.self_test()   # the page checks' own cases (scripts/site_page.py)
     print('SITE LOCAL TEST PASS' if not failed else 'SITE LOCAL TEST FAIL')
     return 1 if failed else 0
 
