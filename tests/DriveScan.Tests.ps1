@@ -74,7 +74,8 @@ $odRoots = @('C:\Users\me\OneDrive - Org')
 $inOneDrive = 'C:\Users\me\OneDrive - Org\Ops\a.docx'
 Assert-Equal 'Cloud' (Get-ReparseKind ([pscustomobject]@{ FullName = $inOneDrive; LinkType = $null; Target = $null }) $odRoots) 'OneDrive item (in a sync folder, no link type, no target): read'
 Assert-Equal 'Link' (Get-ReparseKind ([pscustomobject]@{ FullName = 'D:\Share\a.docx'; LinkType = $null; Target = $null }) $odRoots) 'Reparse point outside OneDrive (dedup, Azure File Sync): not read'
-Assert-Equal 'Link' (Get-ReparseKind ([pscustomobject]@{ FullName = 'C:\Users\me\OneDrive - Orgx\a.docx'; LinkType = $null; Target = $null }) $odRoots) 'A folder that only starts like a sync folder: not read'
+Assert-Equal 'Link' (Get-ReparseKind ([pscustomobject]@{ FullName = 'C:\Users\me\OneDrive - Orgx\a.docx'; LinkType = $null; Target = $null }) `
+    $odRoots) 'A folder that only starts like a sync folder: not read'
 Assert-Equal 'Link' (Get-ReparseKind ([pscustomobject]@{ FullName = $inOneDrive; LinkType = 'SymbolicLink'; Target = @('x') }) $odRoots) 'Symbolic link in OneDrive: not followed'
 Assert-Equal 'Link' (Get-ReparseKind ([pscustomobject]@{ FullName = $inOneDrive; LinkType = 'Junction'; Target = $null }) $odRoots) 'Junction in OneDrive: not followed'
 Assert-Equal 'Link' (Get-ReparseKind ([pscustomobject]@{ FullName = $inOneDrive }) $odRoots) 'Kind not known: not followed'
