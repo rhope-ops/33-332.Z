@@ -6,7 +6,7 @@
 # Usage:   scripts/check.local.sh [--fast]   (--fast: the same; both are quick)
 # Needs:   pwsh 7; PSScriptAnalyzer 1.23.0 for the lint (in GitHub Actions it is installed here, as the kit's workflow
 #          file is locked; elsewhere a missing module is a FAIL, not a skip, so the lint is never left out silently).
-#          The installed module's code files must match the SHA-256 pins below (fleet v2, 2026-11-23); a mismatch is a FAIL.
+#          The installed module's code files must match scripts/pssa-1.23.0.sha256 (fleet v2, 2026-11-23); a mismatch is a FAIL.
 # Network: in GitHub Actions only, the PowerShell Gallery once, to install PSScriptAnalyzer. Else none.
 # Writes:  none in the repo (the tests write report files to a temporary folder and delete them).
 # Credentials: none.
@@ -19,25 +19,29 @@ fi
 # A dev machine may keep PSScriptAnalyzer outside the default module path (as 90-161.Z's scripts/lint.sh does).
 [ -d /opt/psmods ] && export PSModulePath="/opt/psmods:${PSModulePath:-}"
 rc=0
-# PSScriptAnalyzer 1.23.0: SHA-256 of its code files (pinned 2026-11-23 from a 1.23.0 copy; the GitHub runner installs
-# it from the PowerShell Gallery, so a changed package fails here and prints the hash it found).
+# PSScriptAnalyzer 1.23.0: the SHA-256 of every code file (.dll, .psd1, .psm1, .ps1xml, in every folder: pwsh 7 loads
+# PSv7/, Windows PowerShell 5.1 the root) must match scripts/pssa-1.23.0.sha256, and no other code file may be there.
+# Pinned 2026-11-23 from a 1.23.0 copy; the GitHub runner installs from the PowerShell Gallery, so a changed package
+# fails here and prints the hash it found.
 pwsh -NoProfile -Command '
-  $pins = @{
-    "PSScriptAnalyzer.psd1" = "72980ffab78dae5ee1f785232415e1ae9596b3121f7b10fe10bdfafd483d7f04"
-    "PSScriptAnalyzer.psm1" = "af24e5ec4e3e570d8a5b83c51020d6f02f84f98417e6b9709f8619ff62e872f1"
-    "Microsoft.Windows.PowerShell.ScriptAnalyzer.dll" = "98ac2fca382dc2a22c1c27baceb3a3ec1c03193b590600607df0590607add987"
-    "Microsoft.Windows.PowerShell.ScriptAnalyzer.BuiltinRules.dll" = "07f0d3cdb7f8f53e98bbe54b63df3b84f52e4a48ed2571267485cf95a8fbeba1"
-    "Microsoft.PowerShell.CrossCompatibility.dll" = "76577a2ff29055d5797a25328c6dbc3734ba9f019fe27333b01e5cdab3f3acb7"
+  $pins = @{}
+  foreach ($line in Get-Content -LiteralPath scripts/pssa-1.23.0.sha256) {
+    if ($line -match "^([0-9a-f]{64})  (.+)$") { $pins[$Matches[2]] = $Matches[1] }
   }
   $module = Get-Module -ListAvailable PSScriptAnalyzer | Where-Object { $_.Version -eq [version]"1.23.0" } | Select-Object -First 1
   if (-not $module) { Write-Host "FAIL  PSScriptAnalyzer 1.23.0 is not installed"; exit 1 }
+  $base = $module.ModuleBase
+  $files = @(Get-ChildItem -LiteralPath $base -Recurse -File | Where-Object { $_.Extension -in ".dll", ".psd1", ".psm1", ".ps1xml" })
   $bad = 0
-  foreach ($name in $pins.Keys) {
-    $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $module.ModuleBase $name)).Hash.ToLower()
-    if ($hash -ne $pins[$name]) { Write-Host "FAIL  PSScriptAnalyzer $name sha256 $hash is not the pinned value"; $bad++ }
+  foreach ($file in $files) {
+    $name = $file.FullName.Substring($base.Length).TrimStart("/", "\").Replace("\", "/")
+    $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $file.FullName).Hash.ToLower()
+    if (-not $pins.ContainsKey($name)) { Write-Host "FAIL  PSScriptAnalyzer $name is not pinned (sha256 $hash)"; $bad++ }
+    elseif ($hash -ne $pins[$name]) { Write-Host "FAIL  PSScriptAnalyzer $name sha256 $hash is not the pinned value"; $bad++ }
   }
-  if ($bad) { exit 1 }
-  Write-Host "PASS  PSScriptAnalyzer 1.23.0: 5 files match their SHA-256 pins"
+  if ($files.Count -ne $pins.Count) { Write-Host ("FAIL  PSScriptAnalyzer: {0} code files, {1} pins" -f $files.Count, $pins.Count); $bad++ }
+  if ($bad -or $pins.Count -eq 0) { exit 1 }
+  Write-Host ("PASS  PSScriptAnalyzer 1.23.0: {0} code files match their SHA-256 pins" -f $files.Count)
 ' || rc=1
 # The rule source copies (ref/) must match their pins.
 (cd ref && sha256sum --check --quiet SHA256SUMS) && echo "PASS  ref/SHA256SUMS" || { echo "FAIL  ref/SHA256SUMS"; rc=1; }

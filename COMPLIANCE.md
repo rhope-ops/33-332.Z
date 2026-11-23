@@ -32,4 +32,4 @@ What this repo does for each rule it follows, and where the proof is. The rule s
 | Line ends and text files | `.gitattributes`, `.editorconfig` |
 | Rule source copies | `ref/SHA256SUMS` (checked by `scripts/check.local.sh`) |
 | Static security scans | `.github/workflows/security.yml` (bandit, gitleaks) |
-| Lint tool pin | `scripts/check.local.sh` (PSScriptAnalyzer 1.23.0, SHA-256 of its code files) |
+| Lint tool pin | `scripts/pssa-1.23.0.sha256` (PSScriptAnalyzer 1.23.0: SHA-256 of all 30 code files; `scripts/check.local.sh` checks them) |

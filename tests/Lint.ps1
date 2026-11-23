@@ -12,7 +12,7 @@ Lint.ps1 - the parser check and PSScriptAnalyzer on every .ps1 and .psm1 file in
 #>
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
-Import-Module PSScriptAnalyzer
+Import-Module PSScriptAnalyzer -RequiredVersion 1.23.0   # the version scripts/check.local.sh pins
 $settings = Join-Path $root 'PSScriptAnalyzerSettings.psd1'
 $files = Get-ChildItem -Path $root -Recurse -Include *.ps1, *.psm1
 $all = foreach ($f in $files) {
