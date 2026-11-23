@@ -29,7 +29,8 @@ $cacName = 'DOE' + '.' + 'JANE' + '.Q.'
 $spacedId = ($Sample.DodId.Substring(0, 3) + ' ' + $Sample.DodId.Substring(3, 2) + ' ' + $Sample.DodId.Substring(5, 4) + ' ' + $Sample.DodId.Substring(9))
 Assert-Equal 'DoD ID/Low/******7890' ((Get-HitSummary "Digitally signed by $cacName$($Sample.DodId)") -join ',') 'CAC name: the DoD ID, no SSN'
 Assert-Equal 'DoD ID/Low/******7890' ((Get-HitSummary "Digitally signed by $cacName$spacedId Date: 2026.11.20") -join ',') 'CAC name, digits with gaps: the DoD ID, no SSN'
-Assert-Equal 0 (Get-HitSummary ('Digitally signed by ' + $Sample.DodId.Substring(0, 9) + ' ' + $Sample.DodId.Substring(9) + ' Date')).Count 'Signature: 9 digits then one more after a space: no SSN'
+$signed91 = 'Digitally signed by ' + $Sample.DodId.Substring(0, 9) + ' ' + $Sample.DodId.Substring(9) + ' Date'
+Assert-Equal 'DoD ID/Low/******7890' ((Get-HitSummary $signed91) -join ',') 'Signature: 9 digits then one more after a space: the DoD ID, no SSN'
 Assert-Equal 'SSN/High/***-**-6789' ((Get-HitSummary "SSN: $($Sample.Ssn) 2 copies") -join ',') 'A labelled SSN with a number after it is still found'
 $bareSsnX = $Sample.Ssn -replace '-', ''
 # Second review of PR 49: a count after an SSN, words that are no CAC name, and a one-letter first name.
