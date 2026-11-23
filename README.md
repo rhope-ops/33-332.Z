@@ -70,6 +70,7 @@ The steps to run it are at the top of the script.
 | Private and shared channels | Each has its own SharePoint site: run Ion again with that site's link |
 | Subsites | Run Ion again with the subsite's link |
 | A link (symbolic link or junction) to another folder or file inside a scanned drive folder | Listed as NOT SCANNED (a link can lead outside the folder): check it by hand |
+| Other reparse points: deduplicated or Azure File Sync files, and any outside a OneDrive folder | Listed as NOT SCANNED (a link can lead outside the folder): check it by hand |
 | OneDrive files that are online only (not on this computer) | Ion shows how many and their MB, and asks before it downloads them; on "no" they are listed as NOT SCANNED. Downloaded files stay on the computer until you click Free up space |
 | Style Library and Form Templates | SharePoint's own files, not people's: skipped on purpose |
 | Files with a sensitivity label that encrypts them (Microsoft Purview) | Listed as NOT SCANNED, in a group of their own: open them and check by hand |

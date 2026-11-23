@@ -37,13 +37,19 @@ $script:TenantRoot = 'https://usaf.dps.mil'
 
 # When the SharePoint sign-in cannot work on this computer (for example Connect-PnPOnline blocked outside the US: the
 # PAM, 2026-11-23), Ion does not stop: it shows how to scan a synced copy of the same files as a folder.
-$script:SyncSteps = "`nSharePoint sign-in did not work on this computer. You can scan a synced copy of the files as a folder:" +
-    "`n  1. In Teams, on the channel, click Files, then click Open in SharePoint." +
-    "`n  2. In SharePoint, click Sync. If the browser asks to open OneDrive, click Open." +
-    "`n  3. Wait until File Explorer shows the synced folder." +
-    "`n  4. In File Explorer, in the synced folder, click the address bar, then press Ctrl+C." +
-    "`n  5. In Ion, at the question below, press Ctrl+V, then press Enter." +
-    "`n  For your own OneDrive files, paste the path of your OneDrive folder."
+# Steps in ASD-STE100: one action each, with what the person sees next (review of PR 59).
+$script:SyncSteps = "`nSharePoint sign-in did not work on this computer. You can scan a synced copy of the files as a folder." +
+    "`nIf the library is open in your browser already, start at the step with Sync." +
+    "`n  1. In Teams, click the channel. You see the channel's posts." +
+    "`n  2. Click Files. You see the channel's files." +
+    "`n  3. Click Open in SharePoint. You see the files in your browser." +
+    "`n  4. Click Sync. You see a question to open OneDrive, or the sync starts." +
+    "`n  5. If you see the question, click Open. Wait until File Explorer shows the synced folder." +
+    "`n  6. In File Explorer, in the synced folder, click the address bar. You see the folder path selected." +
+    "`n  7. Press Ctrl+C. The path is on the clipboard." +
+    "`n  8. In Ion, at the question below, press Ctrl+V. You see the path." +
+    "`n  9. Press Enter. Ion scans the folder." +
+    "`nFor your own OneDrive files, paste the path of your OneDrive folder at the question below."
 
 # The longest one SharePoint call may wait for its answer (milliseconds), set on the signed-in connection when it has
 # no limit or a longer one (the PnP 1.12.0 default is not verified here): a download, the file list, a version read.

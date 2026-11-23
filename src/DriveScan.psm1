@@ -10,8 +10,9 @@ DriveScan.psm1 - scans a folder on a mapped or network drive (X:\<folder> or \\<
   Depends on:  PiiDetectors.psm1, PiiMasking.psm1, TextExtract.psm1 (Test-SupportedFile), Report.psm1,
                ScanMeter.psm1, ScanQueue.psm1 and ChannelScan.psm1 (Get-ShownItem), imported first.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7, where the tests run on a temporary folder).
-  Network:     only the given folder's server, through the person's Windows logon (SMB); nothing else.
-  Writes:      only the results workbook under the results folder.
+  Network:     only the given folder's server, through the person's Windows logon (SMB); in a OneDrive folder, OneDrive
+               downloads an online-only file only after the person answers y (Select-OnlineFiles).
+  Writes:      only the results workbook under the results folder (a downloaded OneDrive file is written by OneDrive).
   Credentials: none (the Windows logon).
 #>
 
@@ -28,18 +29,42 @@ $script:FileLinkReason = 'A link to another file is not followed (it can lead ou
 $script:OnlineOnlyAttributes = 0x441000
 $script:OnlineReason = 'Online only (OneDrive), not downloaded: check by hand, or run Ion again and answer y to download'
 
+function Get-OneDriveRoots {
+    <#
+    .SYNOPSIS
+      The folders this person's OneDrive app syncs: its OneDrive folders (environment) and each synced SharePoint
+      library folder (the OneDrive app's own list in the registry, read-only). Only these can hold OneDrive items.
+    .OUTPUTS
+      [string[]] full folder paths.
+    #>
+    $roots = @(foreach ($name in @('OneDrive', 'OneDriveCommercial', 'OneDriveConsumer')) { [Environment]::GetEnvironmentVariable($name) })
+    try {
+        foreach ($tenant in @(Get-ChildItem -Path 'HKCU:\Software\Microsoft\OneDrive\Accounts\*\Tenants' -ErrorAction Stop)) {
+            $roots += @($tenant.GetValueNames())   # each value name is a synced folder
+        }
+    }
+    catch { Write-Verbose 'No OneDrive list in the registry (not Windows, or no OneDrive account).' }
+    return @($roots | Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\') })
+}
+
 function Get-ReparseKind {
     <#
     .SYNOPSIS
-      What a reparse point in the folder is: 'Link' for a symbolic link or junction (never followed: it can lead outside
-      the folder), else 'Cloud' (a OneDrive item: the file or folder itself). PowerShell's own LinkType and Target tell
-      them apart (no compiled code). When they cannot be read, it is a 'Link', as before.
+      What a reparse point in the folder is: 'Cloud' only for an item inside a OneDrive sync folder that PowerShell
+      gives no LinkType and no Target (the file or folder itself: read); else 'Link' (a symbolic link, a junction,
+      or any other kind such as a deduplicated or Azure File Sync file: not read, as before; review of PR 59).
     .PARAMETER Entry
-      A FileInfo or DirectoryInfo (or, in tests, an object with LinkType and Target).
+      A FileInfo or DirectoryInfo (or, in tests, an object with FullName, LinkType and Target).
+    .PARAMETER Roots
+      The OneDrive sync folders (Get-OneDriveRoots).
     .OUTPUTS
       [string] 'Link' or 'Cloud'.
     #>
-    param($Entry)
+    param($Entry, [string[]]$Roots)
+    $inside = $false
+    try { foreach ($root in $Roots) { if ($Entry.FullName.StartsWith($root + '\', [System.StringComparison]::OrdinalIgnoreCase)) { $inside = $true } } }
+    catch { return 'Link' }
+    if (-not $inside) { return 'Link' }
     try {
         $item = [psobject]$Entry
         $type = [string]$item.LinkType
@@ -67,7 +92,7 @@ function Select-OnlineFiles {
     $online = @(foreach ($group in $Groups) { foreach ($file in $group.Files) {
                 if ($file.Online -and (Test-SupportedFile $file.Name) -and $file.Size -le $MaxFileMB * 1MB) { $file } } })
     if ($online.Count -eq 0) { return }
-    $megabytes = ($online | Measure-Object -Property Size -Sum).Sum / 1MB
+    $megabytes = ($online | ForEach-Object { $_.Size } | Measure-Object -Sum).Sum / 1MB   # 5.1 reads no hashtable key here
     Write-Ui ('{0} files ({1:N1} MB) here are online only (OneDrive). To read them, Ion must download them to this computer.' -f $online.Count, $megabytes) 'Accent'
     Write-Ui '  They then stay on this computer. To remove them again: right-click the folder, then click Free up space.' 'Muted'
     if ((Read-Host 'Download and read them? [y/N]') -match '^\s*y') { return }
@@ -100,6 +125,7 @@ function Get-DriveGroups {
         Links = (New-Object System.Collections.Generic.List[string]); FileLinks = (New-Object System.Collections.Generic.List[string]) }
     $byName = @{}
     $top = @{ Name = $script:DriveTopGroup; Files = (New-Object System.Collections.Generic.List[object]) }
+    $roots = Get-OneDriveRoots
     $stack = New-Object System.Collections.Generic.Stack[string]
     $stack.Push($Root)
     while ($stack.Count -gt 0) {
@@ -110,12 +136,12 @@ function Get-DriveGroups {
         foreach ($entry in $entries) {
             $rel = ($relative + '\' + $entry.Name).TrimStart($slashes)
             if ($entry -is [System.IO.DirectoryInfo]) {
-                if (($entry.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -and (Get-ReparseKind $entry) -eq 'Link') { $result.Links.Add($rel); continue }
+                if (($entry.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -and (Get-ReparseKind $entry $roots) -eq 'Link') { $result.Links.Add($rel); continue }
                 $stack.Push($entry.FullName)
                 continue
             }
             # A file link (a symbolic link) is not followed: it can lead outside the folder ("No reconnaissance").
-            if (($entry.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -and (Get-ReparseKind $entry) -eq 'Link') { $result.FileLinks.Add($rel); continue }
+            if (($entry.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -and (Get-ReparseKind $entry $roots) -eq 'Link') { $result.FileLinks.Add($rel); continue }
             $groupName = $script:DriveTopGroup
             $inner = $rel
             $cut = $rel.IndexOfAny($slashes)
@@ -291,4 +317,4 @@ function Invoke-DriveScan {
     return $workbook
 }
 
-Export-ModuleMember -Function Get-DriveGroups, Invoke-DriveScan, Get-ReparseKind, Select-OnlineFiles
+Export-ModuleMember -Function Get-DriveGroups, Invoke-DriveScan, Get-ReparseKind, Select-OnlineFiles, Get-OneDriveRoots

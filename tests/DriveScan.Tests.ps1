@@ -70,10 +70,14 @@ finally { Close-ReaderPool $pool }
 
 # OneDrive (the PAM, 2026-11-23): a synced OneDrive item is a reparse point but no link: it is read; a symbolic link or
 # junction is not followed; when its kind cannot be read, it stays a link.
-Assert-Equal 'Cloud' (Get-ReparseKind ([pscustomobject]@{ LinkType = $null; Target = $null })) 'OneDrive item (no link type, no target): read'
-Assert-Equal 'Link' (Get-ReparseKind ([pscustomobject]@{ LinkType = 'SymbolicLink'; Target = @('x') })) 'Symbolic link: not followed'
-Assert-Equal 'Link' (Get-ReparseKind ([pscustomobject]@{ LinkType = 'Junction'; Target = $null })) 'Junction: not followed'
-Assert-Equal 'Link' (Get-ReparseKind ([pscustomobject]@{ Name = 'no link facts' })) 'Kind not known: not followed'
+$odRoots = @('C:\Users\me\OneDrive - Org')
+$inOneDrive = 'C:\Users\me\OneDrive - Org\Ops\a.docx'
+Assert-Equal 'Cloud' (Get-ReparseKind ([pscustomobject]@{ FullName = $inOneDrive; LinkType = $null; Target = $null }) $odRoots) 'OneDrive item (in a sync folder, no link type, no target): read'
+Assert-Equal 'Link' (Get-ReparseKind ([pscustomobject]@{ FullName = 'D:\Share\a.docx'; LinkType = $null; Target = $null }) $odRoots) 'Reparse point outside OneDrive (dedup, Azure File Sync): not read'
+Assert-Equal 'Link' (Get-ReparseKind ([pscustomobject]@{ FullName = 'C:\Users\me\OneDrive - Orgx\a.docx'; LinkType = $null; Target = $null }) $odRoots) 'A folder that only starts like a sync folder: not read'
+Assert-Equal 'Link' (Get-ReparseKind ([pscustomobject]@{ FullName = $inOneDrive; LinkType = 'SymbolicLink'; Target = @('x') }) $odRoots) 'Symbolic link in OneDrive: not followed'
+Assert-Equal 'Link' (Get-ReparseKind ([pscustomobject]@{ FullName = $inOneDrive; LinkType = 'Junction'; Target = $null }) $odRoots) 'Junction in OneDrive: not followed'
+Assert-Equal 'Link' (Get-ReparseKind ([pscustomobject]@{ FullName = $inOneDrive }) $odRoots) 'Kind not known: not followed'
 # Online-only files: asked first (the PAM, 2026-11-23: "Ask each run"); Enter (no) leaves them NOT SCANNED, y reads them.
 function New-OnlineGroups {
     # Two files in one group: one online only, one on the disk.

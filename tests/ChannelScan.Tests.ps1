@@ -281,8 +281,8 @@ Assert-Equal 'File Not Found.' (ConvertTo-FriendlyError 'File Not Found.') 'A mi
 Set-FakeSiteAnswer
 Set-FakePnPOption ConnectFails $true
 $signIn = ''
-try { Connect-TeamSite (Get-ScanTarget $teamLink) 6>$null | Out-Null } catch { $signIn = $_.Exception.Message }
-Assert-Equal 'True' ('{0}' -f $signIn.Contains('click Sync')) ('Sign-in blocked: the steps to scan a synced folder follow the error: ' + $signIn.Split([char]10)[0])
+try { Connect-TeamSite (Get-ScanTarget 'https://tenant.example.com/teams/TeamA') 6>$null | Out-Null } catch { $signIn = $_.Exception.Message }
+Assert-Equal 'True True' ('{0} {1}' -f $signIn.StartsWith('FAKE: sign-in refused'), $signIn.Contains('Click Sync')) ('Sign-in blocked: the steps to scan a synced folder follow the error: ' + $signIn.Split([char]10)[0])
 Set-FakePnPOption ConnectFails $false
 
 # ---- Live counts line and the timing ----
