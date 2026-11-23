@@ -27,6 +27,11 @@ $script:FirstWorkers = 2
 $script:ReviewEvery = 6
 $script:GrowthStep = 0.05
 $script:DropStep = 0.15
+# The longest one file may take in a worker (seconds). Above the PDF reader's own limit (120 s, PdfCore.psm1), so that
+# limit, with its own reason, fires first. A worker over it is stopped without waiting, and the scan goes on (the PAM's
+# gov run, 2026-11-23: a SharePoint scan hung after 50 minutes and Ctrl+C did not stop it).
+$script:FileSecondsLimit = 180
+$script:FileSlowReason = 'Reading took longer than 3 minutes (the file may be fine): check by hand'
 # How long the main thread waits for a worker between screen updates (milliseconds).
 $script:WaitSliceMs = 250
 # Paths longer than this are opened with the \\?\ prefix (Windows' classic limit is 260 characters).
@@ -149,7 +154,7 @@ function New-ReaderPool {
     $pool = [runspacefactory]::CreateRunspacePool(1, $max)
     $pool.Open()
     return @{ Pool = $pool; Init = $Init; Jobs = (New-Object System.Collections.Generic.List[object]); Max = $max
-        Target = [Math]::Min($script:FirstWorkers, $max); Seen = [hashtable]::Synchronized(@{}); Done = 0
+        Target = [Math]::Min($script:FirstWorkers, $max); Seen = [hashtable]::Synchronized(@{}); Done = 0; Stuck = 0
         WindowBytes = 0L; WindowClock = [Diagnostics.Stopwatch]::StartNew(); LastRate = 0.0 }
 }
 
@@ -172,7 +177,7 @@ function Add-PoolJob {
     $shell = [powershell]::Create()
     $shell.RunspacePool = $State.Pool
     [void]$shell.AddScript($script:PoolWorkerScript).AddArgument($State.Init).AddArgument($Job).AddArgument($State.Seen)
-    $State.Jobs.Add(@{ Shell = $shell; Handle = $shell.BeginInvoke(); Id = $Job.Id })
+    $State.Jobs.Add(@{ Shell = $shell; Handle = $shell.BeginInvoke(); Id = $Job.Id; Clock = [Diagnostics.Stopwatch]::StartNew() })
 }
 
 function Receive-PoolResult {
@@ -189,9 +194,18 @@ function Receive-PoolResult {
       [hashtable] results of Invoke-PooledRead.
     #>
     param([hashtable]$State, [switch]$Wait, [scriptblock]$OnWait)
+    $slow = 0
     while ($true) {
         $ready = @($State.Jobs | Where-Object { $_.Handle.IsCompleted })
-        if ($ready.Count -gt 0 -or -not $Wait -or $State.Jobs.Count -eq 0) { break }
+        # A worker over the time limit: stopped without waiting; its file gets a NOT SCANNED result now.
+        foreach ($job in @($State.Jobs | Where-Object { -not $_.Handle.IsCompleted -and $_.Clock.Elapsed.TotalSeconds -gt $script:FileSecondsLimit })) {
+            Stop-PoolJob $State $job
+            $slow++
+            $result = @{ Id = $job.Id; Status = 'NOT SCANNED'; Reason = $script:FileSlowReason }
+            Update-PoolTarget $State $result
+            $result
+        }
+        if ($ready.Count -gt 0 -or $slow -gt 0 -or -not $Wait -or $State.Jobs.Count -eq 0) { break }
         if ($OnWait) { & $OnWait $State.Jobs.Count }
         [void]$State.Jobs[0].Handle.AsyncWaitHandle.WaitOne($script:WaitSliceMs)
     }
@@ -233,19 +247,37 @@ function Update-PoolTarget {
     $State.WindowClock.Restart()
 }
 
+function Stop-PoolJob {
+    <#
+    .SYNOPSIS
+      Stops one worker without waiting for it: a worker stuck inside a .NET call does not stop, and a wait for it would
+      hang the scan (and Ctrl+C). The pool gets one more worker in its place; the stuck one ends with the pool.
+    .PARAMETER State
+      The pool of New-ReaderPool.
+    .PARAMETER Job
+      The job (from $State.Jobs).
+    #>
+    param([hashtable]$State, [hashtable]$Job)
+    [void]$State.Jobs.Remove($Job)
+    try { [void]$Job.Shell.BeginStop($null, $null) } catch { Write-Verbose 'A worker had already stopped.' }   # nothing left to stop
+    $State.Stuck++
+    [void]$State.Pool.SetMaxRunspaces($State.Max + $State.Stuck)
+}
+
 function Close-ReaderPool {
     <#
     .SYNOPSIS
-      Stops the workers that still run (after a cancel or an error) and closes the pool.
+      Stops the workers that still run (after a cancel or an error) and closes the pool, without waiting for a stuck
+      worker (Stop-PoolJob): a cancel always ends.
     .PARAMETER State
       The pool of New-ReaderPool.
     #>
     param([hashtable]$State)
     foreach ($job in $State.Jobs.ToArray()) {
-        try { $job.Shell.Stop() } catch { Write-Verbose 'A worker had already stopped.' }   # nothing left to stop
-        $job.Shell.Dispose()
+        if ($job.Handle.IsCompleted) { $job.Shell.Dispose(); [void]$State.Jobs.Remove($job) }
+        else { Stop-PoolJob $State $job }
     }
-    $State.Jobs.Clear()
+    if ($State.Stuck -gt 0) { [void]$State.Pool.BeginClose($null, $null); return }   # it closes when the stuck workers end
     $State.Pool.Close()
     $State.Pool.Dispose()
 }

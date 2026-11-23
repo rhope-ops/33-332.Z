@@ -68,6 +68,28 @@ try {
 }
 finally { Close-ReaderPool $pool }
 
+# A worker stuck inside a .NET call (it does not stop; here for 15 s, so the test run can end): the file is NOT SCANNED after the time limit, and closing the pool
+# (as after Ctrl+C) does not wait for it (the PAM's gov run, 2026-11-23: a scan hung and Ctrl+C did not stop it).
+$readerPool = Get-Module ReaderPool
+$savedLimit = & $readerPool { $script:FileSecondsLimit }
+& $readerPool { $script:FileSecondsLimit = 2 }
+$stuckPool = New-ReaderPool @{ Code = 'function Invoke-PooledRead { param($Job, $Seen) [System.Threading.Thread]::Sleep(15000) }' }
+$clock = [Diagnostics.Stopwatch]::StartNew()
+try {
+    Add-PoolJob $stuckPool @{ Id = 7; Name = 'stuck.txt'; Bytes = $null; Path = 'stuck.txt' }
+    $slow = @(Receive-PoolResult $stuckPool -Wait)
+    Assert-Equal '7 NOT SCANNED True' ('{0} {1} {2}' -f $slow[0].Id, $slow[0].Status, $slow[0].Reason.StartsWith('Reading took longer')) 'Pool: a stuck worker gives NOT SCANNED after the limit'
+    Assert-Equal $true ($clock.Elapsed.TotalSeconds -lt 15) 'Pool: the stuck worker does not hold the scan'
+    Add-PoolJob $stuckPool @{ Id = 8; Name = 'stuck2.txt'; Bytes = $null; Path = 'stuck2.txt' }
+    Assert-Equal 0 @(Receive-PoolResult $stuckPool).Count 'Pool: a new file starts after a stuck one'
+}
+finally {
+    $clock.Restart()
+    Close-ReaderPool $stuckPool
+    Assert-Equal $true ($clock.Elapsed.TotalSeconds -lt 5) 'Pool: closing does not wait for stuck workers (Ctrl+C ends)'
+    & $readerPool { param($limit) $script:FileSecondsLimit = $limit } $savedLimit
+}
+
 # ---- Accountability (the PAM, 2026-11-21): who changed the file, who added the PII and when ----
 Assert-Equal $Sample.Email (Get-PersonText ([pscustomobject]@{ Email = $Sample.Email; LookupValue = 'Tom Mims' })) 'Who: a SharePoint person is shown by e-mail address'
 # Version history: the first version that holds the SSN dates it, and names who saved that version.
