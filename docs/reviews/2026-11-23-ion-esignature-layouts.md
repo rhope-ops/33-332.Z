@@ -2,20 +2,35 @@
 
 Task: the coordinator session asked for the fix at the PAM's request (2026-11-23: "start the Ion fix now, it is a PII risk").
 Evidence: archimedes_lever docs/reviews/2026-11-23-tool-retirement-plan.md section 1 ("Ion e-signature DoD IDs": 25 layouts,
-3 give SSN, 7 give no hit). That source gives counts only, not the layouts. The 25 layouts below are this session's set,
-picked from a matrix of 1,110 texts (name form x separator x digit grouping x context word); they are not the source's 25.
+3 give SSN, 7 give no hit). That source gives counts only. This session first built its own 25 layouts (S01-S25) from a
+matrix of 1,110 texts; the source's 25 layouts then came from the tool retirement session (O01-OJ, below). Both sets are tests.
 
 ## Rule (src/PiiPatterns.psm1, Find-SignedIdHits)
 
-- A CAC name in capitals, or in any case after "signed", "CN=" or "DN:" (within 40 characters before), then the 10 digits.
+- A CAC name in capitals, or in any case after "signed", "signature", "CN=" or "DN:" (within 40 characters before), then
+  the 10 digits; or the 10 digits, then a CAC name in capitals (the ID on the line above the name).
 - A line break is allowed inside or after a name part; a part after the first can have up to 3 words ("DOE.MARY ANN.").
 - Between the name and the digits: spaces, tabs or no-break spaces, with at most one line break.
-- Between any two digits: one space, tab, no-break space or line break. No other digit may follow on the same line.
-- The 10 digits alone after a signature word also count, but not a date (19xx or 20xx then a separator).
+- Between any two digits: one space, tab, no-break space or line break; after a CAC name also a dash. No other digit may
+  follow on the same line.
+- The 10 digits alone after a signature word also count, but not a date (19xx or 20xx then a separator), and not a phone
+  written 3-3-4 with spaces (it stays Phone; before this rule, "Signed copy, cell" and a spaced number gave DoD ID Low).
 - Every such hit is DoD ID, Low (the PAM, 2026-11-21: e-signature DoD ID is Low, history not read).
 - An unlabelled SSN match inside such a hit is dropped. A labelled SSN and a dashed SSN stay SSNs.
 
-## Per layout (tests/Signature.Tests.ps1; invented name DOE.JANE.Q. and an invented ID; expected: DoD ID Low, no SSN)
+## The source's 25 layouts (tests/Signature.Tests.ps1, O01-OJ; same shapes, invented name and ID)
+
+| Result | main b278ab0 | This PR |
+|---|---|---|
+| DoD ID Low | 10 (1, 2, 6, 7, 9, 10, 12, 13, 14, I) | 23 |
+| SSN | 3 (A Medium, E Low, G Low) | 1 (A, Medium) |
+| No hit | 12 (3, 4, 5, 8, 11, 15, B, C, D, F, H, J) | 1 (F) |
+
+The source counted 9 DoD ID on its run (main 6cbc517): it had 14 ("O'BRIEN.SEAN.P.") as no hit; b278ab0 finds it.
+By design: A ("DOE JOHN A" then a 3-2-4-1 number, no dots, no signature word) stays SSN Medium, so it is still reported;
+F (10 spaced digits, no name, no signature word) is not reported, as 10 bare digits never are.
+
+## This session's 25 layouts (tests/Signature.Tests.ps1; invented name DOE.JANE.Q. and an invented ID; expected: DoD ID Low, no SSN)
 
 | Layout | Before (main b278ab0) | After |
 |---|---|---|

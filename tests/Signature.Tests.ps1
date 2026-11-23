@@ -1,8 +1,9 @@
 <#
 Signature.Tests.ps1 - tests of the e-signature DoD ID (PiiPatterns.psm1 Find-SignedIdHits): 25 layouts, decoys, masking, speed.
 
-  Purpose:     Each of the 25 layouts of docs/reviews/2026-11-23-ion-esignature-layouts.md gives exactly one hit, a DoD ID
-               (Low), and no SSN; decoys give no DoD ID; values with gaps and line breaks stay masked; no regex stalls.
+  Purpose:     Each layout of docs/reviews/2026-11-23-ion-esignature-layouts.md (this session's 25 and the source's 25) gives
+               exactly one hit, a DoD ID (Low), and no SSN, except 2 source layouts by design; decoys give no DoD ID;
+               values with gaps and line breaks stay masked; no regex stalls.
   Inputs:      $Sample (TestKit.ps1).
   Outputs:     passes and failures counted by Assert-Equal.
   How to run:  dot-sourced by tests/Run-Tests.ps1.
@@ -49,12 +50,34 @@ foreach ($layout in $SignatureLayouts.Keys) {
     Assert-Equal 'DoD ID/Low/******7890' ((Get-HitSummary $SignatureLayouts[$layout]) -join ',') "E-signature layout $layout"
 }
 
+# ---- The source's 25 layouts (tool retirement session, 2026-11-23; same shapes, this repo's invented name and ID) ----
+$srcName = 'DOE' + '.JOHN.A.'
+$sig91 = $sigId.Substring(0, 9) + ' ' + $sigId.Substring(9)
+$SourceLayouts = [ordered]@{
+    'O01' = "Digitally signed by $srcName$sigId"; 'O02' = "DOE.JOHN.$sigId"; 'O03' = "Digitally signed by $srcName $sigId"
+    'O04' = "$srcName`n$sigId"; 'O05' = "$srcName$($sigId.Substring(0, 5))`n$($sigId.Substring(5))"; 'O06' = "DOE.JOHN.A.JR.$sigId"
+    'O07' = "SMITH-JONES.JANE.B.$sigId"; 'O08' = "$sigId`n$srcName"; 'O09' = "Digitally signed by $srcName$(($sigId.ToCharArray()) -join ' ')"
+    'O10' = "$srcName$sigId Date: 2026.11.21 08:15:00 -0600"; 'O11' = "Digitally signed by doe.john.a.$sigId"; 'O12' = "DOE.MARY ANN.C.$sigId"
+    'O13' = "CN=$srcName$sigId, OU=USAF, OU=PKI, OU=DoD, O=U.S. Government, C=US"; 'O14' = "O'BRIEN.SEAN.P.$sigId"
+    'O15' = "Digitally signed by DOE.JOHN.A $sigId"; 'OB' = "Digitally signed by DOE JOHN A $sig3241"
+    'OC' = "$srcName$($sigId.Substring(0, 9))`n$($sigId.Substring(9))"; 'OD' = "Digitally signed by`n$srcName`n$sigId"; 'OE' = "$srcName $sig91"
+    'OG' = "Signature: DOE, JOHN A. $sig91"; 'OH' = "Digitally signed by $srcName  $sigId"; 'OI' = "$srcName$sigId`nReason: I am the author"
+    'OJ' = "$srcName$($sigId.Substring(0, 3))-$($sigId.Substring(3, 2))-$($sigId.Substring(5, 4))-$($sigId.Substring(9))"
+}
+foreach ($layout in $SourceLayouts.Keys) {
+    Assert-Equal 'DoD ID/Low/******7890' ((Get-HitSummary $SourceLayouts[$layout]) -join ',') "E-signature source layout $layout"
+}
+# By design: no dotted name and no signature word. A stays an SSN (still reported); F, 10 spaced digits alone, is not reported.
+Assert-Equal 'SSN/Medium/***-**-6789' ((Get-HitSummary "DOE JOHN A $sig3241") -join ',') 'E-signature source layout OA: SSN, by design'
+Assert-Equal 0 (Get-HitSummary (($sigId.ToCharArray()) -join ' ')).Count 'E-signature source layout OF: no hit, by design'
+
 # ---- Decoys: no DoD ID where there is no signature ID; an SSN with a label or dashes stays an SSN ----
 $sigSsnBare = $Sample.Ssn -replace '-', ' '
 $sigDecoys = [ordered]@{
     'date after signed'          = 'Signed on 2026 11 20 12:34 by the board'
     'signature without an ID'    = "Digitally signed by $sigName`n$sigDate"
     'phone after signed'         = "Signed copy, office $($Sample.Phone)"
+    'spaced phone after signed'  = "Signed copy, cell $($Sample.Phone -replace '-', ' ')"
     '11 digits after a name'     = "$sigName$($sigId)4"
     'lower-case words, unsigned' = "see backup.config.$sigId"
     'title-case name, unsigned'  = "Doe.Jane.Q.$sigId"
@@ -64,6 +87,7 @@ foreach ($decoy in $sigDecoys.Keys) {
     Assert-Equal 0 @(Get-HitSummary $sigDecoys[$decoy] | Where-Object { $_ -like 'DoD ID/*' }).Count "E-signature decoy: $decoy"
 }
 Assert-Equal 'SSN/High/***-**-6789' ((Get-HitSummary "Digitally signed by $sigName SSN $sigSsnBare 0") -join ',') 'Signature: a labelled SSN stays an SSN'
+Assert-Equal 'Phone/Medium/***-***-0142' ((Get-HitSummary "Signed copy, cell $($Sample.Phone -replace '-', ' ')") -join ',') 'Signature: a spaced cell phone stays a phone'
 Assert-Equal 'SSN/Medium/***-**-6789' ((Get-HitSummary "Signed by: $($Sample.Ssn)") -join ',') 'Signature: a dashed SSN stays an SSN'
 Assert-Equal 'DoD ID/High/******7890' ((Get-HitSummary "EDIPI $sigId signed by $sigName$sigId") -join ',').Split(',')[0] 'A labelled DoD ID stays High'
 

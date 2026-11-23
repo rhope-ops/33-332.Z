@@ -18,7 +18,7 @@
   the files at each library's top), or the drive folder and all its subfolders. Channel posts are not read.
 
   Built from these files; to change it, change them and rebuild with: python3 scripts/build_paste.py
-    src/PiiPatterns.psm1, sha256 3dca3ff393ef
+    src/PiiPatterns.psm1, sha256 7b09a369d271
     src/PiiDetectors.psm1, sha256 a457daf74a21
     src/PiiMasking.psm1, sha256 752c251a94b2
     src/OcrText.psm1, sha256 a39acab441d4
@@ -38,7 +38,7 @@
     src/ReportBook.psm1, sha256 63fb7318eda3
     src/ScanMeter.psm1, sha256 18c82f0b37c3
     src/ScanQueue.psm1, sha256 ae11c97d5b8b
-    src/Accountability.psm1, sha256 a2ccc7f91b77
+    src/Accountability.psm1, sha256 14a537d17d29
     src/SiteTarget.psm1, sha256 3ffe3086e86b
     src/ChannelScan.psm1, sha256 0cd4894c7c7b
     src/DriveScan.psm1, sha256 f307e810f8f5
@@ -54,32 +54,32 @@
     line    85  Settings
     line    96  Reader block
     line   102  Module PiiPatterns.psm1
-    line   538  Module PiiDetectors.psm1
-    line   752  Module PiiMasking.psm1
-    line   952  Module OcrText.psm1
-    line  1105  Module OleText.psm1
-    line  1244  Module ContainerText.psm1
-    line  1583  Module PdfCore.psm1
-    line  1945  Module PdfObjects.psm1
-    line  2303  Module PdfFonts.psm1
-    line  2621  Module PdfShown.psm1
-    line  2872  Module PdfLayout.psm1
-    line  3012  Module PdfContent.psm1
-    line  3342  Module PdfText.psm1
-    line  3534  Module TextExtract.psm1
-    line  3952  Module ReaderPool.psm1
-    line  4277  Reader block end
-    line  4281  Module XlsxWriter.psm1
-    line  4588  Module Report.psm1
-    line  4964  Module ReportBook.psm1
-    line  5176  Module ScanMeter.psm1
-    line  5573  Module ScanQueue.psm1
-    line  5963  Module Accountability.psm1
-    line  6346  Module SiteTarget.psm1
-    line  6617  Module ChannelScan.psm1
-    line  7019  Module DriveScan.psm1
-    line  7251  Body of Find-ChannelPII.ps1
-    line  7392  Clean-up
+    line   549  Module PiiDetectors.psm1
+    line   763  Module PiiMasking.psm1
+    line   963  Module OcrText.psm1
+    line  1116  Module OleText.psm1
+    line  1255  Module ContainerText.psm1
+    line  1594  Module PdfCore.psm1
+    line  1956  Module PdfObjects.psm1
+    line  2314  Module PdfFonts.psm1
+    line  2632  Module PdfShown.psm1
+    line  2883  Module PdfLayout.psm1
+    line  3023  Module PdfContent.psm1
+    line  3353  Module PdfText.psm1
+    line  3545  Module TextExtract.psm1
+    line  3963  Module ReaderPool.psm1
+    line  4288  Reader block end
+    line  4292  Module XlsxWriter.psm1
+    line  4599  Module Report.psm1
+    line  4975  Module ReportBook.psm1
+    line  5187  Module ScanMeter.psm1
+    line  5584  Module ScanQueue.psm1
+    line  5974  Module Accountability.psm1
+    line  6358  Module SiteTarget.psm1
+    line  6629  Module ChannelScan.psm1
+    line  7031  Module DriveScan.psm1
+    line  7263  Body of Find-ChannelPII.ps1
+    line  7404  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -141,7 +141,7 @@ $script:ShortKeywordWindowChars = 30
 $script:CacNamePrefix = "(?<![\w.])(?!(?:NO|NR|NUM|REF|ACCT|ACC|TEL|PH|FAX|ID|DOC|REV|VER)\.)[A-Z][A-Z'-]+\." +
     "(?!(?:NO|NR|NUM|REF|ACCT|TEL|PH|FAX|ID)\.)[A-Z][A-Z'-]*\.(?:[A-Z][A-Z'-]*\.){0,2}"
 # Words that put a number in a digital signature (where a gapped DoD ID is drawn), looked for just before it.
-$script:SignatureWords = '(?i:\bsigned\b|\bCN\s*=|\bDN\s*:)'
+$script:SignatureWords = '(?i:\bsigned\b|\bsignature\b|\bCN\s*=|\bDN\s*:)'
 $script:CacNameEnd = $script:CacNamePrefix + '$'
 $script:CacNameChars = 120
 
@@ -149,18 +149,24 @@ $script:CacNameChars = 120
 # a signature box wraps the CAC name and the digits at any place, and PDF and Word text puts spaces, tabs, no-break spaces
 # or line breaks there. $SignedName is a CAC name with a line break inside or after a part, and up to 3 words in a part
 # after the first ("DOE.MARY ANN."); then white space with at most one line break; then 10 digits with one gap (a space,
-# a tab, a no-break space or a line break) allowed between any two. Not when another digit follows on the same line.
+# a tab, a no-break space, a line break, or after a CAC name also a dash) allowed between any two. Not when another digit
+# follows on the same line.
 # Matched without case; a name with small letters counts only after a signature word ($SignatureWords).
 # A part is at most 40 letters with at most one line break, so a long run of short lines is read in linear time.
 $script:SignedPart = "[A-Z][A-Z'-]{0,39}(?:\r?\n[A-Z'-]{1,40})?"
 $script:SignedId = '(?<id>\d(?:(?:[ \t\u00A0]|\r?\n)?\d){9})(?![\w-])(?![ \t\u00A0]\d)'
+$script:SignedIdDash = '(?<id>\d(?:(?:[ \t\u00A0-]|\r?\n)?\d){9})(?![\w-])(?![ \t\u00A0]\d)'
 $script:SignedName = [regex]('(?i)(?<![\w.])(?!(?:NO|NR|NUM|REF|ACCT|ACC|TEL|PH|FAX|ID|DOC|REV|VER)\.)(?<name>' +
     "[A-Z](?:[A-Z'-]{1,39}(?:\r?\n[A-Z'-]{1,40})?|\r?\n[A-Z'-]{1,40})\.(?:\r?\n)?(?!(?:NO|NR|NUM|REF|ACCT|TEL|PH|FAX|ID)\.)" +
     "$script:SignedPart(?: $script:SignedPart){0,2}\.(?:(?:\r?\n)?$script:SignedPart(?: $script:SignedPart){0,2}\.){0,2})" +
-    "[ \t\u00A0]*(?:\r?\n[ \t\u00A0]*)?$script:SignedId")
+    "[ \t\u00A0]*(?:\r?\n[ \t\u00A0]*)?$script:SignedIdDash")
 # The 10 digits alone, after a signature word ("Digitally signed by 123 45 6789 0", "Signed_1234567890.pdf"); not a date
 # (2026 11 20 ...), and not inside a dotted name or number (those are $SignedName's).
-$script:SignedBareId = [regex]('(?<![\w.-])(?!(?:19|20)\d\d(?:[ \t\u00A0./-]|\r?\n))' + $script:SignedId)
+# Nor a phone number written with spaces (3-3-4: Find-PhoneHits keeps it).
+$script:NotSpacedPhone = '(?!\d{3}[ \t\u00A0]\d{3}[ \t\u00A0]\d{4}(?![\w-]))'
+$script:SignedBareId = [regex]('(?<![\w.-])(?!(?:19|20)\d\d(?:[ \t\u00A0./-]|\r?\n))' + $script:NotSpacedPhone + $script:SignedId)
+# The 10 digits just before a CAC name in capitals (a signature box that shows the ID on the line above the name).
+$script:SignedIdThenName = [regex]('(?<![\w.-])' + $script:NotSpacedPhone + $script:SignedId + "[ \t\u00A0]*(?:\r?\n[ \t\u00A0]*)?(?=[A-Z][A-Z'-]+\.[A-Z][A-Z'-]*\.)")
 
 # E-mail top-level labels that mark a government address (not reported as personal e-mail).
 $script:GovernmentMailLabels = @('gov', 'mil')
@@ -303,7 +309,7 @@ function Find-SignedIdHits {
     <#
     .SYNOPSIS
       E-signature DoD IDs: the 10 digits after a CAC name ($SignedName; a name in small letters only after a signature
-      word), or alone after a signature word ($SignedBareId). Low, as every e-signature DoD ID (the PAM, 2026-11-21).
+      word), alone after a signature word ($SignedBareId), or just before a CAC name in capitals ($SignedIdThenName). Low, as every e-signature DoD ID (the PAM, 2026-11-21).
       Find-DodIdHits reports them; Find-SsnHits drops an unlabelled SSN inside one, so the ID is never an SSN.
     .PARAMETER Text
       The text to search.
@@ -322,7 +328,12 @@ function Find-SignedIdHits {
     foreach ($m in $script:SignedBareId.Matches($Text)) {
         $digits = $m.Groups['id']
         if ($seen.ContainsKey($digits.Index) -or -not (Test-KeywordBefore $Text $m.Index $script:SignatureWords)) { continue }
+        $seen[$digits.Index] = $true
         New-PiiHit 'DoD ID' 'Low' $digits.Index $digits.Value
+    }
+    foreach ($m in $script:SignedIdThenName.Matches($Text)) {
+        $digits = $m.Groups['id']
+        if (-not $seen.ContainsKey($digits.Index)) { New-PiiHit 'DoD ID' 'Low' $digits.Index $digits.Value }
     }
 }
 
@@ -6301,8 +6312,9 @@ function Get-MethodRows {
         'or a CAC name such as LAST.FIRST.M. just before) or that are part of an e-signature DoD ID are not an SSN.'))
     , @('DoD ID', ('A 10-digit number, found only with a label just before it ("DoD ID", "DODID", "EDIPI", "CAC", "DoD #", "DoD number"), ' +
         'High. In an e-signature: Low, and its version history is not read (History note "Not looked up"). An e-signature is ' +
-        'a CAC name in capitals (LAST.FIRST.M.) then the 10 digits, or a CAC name in any case or the 10 digits alone after ' +
-        '"signed", "CN=" or "DN:". Spaces, tabs and line breaks in the name and between the digits are allowed.'))
+        'a CAC name in capitals (LAST.FIRST.M.) then the 10 digits (or the 10 digits, then the name), or a CAC name in any case ' +
+        'or the 10 digits alone after "signed", "signature", "CN=" or "DN:". Spaces, tabs and line breaks in the name and between ' +
+        'the digits are allowed; after a CAC name, dashes too. A phone number written 3-3-4 stays a phone.'))
     , @('Date of birth', ('A date written as 1/2/1990, 01-02-90, 1990-01-02, 2 Jan 1990, 02JAN1990 or January 2, 1990, found only with a label ' +
         'just before it ("DOB", "D.O.B.", "date of birth", "birth date", "birthdate", "born"): always High. Other date forms are not found.'))
     , @('Payment card', ('Medium: 13 to 19 digits (the length each card network uses), starting with that network''s digits, and the whole ' +
