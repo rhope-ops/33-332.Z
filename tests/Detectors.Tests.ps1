@@ -75,6 +75,19 @@ Assert-Equal 'SSN/High/***-**-6789' ((Get-HitSummary "SSN $($Sample.Ssn), 6 copi
 foreach ($heading in @("THE UNIT A $d", "ORDER NUMBER $d", "$d`nTHE UNIT A")) {
     Assert-Equal 0 @(Get-HitSummary $heading | Where-Object { $_ -like 'DoD ID/*' }).Count "Capitals without dots, plain digits: no DoD ID: $($heading -replace '\d', '#')"
 }
+# Review of PR 57: a phone number, a date and a dashed SSN with a count after a name shape keep their own type.
+$phone = $d.Substring(0, 3) + ' ' + $d.Substring(3, 3) + ' ' + $d.Substring(6)
+$phoneDashed = $phone -replace ' ', '-'
+foreach ($case in @("CALL DSN $phone", "COMMERCIAL LINE $phoneDashed", "FAX, MAIN $phoneDashed", "Digitally signed by $cacName`nDSN $phone")) {
+    Assert-Equal 'Phone' ((@(Find-PiiInText $case | ForEach-Object { $_.Detector }) | Select-Object -Unique) -join ',') "Phone after a name shape stays a phone: $($case -replace '\d', '#')"
+}
+Assert-Equal 0 @(Get-HitSummary 'Signed 2026-11-23 10:15' | Where-Object { $_ -like 'DoD ID/*' }).Count 'A date after a signature word is no DoD ID'
+foreach ($case in @("$capsName $($Sample.Ssn) 3", "DOE, JANE $($Sample.Ssn) 3", "NAME LIST`n$($Sample.Ssn)`n5 ITEMS")) {
+    Assert-Equal 'SSN/Medium/***-**-6789' ((Get-HitSummary $case) -join ',') "Dashed SSN and a count after a name shape stays an SSN: $($case -replace '\d', '#')"
+}
+foreach ($case in @("report.final.v $nine $tenth", "THE UNIT A $nine-$tenth")) {
+    Assert-Equal 0 @(Get-HitSummary $case | Where-Object { $_ -like 'DoD ID/*' }).Count "No e-signature: $($case -replace '\d', '#')"
+}
 foreach ($word in @('backup.config. ', 'doe.jane.', 'e.g. ', 'REF.NO. ')) {
     Assert-Equal 0 @(Get-HitSummary ($word + $d) | Where-Object { $_ -like 'DoD ID/*' }).Count "No CAC name (gap): $word"
 }

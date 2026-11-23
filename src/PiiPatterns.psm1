@@ -40,9 +40,10 @@ $script:ShortKeywordWindowChars = 30
 #  - dotted, any letter case, with a one-letter middle initial: doe.jane.q. ("backup.config." and "e.g." are no name);
 #  - capitals without dots, 2 to 4 words, a comma allowed after the last name: DOE JANE Q, DOE, JANE Q.
 # An apostrophe (straight or typographic) and a hyphen may be in a name part. A name without its last dot, or without
-# dots, needs a gap before the digits: spaces, or one line break. The digits may have one space, dash or line break
+# dots, needs a gap before the digits: spaces, or one line break. A dotted name that is not all capitals needs its last
+# dot, then the digits right after it or after one line break ("report.final.v ######### #" is a file name). The digits may have one space, dash or line break
 # between any two of them, or stand on the line before a dotted name. After capitals without dots and without a comma,
-# the digits must have a gap ("DOE JANE Q 123 45 6789 0"): a heading such as "THE UNIT A" then a plain 10-digit number
+# the digits must have a space or line break ("DOE JANE Q 123 45 6789 0"): a heading such as "THE UNIT A" then a plain 10-digit number
 # is no e-signature (measured 2026-11-23: 2,861 false DoD IDs in 2 MB of invented prose without this limit). Without a name, a signature word just before the digits
 # (signed, CN=, DN:, Signature:) also makes them a DoD ID. Decisions: docs/DECISIONS.md 2026-11-21 and 2026-11-23.
 $script:NotNamePart = '(?!(?:NO|NR|NUM|REF|ACCT|ACC|TEL|PH|FAX|ID|DOC|REV|VER)\.)'
@@ -51,8 +52,11 @@ $script:AnyCaseDotted = "(?i:$($script:NotNamePart)[a-z][a-z'\u2019-]+(?:\.[a-z]
 $script:CapsSpaced = "[A-Z][A-Z'\u2019-]+,?(?: +[A-Z][A-Z'\u2019-]*){1,3}"
 $script:SignatureGap = '(?:[ \t]{1,3}|[ \t]*\r?\n[ \t]*)'
 $script:DodIdDigits = '(?<id>\d(?:(?:[ -]|[ \t]*\r?\n[ \t]*)?\d){9})(?!\w|[ -]\d(?!\d))'
-$script:SignatureNamePattern = '(?<![\w.])(?:(?:' + $script:CapsDotted + '|' + $script:AnyCaseDotted + ')(?:\.' +
-    $script:SignatureGap + '?|' + $script:SignatureGap + ')|(?<spaced>' + $script:CapsSpaced + ')\.?' + $script:SignatureGap + ')' + $script:DodIdDigits
+$script:SignatureNamePattern = '(?<![\w.])(?:' + $script:CapsDotted + '(?:\.' + $script:SignatureGap + '?|' + $script:SignatureGap + ')|' +
+    $script:AnyCaseDotted + '\.(?:[ \t]*\r?\n[ \t]*)?|(?<spaced>' + $script:CapsSpaced + ')\.?' + $script:SignatureGap + ')' + $script:DodIdDigits
+# Digit shapes that are something else, never an e-signature DoD ID (review of PR 57): a phone number (3-3-4), a date
+# (yyyy-mm-dd, mm/dd/yyyy), and a dashed SSN followed by a separate digit (a count): these stay what the other detectors say.
+$script:NotDodIdShape = '^(?:\d{3}([ .-])\d{3}\1\d{4}|\d{4}[-./]\d{2}[-./]\d{2}|\d{2}[-./]\d{2}[-./]\d{4}|\d{3}-\d{2}-\d{4}(?!-))'
 $script:DigitsBeforeNamePattern = '(?<![\w-])' + $script:DodIdDigits.Replace('(?!\w|[ -]\d(?!\d))', '') + '[ \t]*\r?\n[ \t]*(?:' +
     $script:CapsDotted + '|' + $script:AnyCaseDotted + ')\.'
 $script:SignatureDigitsPattern = '(?<![\w-])' + $script:DodIdDigits
@@ -188,13 +192,17 @@ function Get-ESignatureDigits {
     foreach ($pattern in @($script:SignatureNamePattern, $script:DigitsBeforeNamePattern)) {
         foreach ($m in [regex]::Matches($Text, $pattern)) {
             $spaced = $m.Groups['spaced']
-            if ($spaced.Success -and -not $spaced.Value.Contains(',') -and $m.Groups['id'].Value -match '^\d+$') { continue }
-            $found[$m.Groups['id'].Index] = $m.Groups['id'].Value
+            $value = $m.Groups['id'].Value
+            if ($value -match $script:NotDodIdShape) { continue }
+            # Capitals without dots and without a comma: only digits with a space or line break in them (a heading).
+            if ($spaced.Success -and -not $spaced.Value.Contains(',') -and $value -notmatch '\s') { continue }
+            $found[$m.Groups['id'].Index] = $value
         }
     }
     foreach ($m in [regex]::Matches($Text, $script:SignatureDigitsPattern)) {
         $digits = $m.Groups['id']
-        if (-not $found.ContainsKey($digits.Index) -and (Test-KeywordBefore $Text $digits.Index $script:SignatureWords)) { $found[$digits.Index] = $digits.Value }
+        if ($found.ContainsKey($digits.Index) -or $digits.Value -match $script:NotDodIdShape) { continue }
+        if (Test-KeywordBefore $Text $digits.Index $script:SignatureWords) { $found[$digits.Index] = $digits.Value }
     }
     foreach ($index in @($found.Keys | Sort-Object)) { @{ Index = $index; Value = $found[$index] } }
 }
