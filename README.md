@@ -75,7 +75,7 @@ The steps to run it are at the top of the script.
 | Files with a sensitivity label that encrypts them (Microsoft Purview) | Listed as NOT SCANNED, in a group of their own: open them and check by hand |
 | Encrypted or password-protected files, and PDFs with limits set by their author | Listed as NOT SCANNED, in a group of their own: check them by hand |
 | A PDF that takes more than 2 minutes to read (large or complex; the file is usually fine) | Listed as NOT SCANNED ("PDF time limit reached"): check it by hand |
-| Any file that takes more than 3 minutes to read, or a SharePoint call that waits more than 5 minutes | Listed as NOT SCANNED; the scan goes on: check it by hand |
+| A file (or an old version of it) that takes more than 3 minutes to read, or a SharePoint download that waits more than 5 minutes | The file is listed as NOT SCANNED and the scan goes on: check it by hand (a file list that waits more than 5 minutes stops the scan as INCOMPLETE) |
 | Parts of a PDF written in a way the reader does not follow (the file may still open fine) | Listed as NOT SCANNED ("PDF parts not read"); the rest of the file is still checked |
 | Files over 25 MB | Listed as NOT SCANNED: check them by hand (the limit is a setting) |
 | Scripts, programs, audio, video and other file types Ion does not read | Listed as NOT SCANNED: check them by hand |

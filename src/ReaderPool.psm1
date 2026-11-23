@@ -32,6 +32,19 @@ $script:DropStep = 0.15
 # gov run, 2026-11-23: a SharePoint scan hung after 50 minutes and Ctrl+C did not stop it).
 $script:FileSecondsLimit = 180
 $script:FileSlowReason = 'Reading took longer than 3 minutes (the file may be fine): check by hand'
+# The script that reads one old SharePoint version in its own runspace (Invoke-LimitedRead), so a stuck read cannot
+# hang the main thread (review of PR 58). It loads the reader code once per runspace, as a worker does.
+$script:LimitedReadScript = @'
+param($Init, $Bytes, $Name)
+if (-not $global:IonReaderReady) {
+    if ($Init.ContainsKey('Code')) { New-Module -Name IonReaders -ScriptBlock ([scriptblock]::Create($Init.Code)) | Import-Module -Global }
+    else { Import-Module $Init.Paths -Global -Force }
+    $global:IonReaderReady = $true
+}
+Get-TextFromBytes -Bytes $Bytes -FileName $Name
+'@
+$script:LastInit = $null      # the reader set-up of the last New-ReaderPool (Invoke-LimitedRead uses it)
+$script:LimitedRunspace = $null
 # How long the main thread waits for a worker between screen updates (milliseconds).
 $script:WaitSliceMs = 250
 # Paths longer than this are opened with the \\?\ prefix (Windows' classic limit is 260 characters).
@@ -150,6 +163,7 @@ function New-ReaderPool {
     #>
     param([hashtable]$Init)
     if (-not $Init) { $Init = @{ Paths = @(Get-Module $script:ReaderModules | ForEach-Object { $_.Path }) } }
+    $script:LastInit = $Init
     $max = [Math]::Max(1, [Math]::Min($script:MaxWorkers, [Environment]::ProcessorCount))
     $pool = [runspacefactory]::CreateRunspacePool(1, $max)
     $pool.Open()
@@ -264,6 +278,37 @@ function Stop-PoolJob {
     [void]$State.Pool.SetMaxRunspaces($State.Max + $State.Stuck)
 }
 
+function Invoke-LimitedRead {
+    <#
+    .SYNOPSIS
+      Get-TextFromBytes in a runspace of its own, with the per-file time limit ($FileSecondsLimit): for reads on the
+      main thread (old SharePoint versions). The wait is in short slices, so Ctrl+C still stops the scan. Over the
+      limit the runspace is stopped without waiting and left; the next read gets a new one.
+    .PARAMETER Bytes
+      The file bytes.
+    .PARAMETER Name
+      The file name (for its reader).
+    .OUTPUTS
+      Output of Get-TextFromBytes. Throws [TimeoutException] over the limit.
+    #>
+    param([byte[]]$Bytes, [string]$Name)
+    if (-not $script:LastInit) { return Get-TextFromBytes -Bytes $Bytes -FileName $Name }   # no scan set-up: read here
+    if (-not $script:LimitedRunspace) { $script:LimitedRunspace = [runspacefactory]::CreateRunspace(); $script:LimitedRunspace.Open() }
+    $shell = [powershell]::Create()
+    $shell.Runspace = $script:LimitedRunspace
+    [void]$shell.AddScript($script:LimitedReadScript).AddArgument($script:LastInit).AddArgument($Bytes).AddArgument($Name)
+    $handle = $shell.BeginInvoke()
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    while (-not $handle.AsyncWaitHandle.WaitOne($script:WaitSliceMs)) {
+        if ($clock.Elapsed.TotalSeconds -gt $script:FileSecondsLimit) {
+            try { [void]$shell.BeginStop($null, $null) } catch { Write-Verbose 'The read had already stopped.' }   # nothing to stop
+            $script:LimitedRunspace = $null
+            throw (New-Object System.TimeoutException $script:FileSlowReason)
+        }
+    }
+    try { return (@($shell.EndInvoke($handle)) | Select-Object -Last 1) } finally { $shell.Dispose() }
+}
+
 function Close-ReaderPool {
     <#
     .SYNOPSIS
@@ -273,6 +318,8 @@ function Close-ReaderPool {
       The pool of New-ReaderPool.
     #>
     param([hashtable]$State)
+    $script:LastInit = $null   # no scan now: a later old-version read is done on the calling thread
+    if ($script:LimitedRunspace) { [void]$script:LimitedRunspace.BeginClose($null, $null); $script:LimitedRunspace = $null }
     foreach ($job in $State.Jobs.ToArray()) {
         if ($job.Handle.IsCompleted) { $job.Shell.Dispose(); [void]$State.Jobs.Remove($job) }
         else { Stop-PoolJob $State $job }
@@ -282,4 +329,5 @@ function Close-ReaderPool {
     $State.Pool.Dispose()
 }
 
-Export-ModuleMember -Function Read-LocalFileBytes, Get-ContentHash, Invoke-PooledRead, New-ReaderPool, Add-PoolJob, Receive-PoolResult, Close-ReaderPool
+Export-ModuleMember -Function Read-LocalFileBytes, Get-ContentHash, Invoke-PooledRead, New-ReaderPool, Add-PoolJob, Receive-PoolResult, Close-ReaderPool,
+    Invoke-LimitedRead

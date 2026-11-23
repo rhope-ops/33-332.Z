@@ -35,9 +35,10 @@ $script:SiteUrlPattern = '^(?<host>https://[A-Za-z0-9.-]+)/(?::[a-z]:/r/)?(?<sit
 # creates one (CreateGroupEx). Microsoft documents no write for it; not proven on DoD365 (review of PR 49).
 $script:TenantRoot = 'https://usaf.dps.mil'
 
-# The longest one SharePoint call may wait (milliseconds), set on the signed-in connection: a download, the file list,
-# a version read. Without it a stalled call can wait without end, and Ctrl+C cannot stop a call in progress (the PAM's
-# gov run, 2026-11-23: a scan hung after 50 minutes). 5 minutes: a 25 MB file on a slow link still downloads.
+# The longest one SharePoint call may wait for its answer (milliseconds), set on the signed-in connection when it has
+# no limit or a longer one (the PnP 1.12.0 default is not verified here): a download, the file list, a version read.
+# Without it a stalled call can wait without end, and Ctrl+C cannot stop a call in progress (the PAM's gov run,
+# 2026-11-23: a scan hung after 50 minutes). 5 minutes: a 25 MB file on a slow link still downloads.
 $script:SharePointCallMs = 300000
 
 # Accepted Teams link: a team's or a channel's "Copy link" (https://<teams-host>/l/team/... or /l/channel/...).
@@ -219,7 +220,8 @@ function Set-SharePointTimeout {
       with a time-out: a download then gets a NOT SCANNED row, and the scan goes on.
     #>
     $context = Get-PnPContext
-    if ($context -and $context.PSObject.Properties['RequestTimeout']) { $context.RequestTimeout = $script:SharePointCallMs }
+    if (-not ($context -and $context.PSObject.Properties['RequestTimeout'])) { return }
+    if ($context.RequestTimeout -le 0 -or $context.RequestTimeout -gt $script:SharePointCallMs) { $context.RequestTimeout = $script:SharePointCallMs }
 }
 
 function Connect-TeamSite {

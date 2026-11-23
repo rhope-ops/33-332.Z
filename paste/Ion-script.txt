@@ -32,14 +32,14 @@
     src/PdfContent.psm1, sha256 85ee6cfeaf8f
     src/PdfText.psm1, sha256 dffef7dc6f8b
     src/TextExtract.psm1, sha256 5e02d07ddf10
-    src/ReaderPool.psm1, sha256 cd6f4a7ea54c
+    src/ReaderPool.psm1, sha256 f6042e2a96af
     src/XlsxWriter.psm1, sha256 0d8b1a3e1de1
-    src/Report.psm1, sha256 fe79d83f6d80
+    src/Report.psm1, sha256 a3d308b542e7
     src/ReportBook.psm1, sha256 63fb7318eda3
     src/ScanMeter.psm1, sha256 18c82f0b37c3
     src/ScanQueue.psm1, sha256 ae11c97d5b8b
-    src/Accountability.psm1, sha256 0f9f669ef687
-    src/SiteTarget.psm1, sha256 c1c74fe7088b
+    src/Accountability.psm1, sha256 8025033d2736
+    src/SiteTarget.psm1, sha256 7f08b53f17d9
     src/ChannelScan.psm1, sha256 0cd4894c7c7b
     src/DriveScan.psm1, sha256 f307e810f8f5
     src/Find-ChannelPII.ps1, sha256 bee2123e2ec3
@@ -68,18 +68,18 @@
     line  3298  Module PdfText.psm1
     line  3490  Module TextExtract.psm1
     line  3908  Module ReaderPool.psm1
-    line  4192  Reader block end
-    line  4196  Module XlsxWriter.psm1
-    line  4503  Module Report.psm1
-    line  4878  Module ReportBook.psm1
-    line  5090  Module ScanMeter.psm1
-    line  5487  Module ScanQueue.psm1
-    line  5877  Module Accountability.psm1
-    line  6259  Module SiteTarget.psm1
-    line  6528  Module ChannelScan.psm1
-    line  6930  Module DriveScan.psm1
-    line  7162  Body of Find-ChannelPII.ps1
-    line  7303  Clean-up
+    line  4239  Reader block end
+    line  4243  Module XlsxWriter.psm1
+    line  4550  Module Report.psm1
+    line  4926  Module ReportBook.psm1
+    line  5138  Module ScanMeter.psm1
+    line  5535  Module ScanQueue.psm1
+    line  5925  Module Accountability.psm1
+    line  6307  Module SiteTarget.psm1
+    line  6578  Module ChannelScan.psm1
+    line  6980  Module DriveScan.psm1
+    line  7212  Body of Find-ChannelPII.ps1
+    line  7353  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -3939,6 +3939,19 @@ $script:DropStep = 0.15
 # gov run, 2026-11-23: a SharePoint scan hung after 50 minutes and Ctrl+C did not stop it).
 $script:FileSecondsLimit = 180
 $script:FileSlowReason = 'Reading took longer than 3 minutes (the file may be fine): check by hand'
+# The script that reads one old SharePoint version in its own runspace (Invoke-LimitedRead), so a stuck read cannot
+# hang the main thread (review of PR 58). It loads the reader code once per runspace, as a worker does.
+$script:LimitedReadScript = @'
+param($Init, $Bytes, $Name)
+if (-not $global:IonReaderReady) {
+    if ($Init.ContainsKey('Code')) { New-Module -Name IonReaders -ScriptBlock ([scriptblock]::Create($Init.Code)) | Import-Module -Global }
+    else { Import-Module $Init.Paths -Global -Force }
+    $global:IonReaderReady = $true
+}
+Get-TextFromBytes -Bytes $Bytes -FileName $Name
+'@
+$script:LastInit = $null      # the reader set-up of the last New-ReaderPool (Invoke-LimitedRead uses it)
+$script:LimitedRunspace = $null
 # How long the main thread waits for a worker between screen updates (milliseconds).
 $script:WaitSliceMs = 250
 # Paths longer than this are opened with the \\?\ prefix (Windows' classic limit is 260 characters).
@@ -4057,6 +4070,7 @@ function New-ReaderPool {
     #>
     param([hashtable]$Init)
     if (-not $Init) { $Init = @{ Paths = @(Get-Module $script:ReaderModules | ForEach-Object { $_.Path }) } }
+    $script:LastInit = $Init
     $max = [Math]::Max(1, [Math]::Min($script:MaxWorkers, [Environment]::ProcessorCount))
     $pool = [runspacefactory]::CreateRunspacePool(1, $max)
     $pool.Open()
@@ -4171,6 +4185,37 @@ function Stop-PoolJob {
     [void]$State.Pool.SetMaxRunspaces($State.Max + $State.Stuck)
 }
 
+function Invoke-LimitedRead {
+    <#
+    .SYNOPSIS
+      Get-TextFromBytes in a runspace of its own, with the per-file time limit ($FileSecondsLimit): for reads on the
+      main thread (old SharePoint versions). The wait is in short slices, so Ctrl+C still stops the scan. Over the
+      limit the runspace is stopped without waiting and left; the next read gets a new one.
+    .PARAMETER Bytes
+      The file bytes.
+    .PARAMETER Name
+      The file name (for its reader).
+    .OUTPUTS
+      Output of Get-TextFromBytes. Throws [TimeoutException] over the limit.
+    #>
+    param([byte[]]$Bytes, [string]$Name)
+    if (-not $script:LastInit) { return Get-TextFromBytes -Bytes $Bytes -FileName $Name }   # no scan set-up: read here
+    if (-not $script:LimitedRunspace) { $script:LimitedRunspace = [runspacefactory]::CreateRunspace(); $script:LimitedRunspace.Open() }
+    $shell = [powershell]::Create()
+    $shell.Runspace = $script:LimitedRunspace
+    [void]$shell.AddScript($script:LimitedReadScript).AddArgument($script:LastInit).AddArgument($Bytes).AddArgument($Name)
+    $handle = $shell.BeginInvoke()
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    while (-not $handle.AsyncWaitHandle.WaitOne($script:WaitSliceMs)) {
+        if ($clock.Elapsed.TotalSeconds -gt $script:FileSecondsLimit) {
+            try { [void]$shell.BeginStop($null, $null) } catch { Write-Verbose 'The read had already stopped.' }   # nothing to stop
+            $script:LimitedRunspace = $null
+            throw (New-Object System.TimeoutException $script:FileSlowReason)
+        }
+    }
+    try { return (@($shell.EndInvoke($handle)) | Select-Object -Last 1) } finally { $shell.Dispose() }
+}
+
 function Close-ReaderPool {
     <#
     .SYNOPSIS
@@ -4180,6 +4225,8 @@ function Close-ReaderPool {
       The pool of New-ReaderPool.
     #>
     param([hashtable]$State)
+    $script:LastInit = $null   # no scan now: a later old-version read is done on the calling thread
+    if ($script:LimitedRunspace) { [void]$script:LimitedRunspace.BeginClose($null, $null); $script:LimitedRunspace = $null }
     foreach ($job in $State.Jobs.ToArray()) {
         if ($job.Handle.IsCompleted) { $job.Shell.Dispose(); [void]$State.Jobs.Remove($job) }
         else { Stop-PoolJob $State $job }
@@ -4552,6 +4599,7 @@ $script:NotScannedGroups = [ordered]@{
     '^No text in this PDF' = 'PDF without text (scanned image?)'
     'web page' = 'Download gave a web page'
     '^Download failed' = 'Download failed'
+    '^Reading took longer than' = 'File time limit reached (file may be fine)'
     'longer than the time limit|longer than its time limit' = 'PDF time limit reached (file may be fine)'
     '^Part of this PDF is not well formed|^Part of this PDF could not be read' = 'PDF parts not read (file may open fine)'
     '^Part of this PDF' = 'PDF parts not unpacked'
@@ -5888,7 +5936,7 @@ Accountability.psm1 - who made and changed a file with PII, and who put the PII 
                "PII first saved" and "PII first saved by" hold only a date and a person (or "Not recorded"); every caveat goes in
                "History note" (the PAM, 2026-11-21: the columns must be easy to understand).
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
-  Depends on:  TextExtract.psm1 (Get-TextFromBytes), PiiDetectors.psm1 (Find-PiiInText) and, for SharePoint,
+  Depends on:  TextExtract.psm1 and ReaderPool.psm1 (Invoke-LimitedRead), PiiDetectors.psm1 (Find-PiiInText) and, for SharePoint,
                PnP.PowerShell 1.12.0 (Get-PnPFileVersion, Get-PnPContext; read-only), imported first.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7).
   Network:     only the signed-in site (version history of files with a hit).
@@ -6027,7 +6075,7 @@ function Read-VersionText {
         $stream = $Version.OpenBinaryStream(); $Context.ExecuteQuery()
         $memory = New-Object System.IO.MemoryStream
         try { $stream.Value.CopyTo($memory); $bytes = $memory.ToArray() } finally { $memory.Dispose() }
-        $text = Get-TextFromBytes -Bytes $bytes -FileName $Name
+        $text = Invoke-LimitedRead -Bytes $bytes -Name $Name   # with the per-file time limit, off the main thread (ReaderPool.psm1)
     }
     catch { return $null }
     if ($text.Status -ne 'OK') { return $null }
@@ -6293,9 +6341,10 @@ $script:SiteUrlPattern = '^(?<host>https://[A-Za-z0-9.-]+)/(?::[a-z]:/r/)?(?<sit
 # creates one (CreateGroupEx). Microsoft documents no write for it; not proven on DoD365 (review of PR 49).
 $script:TenantRoot = 'https://usaf.dps.mil'
 
-# The longest one SharePoint call may wait (milliseconds), set on the signed-in connection: a download, the file list,
-# a version read. Without it a stalled call can wait without end, and Ctrl+C cannot stop a call in progress (the PAM's
-# gov run, 2026-11-23: a scan hung after 50 minutes). 5 minutes: a 25 MB file on a slow link still downloads.
+# The longest one SharePoint call may wait for its answer (milliseconds), set on the signed-in connection when it has
+# no limit or a longer one (the PnP 1.12.0 default is not verified here): a download, the file list, a version read.
+# Without it a stalled call can wait without end, and Ctrl+C cannot stop a call in progress (the PAM's gov run,
+# 2026-11-23: a scan hung after 50 minutes). 5 minutes: a 25 MB file on a slow link still downloads.
 $script:SharePointCallMs = 300000
 
 # Accepted Teams link: a team's or a channel's "Copy link" (https://<teams-host>/l/team/... or /l/channel/...).
@@ -6477,7 +6526,8 @@ function Set-SharePointTimeout {
       with a time-out: a download then gets a NOT SCANNED row, and the scan goes on.
     #>
     $context = Get-PnPContext
-    if ($context -and $context.PSObject.Properties['RequestTimeout']) { $context.RequestTimeout = $script:SharePointCallMs }
+    if (-not ($context -and $context.PSObject.Properties['RequestTimeout'])) { return }
+    if ($context.RequestTimeout -le 0 -or $context.RequestTimeout -gt $script:SharePointCallMs) { $context.RequestTimeout = $script:SharePointCallMs }
 }
 
 function Connect-TeamSite {

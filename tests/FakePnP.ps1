@@ -205,7 +205,7 @@ function global:Get-PnPContext {
     }
     # One context per connection, as in PnP: a setting made on it (RequestTimeout) stays for the next call.
     if ($global:FakePnP.ContainsKey('Context')) { return $global:FakePnP.Context }
-    $context = [pscustomobject]@{ Web = $web; RequestTimeout = 1800000 }
+    $context = [pscustomobject]@{ Web = $web; RequestTimeout = -1 }   # -1: no limit (the worst case)
     $context | Add-Member -MemberType ScriptMethod -Name ExecuteQuery -Value { }
     $global:FakePnP.Context = $context
     return $context

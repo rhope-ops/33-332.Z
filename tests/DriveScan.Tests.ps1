@@ -73,15 +73,25 @@ finally { Close-ReaderPool $pool }
 $readerPool = Get-Module ReaderPool
 $savedLimit = & $readerPool { $script:FileSecondsLimit }
 & $readerPool { $script:FileSecondsLimit = 2 }
-$stuckPool = New-ReaderPool @{ Code = 'function Invoke-PooledRead { param($Job, $Seen) [System.Threading.Thread]::Sleep(15000) }' }
+$stuckCode = 'function Invoke-PooledRead { param($Job, $Seen) if ($Job.Id -eq 7) { [System.Threading.Thread]::Sleep(15000) }; @{ Id = $Job.Id; Status = "OK" } }' +
+    "`nfunction Get-TextFromBytes { param(`$Bytes, `$FileName) [System.Threading.Thread]::Sleep(15000) }"
+$stuckPool = New-ReaderPool @{ Code = $stuckCode }
+# One worker only: the next file can run only when the pool gets a worker in place of the stuck one.
+[void]$stuckPool.Pool.SetMaxRunspaces(1); $stuckPool.Max = 1; $stuckPool.Target = 1
 $clock = [Diagnostics.Stopwatch]::StartNew()
 try {
     Add-PoolJob $stuckPool @{ Id = 7; Name = 'stuck.txt'; Bytes = $null; Path = 'stuck.txt' }
     $slow = @(Receive-PoolResult $stuckPool -Wait)
     Assert-Equal '7 NOT SCANNED True' ('{0} {1} {2}' -f $slow[0].Id, $slow[0].Status, $slow[0].Reason.StartsWith('Reading took longer')) 'Pool: a stuck worker gives NOT SCANNED after the limit'
     Assert-Equal $true ($clock.Elapsed.TotalSeconds -lt 15) 'Pool: the stuck worker does not hold the scan'
-    Add-PoolJob $stuckPool @{ Id = 8; Name = 'stuck2.txt'; Bytes = $null; Path = 'stuck2.txt' }
-    Assert-Equal 0 @(Receive-PoolResult $stuckPool).Count 'Pool: a new file starts after a stuck one'
+    Add-PoolJob $stuckPool @{ Id = 8; Name = 'next.txt'; Bytes = $null; Path = 'next.txt' }
+    $next = @(Receive-PoolResult $stuckPool -Wait)
+    Assert-Equal '8 OK' ('{0} {1}' -f $next[0].Id, $next[0].Status) 'Pool: the next file runs after a stuck one (one worker)'
+    # An old SharePoint version is read off the main thread, with the same limit (review of PR 58).
+    $clock.Restart()
+    $timedOut = $false
+    try { $null = Invoke-LimitedRead ([byte[]](1, 2, 3)) 'old.pdf' } catch [System.TimeoutException] { $timedOut = $true }
+    Assert-Equal 'True True' ('{0} {1}' -f $timedOut, ($clock.Elapsed.TotalSeconds -lt 10)) 'Old version: a stuck read stops at the limit'
 }
 finally {
     $clock.Restart()
