@@ -29,6 +29,13 @@ $script:FileLinkReason = 'A link to another file is not followed (it can lead ou
 $script:OnlineOnlyAttributes = 0x441000
 $script:OnlineReason = 'Online only (OneDrive), not downloaded: check by hand, or run Ion again and answer y to download'
 
+function Get-OneDriveHomes {
+    # The person's own OneDrive folders ("My files"), from Windows' OneDrive environment variables: only these can hold
+    # shortcuts to other teams' libraries (Confirm-OneDriveRoot). A synced library folder is not one (review of PR 59).
+    return @(foreach ($name in @('OneDrive', 'OneDriveCommercial', 'OneDriveConsumer')) { [Environment]::GetEnvironmentVariable($name) }) |
+        Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\', '/') }
+}
+
 function Get-OneDriveRoots {
     <#
     .SYNOPSIS
@@ -37,7 +44,7 @@ function Get-OneDriveRoots {
     .OUTPUTS
       [string[]] full folder paths.
     #>
-    $roots = @(foreach ($name in @('OneDrive', 'OneDriveCommercial', 'OneDriveConsumer')) { [Environment]::GetEnvironmentVariable($name) })
+    $roots = @(Get-OneDriveHomes)
     try {
         foreach ($tenant in @(Get-ChildItem -Path 'HKCU:\Software\Microsoft\OneDrive\Accounts\*\Tenants' -ErrorAction Stop)) {
             $roots += @($tenant.GetValueNames())   # each value name is a synced folder
@@ -50,7 +57,7 @@ function Get-OneDriveRoots {
 function Confirm-OneDriveRoot {
     <#
     .SYNOPSIS
-      When the pasted folder is itself a OneDrive sync folder (Get-OneDriveRoots), its top folders can be shortcuts to
+      When the pasted folder is the person's own OneDrive folder (Get-OneDriveHomes), its top folders can be shortcuts to
       other teams' libraries ("Add shortcut to My files"), which look like normal folders. Ion says so, lists the top
       folders (names masked) and asks before it scans them all (the PAM, 2026-11-23: "Warn, then ask"; the rule
       "No reconnaissance"). Any other folder: true without a question.
@@ -60,8 +67,8 @@ function Confirm-OneDriveRoot {
       [bool] true to scan.
     #>
     param([string]$Path)
-    $folder = $Path.TrimEnd('\', '/')
-    if (-not (@(Get-OneDriveRoots) | Where-Object { $_ -ieq $folder })) { return $true }
+    $folder = [System.IO.Path]::GetFullPath($Path).TrimEnd('\', '/')   # "<folder>\." and "<sub>\.." count as the folder
+    if (-not (@(Get-OneDriveHomes) | Where-Object { [System.IO.Path]::GetFullPath($_).TrimEnd('\', '/') -ieq $folder })) { return $true }
     $tops = @((New-Object System.IO.DirectoryInfo($folder)).GetDirectories() | ForEach-Object { Protect-PiiName $_.Name })
     Write-Ui 'This is a whole OneDrive folder. Folders in it can be shortcuts to the libraries of other teams.' 'Accent'
     Write-Ui ('  Its top folders: ' + ($tops -join ', ')) 'Muted'
@@ -313,7 +320,10 @@ function Invoke-DriveScan {
     try {
         if (-not (Test-Path -LiteralPath $Path -PathType Container)) { throw 'This folder cannot be opened (check the path, and that you can open it in File Explorer).' }
         # A whole OneDrive folder can hold shortcuts to other teams' libraries ("No reconnaissance"): ask first.
-        if (-not (Confirm-OneDriveRoot $Path)) { $run.Declined = $true; return $null }
+        # Declined until a yes: a cancel at the question saves nothing either, as at "Scan now?" (review of PR 59).
+        $run.Declined = $true
+        if (-not (Confirm-OneDriveRoot $Path)) { return $null }
+        $run.Declined = $false
         Write-Ui 'Listing the files ...' 'Muted'
         $found = Get-DriveGroups $Path
         $groups = $found.Groups.ToArray()
@@ -347,4 +357,4 @@ function Invoke-DriveScan {
 }
 
 Export-ModuleMember -Function Get-DriveGroups, Invoke-DriveScan, Get-ReparseKind, Select-OnlineFiles, Get-OneDriveRoots,
-    Confirm-OneDriveRoot
+    Get-OneDriveHomes, Confirm-OneDriveRoot

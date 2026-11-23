@@ -71,7 +71,7 @@ The steps to run it are at the top of the script.
 | Subsites | Run Ion again with the subsite's link |
 | A link (symbolic link or junction) to another folder or file inside a scanned drive folder | Listed as NOT SCANNED (a link can lead outside the folder): check it by hand |
 | Other reparse points: deduplicated or Azure File Sync files, and any outside a OneDrive folder | Listed as NOT SCANNED (a link can lead outside the folder): check it by hand |
-| A whole OneDrive folder (it can hold shortcuts to other teams' libraries) | Ion lists its top folders and asks before it scans them all; to scan one team, paste that team's folder |
+| Your whole OneDrive folder (it can hold shortcuts to other teams' libraries) | Ion lists its top folders and asks before it scans them all; to scan one team, paste that team's folder |
 | OneDrive files that are online only (not on this computer) | Ion shows how many and their MB, and asks before it downloads them; on "no" they are listed as NOT SCANNED. Downloaded files stay on the computer until you click Free up space |
 | Style Library and Form Templates | SharePoint's own files, not people's: skipped on purpose |
 | Files with a sensitivity label that encrypts them (Microsoft Purview) | Listed as NOT SCANNED, in a group of their own: open them and check by hand |

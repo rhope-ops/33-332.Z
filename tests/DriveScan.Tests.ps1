@@ -158,6 +158,12 @@ try {
     Assert-Equal $true (Confirm-OneDriveRoot ($odRoot + [System.IO.Path]::DirectorySeparatorChar) 6>$null) 'Whole OneDrive folder, answer y: scanned'
     Set-FakeRootAnswer ''
     Assert-Equal $true (Confirm-OneDriveRoot (Join-Path $odRoot 'Team A') 6>$null) 'A folder inside OneDrive: no question'
+    Assert-Equal $false (Confirm-OneDriveRoot (Join-Path (Join-Path $odRoot 'Team A') '..') 6>$null) 'The OneDrive folder written with ..: asked (Enter = no)'
+    # A cancel at the question saves nothing (as at "Scan now?"): Invoke-DriveScan returns no workbook.
+    Set-FakeRootAnswer 'cancel'
+    $odOut = Join-Path $odRoot 'out-not-made'
+    Assert-Equal $null (Invoke-DriveScan -Path $odRoot -OutputFolder $odOut -MaxFileMB 25 -Init $null 6>$null) 'Whole OneDrive folder, a cancel at the question: no workbook'
+    Assert-Equal $false (Test-Path -LiteralPath $odOut) 'Whole OneDrive folder, a cancel at the question: nothing saved'
 }
 finally {
     $env:OneDrive = $savedOneDrive
