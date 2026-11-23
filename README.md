@@ -52,11 +52,11 @@ The steps to run it are at the top of the script.
 | DoD ID | 10 digits after "DoD ID", "DODID", "EDIPI" or "CAC", or at the end of a CAC name (LAST.FIRST.M. then 10 digits, as in e-signatures: Low) | `******7890` |
 | Date of birth | A date after "DOB", "date of birth" or "born" | `[date masked]` |
 | Payment card | 13 to 19 digits with a card network's prefix that pass the card check | `************1111` |
-| Passport | 6 to 9 letters and digits after "passport" (9 digits there are a passport, not an SSN) | `*****567` |
+| Passport | 6 to 9 letters and digits after "passport" (9 digits in a row there, with no SSN label, are a passport, not an SSN) | `*****567` |
 | Phone | A US 10-digit number written with separators (dashes, dots, spaces or brackets); 10 digits in a row are not found | `***-***-0142` |
 | Personal e-mail | Any address not ending in .gov or .mil (Gmail, Yahoo and the like rank higher) | `***@domain` |
-| Home address | Number, street name and street type (St, ST, Ave, Rd ...) | `[address masked]` |
-| Name | After "Name:", "Full name:", "Member:", "Spouse:", "Dependent:", "NOK:" or "POC:"; the name stops at the end of its line | Initials |
+| Home address | Number, street name and street type (St or ST, Ave or AVE ...) | `[address masked]` |
+| Name | After "Name:", "Full name:", "Member:", "Spouse:", "Dependent:", "NOK:" or "POC:"; the name stops at a line that starts another field | Initials |
 | PII in a file or folder name | Any of the above in the path | As above |
 <!-- /site:looks-for -->
 

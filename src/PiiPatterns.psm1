@@ -381,8 +381,9 @@ function Find-HomeAddressHits {
     param([string]$Text)
     $streetTypes = 'Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Lane|Ln|Court|Ct|Boulevard|Blvd|Way|Circle|Cir|' +
                    'Place|Pl|Terrace|Ter|Parkway|Pkwy|Highway|Hwy|Trail|Trl'
-    # The street type in any case ("ST", "st"): the R4e benchmark, 2026-11-23, missed all-capital addresses.
-    $street = '\b\d{1,6}\s+(?:[NSEW]\.?\s+)?(?:[A-Z][A-Za-z]+\s+){1,4}(?i:' + $streetTypes + ')\b\.?'
+    # The street type as written or in capitals ("ST"): the R4e benchmark, 2026-11-23, missed all-capital addresses. Not in
+    # small letters ("4 Games st" is no address; review, 2026-11-23).
+    $street = '\b\d{1,6}\s+(?:[NSEW]\.?\s+)?(?:[A-Z][A-Za-z]+\s+){1,4}(?:' + $streetTypes + '|' + $streetTypes.ToUpper() + ')\b\.?'
     $unit = '(?:(?:Apt|Unit|#)\s*\w+,?\s*)?'
     $cityStateZip = '(?:,?\s*' + $unit + '[A-Z][A-Za-z]+(?:\s[A-Z][A-Za-z]+)?,?\s+[A-Z]{2}\s+\d{5}(?:-\d{4})?)?'
     $labels = 'home\s*address|residence|residential|mailing\s*address|lives\s+at|\bhome\b'

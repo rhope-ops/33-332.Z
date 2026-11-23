@@ -77,13 +77,18 @@ function Find-NameHits {
     param([string]$Text)
     $label = '(?:full\s+name|member\s+name|name|member|employee|spouse|dependent|next\s+of\s+kin|NOK|POC)\s*[:=-]\s*'
     # Labels of other data often follow a name on the same line; a name stops before them.
-    # The labels of this detector stop a name too, so a name never takes the next row's label (the R4e benchmark, 2026-11-23).
-    $stopWords = '(?!(?:SSN|SSAN|DOB|DoD|EDIPI|CAC|Phone|Cell|Mobile|Home|Address|Email|E-mail|Rank|Grade|Unit|Date|Born|' +
-        'Name|Full|Member|Employee|Spouse|Dependent|NOK|Next|POC)\b)'
-    # A part is a word or one capital letter, with or without a dot ("JANE M"). Only the second part may start on the next
-    # line (a wrapped cell); later parts stay on the line, so a name stops at a line break (the R4e benchmark, 2026-11-23).
-    $part = "$stopWords[A-Z](?:[A-Za-z'\-]+|\.|\b)"
-    $name = "[A-Z][A-Za-z'\-]+,?\s+$part(?:,?[ \t]+$part)*"
+    # A label of this detector ("Name:", "Member:") stops a name too, so a name never takes the next row's label; the same
+    # word without ":", "=" or "-" after it can be a name ("Mary Next") (the R4e benchmark and its review, 2026-11-23).
+    $stopWords = '(?!(?:SSN|SSAN|DOB|DoD|EDIPI|CAC|Phone|Cell|Mobile|Home|Address|Email|E-mail|Rank|Grade|Unit|Date|Born)\b)' +
+        '(?!(?i:' + ($label -replace '\\s', '[^\S\r\n]') + '))'   # a label on one line only ("Full" then "Name:" is no label)
+    # A part is a word, or one capital letter with or without a dot ("JANE M"); a letter without a dot only before another
+    # word or at the end of the name ("Jane Doe I live" keeps "Jane Doe"). Gaps: spaces, tabs or no-break spaces.
+    $gap = '[^\S\r\n]'
+    $part = "$stopWords[A-Z](?:[A-Za-z'\-]+|\.|\b(?=$gap+[A-Z][A-Za-z'\-]|$gap*(?:[,;]|\r?\n|$)))"
+    # The second part can start on the next line (a wrapped cell), as before. A later part can too, but not when that
+    # line starts another field ("Ship to: ...": a ":" or "=" within its first 4 words), so a name stops there (R4e benchmark).
+    $wrapped = ",?$gap*\r?\n$gap*(?=(?>[A-Z][A-Za-z'\-]*)(?!(?:$gap+[A-Za-z'\-]+){0,3}$gap*[:=]))"
+    $name = "[A-Z][A-Za-z'\-]+,?\s+$part(?:(?:,?$gap+|$wrapped)$part)*"
     foreach ($m in [regex]::Matches($Text, '(?i:' + $label + ')(' + $name + ')')) {
         New-PiiHit 'Name' 'Low' $m.Groups[1].Index $m.Groups[1].Value
     }
@@ -111,7 +116,10 @@ function Get-AllHits {
     Find-DobHits $Text
     Find-PassportHits $Text
     Find-PhoneHits $Text
-    Find-PersonalEmailHits $RawText   # with its underscores: "first_last@..." is one address (the R4e benchmark, 2026-11-23)
+    # With its underscores, "first_last@..." is one address (the R4e benchmark, 2026-11-23). Also read without them: when an
+    # address is glued by "_" to another hit ("CAC_<DoD ID>_jdoe@..."), that hit wins the overlap and this one still counts.
+    Find-PersonalEmailHits $RawText
+    if ($RawText -ne $Text) { Find-PersonalEmailHits $Text }
     Find-HomeAddressHits $Text
     Find-NameHits $Text
 }
