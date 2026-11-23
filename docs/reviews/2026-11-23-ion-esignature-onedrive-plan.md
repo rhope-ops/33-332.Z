@@ -8,7 +8,12 @@ Notation: `#` = one digit (tests build invented values at run time); `\n` = line
 ## Progress
 
 - PR 57 (PR 1): built, fresh-reviewed; waits on the PAM's shape lines (docs/reviews/2026-11-23-esignature-shape-test.md) before merge.
-- PR 2, PR 3: not started (they follow PR 57 on the same branch).
+- PR 58 (PR 2, hang): on branch claude/ion-hang-limits (the PAM, 2026-11-23: a new branch per PR). PR 3 (OneDrive and the
+  Connect-PnPOnline fallback): on branch claude/ion-onedrive.
+- PR 57 known limits after 3 fresh reviews (accepted by the author, for the PAM to see): a lower-case 3-part dotted
+  word with a one-letter last part ("www.site.a." then 10 digits) reads as a name; a row number on the line before a
+  dotted name, or a capitals line such as "GRAND TOTAL" then gapped 9+1 digits on the same line, reads as an
+  e-signature (DoD ID Low, not SSN); a run of 40,000+ capitals joined by hyphens with no space is slow (5 s at 78k).
 
 ## Three pull requests, disjoint files
 

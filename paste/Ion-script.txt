@@ -18,7 +18,7 @@
   the files at each library's top), or the drive folder and all its subfolders. Channel posts are not read.
 
   Built from these files; to change it, change them and rebuild with: python3 scripts/build_paste.py
-    src/PiiPatterns.psm1, sha256 80d45b0e5af2
+    src/PiiPatterns.psm1, sha256 8145b773cd40
     src/PiiDetectors.psm1, sha256 a457daf74a21
     src/PiiMasking.psm1, sha256 752c251a94b2
     src/OcrText.psm1, sha256 a39acab441d4
@@ -54,32 +54,32 @@
     line    85  Settings
     line    96  Reader block
     line   102  Module PiiPatterns.psm1
-    line   531  Module PiiDetectors.psm1
-    line   745  Module PiiMasking.psm1
-    line   945  Module OcrText.psm1
-    line  1098  Module OleText.psm1
-    line  1237  Module ContainerText.psm1
-    line  1576  Module PdfCore.psm1
-    line  1938  Module PdfObjects.psm1
-    line  2296  Module PdfFonts.psm1
-    line  2614  Module PdfShown.psm1
-    line  2865  Module PdfLayout.psm1
-    line  3005  Module PdfContent.psm1
-    line  3335  Module PdfText.psm1
-    line  3527  Module TextExtract.psm1
-    line  3945  Module ReaderPool.psm1
-    line  4197  Reader block end
-    line  4201  Module XlsxWriter.psm1
-    line  4508  Module Report.psm1
-    line  4883  Module ReportBook.psm1
-    line  5095  Module ScanMeter.psm1
-    line  5492  Module ScanQueue.psm1
-    line  5882  Module Accountability.psm1
-    line  6264  Module SiteTarget.psm1
-    line  6516  Module ChannelScan.psm1
-    line  6918  Module DriveScan.psm1
-    line  7150  Body of Find-ChannelPII.ps1
-    line  7291  Clean-up
+    line   552  Module PiiDetectors.psm1
+    line   766  Module PiiMasking.psm1
+    line   966  Module OcrText.psm1
+    line  1119  Module OleText.psm1
+    line  1258  Module ContainerText.psm1
+    line  1597  Module PdfCore.psm1
+    line  1959  Module PdfObjects.psm1
+    line  2317  Module PdfFonts.psm1
+    line  2635  Module PdfShown.psm1
+    line  2886  Module PdfLayout.psm1
+    line  3026  Module PdfContent.psm1
+    line  3356  Module PdfText.psm1
+    line  3548  Module TextExtract.psm1
+    line  3966  Module ReaderPool.psm1
+    line  4218  Reader block end
+    line  4222  Module XlsxWriter.psm1
+    line  4529  Module Report.psm1
+    line  4904  Module ReportBook.psm1
+    line  5116  Module ScanMeter.psm1
+    line  5513  Module ScanQueue.psm1
+    line  5903  Module Accountability.psm1
+    line  6285  Module SiteTarget.psm1
+    line  6537  Module ChannelScan.psm1
+    line  6939  Module DriveScan.psm1
+    line  7171  Body of Find-ChannelPII.ps1
+    line  7312  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -160,10 +160,12 @@ $script:SignatureNamePattern = '(?<![\w.])(?:(?:' + $script:CapsDotted + '(?:\.'
     $script:DodIdDigitsInline + ')'
 # Digit shapes that are something else, never an e-signature DoD ID (reviews of PR 57): a phone number (3-3-4, any
 # separators), a date (yyyy-mm-dd, mm/dd/yyyy), and a dashed SSN followed by a separate digit (a count).
-$script:NotDodIdShape = '^(?:\d{3}[ .\-\r\n]+\d{3}[ .\-\r\n]+\d{4}$|\d{4}[-./]\d{2}[-./]\d{2}|\d{2}[-./]\d{2}[-./]\d{4}|\d{3}-\d{2}-\d{4}(?!-))'
+$script:NotDodIdShape = '^(?:\d{3}[ .\-\r\n]+\d{3}[ .\-\r\n]+\d{4}$|\d{4}[-./]\d{2}[-./]\d{2}|\d{2}[-./]\d{2}[-./]\d{2}|\d{3}-\d{2}-\d{4}(?!-))'
 $script:DigitsBeforeNamePattern = '(?<![\w-])(?<id>\d(?:(?:[ -]|[ \t]*\r?\n[ \t]*)?\d){9})[ \t]*\r?\n[ \t]*(?:' +
     $script:CapsDotted + '|' + $script:AnyCaseDotted + ')\.'
 $script:SignatureDigitsPattern = '(?<![\w-])' + $script:DodIdDigits
+# A payment card that starts where the digits start, as Find-CardHits reads one (Test-CardAt).
+$script:CardAtPattern = New-Object System.Text.RegularExpressions.Regex('\G\d(?:[ -]?\d){12,18}(?![\w-])')
 # Signature phrases that put a number in a digital signature, looked for just before the digits (Test-KeywordBefore).
 $script:SignatureWords = '(?i:\bsigned\s+by\b|\bsigned\s*:|\bCN\s*=|\bDN\s*:|\bsignature\s*:)'
 
@@ -280,6 +282,25 @@ function New-PiiHit {
 # Detectors: one per PII type. Each returns zero or more hits (New-PiiHit).
 # =====================================================================================
 
+function Test-CardAt {
+    <#
+    .SYNOPSIS
+      True when a payment card number (as Find-CardHits finds it: 13-19 digits, Luhn, an issuer prefix) starts at this
+      position: such digits are a card, never an e-signature DoD ID (third review of PR 57: Amex 4-6-5, Diners 4-6-4).
+    .PARAMETER Text
+      The text searched.
+    .PARAMETER Index
+      Where the digits start.
+    .OUTPUTS
+      [bool]
+    #>
+    param([string]$Text, [int]$Index)
+    $card = $script:CardAtPattern.Match($Text, $Index)
+    if (-not $card.Success) { return $false }
+    $digits = $card.Value -replace '\D', ''
+    return (Test-Luhn $digits) -and $digits -match $script:CardIssuerPattern
+}
+
 function Get-ESignatureDigits {
     <#
     .SYNOPSIS
@@ -297,14 +318,14 @@ function Get-ESignatureDigits {
         foreach ($m in [regex]::Matches($Text, $pattern)) {
             $spaced = $m.Groups['spaced']
             $value = $m.Groups['id'].Value
-            if ($value -match $script:NotDodIdShape) { continue }
+            if ($value -match $script:NotDodIdShape -or (Test-CardAt $Text $m.Groups['id'].Index)) { continue }
             if ($spaced.Success -and -not $value.Contains(' ')) { continue }   # capitals without dots: digits with a space
             $found[$m.Groups['id'].Index] = $value
         }
     }
     foreach ($m in [regex]::Matches($Text, $script:SignatureDigitsPattern)) {
         $digits = $m.Groups['id']
-        if ($found.ContainsKey($digits.Index) -or $digits.Value -match $script:NotDodIdShape) { continue }
+        if ($found.ContainsKey($digits.Index) -or $digits.Value -match $script:NotDodIdShape -or (Test-CardAt $Text $digits.Index)) { continue }
         if (Test-KeywordBefore $Text $digits.Index $script:SignatureWords) { $found[$digits.Index] = $digits.Value }
     }
     foreach ($index in @($found.Keys | Sort-Object)) { @{ Index = $index; Value = $found[$index] } }

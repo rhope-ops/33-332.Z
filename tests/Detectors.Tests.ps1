@@ -100,6 +100,14 @@ foreach ($case in @("1 $capsName $nine`n2 DOE JOHN", "TOTAL FOR UNIT`n$nine $ten
     Assert-Equal 'SSN/Low/***-**-6789' ((Get-HitSummary $case) -join ',') "Roster row or heading line: the SSN stays: $($case -replace '\d', '#')"
 }
 Assert-Equal 'DoD ID/Low/******7890' ((Get-HitSummary "$($cacName.ToLower()) $d") -join ',') 'Lower-case dotted name, a space, the digits'
+# Third review of PR 57: an Amex (4-6-5) or Diners (4-6-4) card after a name shape or a signature phrase stays a card.
+$amex = '3782' + ' 822463 ' + '10005'
+$diners = '3056' + ' 930902 ' + '5904'
+foreach ($case in @("CARDHOLDER $capsName $amex", "$cacName$($amex -replace ' ', '-')", "Signed by $amex", "$capsName $diners")) {
+    $types = @(Find-PiiInText $case | ForEach-Object { $_.Detector })
+    Assert-Equal 'True False' ('{0} {1}' -f ($types -contains 'Payment card'), ($types -contains 'DoD ID')) "A card after a name shape stays a card: $($case -replace '\d', '#')"
+}
+Assert-Equal 0 @(Get-HitSummary 'Signed: 11-23-26 1015' | Where-Object { $_ -like 'DoD ID/*' }).Count 'A date with a 2-digit year after Signed: is no DoD ID'
 $rows = (1..2000 | ForEach-Object { "$capsName $($d.Substring(0, 3)) $($d.Substring(3, 2)) $($d.Substring(5, 4)) $tenth" }) -join "`n"
 $clock = [Diagnostics.Stopwatch]::StartNew()
 $rowHits = Get-HitSummary $rows

@@ -59,10 +59,12 @@ $script:SignatureNamePattern = '(?<![\w.])(?:(?:' + $script:CapsDotted + '(?:\.'
     $script:DodIdDigitsInline + ')'
 # Digit shapes that are something else, never an e-signature DoD ID (reviews of PR 57): a phone number (3-3-4, any
 # separators), a date (yyyy-mm-dd, mm/dd/yyyy), and a dashed SSN followed by a separate digit (a count).
-$script:NotDodIdShape = '^(?:\d{3}[ .\-\r\n]+\d{3}[ .\-\r\n]+\d{4}$|\d{4}[-./]\d{2}[-./]\d{2}|\d{2}[-./]\d{2}[-./]\d{4}|\d{3}-\d{2}-\d{4}(?!-))'
+$script:NotDodIdShape = '^(?:\d{3}[ .\-\r\n]+\d{3}[ .\-\r\n]+\d{4}$|\d{4}[-./]\d{2}[-./]\d{2}|\d{2}[-./]\d{2}[-./]\d{2}|\d{3}-\d{2}-\d{4}(?!-))'
 $script:DigitsBeforeNamePattern = '(?<![\w-])(?<id>\d(?:(?:[ -]|[ \t]*\r?\n[ \t]*)?\d){9})[ \t]*\r?\n[ \t]*(?:' +
     $script:CapsDotted + '|' + $script:AnyCaseDotted + ')\.'
 $script:SignatureDigitsPattern = '(?<![\w-])' + $script:DodIdDigits
+# A payment card that starts where the digits start, as Find-CardHits reads one (Test-CardAt).
+$script:CardAtPattern = New-Object System.Text.RegularExpressions.Regex('\G\d(?:[ -]?\d){12,18}(?![\w-])')
 # Signature phrases that put a number in a digital signature, looked for just before the digits (Test-KeywordBefore).
 $script:SignatureWords = '(?i:\bsigned\s+by\b|\bsigned\s*:|\bCN\s*=|\bDN\s*:|\bsignature\s*:)'
 
@@ -179,6 +181,25 @@ function New-PiiHit {
 # Detectors: one per PII type. Each returns zero or more hits (New-PiiHit).
 # =====================================================================================
 
+function Test-CardAt {
+    <#
+    .SYNOPSIS
+      True when a payment card number (as Find-CardHits finds it: 13-19 digits, Luhn, an issuer prefix) starts at this
+      position: such digits are a card, never an e-signature DoD ID (third review of PR 57: Amex 4-6-5, Diners 4-6-4).
+    .PARAMETER Text
+      The text searched.
+    .PARAMETER Index
+      Where the digits start.
+    .OUTPUTS
+      [bool]
+    #>
+    param([string]$Text, [int]$Index)
+    $card = $script:CardAtPattern.Match($Text, $Index)
+    if (-not $card.Success) { return $false }
+    $digits = $card.Value -replace '\D', ''
+    return (Test-Luhn $digits) -and $digits -match $script:CardIssuerPattern
+}
+
 function Get-ESignatureDigits {
     <#
     .SYNOPSIS
@@ -196,14 +217,14 @@ function Get-ESignatureDigits {
         foreach ($m in [regex]::Matches($Text, $pattern)) {
             $spaced = $m.Groups['spaced']
             $value = $m.Groups['id'].Value
-            if ($value -match $script:NotDodIdShape) { continue }
+            if ($value -match $script:NotDodIdShape -or (Test-CardAt $Text $m.Groups['id'].Index)) { continue }
             if ($spaced.Success -and -not $value.Contains(' ')) { continue }   # capitals without dots: digits with a space
             $found[$m.Groups['id'].Index] = $value
         }
     }
     foreach ($m in [regex]::Matches($Text, $script:SignatureDigitsPattern)) {
         $digits = $m.Groups['id']
-        if ($found.ContainsKey($digits.Index) -or $digits.Value -match $script:NotDodIdShape) { continue }
+        if ($found.ContainsKey($digits.Index) -or $digits.Value -match $script:NotDodIdShape -or (Test-CardAt $Text $digits.Index)) { continue }
         if (Test-KeywordBefore $Text $digits.Index $script:SignatureWords) { $found[$digits.Index] = $digits.Value }
     }
     foreach ($index in @($found.Keys | Sort-Object)) { @{ Index = $index; Value = $found[$index] } }
