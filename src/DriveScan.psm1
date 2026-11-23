@@ -119,8 +119,13 @@ function Select-OnlineFiles {
     Write-Ui '  They then stay on this computer. To remove them again: right-click the folder, then click Free up space.' 'Muted'
     if ((Read-Host 'Download and read them? [y/N]') -match '^\s*y') { return }
     foreach ($group in $Groups) {
-        foreach ($file in @($group.Files | Where-Object { $online -contains $_ })) {
-            [void]$group.Files.Remove($file)
+        $keep = New-Object System.Collections.Generic.List[object]   # one pass per group, not one search per file
+        $declined = New-Object System.Collections.Generic.List[object]
+        foreach ($file in $group.Files) {
+            if ($file.Online -and (Test-SupportedFile $file.Name) -and $file.Size -le $MaxFileMB * 1MB) { $declined.Add($file) } else { $keep.Add($file) }
+        }
+        $group.Files.Clear(); $group.Files.AddRange($keep)
+        foreach ($file in $declined) {
             $info = @{ Channel = (Protect-PiiName $group.Name); Item = (Get-ShownItem $group.Name $file.Inner); Link = (Get-DriveLink $file.Path); Modified = $file.Modified }
             if (Add-FileStartRows $Rows $info ($group.Name + '/' + $file.Inner) $file.Name $file.Size $MaxFileMB) {
                 $Rows.Add((New-ReportRow 'File' $info.Channel $info.Item $info.Link $info.Modified 'NOT SCANNED' '' '' $script:OnlineReason))

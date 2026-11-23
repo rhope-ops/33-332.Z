@@ -66,8 +66,10 @@ Assert-Equal 'https://tenant.example.com/teams/TeamA' (Connect-TeamSite (Get-Sca
 Reset-FakePnP @{}; Set-FakeLookupSite 'https://tenant.example.com/teams/TeamB'
 Set-FakeSiteAnswer -SiteGroupId '99999999-2222-3333-4444-555555555555'
 $refused = $false
-try { Connect-TeamSite (Get-ScanTarget $teamLink) 6>$null | Out-Null } catch { $refused = $true }  # expected: another team's site
+$wrongTeam = ''
+try { Connect-TeamSite (Get-ScanTarget $teamLink) 6>$null | Out-Null } catch { $refused = $true; $wrongTeam = $_.Exception.Message }  # expected: another team's site
 Assert-Equal $true $refused 'Looked-up site of another team refused'
+Assert-Equal $false $wrongTeam.Contains('Click Sync') 'Another team: no sync steps (the sign-in worked)'
 & $siteTargetModule { $script:TenantRoot = 'https://usaf.dps.mil' }
 Reset-FakePnP @{}
 Set-FakeSiteAnswer -TypedSite 'https://tenant.example.com/teams/TeamB' -SiteGroupId '99999999-2222-3333-4444-555555555555'

@@ -47,9 +47,9 @@ $script:SyncSteps = "`nSharePoint sign-in did not work on this computer. You can
     "`n  5. If you see the question, click Open. Wait until File Explorer shows the synced folder." +
     "`n  6. In File Explorer, in the synced folder, click the address bar. You see the folder path selected." +
     "`n  7. Press Ctrl+C. The path is on the clipboard." +
-    "`n  8. In Ion, at the question below, press Ctrl+V. You see the path." +
+    "`n  8. In Ion, at the question 'Scan another', press Ctrl+V. You see the path." +
     "`n  9. Press Enter. Ion scans the folder." +
-    "`nFor your own OneDrive files, paste the path of your OneDrive folder at the question below."
+    "`nFor your own OneDrive files, paste the path of your OneDrive folder at the question 'Scan another'."
 
 # The longest one SharePoint call may wait for its answer (milliseconds), set on the signed-in connection when it has
 # no limit or a longer one (the PnP 1.12.0 default is not verified here): a download, the file list, a version read.
@@ -255,6 +255,7 @@ function Connect-TeamSite {
     param($Target)
     $site = $Target.SiteUrl
     $ok = $false   # set only at the end: a cancel (Ctrl+C, Cancel on a prompt) skips 'catch' but not 'finally'
+    $signingIn = $false   # true only while the sign-in itself runs: only its errors get the sync steps (review of PR 59)
     try {
         if ($null -ne $Target.GroupId) {
             if ($Target.IsChannel) {
@@ -269,7 +270,9 @@ function Connect-TeamSite {
         Write-Ui "Signing in to $site ..." 'Muted'
         Write-Ui '  A sign-in window opens (if you do not see it, press Alt+Tab). If it says you have no access, close it.' 'Muted'
         # PnP prints a warning that suggests -Interactive (and its update notice): not useful to the person, so hidden (the PAM, 2026-11-20).
+        $signingIn = $true
         Connect-PnPOnline -Url $site -UseWebLogin -WarningAction SilentlyContinue
+        $signingIn = $false
         Set-SharePointTimeout
         $null = Get-PnPWeb -ErrorAction Stop   # can this person open the site? A refusal here is "no access", before any scan
         if ($null -ne $Target.GroupId) { Assert-SiteGroup $Target.GroupId }
@@ -279,7 +282,7 @@ function Connect-TeamSite {
     catch {
         $friendly = ConvertTo-FriendlyError $_.Exception.Message
         # Not "no access", "not found" or "sign-in not finished": the sign-in itself does not work here (blocked, missing).
-        if ($friendly -eq (Protect-PiiText $_.Exception.Message)) { $friendly += $script:SyncSteps }
+        if ($signingIn -and $friendly -eq (Protect-PiiText $_.Exception.Message)) { $friendly += $script:SyncSteps }
         throw $friendly
     }
     finally {

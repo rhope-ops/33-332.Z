@@ -39,9 +39,9 @@
     src/ScanMeter.psm1, sha256 18c82f0b37c3
     src/ScanQueue.psm1, sha256 ae11c97d5b8b
     src/Accountability.psm1, sha256 8025033d2736
-    src/SiteTarget.psm1, sha256 94ec51d69912
+    src/SiteTarget.psm1, sha256 3f6ba813d84e
     src/ChannelScan.psm1, sha256 0cd4894c7c7b
-    src/DriveScan.psm1, sha256 c5aad7eded25
+    src/DriveScan.psm1, sha256 1449a81452c3
     src/Find-ChannelPII.ps1, sha256 bee2123e2ec3
 
   Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.
@@ -76,10 +76,10 @@
     line  5529  Module ScanQueue.psm1
     line  5919  Module Accountability.psm1
     line  6301  Module SiteTarget.psm1
-    line  6593  Module ChannelScan.psm1
-    line  6995  Module DriveScan.psm1
-    line  7338  Body of Find-ChannelPII.ps1
-    line  7479  Clean-up
+    line  6596  Module ChannelScan.psm1
+    line  6998  Module DriveScan.psm1
+    line  7346  Body of Find-ChannelPII.ps1
+    line  7487  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -6347,9 +6347,9 @@ $script:SyncSteps = "`nSharePoint sign-in did not work on this computer. You can
     "`n  5. If you see the question, click Open. Wait until File Explorer shows the synced folder." +
     "`n  6. In File Explorer, in the synced folder, click the address bar. You see the folder path selected." +
     "`n  7. Press Ctrl+C. The path is on the clipboard." +
-    "`n  8. In Ion, at the question below, press Ctrl+V. You see the path." +
+    "`n  8. In Ion, at the question 'Scan another', press Ctrl+V. You see the path." +
     "`n  9. Press Enter. Ion scans the folder." +
-    "`nFor your own OneDrive files, paste the path of your OneDrive folder at the question below."
+    "`nFor your own OneDrive files, paste the path of your OneDrive folder at the question 'Scan another'."
 
 # The longest one SharePoint call may wait for its answer (milliseconds), set on the signed-in connection when it has
 # no limit or a longer one (the PnP 1.12.0 default is not verified here): a download, the file list, a version read.
@@ -6555,6 +6555,7 @@ function Connect-TeamSite {
     param($Target)
     $site = $Target.SiteUrl
     $ok = $false   # set only at the end: a cancel (Ctrl+C, Cancel on a prompt) skips 'catch' but not 'finally'
+    $signingIn = $false   # true only while the sign-in itself runs: only its errors get the sync steps (review of PR 59)
     try {
         if ($null -ne $Target.GroupId) {
             if ($Target.IsChannel) {
@@ -6569,7 +6570,9 @@ function Connect-TeamSite {
         Write-Ui "Signing in to $site ..." 'Muted'
         Write-Ui '  A sign-in window opens (if you do not see it, press Alt+Tab). If it says you have no access, close it.' 'Muted'
         # PnP prints a warning that suggests -Interactive (and its update notice): not useful to the person, so hidden (the PAM, 2026-11-20).
+        $signingIn = $true
         Connect-PnPOnline -Url $site -UseWebLogin -WarningAction SilentlyContinue
+        $signingIn = $false
         Set-SharePointTimeout
         $null = Get-PnPWeb -ErrorAction Stop   # can this person open the site? A refusal here is "no access", before any scan
         if ($null -ne $Target.GroupId) { Assert-SiteGroup $Target.GroupId }
@@ -6579,7 +6582,7 @@ function Connect-TeamSite {
     catch {
         $friendly = ConvertTo-FriendlyError $_.Exception.Message
         # Not "no access", "not found" or "sign-in not finished": the sign-in itself does not work here (blocked, missing).
-        if ($friendly -eq (Protect-PiiText $_.Exception.Message)) { $friendly += $script:SyncSteps }
+        if ($signingIn -and $friendly -eq (Protect-PiiText $_.Exception.Message)) { $friendly += $script:SyncSteps }
         throw $friendly
     }
     finally {
@@ -7113,8 +7116,13 @@ function Select-OnlineFiles {
     Write-Ui '  They then stay on this computer. To remove them again: right-click the folder, then click Free up space.' 'Muted'
     if ((Read-Host 'Download and read them? [y/N]') -match '^\s*y') { return }
     foreach ($group in $Groups) {
-        foreach ($file in @($group.Files | Where-Object { $online -contains $_ })) {
-            [void]$group.Files.Remove($file)
+        $keep = New-Object System.Collections.Generic.List[object]   # one pass per group, not one search per file
+        $declined = New-Object System.Collections.Generic.List[object]
+        foreach ($file in $group.Files) {
+            if ($file.Online -and (Test-SupportedFile $file.Name) -and $file.Size -le $MaxFileMB * 1MB) { $declined.Add($file) } else { $keep.Add($file) }
+        }
+        $group.Files.Clear(); $group.Files.AddRange($keep)
+        foreach ($file in $declined) {
             $info = @{ Channel = (Protect-PiiName $group.Name); Item = (Get-ShownItem $group.Name $file.Inner); Link = (Get-DriveLink $file.Path); Modified = $file.Modified }
             if (Add-FileStartRows $Rows $info ($group.Name + '/' + $file.Inner) $file.Name $file.Size $MaxFileMB) {
                 $Rows.Add((New-ReportRow 'File' $info.Channel $info.Item $info.Link $info.Modified 'NOT SCANNED' '' '' $script:OnlineReason))
