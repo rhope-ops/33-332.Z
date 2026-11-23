@@ -11,7 +11,7 @@ Accountability.psm1 - who made and changed a file with PII, and who put the PII 
                "PII first saved" and "PII first saved by" hold only a date and a person (or "Not recorded"); every caveat goes in
                "History note" (the PAM, 2026-11-21: the columns must be easy to understand).
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
-  Depends on:  TextExtract.psm1 (Get-TextFromBytes), PiiDetectors.psm1 (Find-PiiInText) and, for SharePoint,
+  Depends on:  TextExtract.psm1 and ReaderPool.psm1 (Invoke-LimitedRead), PiiDetectors.psm1 (Find-PiiInText) and, for SharePoint,
                PnP.PowerShell 1.12.0 (Get-PnPFileVersion, Get-PnPContext; read-only), imported first.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7).
   Network:     only the signed-in site (version history of files with a hit).
@@ -151,7 +151,7 @@ function Read-VersionText {
         $stream = $Version.OpenBinaryStream(); $Context.ExecuteQuery()
         $memory = New-Object System.IO.MemoryStream
         try { $stream.Value.CopyTo($memory); $bytes = $memory.ToArray() } finally { $memory.Dispose() }
-        $text = Get-TextFromBytes -Bytes $bytes -FileName $Name
+        $text = Invoke-LimitedRead -Bytes $bytes -Name $Name   # with the per-file time limit, off the main thread (ReaderPool.psm1)
     }
     catch { return $null }
     if ($text.Status -ne 'OK') { return $null }

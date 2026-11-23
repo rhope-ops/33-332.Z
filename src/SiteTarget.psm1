@@ -35,6 +35,12 @@ $script:SiteUrlPattern = '^(?<host>https://[A-Za-z0-9.-]+)/(?::[a-z]:/r/)?(?<sit
 # creates one (CreateGroupEx). Microsoft documents no write for it; not proven on DoD365 (review of PR 49).
 $script:TenantRoot = 'https://usaf.dps.mil'
 
+# The longest one SharePoint call may wait for its answer (milliseconds), set on the signed-in connection when it has
+# no limit or a longer one (the PnP 1.12.0 default is not verified here): a download, the file list, a version read.
+# Without it a stalled call can wait without end, and Ctrl+C cannot stop a call in progress (the PAM's gov run,
+# 2026-11-23: a scan hung after 50 minutes). 5 minutes: a 25 MB file on a slow link still downloads.
+$script:SharePointCallMs = 300000
+
 # Accepted Teams link: a team's or a channel's "Copy link" (https://<teams-host>/l/team/... or /l/channel/...).
 # Only its groupId (the team's Microsoft 365 group) is used; the host is not, so any Teams cloud's link works.
 # The path may hold spaces (a channel name) but not a second address ('://' or '/l/'), so text pasted after the link is not read.
@@ -195,6 +201,7 @@ function Find-TeamSiteByGroup {
     Write-Ui '  A sign-in window opens now, and a second one for the team site after it (if you do not see one, press Alt+Tab).' 'Muted'
     try {
         Connect-PnPOnline -Url $script:TenantRoot -UseWebLogin -WarningAction SilentlyContinue
+        Set-SharePointTimeout
         $answer = Invoke-PnPSPRestMethod -Method Post -Url '/_api/GroupSiteManager/GetSiteStatus' -Content @{ groupId = [string]$GroupId } -ErrorAction Stop
     }
     catch { Write-Verbose ('Team site lookup not possible: ' + $_.Exception.Message); return '' }
@@ -204,6 +211,17 @@ function Find-TeamSiteByGroup {
     try { $site = Test-TeamSiteUrl $url } catch { return '' }   # not a site address: ask instead
     if (-not $site.StartsWith($script:TenantRoot + '/', [StringComparison]::OrdinalIgnoreCase)) { return '' }
     return $site
+}
+
+function Set-SharePointTimeout {
+    <#
+    .SYNOPSIS
+      Sets the time limit of each SharePoint call on the signed-in connection ($SharePointCallMs). A call over it fails
+      with a time-out: a download then gets a NOT SCANNED row, and the scan goes on.
+    #>
+    try { $context = Get-PnPContext } catch { Write-Verbose 'No client context: no time limit set.'; return }   # never a sign-in error
+    if (-not ($context -and $context.PSObject.Properties['RequestTimeout'])) { return }
+    if ($context.RequestTimeout -le 0 -or $context.RequestTimeout -gt $script:SharePointCallMs) { $context.RequestTimeout = $script:SharePointCallMs }
 }
 
 function Connect-TeamSite {
@@ -236,6 +254,7 @@ function Connect-TeamSite {
         Write-Ui '  A sign-in window opens (if you do not see it, press Alt+Tab). If it says you have no access, close it.' 'Muted'
         # PnP prints a warning that suggests -Interactive (and its update notice): not useful to the person, so hidden (the PAM, 2026-11-20).
         Connect-PnPOnline -Url $site -UseWebLogin -WarningAction SilentlyContinue
+        Set-SharePointTimeout
         $null = Get-PnPWeb -ErrorAction Stop   # can this person open the site? A refusal here is "no access", before any scan
         if ($null -ne $Target.GroupId) { Assert-SiteGroup $Target.GroupId }
         $ok = $true

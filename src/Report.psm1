@@ -50,6 +50,7 @@ $script:NotScannedGroups = [ordered]@{
     '^No text in this PDF' = 'PDF without text (scanned image?)'
     'web page' = 'Download gave a web page'
     '^Download failed' = 'Download failed'
+    '^Reading took longer than' = 'File time limit reached (file may be fine)'
     'longer than the time limit|longer than its time limit' = 'PDF time limit reached (file may be fine)'
     '^Part of this PDF is not well formed|^Part of this PDF could not be read' = 'PDF parts not read (file may open fine)'
     '^Part of this PDF' = 'PDF parts not unpacked'
