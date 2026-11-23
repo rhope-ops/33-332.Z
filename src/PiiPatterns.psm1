@@ -33,18 +33,31 @@ $script:ShortKeywordWindowChars = 30
 # re-parsed them. A larger cache keeps them all (a speed-up for many files; the author's choice, 2026-11-20).
 [regex]::CacheSize = 64
 
-# A CAC name as certificates and digital signatures write it: 2 to 4 name parts, each ending in a dot, then the 10-digit
-# DoD ID (single spaces allowed between digits: PDF signature blocks are often drawn with gaps). $CacNameEnd is the
-# same name part alone, at the end of the text before an SSN-shaped match; $CacNameChars is how far back it is looked for.
-# Certificates write the name in capitals: the last name has 2 letters or more, so initials ("J.A.", "U.S.") and lower-case
-# words ("e.g.", "Acct.No.", "backup.config.") are no CAC name; nor are capital abbreviations such as "REF.NO." (review of PR 49).
-$script:CacNamePrefix = "(?<![\w.])(?!(?:NO|NR|NUM|REF|ACCT|ACC|TEL|PH|FAX|ID|DOC|REV|VER)\.)[A-Z][A-Z'-]+\." +
-    "(?!(?:NO|NR|NUM|REF|ACCT|TEL|PH|FAX|ID)\.)[A-Z][A-Z'-]*\.(?:[A-Z][A-Z'-]*\.){0,2}"
-# Words that put a number in a digital signature (where a gapped DoD ID is drawn), looked for just before it.
-$script:SignatureWords = '(?i:\bsigned\b|\bCN\s*=|\bDN\s*:)'
-$script:CacNamePattern = $script:CacNamePrefix + '(?<id>\d(?: ?\d){9})(?![\w-]| \d)'
-$script:CacNameEnd = $script:CacNamePrefix + '$'
-$script:CacNameChars = 120
+# E-signatures (a CAC name, then the 10-digit DoD ID). PDF text extraction drops the dots, adds spaces and breaks lines
+# in a signature box (the PAM, 2026-11-23), so a name is one of these shapes:
+#  - dotted capitals, 2 to 4 parts: DOE.JANE.Q. (the last name has 2 letters or more, so "J.A." and "U.S." are no name;
+#    nor are abbreviations such as "REF.NO.": review of PR 49);
+#  - dotted, any letter case, with a one-letter middle initial: doe.jane.q. ("backup.config." and "e.g." are no name);
+#  - capitals without dots, 2 to 4 words, a comma allowed after the last name: DOE JANE Q, DOE, JANE Q.
+# An apostrophe (straight or typographic) and a hyphen may be in a name part. A name without its last dot, or without
+# dots, needs a gap before the digits: spaces, or one line break. The digits may have one space, dash or line break
+# between any two of them, or stand on the line before a dotted name. After capitals without dots and without a comma,
+# the digits must have a gap ("DOE JANE Q 123 45 6789 0"): a heading such as "THE UNIT A" then a plain 10-digit number
+# is no e-signature (measured 2026-11-23: 2,861 false DoD IDs in 2 MB of invented prose without this limit). Without a name, a signature word just before the digits
+# (signed, CN=, DN:, Signature:) also makes them a DoD ID. Decisions: docs/DECISIONS.md 2026-11-21 and 2026-11-23.
+$script:NotNamePart = '(?!(?:NO|NR|NUM|REF|ACCT|ACC|TEL|PH|FAX|ID|DOC|REV|VER)\.)'
+$script:CapsDotted = $script:NotNamePart + "[A-Z][A-Z'\u2019-]+\." + $script:NotNamePart + "[A-Z][A-Z'\u2019-]*(?:\.[A-Z][A-Z'\u2019-]*){0,2}"
+$script:AnyCaseDotted = "(?i:$($script:NotNamePart)[a-z][a-z'\u2019-]+(?:\.[a-z][a-z'\u2019-]*){1,2}\.[a-z](?:\.(?:jr|sr|ii|iii|iv))?)"
+$script:CapsSpaced = "[A-Z][A-Z'\u2019-]+,?(?: +[A-Z][A-Z'\u2019-]*){1,3}"
+$script:SignatureGap = '(?:[ \t]{1,3}|[ \t]*\r?\n[ \t]*)'
+$script:DodIdDigits = '(?<id>\d(?:(?:[ -]|[ \t]*\r?\n[ \t]*)?\d){9})(?!\w|[ -]\d(?!\d))'
+$script:SignatureNamePattern = '(?<![\w.])(?:(?:' + $script:CapsDotted + '|' + $script:AnyCaseDotted + ')(?:\.' +
+    $script:SignatureGap + '?|' + $script:SignatureGap + ')|(?<spaced>' + $script:CapsSpaced + ')\.?' + $script:SignatureGap + ')' + $script:DodIdDigits
+$script:DigitsBeforeNamePattern = '(?<![\w-])' + $script:DodIdDigits.Replace('(?!\w|[ -]\d(?!\d))', '') + '[ \t]*\r?\n[ \t]*(?:' +
+    $script:CapsDotted + '|' + $script:AnyCaseDotted + ')\.'
+$script:SignatureDigitsPattern = '(?<![\w-])' + $script:DodIdDigits
+# Words that put a number in a digital signature, looked for just before the digits (Test-KeywordBefore, 40 characters).
+$script:SignatureWords = '(?i:\bsigned\b|\bCN\s*=|\bDN\s*:|\bsignature\s*:)'
 
 # E-mail top-level labels that mark a government address (not reported as personal e-mail).
 $script:GovernmentMailLabels = @('gov', 'mil')
@@ -159,28 +172,31 @@ function New-PiiHit {
 # Detectors: one per PII type. Each returns zero or more hits (New-PiiHit).
 # =====================================================================================
 
-function Test-SsnPartOfLonger {
+function Get-ESignatureDigits {
     <#
     .SYNOPSIS
-      True when an SSN-shaped match without dashes is part of a gapped 10-digit DoD ID: one more digit alone after one
-      space ("123 45 6789 0") with a signature word just before, or a CAC name ("LAST.FIRST." or "LAST.FIRST.M.") right before it, with no space.
-      A dashed SSN, and one followed by a longer number (a date, a count), stays an SSN (review of PR 49).
+      The DoD IDs of the e-signatures in a text: 10 digits after a CAC name shape, on the line before one, or after a
+      signature word (the patterns and their limits are at the top of this file). Find-DodIdHits reports them;
+      Find-SsnHits skips an unlabelled 9-digit match inside one (so the digits are one DoD ID, not an SSN).
     .PARAMETER Text
       The text searched.
-    .PARAMETER Match
-      The SSN regex match.
     .OUTPUTS
-      [bool]
+      [hashtable[]] Index and Value of each DoD ID (the digits with their gaps), one per start position.
     #>
-    param([string]$Text, [System.Text.RegularExpressions.Match]$Match)
-    if ($Match.Groups[2].Value -eq '-') { return $false }
-    $end = $Match.Index + $Match.Length
-    $loneDigit = $end + 1 -lt $Text.Length -and $Text[$end] -eq ' ' -and [char]::IsDigit($Text[$end + 1]) -and
-        ($end + 2 -ge $Text.Length -or -not [char]::IsLetterOrDigit($Text[$end + 2]))
-    # A lone digit after it ("... 2 copies") is a gapped DoD ID only in a signature ("Digitally signed by", "CN=").
-    if ($loneDigit -and (Test-KeywordBefore $Text $Match.Index $script:SignatureWords)) { return $true }
-    $start = [Math]::Max(0, $Match.Index - $script:CacNameChars)
-    return [regex]::IsMatch($Text.Substring($start, $Match.Index - $start), $script:CacNameEnd)
+    param([string]$Text)
+    $found = @{}
+    foreach ($pattern in @($script:SignatureNamePattern, $script:DigitsBeforeNamePattern)) {
+        foreach ($m in [regex]::Matches($Text, $pattern)) {
+            $spaced = $m.Groups['spaced']
+            if ($spaced.Success -and -not $spaced.Value.Contains(',') -and $m.Groups['id'].Value -match '^\d+$') { continue }
+            $found[$m.Groups['id'].Index] = $m.Groups['id'].Value
+        }
+    }
+    foreach ($m in [regex]::Matches($Text, $script:SignatureDigitsPattern)) {
+        $digits = $m.Groups['id']
+        if (-not $found.ContainsKey($digits.Index) -and (Test-KeywordBefore $Text $digits.Index $script:SignatureWords)) { $found[$digits.Index] = $digits.Value }
+    }
+    foreach ($index in @($found.Keys | Sort-Object)) { @{ Index = $index; Value = $found[$index] } }
 }
 
 function Find-SsnHits {
@@ -202,12 +218,17 @@ function Find-SsnHits {
     # No letter, digit, underscore or dash may touch the number: Word bookmarks (_Toc123456789) and IDs (ABC123456789)
     # are not SSNs (the PAM, 2026-11-20: trim false positives).
     $pattern = '(?<![\w-])(\d{3})([- ]?)(\d{2})\2(\d{4})(?![\w-])'
+    $signatures = $null
     foreach ($m in [regex]::Matches($Text, $pattern)) {
         if (-not (Test-SsnValid $m.Groups[1].Value $m.Groups[3].Value $m.Groups[4].Value)) { continue }
         $labelled = Test-KeywordBefore $Text $m.Index $labels
-        # Without a label, 9 digits that are part of a gapped DoD ID are no SSN (Test-SsnPartOfLonger). The PAM's
-        # gov run, 2026-11-21: DoD IDs in PDF signature blocks were shown as SSNs.
-        if (-not $labelled -and (Test-SsnPartOfLonger $Text $m)) { continue }
+        # Without a label, 9 digits inside an e-signature DoD ID are no SSN (the PAM's gov runs, 2026-11-21 and
+        # 2026-11-23: DoD IDs in PDF signature blocks were shown as SSNs). The e-signatures are found once per text.
+        if (-not $labelled) {
+            if ($null -eq $signatures) { $signatures = @(Get-ESignatureDigits $Text) }
+            $inside = @($signatures | Where-Object { $m.Index -ge $_.Index -and $m.Index + $m.Length -le $_.Index + $_.Value.Length })
+            if ($inside.Count -gt 0) { continue }
+        }
         $confidence = 'Low'
         if ($m.Groups[2].Value -ne '') { $confidence = 'Medium' }
         if ($labelled) { $confidence = 'High' }
@@ -230,13 +251,12 @@ function Find-DodIdHits {
     foreach ($m in [regex]::Matches($Text, '(?<!\w)\d{10}(?!\w)')) {
         if (Test-KeywordBefore $Text $m.Index $labels) { New-PiiHit 'DoD ID' 'High' $m.Index $m.Value }
     }
-    # A CAC name, as a digital signature shows it: LAST.FIRST.MIDDLE. then the DoD ID (the digits may be drawn with single
-    # spaces between them): Low, the only Low DoD ID, so the scan reads no version history for it (the PAM, 2026-11-21:
-    # "Low tab, no history").
-    foreach ($m in [regex]::Matches($Text, $script:CacNamePattern)) {
-        $digits = $m.Groups['id']
-        if (Test-KeywordBefore $Text $digits.Index $labels) { continue }   # already found above, with its label
-        New-PiiHit 'DoD ID' 'Low' $digits.Index $digits.Value
+    # An e-signature DoD ID (Get-ESignatureDigits): Low, the only Low DoD ID, so the scan reads no version history for it
+    # (the PAM, 2026-11-21: "Low tab, no history"). With a label near it is High (a gapped one is not found above).
+    foreach ($signature in @(Get-ESignatureDigits $Text)) {
+        $confidence = 'Low'
+        if (Test-KeywordBefore $Text $signature.Index $labels) { $confidence = 'High' }
+        New-PiiHit 'DoD ID' $confidence $signature.Index $signature.Value
     }
 }
 

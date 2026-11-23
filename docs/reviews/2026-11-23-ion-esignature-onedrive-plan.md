@@ -58,9 +58,10 @@ Controls (must not change):
 |---|---|---|
 | C1 | `SSN ###-##-####, 6 copies` | SSN/High |
 | C2 | `######### 3 pages`, `assigned ######### 1 slot`, `Unsigned ### ## #### 2`, `### ## #### 2 copies` (PR 49) | SSN |
-| C3 | `###-##-####-#` alone (no name, no signature word) | SSN/Medium (Q1) |
+| C3 | `###-##-####-#` alone (no name, no signature word) | no hit, as today (correction 2026-11-23: not SSN/Medium) |
 | C4 | `tracking ########## shipped`; `Acct.No.`, `REF.NO.`, `backup.config.`, `e.g.` + 10 digits | no DoD ID |
 | C5 | `assigned to bob a ######### #` (small letters, no dots) | SSN/Low (Q2) |
+| C7 | `THE UNIT A ##########` (capitals, no dots, plain digits; build finding: 2,861 false DoD IDs in 2 MB of prose) | no DoD ID |
 | C6 | Name hit next to an e-signature stays Low (test :43) | unchanged |
 
 Also checked: the masked value and Protect-PiiText for gapped, dashed and line-split digits (no part of the digits

@@ -29,7 +29,56 @@ $cacName = 'DOE' + '.' + 'JANE' + '.Q.'
 $spacedId = ($Sample.DodId.Substring(0, 3) + ' ' + $Sample.DodId.Substring(3, 2) + ' ' + $Sample.DodId.Substring(5, 4) + ' ' + $Sample.DodId.Substring(9))
 Assert-Equal 'DoD ID/Low/******7890' ((Get-HitSummary "Digitally signed by $cacName$($Sample.DodId)") -join ',') 'CAC name: the DoD ID, no SSN'
 Assert-Equal 'DoD ID/Low/******7890' ((Get-HitSummary "Digitally signed by $cacName$spacedId Date: 2026.11.20") -join ',') 'CAC name, digits with gaps: the DoD ID, no SSN'
-Assert-Equal 0 (Get-HitSummary ('Digitally signed by ' + $Sample.DodId.Substring(0, 9) + ' ' + $Sample.DodId.Substring(9) + ' Date')).Count 'Signature: 9 digits then one more after a space: no SSN'
+# E-signature layouts after PDF text extraction (the PAM, 2026-11-23: dots dropped, gaps and line breaks added). Each one is
+# a DoD ID / Low and no SSN when a CAC name shape or a signature word comes before the 10 digits (docs/DECISIONS.md 2026-11-23).
+$d = $Sample.DodId
+$nine = $d.Substring(0, 9); $tenth = $d.Substring(9)
+$capsName = 'DOE' + ' ' + 'JANE' + ' Q'
+$eSignatures = [ordered]@{
+    'capitals, no dots, digits 3-2-4-1'     = "$capsName $($d.Substring(0, 3)) $($d.Substring(3, 2)) $($d.Substring(5, 4)) $tenth"
+    'dotted name, space, 9 digits, 1 digit' = "$cacName $nine $tenth"
+    'Signature:, comma name, 9+1 digits'    = "Signature: DOE, JANE Q. $nine $tenth"
+    'one space before the digits'           = "$cacName $d"
+    'two spaces before the digits'          = "$cacName  $d"
+    'line break before the digits'          = "$cacName`n$d"
+    'CR LF before the digits'               = "$cacName`r`n$d"
+    'digits split over two lines'           = "$cacName$($d.Substring(0, 5))`n$($d.Substring(5))"
+    '9 digits, line break, 1 digit'         = "$cacName$nine`n$tenth"
+    'digits on the line before the name'    = "$d`n$cacName"
+    'lower-case dotted name'                = "$($cacName.ToLower())$d"
+    'apostrophe in the last name'           = ("O'" + 'BRIEN.JANE.Q.' + $d)
+    'typographic apostrophe'                = ('O' + [char]0x2019 + 'BRIEN.JANE.Q.' + $d)
+    'dashes in the digits'                  = "$cacName$($d.Substring(0, 3))-$($d.Substring(3, 2))-$($d.Substring(5, 4))-$tenth"
+    'signed by, no last dot, space'         = "Digitally signed by DOE.JANE.Q $d"
+    'signed by, 9 digits, space, 1 digit'   = "Digitally signed by $nine $tenth Date"
+    'signed by, 9 digits, line break'       = "Digitally signed by $nine`n$tenth"
+}
+# The layouts that were right before 2026-11-23 stay right.
+$spacedEach = ($d.ToCharArray() -join ' ')
+$eSignatures['signed by, dotted name']         = "Digitally signed by $cacName$d"
+$eSignatures['no middle initial']              = "Digitally signed by DOE.JANE.$d"
+$eSignatures['JR suffix']                      = "Digitally signed by $($cacName)JR.$d"
+$eSignatures['hyphenated last name']           = "Digitally signed by DOE-SMITH.JANE.Q.$d"
+$eSignatures['two-part first name']            = "Digitally signed by DOE.MARY.ANN.Q.$d"
+$eSignatures['a space between each digit']     = "Digitally signed by $cacName$spacedEach"
+$eSignatures['a date after']                   = "Digitally signed by $cacName$d Date: 2026.11.20 10:15:30 -06'00'"
+$eSignatures['CN= line']                       = "CN=$cacName$d, OU=PKI, OU=DoD, O=U.S. Government, C=US"
+$eSignatures['Reason: line after']             = "Digitally signed by $cacName$d`nReason: I am the author"
+foreach ($layout in $eSignatures.Keys) {
+    Assert-Equal 'DoD ID/Low/******7890' ((Get-HitSummary $eSignatures[$layout]) -join ',') "E-signature: $layout"
+    $shown = Protect-PiiText $eSignatures[$layout]
+    Assert-Equal '0 True' ('{0} {1}' -f ($shown -replace '\D', '').Length, $shown.Contains('******')) "E-signature masked, no digit shown: $layout"
+}
+# Controls: no signature, so the number stays what it was (an SSN), and no new DoD IDs.
+Assert-Equal 'SSN/Low/***-**-6789' ((Get-HitSummary "assigned to bob a $nine $tenth") -join ',') 'Small letters without dots are no CAC name: SSN'
+Assert-Equal 'SSN/High/***-**-6789' ((Get-HitSummary "SSN $($Sample.Ssn), 6 copies") -join ',') 'A labelled SSN before a count stays an SSN'
+foreach ($heading in @("THE UNIT A $d", "ORDER NUMBER $d", "$d`nTHE UNIT A")) {
+    Assert-Equal 0 @(Get-HitSummary $heading | Where-Object { $_ -like 'DoD ID/*' }).Count "Capitals without dots, plain digits: no DoD ID: $($heading -replace '\d', '#')"
+}
+foreach ($word in @('backup.config. ', 'doe.jane.', 'e.g. ', 'REF.NO. ')) {
+    Assert-Equal 0 @(Get-HitSummary ($word + $d) | Where-Object { $_ -like 'DoD ID/*' }).Count "No CAC name (gap): $word"
+}
+Assert-Equal 'DoD ID/High/******7890' ((Get-HitSummary "CAC: $cacName$spacedId") -join ',') 'A label before a gapped e-signature DoD ID makes it High'
 Assert-Equal 'SSN/High/***-**-6789' ((Get-HitSummary "SSN: $($Sample.Ssn) 2 copies") -join ',') 'A labelled SSN with a number after it is still found'
 $bareSsnX = $Sample.Ssn -replace '-', ''
 # Second review of PR 49: a count after an SSN, words that are no CAC name, and a one-letter first name.
