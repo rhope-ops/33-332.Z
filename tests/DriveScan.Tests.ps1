@@ -159,6 +159,11 @@ try {
     Set-FakeRootAnswer ''
     Assert-Equal $true (Confirm-OneDriveRoot (Join-Path $odRoot 'Team A') 6>$null) 'A folder inside OneDrive: no question'
     Assert-Equal $false (Confirm-OneDriveRoot (Join-Path (Join-Path $odRoot 'Team A') '..') 6>$null) 'The OneDrive folder written with ..: asked (Enter = no)'
+    Assert-Equal $false (Confirm-OneDriveRoot (Split-Path $odRoot -Parent) 6>$null) 'A folder that holds the OneDrive folder: asked (Enter = no)'
+    $sibling = $odRoot + '-library'   # a synced team library next to OneDrive (registry list, not the variable)
+    New-Item -ItemType Directory -Path $sibling -Force | Out-Null
+    Assert-Equal $true (Confirm-OneDriveRoot $sibling 6>$null) 'A synced team library folder: no question'
+    Remove-Item -LiteralPath $sibling -Recurse -Force -ErrorAction SilentlyContinue
     # A cancel at the question saves nothing (as at "Scan now?"): Invoke-DriveScan returns no workbook.
     Set-FakeRootAnswer 'cancel'
     $odOut = Join-Path $odRoot 'out-not-made'

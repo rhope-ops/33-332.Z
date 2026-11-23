@@ -60,7 +60,8 @@ function Confirm-OneDriveRoot {
       When the pasted folder is the person's own OneDrive folder (Get-OneDriveHomes), its top folders can be shortcuts to
       other teams' libraries ("Add shortcut to My files"), which look like normal folders. Ion says so, lists the top
       folders (names masked) and asks before it scans them all (the PAM, 2026-11-23: "Warn, then ask"; the rule
-      "No reconnaissance"). Any other folder: true without a question.
+      "No reconnaissance"). A folder that holds the OneDrive folder (the user folder) is asked about too. Any other
+      folder: true without a question.
     .PARAMETER Path
       The pasted folder.
     .OUTPUTS
@@ -68,9 +69,14 @@ function Confirm-OneDriveRoot {
     #>
     param([string]$Path)
     $folder = [System.IO.Path]::GetFullPath($Path).TrimEnd('\', '/')   # "<folder>\." and "<sub>\.." count as the folder
-    if (-not (@(Get-OneDriveHomes) | Where-Object { [System.IO.Path]::GetFullPath($_).TrimEnd('\', '/') -ieq $folder })) { return $true }
+    $holds = $false   # the pasted folder is a OneDrive folder, or holds one (review of PR 59)
+    foreach ($oneDriveHome in @(Get-OneDriveHomes)) {
+        try { $full = [System.IO.Path]::GetFullPath($oneDriveHome).TrimEnd('\', '/') } catch { continue }   # a bad variable: not a OneDrive folder
+        if ($full -ieq $folder -or $full.StartsWith($folder + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)) { $holds = $true }
+    }
+    if (-not $holds) { return $true }
     $tops = @((New-Object System.IO.DirectoryInfo($folder)).GetDirectories() | ForEach-Object { Protect-PiiName $_.Name })
-    Write-Ui 'This is a whole OneDrive folder. Folders in it can be shortcuts to the libraries of other teams.' 'Accent'
+    Write-Ui 'This folder holds your whole OneDrive folder. Folders in it can be shortcuts to the libraries of other teams.' 'Accent'
     Write-Ui ('  Its top folders: ' + ($tops -join ', ')) 'Muted'
     Write-Ui '  To scan one team only, press Enter, then paste the folder of that team.' 'Muted'
     return ((Read-Host 'Scan all of them? [y/N]') -match '^\s*y')
