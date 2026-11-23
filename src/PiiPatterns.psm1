@@ -208,6 +208,9 @@ function Find-SsnHits {
         # Without a label, 9 digits that are part of a gapped DoD ID are no SSN (Test-SsnPartOfLonger). The PAM's
         # gov run, 2026-11-21: DoD IDs in PDF signature blocks were shown as SSNs.
         if (-not $labelled -and (Test-SsnPartOfLonger $Text $m)) { continue }
+        # Without an SSN label, 9 digits in a row with "passport" just before are the passport number (Find-PassportHits,
+        # Medium), not an SSN Low (the R4e benchmark, 2026-11-23: 8 passports reported as SSN Low).
+        if (-not $labelled -and $m.Groups[2].Value -eq '' -and (Test-KeywordBefore $Text $m.Index 'passport' $script:ShortKeywordWindowChars)) { continue }
         $confidence = 'Low'
         if ($m.Groups[2].Value -ne '') { $confidence = 'Medium' }
         if ($labelled) { $confidence = 'High' }
@@ -378,7 +381,8 @@ function Find-HomeAddressHits {
     param([string]$Text)
     $streetTypes = 'Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Lane|Ln|Court|Ct|Boulevard|Blvd|Way|Circle|Cir|' +
                    'Place|Pl|Terrace|Ter|Parkway|Pkwy|Highway|Hwy|Trail|Trl'
-    $street = '\b\d{1,6}\s+(?:[NSEW]\.?\s+)?(?:[A-Z][A-Za-z]+\s+){1,4}(?:' + $streetTypes + ')\b\.?'
+    # The street type in any case ("ST", "st"): the R4e benchmark, 2026-11-23, missed all-capital addresses.
+    $street = '\b\d{1,6}\s+(?:[NSEW]\.?\s+)?(?:[A-Z][A-Za-z]+\s+){1,4}(?i:' + $streetTypes + ')\b\.?'
     $unit = '(?:(?:Apt|Unit|#)\s*\w+,?\s*)?'
     $cityStateZip = '(?:,?\s*' + $unit + '[A-Z][A-Za-z]+(?:\s[A-Z][A-Za-z]+)?,?\s+[A-Z]{2}\s+\d{5}(?:-\d{4})?)?'
     $labels = 'home\s*address|residence|residential|mailing\s*address|lives\s+at|\bhome\b'

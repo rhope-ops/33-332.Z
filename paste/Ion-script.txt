@@ -18,8 +18,8 @@
   the files at each library's top), or the drive folder and all its subfolders. Channel posts are not read.
 
   Built from these files; to change it, change them and rebuild with: python3 scripts/build_paste.py
-    src/PiiPatterns.psm1, sha256 299242c1cb6a
-    src/PiiDetectors.psm1, sha256 a457daf74a21
+    src/PiiPatterns.psm1, sha256 8dfeccd8925f
+    src/PiiDetectors.psm1, sha256 7a0e11519ebd
     src/PiiMasking.psm1, sha256 752c251a94b2
     src/OcrText.psm1, sha256 a39acab441d4
     src/OleText.psm1, sha256 2f5d0a036e97
@@ -38,7 +38,7 @@
     src/ReportBook.psm1, sha256 63fb7318eda3
     src/ScanMeter.psm1, sha256 18c82f0b37c3
     src/ScanQueue.psm1, sha256 ae11c97d5b8b
-    src/Accountability.psm1, sha256 8025033d2736
+    src/Accountability.psm1, sha256 91c6b14bbefe
     src/SiteTarget.psm1, sha256 3ffe3086e86b
     src/ChannelScan.psm1, sha256 0cd4894c7c7b
     src/DriveScan.psm1, sha256 f307e810f8f5
@@ -54,32 +54,32 @@
     line    85  Settings
     line    96  Reader block
     line   102  Module PiiPatterns.psm1
-    line   494  Module PiiDetectors.psm1
-    line   708  Module PiiMasking.psm1
-    line   908  Module OcrText.psm1
-    line  1061  Module OleText.psm1
-    line  1200  Module ContainerText.psm1
-    line  1539  Module PdfCore.psm1
-    line  1901  Module PdfObjects.psm1
-    line  2259  Module PdfFonts.psm1
-    line  2577  Module PdfShown.psm1
-    line  2828  Module PdfLayout.psm1
-    line  2968  Module PdfContent.psm1
-    line  3298  Module PdfText.psm1
-    line  3490  Module TextExtract.psm1
-    line  3908  Module ReaderPool.psm1
-    line  4233  Reader block end
-    line  4237  Module XlsxWriter.psm1
-    line  4544  Module Report.psm1
-    line  4920  Module ReportBook.psm1
-    line  5132  Module ScanMeter.psm1
-    line  5529  Module ScanQueue.psm1
-    line  5919  Module Accountability.psm1
-    line  6301  Module SiteTarget.psm1
-    line  6572  Module ChannelScan.psm1
-    line  6974  Module DriveScan.psm1
-    line  7206  Body of Find-ChannelPII.ps1
-    line  7347  Clean-up
+    line   498  Module PiiDetectors.psm1
+    line   719  Module PiiMasking.psm1
+    line   919  Module OcrText.psm1
+    line  1072  Module OleText.psm1
+    line  1211  Module ContainerText.psm1
+    line  1550  Module PdfCore.psm1
+    line  1912  Module PdfObjects.psm1
+    line  2270  Module PdfFonts.psm1
+    line  2588  Module PdfShown.psm1
+    line  2839  Module PdfLayout.psm1
+    line  2979  Module PdfContent.psm1
+    line  3309  Module PdfText.psm1
+    line  3501  Module TextExtract.psm1
+    line  3919  Module ReaderPool.psm1
+    line  4244  Reader block end
+    line  4248  Module XlsxWriter.psm1
+    line  4555  Module Report.psm1
+    line  4931  Module ReportBook.psm1
+    line  5143  Module ScanMeter.psm1
+    line  5540  Module ScanQueue.psm1
+    line  5930  Module Accountability.psm1
+    line  6312  Module SiteTarget.psm1
+    line  6583  Module ChannelScan.psm1
+    line  6985  Module DriveScan.psm1
+    line  7217  Body of Find-ChannelPII.ps1
+    line  7358  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -309,6 +309,9 @@ function Find-SsnHits {
         # Without a label, 9 digits that are part of a gapped DoD ID are no SSN (Test-SsnPartOfLonger). The PAM's
         # gov run, 2026-11-21: DoD IDs in PDF signature blocks were shown as SSNs.
         if (-not $labelled -and (Test-SsnPartOfLonger $Text $m)) { continue }
+        # Without an SSN label, 9 digits in a row with "passport" just before are the passport number (Find-PassportHits,
+        # Medium), not an SSN Low (the R4e benchmark, 2026-11-23: 8 passports reported as SSN Low).
+        if (-not $labelled -and $m.Groups[2].Value -eq '' -and (Test-KeywordBefore $Text $m.Index 'passport' $script:ShortKeywordWindowChars)) { continue }
         $confidence = 'Low'
         if ($m.Groups[2].Value -ne '') { $confidence = 'Medium' }
         if ($labelled) { $confidence = 'High' }
@@ -479,7 +482,8 @@ function Find-HomeAddressHits {
     param([string]$Text)
     $streetTypes = 'Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Lane|Ln|Court|Ct|Boulevard|Blvd|Way|Circle|Cir|' +
                    'Place|Pl|Terrace|Ter|Parkway|Pkwy|Highway|Hwy|Trail|Trl'
-    $street = '\b\d{1,6}\s+(?:[NSEW]\.?\s+)?(?:[A-Z][A-Za-z]+\s+){1,4}(?:' + $streetTypes + ')\b\.?'
+    # The street type in any case ("ST", "st"): the R4e benchmark, 2026-11-23, missed all-capital addresses.
+    $street = '\b\d{1,6}\s+(?:[NSEW]\.?\s+)?(?:[A-Z][A-Za-z]+\s+){1,4}(?i:' + $streetTypes + ')\b\.?'
     $unit = '(?:(?:Apt|Unit|#)\s*\w+,?\s*)?'
     $cityStateZip = '(?:,?\s*' + $unit + '[A-Z][A-Za-z]+(?:\s[A-Z][A-Za-z]+)?,?\s+[A-Z]{2}\s+\d{5}(?:-\d{4})?)?'
     $labels = 'home\s*address|residence|residential|mailing\s*address|lives\s+at|\bhome\b'
@@ -570,8 +574,13 @@ function Find-NameHits {
     param([string]$Text)
     $label = '(?:full\s+name|member\s+name|name|member|employee|spouse|dependent|next\s+of\s+kin|NOK|POC)\s*[:=-]\s*'
     # Labels of other data often follow a name on the same line; a name stops before them.
-    $stopWords = '(?!(?:SSN|SSAN|DOB|DoD|EDIPI|CAC|Phone|Cell|Mobile|Home|Address|Email|E-mail|Rank|Grade|Unit|Date|Born)\b)'
-    $name = "[A-Z][A-Za-z'\-]+(?:,?\s+$stopWords[A-Z](?:[A-Za-z'\-]+|\.))+"
+    # The labels of this detector stop a name too, so a name never takes the next row's label (the R4e benchmark, 2026-11-23).
+    $stopWords = '(?!(?:SSN|SSAN|DOB|DoD|EDIPI|CAC|Phone|Cell|Mobile|Home|Address|Email|E-mail|Rank|Grade|Unit|Date|Born|' +
+        'Name|Full|Member|Employee|Spouse|Dependent|NOK|Next|POC)\b)'
+    # A part is a word or one capital letter, with or without a dot ("JANE M"). Only the second part may start on the next
+    # line (a wrapped cell); later parts stay on the line, so a name stops at a line break (the R4e benchmark, 2026-11-23).
+    $part = "$stopWords[A-Z](?:[A-Za-z'\-]+|\.|\b)"
+    $name = "[A-Z][A-Za-z'\-]+,?\s+$part(?:,?[ \t]+$part)*"
     foreach ($m in [regex]::Matches($Text, '(?i:' + $label + ')(' + $name + ')')) {
         New-PiiHit 'Name' 'Low' $m.Groups[1].Index $m.Groups[1].Value
     }
@@ -586,18 +595,20 @@ function Get-AllHits {
     .SYNOPSIS
       Runs every detector on the text and returns all hits, overlaps included.
     .PARAMETER Text
-      The text to search.
+      The text to search (underscores already seen as spaces, Get-PiiSpan).
+    .PARAMETER RawText
+      The same text with its underscores, for the e-mail detector (same length, so positions fit both).
     .OUTPUTS
       Hit objects (New-PiiHit).
     #>
-    param([string]$Text)
+    param([string]$Text, [string]$RawText = $Text)
     Find-SsnHits $Text
     Find-DodIdHits $Text
     Find-CardHits $Text
     Find-DobHits $Text
     Find-PassportHits $Text
     Find-PhoneHits $Text
-    Find-PersonalEmailHits $Text
+    Find-PersonalEmailHits $RawText   # with its underscores: "first_last@..." is one address (the R4e benchmark, 2026-11-23)
     Find-HomeAddressHits $Text
     Find-NameHits $Text
 }
@@ -697,7 +708,7 @@ function Get-PiiSpan {
     # Underscores join words in file names ("CAC_1234..."), which defeats word-boundary checks.
     # Seen as spaces by the detectors only; the length is the same, so positions still fit the text.
     $searchText = $Text.Replace('_', ' ')
-    $kept = Remove-OverlappingHits @(Get-AllHits $searchText)
+    $kept = Remove-OverlappingHits @(Get-AllHits $searchText $Text)
     Set-NameNearIdentifierHigh $kept.ToArray()
     # A Low hit inside unreadable text (symbols, a font read wrong) is noise: it is dropped. High and Medium hits stay.
     $kept = @($kept | Where-Object { $_.Confidence -ne 'Low' -or -not (Test-GarbledNear $searchText $_.Index $_.Length) })
@@ -6263,13 +6274,13 @@ function Get-MethodRows {
     , @('Payment card', ('Medium: 13 to 19 digits (the length each card network uses), starting with that network''s digits, and the whole ' +
         'number passes the card check digit (Luhn). ' +
         'High: the same with a card word ("card", "Visa", "Amex", "GTC", "GPC" ...) before it.'))
-    , @('Passport', 'Found only with "passport" just before it: always Medium.')
+    , @('Passport', 'Found only with "passport" just before it: always Medium. Without an SSN label, 9 digits there are a passport, not an SSN.')
     , @('Phone', ('A US number written with separators: (###) ###-####, ###-###-####, ###.###.#### or ### ### ####; 10 digits in a row ' +
         'are not found; a +1 in front is allowed. Low: no label (office numbers are common). Medium: "cell", "mobile", "home", "personal", ' +
         '"my number" or "my phone" just before it.'))
     , @('Personal e-mail', 'Low: an address that does not end in .gov or .mil. Medium: a personal mail service (Gmail, Yahoo and the like).')
-    , @('Home address', 'Low: number, street name and street type. Medium: it ends with a state and ZIP code. High: "home address" or similar before it.')
-    , @('Name', 'Low: a name after "Name:", "Member:", "Spouse:" and the like. High: the same, with an SSN, DoD ID, date of birth, passport or card number close by.')
+    , @('Home address', 'Low: number, street name and street type (in any case). Medium: it ends with a state and ZIP code. High: "home address" or similar before it.')
+    , @('Name', 'Low: a name after "Name:", "Member:", "Spouse:" and the like; it ends at the end of its line. High: the same, with an SSN, DoD ID, date of birth, passport or card number close by.')
     , @('Noise', ('A Low match is dropped when, of the visible characters within 40 on each side (at least 20 of them), 30% or more are ' +
         'unreadable signs (symbols, a font read wrong). High and Medium matches are always kept.'))
     , @('')

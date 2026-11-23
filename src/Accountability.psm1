@@ -345,13 +345,13 @@ function Get-MethodRows {
     , @('Payment card', ('Medium: 13 to 19 digits (the length each card network uses), starting with that network''s digits, and the whole ' +
         'number passes the card check digit (Luhn). ' +
         'High: the same with a card word ("card", "Visa", "Amex", "GTC", "GPC" ...) before it.'))
-    , @('Passport', 'Found only with "passport" just before it: always Medium.')
+    , @('Passport', 'Found only with "passport" just before it: always Medium. Without an SSN label, 9 digits there are a passport, not an SSN.')
     , @('Phone', ('A US number written with separators: (###) ###-####, ###-###-####, ###.###.#### or ### ### ####; 10 digits in a row ' +
         'are not found; a +1 in front is allowed. Low: no label (office numbers are common). Medium: "cell", "mobile", "home", "personal", ' +
         '"my number" or "my phone" just before it.'))
     , @('Personal e-mail', 'Low: an address that does not end in .gov or .mil. Medium: a personal mail service (Gmail, Yahoo and the like).')
-    , @('Home address', 'Low: number, street name and street type. Medium: it ends with a state and ZIP code. High: "home address" or similar before it.')
-    , @('Name', 'Low: a name after "Name:", "Member:", "Spouse:" and the like. High: the same, with an SSN, DoD ID, date of birth, passport or card number close by.')
+    , @('Home address', 'Low: number, street name and street type (in any case). Medium: it ends with a state and ZIP code. High: "home address" or similar before it.')
+    , @('Name', 'Low: a name after "Name:", "Member:", "Spouse:" and the like; it ends at the end of its line. High: the same, with an SSN, DoD ID, date of birth, passport or card number close by.')
     , @('Noise', ('A Low match is dropped when, of the visible characters within 40 on each side (at least 20 of them), 30% or more are ' +
         'unreadable signs (symbols, a font read wrong). High and Medium matches are always kept.'))
     , @('')

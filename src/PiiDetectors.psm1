@@ -77,8 +77,13 @@ function Find-NameHits {
     param([string]$Text)
     $label = '(?:full\s+name|member\s+name|name|member|employee|spouse|dependent|next\s+of\s+kin|NOK|POC)\s*[:=-]\s*'
     # Labels of other data often follow a name on the same line; a name stops before them.
-    $stopWords = '(?!(?:SSN|SSAN|DOB|DoD|EDIPI|CAC|Phone|Cell|Mobile|Home|Address|Email|E-mail|Rank|Grade|Unit|Date|Born)\b)'
-    $name = "[A-Z][A-Za-z'\-]+(?:,?\s+$stopWords[A-Z](?:[A-Za-z'\-]+|\.))+"
+    # The labels of this detector stop a name too, so a name never takes the next row's label (the R4e benchmark, 2026-11-23).
+    $stopWords = '(?!(?:SSN|SSAN|DOB|DoD|EDIPI|CAC|Phone|Cell|Mobile|Home|Address|Email|E-mail|Rank|Grade|Unit|Date|Born|' +
+        'Name|Full|Member|Employee|Spouse|Dependent|NOK|Next|POC)\b)'
+    # A part is a word or one capital letter, with or without a dot ("JANE M"). Only the second part may start on the next
+    # line (a wrapped cell); later parts stay on the line, so a name stops at a line break (the R4e benchmark, 2026-11-23).
+    $part = "$stopWords[A-Z](?:[A-Za-z'\-]+|\.|\b)"
+    $name = "[A-Z][A-Za-z'\-]+,?\s+$part(?:,?[ \t]+$part)*"
     foreach ($m in [regex]::Matches($Text, '(?i:' + $label + ')(' + $name + ')')) {
         New-PiiHit 'Name' 'Low' $m.Groups[1].Index $m.Groups[1].Value
     }
@@ -93,18 +98,20 @@ function Get-AllHits {
     .SYNOPSIS
       Runs every detector on the text and returns all hits, overlaps included.
     .PARAMETER Text
-      The text to search.
+      The text to search (underscores already seen as spaces, Get-PiiSpan).
+    .PARAMETER RawText
+      The same text with its underscores, for the e-mail detector (same length, so positions fit both).
     .OUTPUTS
       Hit objects (New-PiiHit).
     #>
-    param([string]$Text)
+    param([string]$Text, [string]$RawText = $Text)
     Find-SsnHits $Text
     Find-DodIdHits $Text
     Find-CardHits $Text
     Find-DobHits $Text
     Find-PassportHits $Text
     Find-PhoneHits $Text
-    Find-PersonalEmailHits $Text
+    Find-PersonalEmailHits $RawText   # with its underscores: "first_last@..." is one address (the R4e benchmark, 2026-11-23)
     Find-HomeAddressHits $Text
     Find-NameHits $Text
 }
@@ -204,7 +211,7 @@ function Get-PiiSpan {
     # Underscores join words in file names ("CAC_1234..."), which defeats word-boundary checks.
     # Seen as spaces by the detectors only; the length is the same, so positions still fit the text.
     $searchText = $Text.Replace('_', ' ')
-    $kept = Remove-OverlappingHits @(Get-AllHits $searchText)
+    $kept = Remove-OverlappingHits @(Get-AllHits $searchText $Text)
     Set-NameNearIdentifierHigh $kept.ToArray()
     # A Low hit inside unreadable text (symbols, a font read wrong) is noise: it is dropped. High and Medium hits stay.
     $kept = @($kept | Where-Object { $_.Confidence -ne 'Low' -or -not (Test-GarbledNear $searchText $_.Index $_.Length) })

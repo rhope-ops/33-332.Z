@@ -200,3 +200,28 @@ $layouts = [ordered]@{
 foreach ($layout in $layouts.Keys) {
     Assert-Equal 'Phone/Low' ((Get-HitSummary $layouts[$layout]) -replace '/[^/]*$', '') ('Garbled: ' + $layout + ' keeps its Low hit')
 }
+
+# ---- The 5 Ion defects of the R4e benchmark (archimedes_lever docs/reviews/2026-11-23-tr-r4e-ion-benchmark.md) ----
+# 1. Street types in any case.
+Assert-Equal 'Home address/Medium/[address masked]' ((Get-HitSummary ('42 ELM ST, SPRINGFIELD, IL ' + '62704')) -join ',') 'Address in capitals'
+Assert-Equal 'Home address/High/[address masked]' ((Get-HitSummary 'Home: 12 OAK RD') -join ',') 'Capital street type with a label'
+Assert-Equal 'Home address/Low/[address masked]' ((Get-HitSummary '42 Elm st') -join ',') 'Lower-case street type'
+# 2. A 9-digit passport number is a passport, not an SSN; an SSN label still wins; a dashed SSN stays an SSN.
+$passport9 = '1234' + '56789'
+foreach ($case in @("Passport: $passport9", "PASSPORT NO`n$passport9", "her passport number is $passport9")) {
+    Assert-Equal 'Passport/Medium/******789' ((Get-HitSummary $case) -join ',') "9-digit passport: $($case -replace '\d', '#' -replace "`n", ' ')"
+}
+Assert-Equal 'SSN/High/***-**-6789' ((Get-HitSummary "Passport and SSN: $passport9") -join ',') 'SSN label near a passport word: SSN'
+Assert-Equal 1 @(Get-HitSummary "Passport photo; ref $($Sample.Ssn)" | Where-Object { $_ -like 'SSN/*' }).Count 'Dashed SSN after a passport word: SSN'
+# 3. An underscore in an e-mail name: the whole address is the hit, so no part of the name stays visible.
+$underscoreMail = 'first_last' + '@gmail.com'
+$mailSpan = @(Get-PiiSpan "Write to $underscoreMail today")[0]
+Assert-Equal $underscoreMail $mailSpan.Value 'E-mail with an underscore: whole address found'
+Assert-Equal $false ((Protect-PiiText "Write to $underscoreMail") -match 'first') 'E-mail with an underscore: name hidden'
+# 4. A name stops at a line break and never takes the next label.
+Assert-Equal 'Kenji D. Abernathy' (@(Get-PiiSpan "Name: Kenji D. Abernathy`nShip to: depot")[0].Value) 'Name stops at a line break'
+Assert-Equal 'P*** L*** | S*** R***' ((@(Find-PiiInText "Name: Pat Lee`nName: Sam Roe") | ForEach-Object { $_.MaskedValue }) -join ' | ') 'Two name rows: both names found'
+Assert-Equal 'Jane Doe' (@(Get-PiiSpan "Name: Jane`nDoe")[0].Value -replace '\s+', ' ') 'A name wrapped after the first word is still found'
+# 5. A middle initial without a dot.
+Assert-Equal 'DOE, JANE M' (@(Get-PiiSpan 'Name: DOE, JANE M')[0].Value) 'Middle initial without a dot kept'
+Assert-Equal 'J*** M*** D***' ((Find-PiiInText 'Member: Jane M Doe, unit').MaskedValue) 'First name, initial without a dot, last name'
