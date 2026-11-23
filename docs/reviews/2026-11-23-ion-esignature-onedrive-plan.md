@@ -5,6 +5,11 @@ Q3 online-only files: ask each run; Q4 SharePoint scan, Ctrl+C did not stop it).
 Kept: docs/DECISIONS.md rows of 2026-11-21 (e-signature DoD ID = DoD ID / Low, Low tab, no version history).
 Notation: `#` = one digit (tests build invented values at run time); `\n` = line break.
 
+## Progress
+
+- PR 57 (PR 1): built, fresh-reviewed; waits on the PAM's shape lines (docs/reviews/2026-11-23-esignature-shape-test.md) before merge.
+- PR 2, PR 3: not started (they follow PR 57 on the same branch).
+
 ## Three pull requests, disjoint files
 
 | PR | Scope | Files | Waits on |
