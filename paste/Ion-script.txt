@@ -41,7 +41,7 @@
     src/Accountability.psm1, sha256 8025033d2736
     src/SiteTarget.psm1, sha256 3f6ba813d84e
     src/ChannelScan.psm1, sha256 0cd4894c7c7b
-    src/DriveScan.psm1, sha256 2dc7eec48cf6
+    src/DriveScan.psm1, sha256 4b1b46c3002a
     src/Find-ChannelPII.ps1, sha256 bee2123e2ec3
 
   Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.
@@ -78,8 +78,8 @@
     line  6301  Module SiteTarget.psm1
     line  6596  Module ChannelScan.psm1
     line  6998  Module DriveScan.psm1
-    line  7356  Body of Find-ChannelPII.ps1
-    line  7497  Clean-up
+    line  7353  Body of Find-ChannelPII.ps1
+    line  7494  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -7316,11 +7316,8 @@ function Invoke-DriveScan {
     $run = @{ Meter = (New-ScanMeter 0); Reading = [TimeSpan]::Zero; Workers = 0 }   # filled by Invoke-ScanRun
     try {
         if (-not (Test-Path -LiteralPath $Path -PathType Container)) { throw 'This folder cannot be opened (check the path, and that you can open it in File Explorer).' }
-        # A whole OneDrive folder can hold shortcuts to other teams' libraries ("No reconnaissance"): ask first.
-        # Declined until a yes: a cancel at the question saves nothing either, as at "Scan now?" (review of PR 59).
-        $run.Declined = $true
-        if (-not (Confirm-OneDriveRoot $Path)) { return $null }
-        $run.Declined = $false
+        # Own OneDrive folder: shortcuts to other teams' libraries ("No reconnaissance"); declined until a yes (a cancel too).
+        $run.Declined = $true; if (-not (Confirm-OneDriveRoot $Path)) { return $null }; $run.Declined = $false
         Write-Ui 'Listing the files ...' 'Muted'
         $found = Get-DriveGroups $Path
         $groups = $found.Groups.ToArray()

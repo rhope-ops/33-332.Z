@@ -319,11 +319,8 @@ function Invoke-DriveScan {
     $run = @{ Meter = (New-ScanMeter 0); Reading = [TimeSpan]::Zero; Workers = 0 }   # filled by Invoke-ScanRun
     try {
         if (-not (Test-Path -LiteralPath $Path -PathType Container)) { throw 'This folder cannot be opened (check the path, and that you can open it in File Explorer).' }
-        # A whole OneDrive folder can hold shortcuts to other teams' libraries ("No reconnaissance"): ask first.
-        # Declined until a yes: a cancel at the question saves nothing either, as at "Scan now?" (review of PR 59).
-        $run.Declined = $true
-        if (-not (Confirm-OneDriveRoot $Path)) { return $null }
-        $run.Declined = $false
+        # Own OneDrive folder: shortcuts to other teams' libraries ("No reconnaissance"); declined until a yes (a cancel too).
+        $run.Declined = $true; if (-not (Confirm-OneDriveRoot $Path)) { return $null }; $run.Declined = $false
         Write-Ui 'Listing the files ...' 'Muted'
         $found = Get-DriveGroups $Path
         $groups = $found.Groups.ToArray()
