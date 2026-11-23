@@ -36,4 +36,5 @@ The Pages site is one static page with no script and no network calls. Its contr
 ## Known gaps
 
 - The bundle is not signed. The person trusts the GitHub link and the review of the pull request that changed `src/`.
-- No static security scan (bandit, gitleaks) runs yet (fleet v2 Stage 3B adds `security.yml`).
+- `.github/workflows/security.yml` (bandit on `scripts/`, gitleaks on the tree) runs on pull requests and manual runs only. gitleaks is checked against the checksums of its own release: this finds a damaged download, not a bad release.
+- PSScriptAnalyzer 1.23.0 is pinned by the SHA-256 of all 30 of its code files (`scripts/pssa-1.23.0.sha256`, checked by `scripts/check.local.sh`; an unlisted code file also fails), and `tests/Lint.ps1` loads exactly 1.23.0; the pins came from a local 1.23.0 copy (the PowerShell Gallery was not reachable from the build host), and the GitHub runner, which installs from the Gallery, is the proof that they match.
