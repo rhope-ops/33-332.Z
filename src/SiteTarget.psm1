@@ -35,6 +35,16 @@ $script:SiteUrlPattern = '^(?<host>https://[A-Za-z0-9.-]+)/(?::[a-z]:/r/)?(?<sit
 # creates one (CreateGroupEx). Microsoft documents no write for it; not proven on DoD365 (review of PR 49).
 $script:TenantRoot = 'https://usaf.dps.mil'
 
+# When the SharePoint sign-in cannot work on this computer (for example Connect-PnPOnline blocked outside the US: the
+# PAM, 2026-11-23), Ion does not stop: it shows how to scan a synced copy of the same files as a folder.
+$script:SyncSteps = "`nSharePoint sign-in did not work on this computer. You can scan a synced copy of the files as a folder:" +
+    "`n  1. In Teams, on the channel, click Files, then click Open in SharePoint." +
+    "`n  2. In SharePoint, click Sync. If the browser asks to open OneDrive, click Open." +
+    "`n  3. Wait until File Explorer shows the synced folder." +
+    "`n  4. In File Explorer, in the synced folder, click the address bar, then press Ctrl+C." +
+    "`n  5. In Ion, at the question below, press Ctrl+V, then press Enter." +
+    "`n  For your own OneDrive files, paste the path of your OneDrive folder."
+
 # Accepted Teams link: a team's or a channel's "Copy link" (https://<teams-host>/l/team/... or /l/channel/...).
 # Only its groupId (the team's Microsoft 365 group) is used; the host is not, so any Teams cloud's link works.
 # The path may hold spaces (a channel name) but not a second address ('://' or '/l/'), so text pasted after the link is not read.
@@ -241,7 +251,12 @@ function Connect-TeamSite {
         $ok = $true
         return $site
     }
-    catch { throw (ConvertTo-FriendlyError $_.Exception.Message) }
+    catch {
+        $friendly = ConvertTo-FriendlyError $_.Exception.Message
+        # Not "no access", "not found" or "sign-in not finished": the sign-in itself does not work here (blocked, missing).
+        if ($friendly -eq (Protect-PiiText $_.Exception.Message)) { $friendly += $script:SyncSteps }
+        throw $friendly
+    }
     finally {
         # No scan starts after an error or a cancel here: sign out, so no connection stays open in the ISE session.
         if (-not $ok) {

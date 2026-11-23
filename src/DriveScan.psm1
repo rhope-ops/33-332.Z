@@ -21,6 +21,66 @@ Set-StrictMode -Version 2.0
 $script:DriveTopGroup = '(top of the folder)'
 # A file link in the folder is never read (the PAM, 2026-11-21: "No reconnaissance").
 $script:FileLinkReason = 'A link to another file is not followed (it can lead outside the folder): check by hand'
+# OneDrive (and a SharePoint library synced by OneDrive) keeps its files and folders as reparse points too: they are the
+# item itself, not a link, so they are read (the PAM, 2026-11-23: scan a synced OneDrive folder when SharePoint sign-in
+# is blocked). A file whose data is only in the cloud has one of these attributes: RecallOnDataAccess (0x400000),
+# RecallOnOpen (0x40000) or Offline (0x1000). Ion asks before it reads such files (the PAM, 2026-11-23: "Ask each run").
+$script:OnlineOnlyAttributes = 0x441000
+$script:OnlineReason = 'Online only (OneDrive), not downloaded: check by hand, or run Ion again and answer y to download'
+
+function Get-ReparseKind {
+    <#
+    .SYNOPSIS
+      What a reparse point in the folder is: 'Link' for a symbolic link or junction (never followed: it can lead outside
+      the folder), else 'Cloud' (a OneDrive item: the file or folder itself). PowerShell's own LinkType and Target tell
+      them apart (no compiled code). When they cannot be read, it is a 'Link', as before.
+    .PARAMETER Entry
+      A FileInfo or DirectoryInfo (or, in tests, an object with LinkType and Target).
+    .OUTPUTS
+      [string] 'Link' or 'Cloud'.
+    #>
+    param($Entry)
+    try {
+        $item = [psobject]$Entry
+        $type = [string]$item.LinkType
+        $target = (@($item.Target) | Where-Object { $_ }) -join ''
+    }
+    catch { return 'Link' }
+    if ($type -or $target) { return 'Link' }
+    return 'Cloud'
+}
+
+function Select-OnlineFiles {
+    <#
+    .SYNOPSIS
+      Online-only OneDrive files: when some would be read (a supported type, under the size limit), Ion shows how many
+      and their MB, and asks whether to download and read them (default no). On "no" they leave the groups and get a
+      NOT SCANNED row each (with a hit row for PII in the name). Ion never frees them again (that is a write).
+    .PARAMETER Groups
+      The groups of Get-DriveGroups (changed in place).
+    .PARAMETER Rows
+      The list that receives the rows.
+    .PARAMETER MaxFileMB
+      The size limit.
+    #>
+    param([object[]]$Groups, $Rows, [int]$MaxFileMB)
+    $online = @(foreach ($group in $Groups) { foreach ($file in $group.Files) {
+                if ($file.Online -and (Test-SupportedFile $file.Name) -and $file.Size -le $MaxFileMB * 1MB) { $file } } })
+    if ($online.Count -eq 0) { return }
+    $megabytes = ($online | Measure-Object -Property Size -Sum).Sum / 1MB
+    Write-Ui ('{0} files ({1:N1} MB) here are online only (OneDrive). To read them, Ion must download them to this computer.' -f $online.Count, $megabytes) 'Accent'
+    Write-Ui '  They then stay on this computer. To remove them again: right-click the folder, then click Free up space.' 'Muted'
+    if ((Read-Host 'Download and read them? [y/N]') -match '^\s*y') { return }
+    foreach ($group in $Groups) {
+        foreach ($file in @($group.Files | Where-Object { $online -contains $_ })) {
+            [void]$group.Files.Remove($file)
+            $info = @{ Channel = (Protect-PiiName $group.Name); Item = (Get-ShownItem $group.Name $file.Inner); Link = (Get-DriveLink $file.Path); Modified = $file.Modified }
+            if (Add-FileStartRows $Rows $info ($group.Name + '/' + $file.Inner) $file.Name $file.Size $MaxFileMB) {
+                $Rows.Add((New-ReportRow 'File' $info.Channel $info.Item $info.Link $info.Modified 'NOT SCANNED' '' '' $script:OnlineReason))
+            }
+        }
+    }
+}
 
 function Get-DriveGroups {
     <#
@@ -50,12 +110,12 @@ function Get-DriveGroups {
         foreach ($entry in $entries) {
             $rel = ($relative + '\' + $entry.Name).TrimStart($slashes)
             if ($entry -is [System.IO.DirectoryInfo]) {
-                if ($entry.Attributes -band [System.IO.FileAttributes]::ReparsePoint) { $result.Links.Add($rel); continue }
+                if (($entry.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -and (Get-ReparseKind $entry) -eq 'Link') { $result.Links.Add($rel); continue }
                 $stack.Push($entry.FullName)
                 continue
             }
-            # A file link (any reparse point) is not followed: it can lead outside the folder ("No reconnaissance").
-            if ($entry.Attributes -band [System.IO.FileAttributes]::ReparsePoint) { $result.FileLinks.Add($rel); continue }
+            # A file link (a symbolic link) is not followed: it can lead outside the folder ("No reconnaissance").
+            if (($entry.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -and (Get-ReparseKind $entry) -eq 'Link') { $result.FileLinks.Add($rel); continue }
             $groupName = $script:DriveTopGroup
             $inner = $rel
             $cut = $rel.IndexOfAny($slashes)
@@ -66,7 +126,7 @@ function Get-DriveGroups {
                 $group = $byName[$groupName]
             }
             $group.Files.Add(@{ Path = $entry.FullName; Inner = ($inner -replace '[\\/]', '/'); Name = $entry.Name; Size = [long]$entry.Length
-                Modified = $entry.LastWriteTime.ToString('yyyy-MM-dd HH:mm') })
+                Modified = $entry.LastWriteTime.ToString('yyyy-MM-dd HH:mm'); Online = (([int]$entry.Attributes -band $script:OnlineOnlyAttributes) -ne 0) })
         }
     }
     foreach ($name in @($byName.Keys | Sort-Object)) { $result.Groups.Add($byName[$name]) }
@@ -203,6 +263,7 @@ function Invoke-DriveScan {
         $found = Get-DriveGroups $Path
         $groups = $found.Groups.ToArray()
         Add-DriveListRows $found $rows
+        Select-OnlineFiles $groups $rows $MaxFileMB
         # Starts one file (Invoke-GroupScan calls it).
         $start = { param($queue, $group, $file) Invoke-DriveFile $queue $group.Name $file $MaxFileMB }
         # The file's masked path inside its folder, for the progress bar.
@@ -230,4 +291,4 @@ function Invoke-DriveScan {
     return $workbook
 }
 
-Export-ModuleMember -Function Get-DriveGroups, Invoke-DriveScan
+Export-ModuleMember -Function Get-DriveGroups, Invoke-DriveScan, Get-ReparseKind, Select-OnlineFiles

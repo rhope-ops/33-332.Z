@@ -36,6 +36,7 @@ function Reset-FakePnP {
         Libraries   = @('Shared Documents')                       # the visible document libraries (Get-PnPList)
         ListFails   = $false
         ConnectFails = $false                                     # the web login to a site fails (an error before the scan)
+        OnlineAnswer = ''                                         # the answer to "Download and read them?" (Enter = no)
         SiteFails   = $false                                      # Get-PnPSite fails (the site's group cannot be read)
         TypedSite   = New-Object System.Collections.Generic.Queue[string]   # the fake Read-Host's answers, in order; none = Enter
         NoAccess    = $false                                      # the site refuses the signed-in person (403)
@@ -266,6 +267,7 @@ function global:Read-Host {
     [CmdletBinding()] param($Prompt)
     # The open-the-workbook question has its own answer (Enter = open), so the queued addresses stay in order.
     if ([string]$Prompt -like 'Open the workbook*') { $global:FakePnP.Calls.Add('Open question'); return $global:FakePnP.OpenAnswer }
+    if ([string]$Prompt -like 'Download and read them*') { $global:FakePnP.Calls.Add('Online question'); return $global:FakePnP.OnlineAnswer }
     if ([string]$Prompt -like 'Scan now*') {
         $global:FakePnP.Calls.Add('Scan question')
         if ($global:FakePnP.ScanAnswer -eq 'cancel') { throw 'FAKE: prompt cancelled' }   # as a cancel at the question

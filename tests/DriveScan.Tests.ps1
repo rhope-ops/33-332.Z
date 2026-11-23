@@ -68,6 +68,32 @@ try {
 }
 finally { Close-ReaderPool $pool }
 
+# OneDrive (the PAM, 2026-11-23): a synced OneDrive item is a reparse point but no link: it is read; a symbolic link or
+# junction is not followed; when its kind cannot be read, it stays a link.
+Assert-Equal 'Cloud' (Get-ReparseKind ([pscustomobject]@{ LinkType = $null; Target = $null })) 'OneDrive item (no link type, no target): read'
+Assert-Equal 'Link' (Get-ReparseKind ([pscustomobject]@{ LinkType = 'SymbolicLink'; Target = @('x') })) 'Symbolic link: not followed'
+Assert-Equal 'Link' (Get-ReparseKind ([pscustomobject]@{ LinkType = 'Junction'; Target = $null })) 'Junction: not followed'
+Assert-Equal 'Link' (Get-ReparseKind ([pscustomobject]@{ Name = 'no link facts' })) 'Kind not known: not followed'
+# Online-only files: asked first (the PAM, 2026-11-23: "Ask each run"); Enter (no) leaves them NOT SCANNED, y reads them.
+function New-OnlineGroups {
+    # Two files in one group: one online only, one on the disk.
+    $files = New-Object System.Collections.Generic.List[object]
+    $files.Add(@{ Path = 'C:\od\Ops\cloud.docx'; Inner = 'cloud.docx'; Name = 'cloud.docx'; Size = 2048L; Modified = '2026-11-23 10:00'; Online = $true })
+    $files.Add(@{ Path = 'C:\od\Ops\local.docx'; Inner = 'local.docx'; Name = 'local.docx'; Size = 1024L; Modified = '2026-11-23 10:00'; Online = $false })
+    return , @(@{ Name = 'Ops'; Files = $files })
+}
+$onlineGroups = New-OnlineGroups
+$onlineRows = New-Object System.Collections.Generic.List[object]
+$global:FakePnP.OnlineAnswer = ''
+Select-OnlineFiles $onlineGroups $onlineRows 25 6>$null
+Assert-Equal '1 local.docx' ('{0} {1}' -f $onlineGroups[0].Files.Count, $onlineGroups[0].Files[0].Name) 'Online only, answer Enter: only the file on the disk is read'
+Assert-Equal 1 @($onlineRows | Where-Object { $_.Context -like 'Online only*' }).Count 'Online only, answer Enter: one NOT SCANNED row'
+$onlineGroups = New-OnlineGroups
+$global:FakePnP.OnlineAnswer = 'y'
+Select-OnlineFiles $onlineGroups (New-Object System.Collections.Generic.List[object]) 25 6>$null
+Assert-Equal 2 $onlineGroups[0].Files.Count 'Online only, answer y: both files are read'
+$global:FakePnP.OnlineAnswer = ''
+
 # ---- Accountability (the PAM, 2026-11-21): who changed the file, who added the PII and when ----
 Assert-Equal $Sample.Email (Get-PersonText ([pscustomobject]@{ Email = $Sample.Email; LookupValue = 'Tom Mims' })) 'Who: a SharePoint person is shown by e-mail address'
 # Version history: the first version that holds the SSN dates it, and names who saved that version.
