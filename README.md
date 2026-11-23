@@ -139,6 +139,8 @@ Each file starts with a header: purpose, inputs, outputs, how to run, run target
 | `tests/TestKit.ps1`, `tests/FakePnP.ps1` | The test assertion and samples; the fake PnP cmdlets |
 | `tests/*.Tests.ps1` | One test file per module, a start-to-end run, and a run of the paste text |
 | `tests/Lint.ps1` | Windows PowerShell 5.1 syntax check (PSScriptAnalyzer) |
-| `paste/33332Z-pii-spot-check.ps1`, `paste/Ion-script.txt` | GENERATED: the one text you paste into ISE, as .ps1 and .txt (the run steps, a Settings block, the modules and the script); the README and the site link the .txt |
+| `paste/Ion-script.txt` | GENERATED: the one text you paste into ISE (the run steps, a Settings block, the modules and the script); the README and the site link it |
 | `scripts/build_paste.py` | Builds the paste text from `src/`; `--check` fails when it is out of date |
+| `scripts/build_paste_test.py` | Self-test of the paste build and of the script links |
+| `site.config.json` | The one home of the repo's GitHub owner, name, branch and script path (the links are checked against it) |
 | `ref/afi33-332.pdf`, `ref/afi33-332.txt` | The rule source: AFI 33-332 with AFI33-332_DAFGM2026-01 |

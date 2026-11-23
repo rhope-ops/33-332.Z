@@ -9,7 +9,7 @@ Use GitHub private vulnerability reporting for this repository: on the repositor
 
 ## Scope
 
-The PowerShell in `src/` and the paste bundle built from it (`paste/33332Z-pii-spot-check.ps1`).
+The PowerShell in `src/` and the paste bundle built from it (`paste/Ion-script.txt`).
 
 ## What the tool does not do
 

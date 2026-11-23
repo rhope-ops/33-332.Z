@@ -2,11 +2,11 @@
 
 Title: 33-332.Z · <task> · <date>. Read AGENTS.md first.
 
+0. Fleet v2 Stage 3B (plan: archimedes_lever docs/reviews/2026-11-23-fleet-v2-plan.md), branch claude/fleet-v2-local-items:
+   PR 1 DEC 8 + hygiene; PR 2 splits; PR 3 index.html; PR 4 guard files (lane C, the PAM). No kit sync until the coordinator says.
 1. Done 2026-11-20: kit sync, PII tool, bundle, site, Ion (PRs #2-#13; git log and the PR bodies hold the detail
    and the MINOR follow-ups). GitHub Pages on; denylist secret added.
-9. Done 2026-11-21: PR #14 (PDF reader, fast; 093b2af), PR #19 (round 3 readers: OCR, old Office, .msg, RTF,
-   OpenDocument, Visio, zip, e-mail; 7f12d69), PR #20 (network drives, 1-8 reader workers, one read per identical
-   file, accountability columns with put-backs; bdb7dd3). Fresh reviews until no MAJOR; each MAJOR fix has a test.
+9. Done 2026-11-21: PRs #14 (PDF reader), #19 (round 3 readers), #20 (network drives, workers, accountability).
 10. The PAM to test on the gov device: ISE paste of paste/Ion-script.txt; a drive folder scan (runspaces in ISE, FIPS
    SHA-256); Windows OCR on an image; SharePoint version history ("PII first saved by"); colours; Excel opening.
 11. Speed items 3 and 4 not built (measured 2026-11-21): a one-lookup token test gave no gain (11.2 s either way on
