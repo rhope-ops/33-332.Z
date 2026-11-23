@@ -1,6 +1,7 @@
 # Ion plan: e-signature DoD IDs, the 50-minute hang, OneDrive scans (2026-11-23)
 
-Status: PROPOSED 2026-11-23, waits on the PAM's approval. Base: main 6cbc517. Branch: ccr-9805d725-onoreq.
+Status: APPROVED 2026-11-23 by the PAM (question dialog: all 3 PRs; Q1 name or signature word; Q2 dotted any case, no dots CAPS;
+Q3 online-only files: ask each run; Q4 SharePoint scan, Ctrl+C did not stop it). The PRs go one after another on the one allowed branch. Base: main 6cbc517. Branch: ccr-9805d725-onoreq.
 Kept: docs/DECISIONS.md rows of 2026-11-21 (e-signature DoD ID = DoD ID / Low, Low tab, no version history).
 Notation: `#` = one digit (tests build invented values at run time); `\n` = line break.
 
