@@ -241,6 +241,10 @@ def self_test():
         ok, found = test_case(edit, tool_edit, expect, write)
         failed += not ok
         print(('ok   ' if ok else 'FAIL ') + label + ('' if ok else f': {found}'))
+    spec = importlib.util.spec_from_file_location('site_page', Path(__file__).resolve().parent / 'site_page.py')
+    page = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(page)
+    failed += not page.self_test()   # the page checks' own cases (scripts/site_page.py)
     print('SITE LOCAL TEST PASS' if not failed else 'SITE LOCAL TEST FAIL')
     return 1 if failed else 0
 

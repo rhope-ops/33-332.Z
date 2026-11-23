@@ -2,8 +2,9 @@
 
 Title: 33-332.Z · <task> · <date>. Read AGENTS.md first.
 
-0. Fleet v2 Stage 3B (plan: archimedes_lever docs/reviews/2026-11-23-fleet-v2-plan.md), branch claude/fleet-v2-local-items:
-   PR 1 DEC 8 + hygiene; PR 2 splits; PR 3 index.html; PR 4 guard files (lane C, the PAM). No kit sync until the coordinator says.
+0. Fleet v2 Stage 3B (plan: archimedes_lever docs/reviews/2026-11-23-fleet-v2-plan.md): PR 51, 53 merged; PR 54
+   (site page) waits on the PAM: Fulcrum or blue palette; PR 55 (guard files) waits on the kit 11.0.0 sync and a
+   gitleaks finding. Evidence: docs/reviews/2026-11-23-fleet-v2-stage3b.md. No kit sync until the coordinator says.
 1. Done 2026-11-20: kit sync, PII tool, bundle, site, Ion (PRs #2-#13; git log and the PR bodies hold the detail
    and the MINOR follow-ups). GitHub Pages on; denylist secret added.
 9. Done 2026-11-21: PRs #14 (PDF reader), #19 (round 3 readers), #20 (network drives, workers, accountability).

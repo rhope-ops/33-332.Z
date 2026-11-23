@@ -6,7 +6,7 @@ This guide is for the person who keeps 33-332.Z working. It tells you how to cha
 
 - The files in `src/` are the source of Ion. The file `paste/Ion-script.txt` is generated from them. Do not edit `paste/Ion-script.txt`.
 - The page `index.html` is mostly written by hand. Some blocks in it come from `README.md`. These blocks start with `>>> site:`. Do not edit these blocks in `index.html`.
-- Each hand-written code file has a limit of 450 lines.
+- Each hand-written code file has a limit of 450 lines (fleet v2 DEC 6, 2026-11-23). Count the lines with `wc -l`.
 - All test data is invented. Do not put real names, e-mail addresses, DoD IDs, site paths or files in the repository.
 - In each step, "the terminal" is a terminal window that is open in the repository folder.
 
@@ -72,8 +72,8 @@ This guide is for the person who keeps 33-332.Z working. It tells you how to cha
    1. Type `python3 scripts/build_site.py --check`.
    2. Press **Enter**.
 
-   You see `SITE PASS` or lines that start with `site page:`. Go on.
-6. If you see lines that start with `site page:`, do these actions in the terminal:
+   You see a last line `SITE PASS` or `SITE FAIL`. Go on.
+6. If the last line is `SITE FAIL`, do these actions in the terminal:
    1. Correct each item that the output names.
    2. Type `python3 scripts/build_site.py --check` again.
    3. Press **Enter**.
@@ -87,7 +87,7 @@ This guide is for the person who keeps 33-332.Z working. It tells you how to cha
    1. Type `bash scripts/check.sh`.
    2. Press **Enter**.
 
-   You see the lines of each check. Wait until the last line shows (about 1 minute).
+   You see the lines of each check. Wait until the last line shows (about 30 seconds; 25 seconds on 2026-11-23).
 2. If the last line starts with `CHECK FAIL`, do these actions in the terminal:
    1. Correct each item that the output names.
    2. Type `bash scripts/check.sh` again.
