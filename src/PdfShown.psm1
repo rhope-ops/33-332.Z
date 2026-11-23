@@ -7,7 +7,8 @@ PdfShown.psm1 - a PDF's shown strings: their text through the font's map, and th
                2026-11-23: 450 lines for hand-written code).
   Inputs:      font records (PdfFonts.psm1 Get-PdfFontTable) and shown strings.
   Outputs:     decoded text and widths.
-  Depends on:  PdfFonts.psm1 (the font records it reads), imported first.
+  Depends on:  PdfCore.psm1 (Add-PdfNote, Assert-PdfTime, ConvertFrom-Utf16Hex), PdfObjects.psm1 (ConvertFrom-PdfString)
+               and PdfFonts.psm1 (the font records it reads), imported first.
   How to run:  imported by Find-ChannelPII.ps1 (used by PdfText.psm1); not run on its own.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7); .NET only.
   Network:     none.

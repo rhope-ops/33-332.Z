@@ -7,7 +7,7 @@ ReportBook.psm1 - the results workbook: its tabs, its Summary rows and where it 
                hand-written code).
   Inputs:      report rows (Report.psm1 New-ReportRow); values in them are already masked.
   Outputs:     <OutputFolder>\<site>\Ion <site> <yyyy-MM-dd HHmm>.xlsx, and its path.
-  Depends on:  PiiDetectors.psm1 (Get-ConfidenceRank), XlsxWriter.psm1, Report.psm1 (Write-Ui, Get-SeverityIndex,
+  Depends on:  PiiDetectors.psm1 (Get-ConfidenceRank), PiiMasking.psm1 (Protect-PiiName), XlsxWriter.psm1, Report.psm1 (Write-Ui, Get-SeverityIndex,
                Get-TypeCounts, Get-NotScannedGroup, Get-NotScannedCounts, Get-ScanMetrics, Get-ScanSummaryText),
                imported first; at run time also ScanMeter.psm1 and Accountability.psm1 (the By account and Method tabs).
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.

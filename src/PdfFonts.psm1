@@ -5,8 +5,9 @@ PdfFonts.psm1 - the fonts of a PDF: their character maps and their real glyph wi
                widths (/Widths of a simple font, /W of a composite font, built-in widths for the standard Helvetica,
                Times and Courier families), so PdfText.psm1 can tell a word gap from a glyph placed one by one
                (fresh reviews, 2026-11-21: estimated widths split and joined words wrongly). A guess is the last resort.
-  Inputs:      the PDF objects (PdfObjects.psm1 Get-PdfObjects) and shown strings.
-  Outputs:     font records (CMap, Bytes, Widths, DefaultWidth, Standard), decoded text and widths.
+  Inputs:      the PDF objects (PdfObjects.psm1 Get-PdfObjects).
+  Outputs:     font records (CMap, Bytes, Widths, DefaultWidth, Standard); PdfShown.psm1 decodes and measures shown
+               strings with them.
   How to run:  imported by Find-ChannelPII.ps1 (used by PdfText.psm1); not run on its own.
   Depends on:  PdfCore.psm1 (Get-PdfCMap, ConvertFrom-Utf16Hex, Assert-PdfTime, Add-PdfNote), imported first.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7); .NET only.

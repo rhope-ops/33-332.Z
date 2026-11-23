@@ -7,7 +7,7 @@ PiiDetectors.psm1 - finds text that looks like PII and returns where it is.
   Inputs:      plain text (from TextExtract.psm1).
   Outputs:     hit objects WITH the raw value. Only PiiMasking.psm1 reads them; it masks every value
                before anything is shown or saved (the PAM, 2026-11-20: all values masked).
-  Depends on:  PiiPatterns.psm1 (the one-type detectors, New-PiiHit, Test-Luhn, Test-SsnValid), imported first.
+  Depends on:  PiiPatterns.psm1 (the one-type detectors and New-PiiHit), imported first.
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7).
   Network:     none.

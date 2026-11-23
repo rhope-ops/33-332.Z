@@ -19,15 +19,15 @@
 
   Built from these files; to change it, change them and rebuild with: python3 scripts/build_paste.py
     src/PiiPatterns.psm1, sha256 299242c1cb6a
-    src/PiiDetectors.psm1, sha256 6b0997e42a97
+    src/PiiDetectors.psm1, sha256 a457daf74a21
     src/PiiMasking.psm1, sha256 752c251a94b2
     src/OcrText.psm1, sha256 a39acab441d4
     src/OleText.psm1, sha256 2f5d0a036e97
     src/ContainerText.psm1, sha256 7378569bd7e6
     src/PdfCore.psm1, sha256 2911c3a19ab3
     src/PdfObjects.psm1, sha256 085efef3e4fb
-    src/PdfFonts.psm1, sha256 6a318cc45e10
-    src/PdfShown.psm1, sha256 aa3553826fc1
+    src/PdfFonts.psm1, sha256 21b8c948e5b4
+    src/PdfShown.psm1, sha256 abcac9ee7a8f
     src/PdfLayout.psm1, sha256 feafecd946b7
     src/PdfContent.psm1, sha256 85ee6cfeaf8f
     src/PdfText.psm1, sha256 dffef7dc6f8b
@@ -35,7 +35,7 @@
     src/ReaderPool.psm1, sha256 9b83b515d231
     src/XlsxWriter.psm1, sha256 0d8b1a3e1de1
     src/Report.psm1, sha256 fe79d83f6d80
-    src/ReportBook.psm1, sha256 58f16c6c65fb
+    src/ReportBook.psm1, sha256 0c545855062a
     src/ScanMeter.psm1, sha256 18c82f0b37c3
     src/ScanQueue.psm1, sha256 ae11c97d5b8b
     src/Accountability.psm1, sha256 0f9f669ef687
@@ -62,24 +62,24 @@
     line  1539  Module PdfCore.psm1
     line  1901  Module PdfObjects.psm1
     line  2259  Module PdfFonts.psm1
-    line  2576  Module PdfShown.psm1
-    line  2826  Module PdfLayout.psm1
-    line  2966  Module PdfContent.psm1
-    line  3296  Module PdfText.psm1
-    line  3488  Module TextExtract.psm1
-    line  3906  Module ReaderPool.psm1
-    line  4158  Reader block end
-    line  4162  Module XlsxWriter.psm1
-    line  4469  Module Report.psm1
-    line  4844  Module ReportBook.psm1
-    line  5055  Module ScanMeter.psm1
-    line  5452  Module ScanQueue.psm1
-    line  5842  Module Accountability.psm1
-    line  6224  Module SiteTarget.psm1
-    line  6476  Module ChannelScan.psm1
-    line  6878  Module DriveScan.psm1
-    line  7110  Body of Find-ChannelPII.ps1
-    line  7251  Clean-up
+    line  2577  Module PdfShown.psm1
+    line  2828  Module PdfLayout.psm1
+    line  2968  Module PdfContent.psm1
+    line  3298  Module PdfText.psm1
+    line  3490  Module TextExtract.psm1
+    line  3908  Module ReaderPool.psm1
+    line  4160  Reader block end
+    line  4164  Module XlsxWriter.psm1
+    line  4471  Module Report.psm1
+    line  4846  Module ReportBook.psm1
+    line  5057  Module ScanMeter.psm1
+    line  5454  Module ScanQueue.psm1
+    line  5844  Module Accountability.psm1
+    line  6226  Module SiteTarget.psm1
+    line  6478  Module ChannelScan.psm1
+    line  6880  Module DriveScan.psm1
+    line  7112  Body of Find-ChannelPII.ps1
+    line  7253  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -501,7 +501,7 @@ PiiDetectors.psm1 - finds text that looks like PII and returns where it is.
   Inputs:      plain text (from TextExtract.psm1).
   Outputs:     hit objects WITH the raw value. Only PiiMasking.psm1 reads them; it masks every value
                before anything is shown or saved (the PAM, 2026-11-20: all values masked).
-  Depends on:  PiiPatterns.psm1 (the one-type detectors, New-PiiHit, Test-Luhn, Test-SsnValid), imported first.
+  Depends on:  PiiPatterns.psm1 (the one-type detectors and New-PiiHit), imported first.
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7).
   Network:     none.
@@ -2264,8 +2264,9 @@ PdfFonts.psm1 - the fonts of a PDF: their character maps and their real glyph wi
                widths (/Widths of a simple font, /W of a composite font, built-in widths for the standard Helvetica,
                Times and Courier families), so PdfText.psm1 can tell a word gap from a glyph placed one by one
                (fresh reviews, 2026-11-21: estimated widths split and joined words wrongly). A guess is the last resort.
-  Inputs:      the PDF objects (PdfObjects.psm1 Get-PdfObjects) and shown strings.
-  Outputs:     font records (CMap, Bytes, Widths, DefaultWidth, Standard), decoded text and widths.
+  Inputs:      the PDF objects (PdfObjects.psm1 Get-PdfObjects).
+  Outputs:     font records (CMap, Bytes, Widths, DefaultWidth, Standard); PdfShown.psm1 decodes and measures shown
+               strings with them.
   How to run:  imported by Find-ChannelPII.ps1 (used by PdfText.psm1); not run on its own.
   Depends on:  PdfCore.psm1 (Get-PdfCMap, ConvertFrom-Utf16Hex, Assert-PdfTime, Add-PdfNote), imported first.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7); .NET only.
@@ -2583,7 +2584,8 @@ PdfShown.psm1 - a PDF's shown strings: their text through the font's map, and th
                2026-11-23: 450 lines for hand-written code).
   Inputs:      font records (PdfFonts.psm1 Get-PdfFontTable) and shown strings.
   Outputs:     decoded text and widths.
-  Depends on:  PdfFonts.psm1 (the font records it reads), imported first.
+  Depends on:  PdfCore.psm1 (Add-PdfNote, Assert-PdfTime, ConvertFrom-Utf16Hex), PdfObjects.psm1 (ConvertFrom-PdfString)
+               and PdfFonts.psm1 (the font records it reads), imported first.
   How to run:  imported by Find-ChannelPII.ps1 (used by PdfText.psm1); not run on its own.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7); .NET only.
   Network:     none.
@@ -4851,7 +4853,7 @@ ReportBook.psm1 - the results workbook: its tabs, its Summary rows and where it 
                hand-written code).
   Inputs:      report rows (Report.psm1 New-ReportRow); values in them are already masked.
   Outputs:     <OutputFolder>\<site>\Ion <site> <yyyy-MM-dd HHmm>.xlsx, and its path.
-  Depends on:  PiiDetectors.psm1 (Get-ConfidenceRank), XlsxWriter.psm1, Report.psm1 (Write-Ui, Get-SeverityIndex,
+  Depends on:  PiiDetectors.psm1 (Get-ConfidenceRank), PiiMasking.psm1 (Protect-PiiName), XlsxWriter.psm1, Report.psm1 (Write-Ui, Get-SeverityIndex,
                Get-TypeCounts, Get-NotScannedGroup, Get-NotScannedCounts, Get-ScanMetrics, Get-ScanSummaryText),
                imported first; at run time also ScanMeter.psm1 and Accountability.psm1 (the By account and Method tabs).
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
