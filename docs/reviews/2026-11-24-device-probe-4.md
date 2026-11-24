@@ -79,4 +79,31 @@ The probe is a .txt file (Project rules, "Paste format"): `docs/reviews/2026-11-
 
 ## Result
 
-Not run yet.
+- Run 1, 2026-11-24 (the PAM, by e-mail; counts only; 1 sign-in window with the scripts prompt, no PIN):
+
+  | Line | Result |
+  |---|---|
+  | P4 matching entries / entries with the chosen folder / different web addresses | 2 / 2 / 1 |
+  | P4 entry is the OneDrive home folder | True |
+  | P4 local files / online only | 9 / 0 |
+  | P4 sign-in | ok, 10206 ms |
+  | P4 library with this root | libraries=4, found=True (1963 ms) |
+  | P4 web listing | listed=4259, stopped at 5000=False, FSObjType 0=3608 1=651 other=0, web folder found=True, web files in it=9 (8134 ms) |
+  | P4 names | on both=9, web only=0, local only=0 |
+  | P4 web files checked | 9: at the mapped local path=9, same size=8, found by their web path=9, errors=0 |
+  | P4 web read / disk read | bytes equal web size=True / True (1816 / 103 ms) |
+
+  What it proves:
+  1. The mapping is right: local path = sync folder (MountPoint) + (web path minus UrlNamespace path). 9 of 9 web
+     files are at the mapped local path, and path A (address + folder + name) finds 9 of 9.
+  2. The 2 sync entries hold the same folder and the same web address: the longest-match choice is safe.
+  3. The address is the root of one of the site's 4 libraries; the FSObjType filter works (3608 files, 651 folders).
+  4. A file read from the web and from the disk has the web size.
+  5. Plan step 4 (OneDrive hybrid) can use this mapping.
+
+  What stays open:
+  - 1 of 9 files has a different size on the web and on the disk. Assumption, medium confidence: SharePoint writes its
+    properties into the web copy of an Office file. Ion's hybrid step reads the disk copy for content and uses the
+    web only for the who/when history.
+  - Probe 3's 215-byte file was not in the library. With probe 4's result the cause is that file (not synced, or in
+    another folder), not the path rule (assumption, high confidence).

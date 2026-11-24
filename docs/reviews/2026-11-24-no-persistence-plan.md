@@ -26,7 +26,7 @@ permissions as scope only ("No reconnaissance": no user names listed); month-nam
 - Step 1: merged (PRs 82, 85). Detectors frozen after PR 85 (the PAM, 2026-11-24), except the roster header fix.
 - Step 2: merged (PRs 80, 83). Step 3: merged (PR 81).
 - One sign-in per host: merged (PRs 90, 92): no sign-out between sites, one at the end of the run; full-address site check.
-- Step 4 (OneDrive hybrid): waits on probe 4.
+- Step 4 (OneDrive hybrid): unblocked. Probe 4 run 1 (2026-11-24): the local-to-web mapping and path A work (9 of 9).
 - Step 5 (permission scope): waits on probe 3 (no permission read ran yet). Step 6 (parallel downloads): open.
 - Added 2026-11-24: seeded recall test (PR 87; local baseline 46/53 found, 87%); roster header fix merged
   (PR 96) and passport rule merged (PR 97): local recall 53/53, false 0. Build ID on the start screen (PR 95).
