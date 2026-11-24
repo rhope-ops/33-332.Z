@@ -88,6 +88,7 @@ Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
 Assert-Equal '' $outerError 'A failed sign-in does not end the script with an error'
 Assert-Equal $true ($shown -match 'sign-in refused') 'The failed sign-in is shown to the person'
+Assert-Equal $true ($shown -match 'Build [0-9a-f]{8}\b') 'The start screen shows the build ID (the PAM, 2026-11-24)'
 Assert-Equal 1 (Get-FakeCallCount 'Read-Host') 'Then another site is offered (Enter exits)'
 Assert-Equal 'Continue' $outerAction 'Outer clean-up put the session error setting back'
 Assert-Equal $false $outerStrict 'Outer clean-up turned strict mode off'

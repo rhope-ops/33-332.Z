@@ -1,5 +1,5 @@
 <#
-  Ion - DoD365 PII Reporter (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
+  Ion - DoD365 PII Reporter, build 0b2e9e6e (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
 
   HOW TO RUN
     1. Optional: read this text first (Open the script shows it as a .txt in your browser).
@@ -43,7 +43,7 @@
     src/SiteTarget.psm1, sha256 2e693a68f413
     src/ChannelScan.psm1, sha256 0cd4894c7c7b
     src/DriveScan.psm1, sha256 8b4305c3a6fc
-    src/Find-ChannelPII.ps1, sha256 49336ca39282
+    src/Find-ChannelPII.ps1, sha256 e1647b7e0802
 
   Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.
   Run target: Windows PowerShell 5.1 with PnP.PowerShell 1.12.0; no admin rights, no file to unblock.
@@ -53,35 +53,35 @@
 
   Contents (line numbers of this file):
     line    87  Settings
-    line    98  Reader block
-    line   104  Module PiiPatterns.psm1
-    line   504  Module PiiSignedIds.psm1
-    line   822  Module PiiDetectors.psm1
-    line  1002  Module PiiMasking.psm1
-    line  1242  Module OcrText.psm1
-    line  1395  Module OleText.psm1
-    line  1534  Module ContainerText.psm1
-    line  1873  Module PdfCore.psm1
-    line  2235  Module PdfObjects.psm1
-    line  2593  Module PdfFonts.psm1
-    line  2911  Module PdfShown.psm1
-    line  3162  Module PdfLayout.psm1
-    line  3302  Module PdfContent.psm1
-    line  3632  Module PdfText.psm1
-    line  3824  Module TextExtract.psm1
-    line  4242  Module ReaderPool.psm1
-    line  4567  Reader block end
-    line  4571  Module XlsxWriter.psm1
-    line  5008  Module Report.psm1
-    line  5384  Module ReportBook.psm1
-    line  5688  Module ScanMeter.psm1
-    line  6085  Module ScanQueue.psm1
-    line  6479  Module Accountability.psm1
-    line  6863  Module SiteTarget.psm1
-    line  7220  Module ChannelScan.psm1
-    line  7622  Module DriveScan.psm1
-    line  7988  Body of Find-ChannelPII.ps1
-    line  8191  Clean-up
+    line    99  Reader block
+    line   105  Module PiiPatterns.psm1
+    line   505  Module PiiSignedIds.psm1
+    line   823  Module PiiDetectors.psm1
+    line  1003  Module PiiMasking.psm1
+    line  1243  Module OcrText.psm1
+    line  1396  Module OleText.psm1
+    line  1535  Module ContainerText.psm1
+    line  1874  Module PdfCore.psm1
+    line  2236  Module PdfObjects.psm1
+    line  2594  Module PdfFonts.psm1
+    line  2912  Module PdfShown.psm1
+    line  3163  Module PdfLayout.psm1
+    line  3303  Module PdfContent.psm1
+    line  3633  Module PdfText.psm1
+    line  3825  Module TextExtract.psm1
+    line  4243  Module ReaderPool.psm1
+    line  4568  Reader block end
+    line  4572  Module XlsxWriter.psm1
+    line  5009  Module Report.psm1
+    line  5385  Module ReportBook.psm1
+    line  5689  Module ScanMeter.psm1
+    line  6086  Module ScanQueue.psm1
+    line  6480  Module Accountability.psm1
+    line  6864  Module SiteTarget.psm1
+    line  7221  Module ChannelScan.psm1
+    line  7623  Module DriveScan.psm1
+    line  7989  Body of Find-ChannelPII.ps1
+    line  8193  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -94,6 +94,7 @@ $previousErrorAction = $ErrorActionPreference
 try {
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
+$IonBuild = '0b2e9e6e'       # the build ID: Ion shows it at the start (do not edit)
 
 # ==== Reader modules ==== (one script block: this script loads it as an in-memory module, and each reader
 # worker loads the same text; nothing is read from a file)
@@ -8150,6 +8151,7 @@ function Show-ListResult {
 }
 
 Write-Banner 'Ion - DoD365 PII Reporter' -Mark
+Write-Ui ('Build ' + $IonBuild) 'Muted'   # which Ion ran: the PAM copies this line with the results (2026-11-24)
 Write-Ui 'Read-only. Every PII value found is masked on screen and in the results.' 'Muted'
 # What it scans and how to stop early (the PAM, 2026-11-21): a cancel still saves the results so far ('finally').
 Write-Ui ('Scans the files of Teams teams, SharePoint sites or drive folders you paste. Files over {0} MB are listed, not read.' -f $MaxFileMB) 'Muted'

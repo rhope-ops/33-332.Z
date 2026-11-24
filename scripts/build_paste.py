@@ -6,8 +6,10 @@ Why: a gov computer runs pasted text in ISE, not downloaded files (ISSM ruling 2
 module file and runs no script file, so the execution policy does not apply to it.
 What it writes: paste/Ion-script.txt, the one bundle file (a .txt: a .ps1 link causes trouble on gov computers, the PAM,
 2026-11-21; the .ps1 copy is retired, fleet v2 DEC 8, 2026-11-23), in this order:
-  1. a header (how to run first, then GENERATED, the sources with their SHA-256, Network/Writes/Credentials, a contents list);
-  2. the Settings block: plain variables a person may set in ISE (site, results folder, file size limit);
+  1. a header (the build ID, how to run first, then GENERATED, the sources with their SHA-256, Network/Writes/Credentials,
+     a contents list);
+  2. the Settings block: plain variables a person may set in ISE (site, results folder, file size limit), and
+     $IonBuild, the build ID that Ion shows on its start screen (the PAM, 2026-11-24: which Ion ran);
   3. the modules of src/, inline (no module file is loaded), in dependency order: the reader modules inside one
      script block ($IonReaderBlock), loaded as an in-memory module by the script and by each reader worker
      (ReaderPool.psm1 gets the block's text as $IonWorkerInit), then the scan and report modules;
@@ -140,8 +142,22 @@ def check_names(parts):
             seen[name] = rel
 
 
+def build_id(sources):
+    """Return the build ID: the first 8 hex characters of the SHA-256 of the sources' digests, in order.
+
+    The same sources give the same ID on every build (so --check can compare), and any change to a source gives a new
+    one. A commit hash cannot be used: the bundle is part of the commit it would name.
+
+    Args:
+        sources: (path, sha256) pairs of the source files.
+    Returns:
+        The build ID, for example '3f9c0a1b'.
+    """
+    return sha256(''.join('%s %s\n' % pair for pair in sources))[:8]
+
+
 def header(sources, contents):
-    """Return the bundle header: how to run, GENERATED, sources, safety lines and the contents list.
+    """Return the bundle header: build ID, how to run, GENERATED, sources, safety lines and the contents list.
 
     Args:
         sources: (path, sha256) pairs of the source files.
@@ -150,7 +166,8 @@ def header(sources, contents):
         The header text.
     """
     out = ['<#',
-           '  Ion - DoD365 PII Reporter (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)',
+           '  Ion - DoD365 PII Reporter, build %s (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)'
+           % build_id(sources),
            '',
            '  HOW TO RUN',
            '    1. Optional: read this text first (Open the script shows it as a .txt in your browser).',
@@ -191,14 +208,15 @@ def build():
     """
     modules = [(rel, module_code(rel)) for rel in MODULES]
     check_names(modules)
-    parts = [('Settings', SETTINGS), ('Reader block', READER_START)]
+    sources = [(rel, sha256(read(rel))) for rel in MODULES + (MAIN,)]
+    settings = SETTINGS + "$IonBuild = '%s'       # the build ID: Ion shows it at the start (do not edit)\n" % build_id(sources)
+    parts = [('Settings', settings), ('Reader block', READER_START)]
     for rel, code in modules:
         parts.append(('Module %s' % Path(rel).name, '# ==== Module %s ====\n%s' % (Path(rel).name, code)))
         if rel == READERS[-1]:
             parts.append(('Reader block end', READER_END))
     parts.append(('Body of Find-ChannelPII.ps1', body_code()))
     parts.append(('Clean-up', CLEANUP))
-    sources = [(rel, sha256(read(rel))) for rel in MODULES + (MAIN,)]
     # Two passes: the header's own length fixes the line numbers of the parts.
     contents = [(0, title) for title, _ in parts]
     for _ in range(2):
