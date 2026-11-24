@@ -208,10 +208,18 @@ $sigAfterHit = [ordered]@{
 foreach ($case in $sigAfterHit.Keys) {
     Assert-Equal 1 @(Get-HitSummary $sigAfterHit[$case] | Where-Object { $_ -eq 'DoD ID/Low/******7890' }).Count "E-signature ID after a hit or a second word ($case)"
 }
-# As on main (no ID), by the sixth review's guard: a number and one gap just before bare digits (open with the PAM, 2026-11-24).
-foreach ($case in @("Digitally signed by`n2026.11.20 $sigId", "Digitally signed by`nPage 3 $sig3241")) {
-    Assert-Equal 0 @(Get-HitSummary $case | Where-Object { $_ -like 'DoD ID/*' }).Count "As on main: no ID just after a number ($($case -replace "`n", ' '))"
+# A date, time, year or page number and one gap before bare digits after a signature word: the ID is found (the PAM,
+# 2026-11-24, "1a": the guard of 013ca82 narrowed). A lone digit and a gap still block it (the ID could be 11 digits).
+$sigLeadIns = @("Digitally signed by`n2026.11.20 $sigId", "Digitally signed by`nPage 3 $sig3241", "Digitally signed by 2026-11-20 $sigId",
+    "Digitally signed by 11/20/2026 $sigId", "Digitally signed by 10:15:22 $sigId", "Digitally signed by 2026 $sigId")
+foreach ($case in $sigLeadIns) {
+    Assert-Equal 1 @(Get-HitSummary $case | Where-Object { $_ -eq 'DoD ID/Low/******7890' }).Count "ID after a date, time, year or page ($($case -replace "`n", ' ' -replace '\d', '#'))"
 }
+Assert-Equal 0 @(Get-HitSummary "Digitally signed by 7 $sigId" | Where-Object { $_ -like 'DoD ID/*' }).Count 'No ID after a lone digit and a gap'
+# After a CAC name a 3-7 split is an ID; a 3-3-4 phone there stays a phone (the PAM, 2026-11-24, "1a").
+Assert-Equal 'DoD ID/Low/******7890' ((Get-HitSummary "$sigName $($sigId.Substring(0, 3)) $($sigId.Substring(3))") -join ',') 'CAC name, a gap, a 3-7 split: an ID'
+$sigNamePhone = @(Find-PiiInText "$sigName $($Sample.Phone -replace '-', ' ')" | ForEach-Object { $_.Detector })
+Assert-Equal 'True False' ('{0} {1}' -f ($sigNamePhone -contains 'Phone'), ($sigNamePhone -contains 'DoD ID')) 'CAC name, a gap, a 3-3-4 phone: a phone' 
 
 # ---- Review of PR 57 (the PAM, 2026-11-24: close PR 57, fix its cases on main) ----
 $sig9 = $sigId.Substring(0, 9)

@@ -60,6 +60,12 @@ $script:SignedIdDash = '(?<id>\d(?:[ \t\u00A0-]?\d){9})(?![\w-])(?![ \t\u00A0]\d
 $script:DigitRun = [regex]'\d(?:(?:[ \t\u00A0-]|\r?\n)?\d){9}'   # 10 digits with gaps: where a window can find an ID
 $script:NotDate = '(?!(?:19|20)\d\d(?:[ \t\u00A0./-]|\r?\n|(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01]))|\d{1,2}[ \t./-]\d{1,2}[ \t./-](?:19|20)\d\d)'
 $script:NotPhone = '(?!\d{3}(?:[ \t\u00A0.-]|\r?\n)\d{3}(?:[ \t\u00A0.-]|\r?\n)?\d{4}(?![\w-]))'   # 3-3-4 or 3-7: a phone
+# After a CAC name only a 3-3-4 phone is no ID: a 3-7 split there is an ID (the PAM, 2026-11-24, "1a": narrow the guard).
+$script:NotPhoneAfterName = '(?!\d{3}(?:[ \t\u00A0.-]|\r?\n)\d{3}(?:[ \t\u00A0.-]|\r?\n)\d{4}(?![\w-]))'
+# Before bare digits after a signature word: a date, a time, a year or a page number, then one gap, is no part of the ID
+# (the PAM, 2026-11-24, "1a"; the guard of 013ca82 blocked every digit and gap: 0 of 400 such IDs found).
+$script:SignedLeadIn = '(?:(?:19|20)\d\d[./-]\d{1,2}[./-]\d{1,2}|\d{1,2}[./-]\d{1,2}[./-](?:(?:19|20)\d\d|\d\d)|\d{1,2}:\d\d(?::\d\d)?|' +
+    '(?<![\w.-])(?:19|20)\d\d|(?i:page)[ \t\u00A0]+\d{1,4})[ \t\u00A0]'
 # A dashed date then a gap, right after a CAC name (y-m-d or m-d-y, 1 or 2 digits for month and day): no ID. A dashed ID
 # ("###-##-####-#") has a dash, not a gap, after its third group (the PAM's review of PR 57, 2026-11-24).
 $script:SentenceEnd = [regex]'[.!?][ \t\u00A0]+[A-Z][a-z]'   # a sentence ends between a signature word and the digits
@@ -69,13 +75,13 @@ $script:SignedNameText = ("(?<name>[A-Z](?<=(?:^|[^\w.])[A-Z])(?:[A-Z'-]{1,39}(?
     '(?<!(?:^|[^\w.])(?:NO|NR|NUM|REF|ACCT|ACC|TEL|PH|FAX|ID|DOC|REV|VER)\.)' +
     "(?:\r?\n)?(?!(?:NO|NR|NUM|REF|ACCT|TEL|PH|FAX|ID)\.)" +
     "$script:SignedPart(?: $script:SignedPart){0,2}\.(?:(?:\r?\n)?$script:SignedPart(?: $script:SignedPart){0,2}\.){0,2})" +
-    "$script:NotDashDate(?:$script:SignedIdDash|$script:SignedId|(?:[ \t\u00A0]+(?:\r?\n[ \t\u00A0]*)?|\r?\n[ \t\u00A0]*)$script:NotDate$script:NotPhone$script:SignedId)")
+    "$script:NotDashDate(?:$script:SignedIdDash|$script:SignedId|(?:[ \t\u00A0]+(?:\r?\n[ \t\u00A0]*)?|\r?\n[ \t\u00A0]*)$script:NotDate$script:NotPhoneAfterName$script:SignedId)")
 $script:SignedName = [regex]$script:SignedNameText
 $script:SignedNameAnyCase = [regex]('(?i)' + $script:SignedNameText)
 $script:SignedNameAnyCaseAt = [regex]('(?i)\G(?:' + $script:SignedNameText + ')')   # \G: only at the given place
 $script:SignedWords = '(?i:(?:sign(?:ed|ature)\b|CN\s*=|DN\s*:)(?<!\w(?:sign(?:ed|ature)|CN\s*=|DN\s*:)))'   # a word start, said last (speed)
 # The 10 digits alone on one line after a signature word ("Signed_1234567890.pdf"): not a date, a phone or in a dotted name.
-$script:SignedBareText = '(?<![\w.-])(?<!\d[ \t\u00A0./])' + $script:NotDate + $script:NotPhone + $script:SignedIdLine
+$script:SignedBareText = '(?<![\w.-])(?:(?<=' + $script:SignedLeadIn + ')|(?<!\d[ \t\u00A0./]))' + $script:NotDate + $script:NotPhone + $script:SignedIdLine
 $script:SignedBareId = [regex]$script:SignedBareText
 $script:SignedBareIdAt = [regex]('\G(?:' + $script:SignedBareText + ')')
 # The 10 digits in a row just before a CAC name in capitals (the ID above the name; not "REF.NO." and the like).
@@ -86,7 +92,7 @@ $script:SignedIdThenName = [regex]('(?<id>\d(?<=(?:^|[^\w.-])\d)\d{9})(?![\w-])[
 # "DOE, JANE Q."), then the digits. Without dots, the digits need a space in them (Add-SignedIdHits): a heading such as
 # "THE UNIT A" then a plain number is no name. Both count without a signature word, like a CAC name in capitals.
 $script:SignedNameLower = [regex]("(?<name>[a-z](?<=(?:^|[^\w.])[a-z])[a-z'\u2019-]{1,39}(?:\.[a-z][a-z'\u2019-]{0,39}){1,2}\.[a-z]\.)" +
-    "(?:[ \t\u00A0]{1,3}|\r?\n[ \t\u00A0]*)?$script:NotDashDate$script:NotDate$script:NotPhone$script:SignedId")
+    "(?:[ \t\u00A0]{1,3}|\r?\n[ \t\u00A0]*)?$script:NotDashDate$script:NotDate$script:NotPhoneAfterName$script:SignedId")
 $script:SignedNameSpaced = [regex]("(?<name>[A-Z](?<=(?:^|[^\w.,])[A-Z])[A-Z'\u2019-]{1,39},?(?: [A-Z][A-Z'\u2019-]{0,39}){1,3}\.?)" +
     "[ \t\u00A0]{1,3}$script:NotDate$script:NotPhone$script:SignedIdLine")
 
