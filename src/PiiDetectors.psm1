@@ -66,11 +66,9 @@ $script:NotPhoneAfterName = '(?!\d{3}(?:[ \t\u00A0.-]|\r?\n)\d{3}(?:[ \t\u00A0.-
 # (the PAM, 2026-11-24, "1a"; the guard of 013ca82 blocked every digit and gap: 0 of 400 such IDs found).
 $script:SignedLeadIn = '(?:(?:19|20)\d\d[./-]\d{1,2}[./-]\d{1,2}|\d{1,2}[./-]\d{1,2}[./-](?:(?:19|20)\d\d|\d\d)|\d{1,2}:\d\d(?::\d\d)?|' +
     '(?<![\w.-])(?:19|20)\d\d|(?i:page)[ \t\u00A0]+\d{1,4})[ \t\u00A0]'
-# A dashed date then a gap, right after a CAC name (y-m-d or m-d-y, 1 or 2 digits for month and day): no ID. A dashed ID
-# ("###-##-####-#") has a dash, not a gap, after its third group (the PAM's review of PR 57, 2026-11-24).
-# A sentence ends between a signature word and the digits: a small word, its full stop, then a capital word ("signed. Tracking";
-# not "Lt. Col.", "Mr. Doe" or "U.S. Government": review of PR 69).
-$script:SentenceEnd = [regex]'[a-z]{3}[.!?][ \t\u00A0]+[A-Z][a-z]{2}'
+# A sentence ends between a signature word and the digits: a word in small letters only, its full stop, then a capital word
+# ("signed. Tracking"; not a title or an abbreviation such as "Lt. Col.", "Capt. Doe", "Dept. Head" or "U.S.": review of PR 69).
+$script:SentenceEnd = [regex]'(?<![A-Za-z])[a-z]{3,}[.!?][ \t\u00A0]+[A-Z][a-z]{2}'
 # A dashed date then a gap, right after a CAC name (y-m-d or m-d-y, 1 or 2 digits for month and day): no ID. A dashed ID
 # ("###-##-####-#", "####-##-####") is no date shape (the PAM's review of PR 57, 2026-11-24; review of PR 69).
 $script:NotDashDate = '(?!(?:\d{4}-\d{1,2}-\d{1,2}|\d{1,2}-\d{1,2}-(?:\d{4}|\d{2}))(?:[ \t\u00A0]|\r?\n|$))'
@@ -95,6 +93,7 @@ $script:SignedIdThenName = [regex]('(?<id>\d(?<=(?:^|[^\w.-])\d)\d{9})(?![\w-])[
 # the two shapes the PAM reported, an SSN shape and one more digit ($GapShape: "### ## #### #", "######### #"): a heading
 # or a code ("GRAND TOTAL", "BLDG NO") then other digit groups is no name (review of PR 69). Read only in the 80 characters
 # before each such shape (speed: the budget of +15% on prose). A name in small letters counts after a signature word only.
+$script:NotNameWord = '\b(?:NO|NR|NUM|REF|ACCT|ACC|TEL|PH|FAX|ID|DOC|REV|VER)\b'   # as the dotted rule's list
 $script:GapShape = [regex]'(?<![\w-])(?:\d{3} \d{2} \d{4}|\d{9}) \d(?![\w-])(?![ \t\u00A0]\d)'
 $script:SignedNameSpaced = [regex]("(?<name>[A-Z](?<=(?:^|[^\w.,])[A-Z])[A-Z'\u2019-]{1,39},?(?: [A-Z][A-Z'\u2019-]{0,39}){1,3}\.?)" +
     "[ \t\u00A0]{1,3}(?<id>(?:\d{3} \d{2} \d{4}|\d{9}) \d)$")
@@ -255,7 +254,7 @@ function Find-SignedIdHits {
       words and labels, only for candidates no other hit holds.
     #>
     param([string]$Text, [int[]]$Starts = @(), [int[]]$Order = @(), $Kept = @())
-    $found = New-Object System.Collections.Generic.List[object]   # (match, needs a signature word)
+    $found = New-Object System.Collections.Generic.List[object]   # (match, needs a signature word, follows a CAC name)
     $result = [pscustomobject]@{ Found = $found; WordStarts = [int[]]@(); WordEnds = [int[]]@() }
     # Every rule needs 10 digits: one fast scan first; none, then nothing else is read (speed on prose: review of PR 60).
     $runs = Get-FreeDigitRun $Text $Starts $Order $Kept
@@ -269,7 +268,8 @@ function Find-SignedIdHits {
     foreach ($g in $script:GapShape.Matches($Text)) {   # a name without dots: only just before an SSN shape and one digit
         $from = [Math]::Max(0, $g.Index - 80)
         $m = $script:SignedNameSpaced.Match($Text.Substring($from, $g.Index + $g.Length - $from))
-        if (-not $m.Success) { continue }
+        if (-not $m.Success -or ($m.Index -eq 0 -and $from -gt 0 -and $Text[$from - 1] -match '[\w.,]')) { continue }   # the name runs on before the window
+        if ($m.Groups['name'].Value -match $script:NotNameWord) { continue }   # "ACCT NO", "REF NO", "TEL NR": no name
         $id = $m.Groups['id']   # the same fields as a regex match on the whole text (Add-SignedIdHits reads only these)
         $found.Add(@([pscustomobject]@{ Index = $from + $m.Index; Groups = @{ id = [pscustomobject]@{ Index = $from + $id.Index
                             Value = $id.Value; Length = $id.Length } } }, $false, $true))

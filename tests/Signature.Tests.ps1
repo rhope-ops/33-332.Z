@@ -72,7 +72,7 @@ foreach ($layout in $SourceLayouts.Keys) {
     $expected = if ($sigAsSsn.ContainsKey($layout)) { $sigAsSsn[$layout] } else { 'DoD ID/Low/******7890' }
     Assert-Equal $expected ((Get-HitSummary $SourceLayouts[$layout]) -join ',') "E-signature source layout $layout"
 }
-# By design: no dotted name and no signature word. A stays an SSN (still reported); F, 10 spaced digits alone, is not reported.
+# A (capitals, no dots, 3-2-4-1) is a DoD ID by the PAM's gap rule (2026-11-24); F, 10 spaced digits alone, is not reported.
 Assert-Equal 'DoD ID/Low/******7890' ((Get-HitSummary "DOE JOHN A $sig3241") -join ',') 'E-signature source layout OA: DoD ID (the PAM, 2026-11-24)'
 Assert-Equal 0 (Get-HitSummary (($sigId.ToCharArray()) -join ' ')).Count 'E-signature source layout OF: no hit, by design'
 
@@ -219,7 +219,7 @@ Assert-Equal 0 @(Get-HitSummary "Digitally signed by 7 $sigId" | Where-Object { 
 # After a CAC name a 3-7 split is an ID; a 3-3-4 phone there stays a phone (the PAM, 2026-11-24, "1a").
 Assert-Equal 'DoD ID/Low/******7890' ((Get-HitSummary "$sigName $($sigId.Substring(0, 3)) $($sigId.Substring(3))") -join ',') 'CAC name, a gap, a 3-7 split: an ID'
 $sigNamePhone = @(Find-PiiInText "$sigName $($Sample.Phone -replace '-', ' ')" | ForEach-Object { $_.Detector })
-Assert-Equal 'True False' ('{0} {1}' -f ($sigNamePhone -contains 'Phone'), ($sigNamePhone -contains 'DoD ID')) 'CAC name, a gap, a 3-3-4 phone: a phone' 
+Assert-Equal 'True False' ('{0} {1}' -f ($sigNamePhone -contains 'Phone'), ($sigNamePhone -contains 'DoD ID')) 'CAC name, a gap, a 3-3-4 phone: a phone'
 
 # ---- Review of PR 57 (the PAM, 2026-11-24: close PR 57, fix its cases on main) ----
 $sig9 = $sigId.Substring(0, 9)
@@ -256,3 +256,12 @@ foreach ($case in @("Digitally signed by Lt. Col. Doe $sigId", "Signature: Mr. D
     Assert-Equal 1 @(Get-HitSummary $case | Where-Object { $_ -eq 'DoD ID/Low/******7890' }).Count "A title is no sentence end ($($case -replace '\d', '#'))"
 }
 Assert-Equal 'DoD ID/Low/******7890' ((Get-HitSummary "$($sigName)$($sigId.Substring(0, 4))-$($sigId.Substring(4, 2))-$($sigId.Substring(6))") -join ',') 'A dashed 4-2-4 ID after a name'
+# Second review of PR 69: more titles; a name cut by the window start; stoplist words; a tab gap.
+foreach ($case in @("Digitally signed by Capt. Doe $sigId", "Signature: Prof. Doe $sigId", "Signed by the Dept. Head $sigId")) {
+    Assert-Equal 1 @(Get-HitSummary $case | Where-Object { $_ -eq 'DoD ID/Low/******7890' }).Count "A title is no sentence end ($($case -replace '\d', '#'))"
+}
+$longName = 'x.' + ('A' * 36) + ' ' + ('B' * 40)
+foreach ($case in @("$longName   $sig9 $($sigId.Substring(9))", "ACCT NO $sig9 $($sigId.Substring(9))", "REF NO $sig3241", "TEL NR $sig9 $($sigId.Substring(9))")) {
+    Assert-Equal 0 @(Get-HitSummary $case | Where-Object { $_ -like 'DoD ID/*' }).Count "No name: the SSN stays ($($case.Substring(0, [Math]::Min(12, $case.Length))))"
+}
+Assert-Equal 'DoD ID/Low/******7890' ((Get-HitSummary "$sigName`t$sig9`t$($sigId.Substring(9))") -join ',') 'CAC name, tab gaps, 9+1: an ID'
