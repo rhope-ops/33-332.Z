@@ -378,8 +378,8 @@ function Get-MethodRows {
     , @('By account tab', ('How many files and hits each "PII first saved by" account first saved, most first: a list of whom to contact first. ' +
         'It has the same limits as that column: evidence, not proof.'))
     , @('')
-    , @('Review columns', ('Reviewed by, Review date, Is it PII?, Action taken and Reported to Privacy Manager are for you to fill in as you ' +
-        'check each hit. Ion leaves them empty. The last three have a dropdown list.'))
+    , @('Review columns', ('Is it PII?, Action taken, Reported to Privacy Manager, Reviewed by and Review date (Hits tab) are for you to fill in as you ' +
+        'check each hit. Ion leaves them empty. The first three have a dropdown list.'))
 }
 
 Export-ModuleMember -Function Get-PersonText, Get-SharePointWho, Find-PiiAddedVersion, Get-DriveWho, Get-AccountRows, Get-MethodRows

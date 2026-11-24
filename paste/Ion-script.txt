@@ -11,7 +11,7 @@
        \\<server>\<share>\<folder>): it is read with your Windows logon, no sign-in.
     5. Watch the two progress bars (the whole scan, and the file in work) and the line per folder.
        At the end, read the summary of hits per PII type. The results workbook is saved in
-       Documents\Ion\<site>\<date>: a Summary tab, then one tab per PII type (worst first).
+       Documents\Ion\<site>\<date>: a Summary tab, then Hits (one row per hit) and Files.
        Handle it as CUI: it shows where PII is.
 
   It scans every visible document library of the site (every folder, in a team one per standard channel, and
@@ -34,16 +34,16 @@
     src/PdfText.psm1, sha256 dffef7dc6f8b
     src/TextExtract.psm1, sha256 5e02d07ddf10
     src/ReaderPool.psm1, sha256 32b2e4cfb2ae
-    src/XlsxWriter.psm1, sha256 0d8b1a3e1de1
-    src/Report.psm1, sha256 a3d308b542e7
-    src/ReportBook.psm1, sha256 63fb7318eda3
+    src/XlsxWriter.psm1, sha256 578535140b04
+    src/Report.psm1, sha256 ef3a24aa8a55
+    src/ReportBook.psm1, sha256 089bfd2a7198
     src/ScanMeter.psm1, sha256 18c82f0b37c3
     src/ScanQueue.psm1, sha256 ae11c97d5b8b
-    src/Accountability.psm1, sha256 79b9fd3b9b9e
+    src/Accountability.psm1, sha256 8bf31404f723
     src/SiteTarget.psm1, sha256 3f6ba813d84e
     src/ChannelScan.psm1, sha256 0cd4894c7c7b
     src/DriveScan.psm1, sha256 ed91cca7d7e5
-    src/Find-ChannelPII.ps1, sha256 1c1d186f75ef
+    src/Find-ChannelPII.ps1, sha256 9bd0cbff1c77
 
   Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.
   Run target: Windows PowerShell 5.1 with PnP.PowerShell 1.12.0; no admin rights, no file to unblock.
@@ -72,16 +72,16 @@
     line  4191  Module ReaderPool.psm1
     line  4516  Reader block end
     line  4520  Module XlsxWriter.psm1
-    line  4827  Module Report.psm1
-    line  5203  Module ReportBook.psm1
-    line  5415  Module ScanMeter.psm1
-    line  5812  Module ScanQueue.psm1
-    line  6202  Module Accountability.psm1
-    line  6586  Module SiteTarget.psm1
-    line  6881  Module ChannelScan.psm1
-    line  7283  Module DriveScan.psm1
-    line  7648  Body of Find-ChannelPII.ps1
-    line  7789  Clean-up
+    line  4950  Module Report.psm1
+    line  5326  Module ReportBook.psm1
+    line  5616  Module ScanMeter.psm1
+    line  6013  Module ScanQueue.psm1
+    line  6403  Module Accountability.psm1
+    line  6787  Module SiteTarget.psm1
+    line  7082  Module ChannelScan.psm1
+    line  7484  Module DriveScan.psm1
+    line  7849  Body of Find-ChannelPII.ps1
+    line  7990  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -4524,8 +4524,11 @@ XlsxWriter.psm1 - writes a small Excel workbook (.xlsx) with .NET only: no Excel
   Purpose:     The results file of Ion: one workbook with tabs (the PAM, 2026-11-20: a CSV cannot have tabs).
                Each tab has a bold header row; a list tab also has the header frozen and filter buttons on, and its
                link column holds clickable links (the PAM, 2026-11-20); chosen columns wrap their text, and columns the
-               person fills in can have a dropdown list of fixed words (the PAM, 2026-11-21).
-  Inputs:      the tabs to write (New-XlsxSheet), each with its columns and rows of cells (text or whole numbers).
+               person fills in can have a dropdown list of fixed words (the PAM, 2026-11-21). A list tab can be an Excel
+               Table, with date cells, a confidence fill and frozen columns; every tab prints landscape, fit to width,
+               with "CUI" as header and footer (the PAM, 2026-11-24: one Hits table, as previewed).
+  Inputs:      the tabs to write (New-XlsxSheet), each with its columns and rows of cells (text, whole numbers, or
+               formulas that Ion's own code builds: New-XlsxFormula).
   Outputs:     one .xlsx file (Office Open XML, ECMA-376: a zip of XML parts).
   Depends on:  .NET System.IO.Compression (loaded here).
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
@@ -4535,6 +4538,8 @@ XlsxWriter.psm1 - writes a small Excel workbook (.xlsx) with .NET only: no Excel
   Credentials: none.
 
   Safety:      every text cell is an inline string, never a formula, so text from a scanned file cannot run in Excel.
+               A formula cell comes only from New-XlsxFormula, whose text Ion's code builds from cell references and
+               table names, never from scanned text.
 #>
 
 Add-Type -AssemblyName System.IO.Compression
@@ -4551,21 +4556,37 @@ $script:MainNs = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
 $script:RelNs = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
 $script:PackageRelNs = 'http://schemas.openxmlformats.org/package/2006/relationships'
 
-# Four cell styles: 0 = normal, 1 = bold (the header row and the Summary labels), 2 = a link (blue, underlined),
-# 3 = wrapped text, top-aligned (long prose, for example the Method tab; the PAM, 2026-11-21).
+# Cell styles: 0 = normal, 1 = bold (the header row and the Summary labels), 2 = a link (blue, underlined),
+# 3 = wrapped text, top-aligned (long prose, for example the Method tab; the PAM, 2026-11-21), 4 = a date and time,
+# 5, 6, 7 = the High, Medium, Low fill of a confidence cell (the PAM, 2026-11-24, the approved preview).
 $script:StylesXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+    '<numFmts count="1"><numFmt numFmtId="164" formatCode="yyyy-mm-dd hh:mm"/></numFmts>' +
     '<fonts count="3"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font>' +
     '<font><u/><sz val="11"/><color rgb="FF0563C1"/><name val="Calibri"/></font></fonts>' +
-    '<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>' +
+    '<fills count="5"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>' +
+    '<fill><patternFill patternType="solid"><fgColor rgb="FFF8CBAD"/></patternFill></fill>' +
+    '<fill><patternFill patternType="solid"><fgColor rgb="FFFFE699"/></patternFill></fill>' +
+    '<fill><patternFill patternType="solid"><fgColor rgb="FFDDEBF7"/></patternFill></fill></fills>' +
     '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>' +
     '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
-    '<cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
+    '<cellXfs count="8"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
     '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>' +
     '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>' +
-    '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf></cellXfs>' +
+    '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>' +
+    '<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>' +
+    '<xf numFmtId="0" fontId="0" fillId="2" borderId="0" xfId="0" applyFill="1"/>' +
+    '<xf numFmtId="0" fontId="0" fillId="3" borderId="0" xfId="0" applyFill="1"/>' +
+    '<xf numFmtId="0" fontId="0" fillId="4" borderId="0" xfId="0" applyFill="1"/></cellXfs>' +
     '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>' +
     '</styleSheet>'
+$script:FillStyle = @{ 'High' = 5; 'Medium' = 6; 'Low' = 7 }
+# The date and time texts Ion writes ("Last saved" and the like), read as Excel date cells; any other text stays text.
+$script:DateFormats = [string[]]@('yyyy-MM-dd HH:mm', 'yyyy-MM-dd HH:mm:ss', 'yyyy-MM-dd')
+# Every tab prints landscape, one page wide, "CUI" centred at the top and bottom (the PAM, 2026-11-24).
+$script:PrintXml = '<pageMargins left="0.4" right="0.4" top="0.6" bottom="0.6" header="0.3" footer="0.3"/>' +
+    '<pageSetup orientation="landscape" fitToWidth="1" fitToHeight="0"/>' +
+    '<headerFooter><oddHeader>&amp;CCUI</oddHeader><oddFooter>&amp;CCUI</oddFooter></headerFooter>'
 
 function New-XlsxSheet {
     <#
@@ -4588,13 +4609,41 @@ function New-XlsxSheet {
     .PARAMETER Choices
       Column (0-based) -> the values its cells may hold: a dropdown list in Excel (data validation, a fixed list of words;
       never a formula from scanned text). For columns the person fills in.
+    .PARAMETER Table
+      With List: the Excel Table name (letters and digits, unique in the workbook); the tab is then a real table.
+    .PARAMETER LinkTarget
+      The column (0-based) that holds the https:// address of the link in LinkColumn; -1: LinkColumn itself.
+    .PARAMETER DateColumns
+      Columns (0-based) whose "yyyy-MM-dd HH:mm" texts become date cells (style 4).
+    .PARAMETER FreezeColumns
+      With List: how many columns on the left stay in view when the tab scrolls right.
+    .PARAMETER FillColumn
+      The column (0-based) of High, Medium, Low cells that get a fill (styles 5-7); -1 for none.
     .OUTPUTS
       [pscustomobject]
     #>
     param([string]$Name, [string[]]$Columns, [object[]]$Rows, [int[]]$Widths, [switch]$List, [int]$LinkColumn = -1,
-          [int[]]$WrapColumns = @(), [hashtable]$Choices = @{})
+          [int[]]$WrapColumns = @(), [hashtable]$Choices = @{}, [string]$Table = '', [int]$LinkTarget = -1,
+          [int[]]$DateColumns = @(), [int]$FreezeColumns = 0, [int]$FillColumn = -1)
     [pscustomobject]@{ Name = $Name; Columns = $Columns; Rows = @($Rows); Widths = $Widths; List = [bool]$List; LinkColumn = $LinkColumn
-        WrapColumns = $WrapColumns; Choices = $Choices }
+        WrapColumns = $WrapColumns; Choices = $Choices; Table = $Table; LinkTarget = $LinkTarget; DateColumns = $DateColumns
+        FreezeColumns = $FreezeColumns; FillColumn = $FillColumn }
+}
+
+function New-XlsxFormula {
+    <#
+    .SYNOPSIS
+      A formula cell: the formula text (without "=") and the value Ion worked out, shown until Excel recalculates.
+      Only Ion's code builds the text (cell references, table names): never pass text from a scanned file.
+    .PARAMETER Formula
+      For example COUNTIFS(tblHits[Type],A20,tblHits[Confidence],"High").
+    .PARAMETER Value
+      The value now (a whole number).
+    .OUTPUTS
+      [pscustomobject]
+    #>
+    param([string]$Formula, [long]$Value = 0)
+    [pscustomobject]@{ XlsxFormula = $Formula; Value = $Value }
 }
 
 function ConvertTo-XmlText {
@@ -4614,11 +4663,28 @@ function Get-ColumnLetter {
 }
 
 function ConvertTo-CellXml {
-    # One cell: a whole number as a number, anything else as an inline string (never a formula).
+    <#
+    .SYNOPSIS
+      One cell: a whole number or a date as a number, a New-XlsxFormula as a formula with its value, anything else as an
+      inline string (never a formula). An empty cell is not written, so Excel counts it as blank.
+    .PARAMETER Ref
+      The cell, for example B7.
+    .PARAMETER Value
+      The cell's value.
+    .PARAMETER Style
+      The style number (see $StylesXml); 0 for none.
+    .OUTPUTS
+      [string] the cell XML, or empty.
+    #>
     param([string]$Ref, $Value, [int]$Style)
     $styleAttr = ''
     if ($Style -gt 0) { $styleAttr = ' s="' + $Style + '"' }
+    if ($null -eq $Value -or ($Value -is [string] -and $Value -eq '')) { return '' }
     if ($Value -is [int] -or $Value -is [long]) { return '<c r="{0}"{1}><v>{2}</v></c>' -f $Ref, $styleAttr, $Value }
+    if ($Value -is [double]) { return '<c r="{0}"{1}><v>{2}</v></c>' -f $Ref, $styleAttr, $Value.ToString('R', [Globalization.CultureInfo]::InvariantCulture) }
+    if ($Value.PSObject.Properties['XlsxFormula']) {
+        return '<c r="{0}"{1}><f>{2}</f><v>{3}</v></c>' -f $Ref, $styleAttr, (ConvertTo-XmlText $Value.XlsxFormula), $Value.Value
+    }
     return '<c r="{0}"{1} t="inlineStr"><is><t xml:space="preserve">{2}</t></is></c>' -f $Ref, $styleAttr, (ConvertTo-XmlText ([string]$Value))
 }
 
@@ -4640,8 +4706,9 @@ function Get-SheetLinks {
     foreach ($row in $Sheet.Rows) {
         $rowNumber++
         $cells = @($row)
-        if ($Sheet.LinkColumn -ge $cells.Count) { continue }
-        $target = [string]$cells[$Sheet.LinkColumn]
+        $from = if ($Sheet.LinkTarget -ge 0) { $Sheet.LinkTarget } else { $Sheet.LinkColumn }
+        if ($Sheet.LinkColumn -ge $cells.Count -or $from -ge $cells.Count) { continue }
+        $target = [string]$cells[$from]
         if ($target -notmatch '^https://\S+$' -or $target.Length -gt $script:MaxLinkChars) { continue }
         $n++
         [pscustomobject]@{ Ref = $letter + $rowNumber; Id = 'rId' + $n; Target = $target }
@@ -4649,13 +4716,63 @@ function Get-SheetLinks {
 }
 
 function ConvertTo-SheetRelsXml {
-    # The relationships part of one tab: one external target per link.
-    param([object[]]$Links)
+    # The relationships part of one tab: one external target per link, and its table part (TableNumber > 0).
+    param([object[]]$Links, [int]$TableNumber = 0)
     $xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="' + $script:PackageRelNs + '">'
     foreach ($link in $Links) {
         $xml += '<Relationship Id="{0}" Type="{1}/hyperlink" Target="{2}" TargetMode="External"/>' -f $link.Id, $script:RelNs, (ConvertTo-XmlText $link.Target)
     }
+    if ($TableNumber -gt 0) { $xml += '<Relationship Id="rIdTable" Type="{0}/table" Target="../tables/table{1}.xml"/>' -f $script:RelNs, $TableNumber }
     return $xml + '</Relationships>'
+}
+
+function ConvertTo-TableXml {
+    <#
+    .SYNOPSIS
+      The table part of a tab (ECMA-376 table): its range, its filter buttons, one column per header cell, banded rows.
+    .PARAMETER Sheet
+      Output of New-XlsxSheet, with Table set.
+    .PARAMETER Number
+      The table's number in the workbook (1, 2 ...).
+    .OUTPUTS
+      [string]
+    #>
+    param($Sheet, [int]$Number)
+    $range = 'A1:{0}{1}' -f (Get-ColumnLetter $Sheet.Columns.Count), [Math]::Max(2, $Sheet.Rows.Count + 1)
+    $xml = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><table xmlns="{0}" id="{1}" name="{2}" displayName="{2}" ref="{3}" ' +
+        'totalsRowShown="0"><autoFilter ref="{3}"/><tableColumns count="{4}">') -f $script:MainNs, $Number, $Sheet.Table, $range, $Sheet.Columns.Count
+    for ($i = 0; $i -lt $Sheet.Columns.Count; $i++) { $xml += '<tableColumn id="{0}" name="{1}"/>' -f ($i + 1), (ConvertTo-XmlText $Sheet.Columns[$i]) }
+    return $xml + '</tableColumns><tableStyleInfo name="TableStyleMedium2" showFirstColumn="0" showLastColumn="0" showRowStripes="1" showColumnStripes="0"/></table>'
+}
+
+function Get-SheetTopXml {
+    <#
+    .SYNOPSIS
+      The start of a tab's XML, before its cells: fit to the page width, the frozen header row (and columns), the column widths.
+    .PARAMETER Sheet
+      Output of New-XlsxSheet.
+    .OUTPUTS
+      [string]
+    #>
+    param($Sheet)
+    $top = New-Object System.Text.StringBuilder
+    [void]$top.Append('<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>')
+    if ($Sheet.List -and $Sheet.FreezeColumns -gt 0) {
+        $pane = ('<sheetViews><sheetView workbookViewId="0"><pane xSplit="{0}" ySplit="1" topLeftCell="{1}2" activePane="bottomRight" ' +
+            'state="frozen"/></sheetView></sheetViews>') -f $Sheet.FreezeColumns, (Get-ColumnLetter ($Sheet.FreezeColumns + 1))
+        [void]$top.Append($pane)
+    }
+    elseif ($Sheet.List) {
+        [void]$top.Append('<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>')
+    }
+    if ($Sheet.Widths) {
+        [void]$top.Append('<cols>')
+        for ($i = 0; $i -lt $Sheet.Widths.Count; $i++) {
+            [void]$top.Append(('<col min="{0}" max="{0}" width="{1}" customWidth="1"/>' -f ($i + 1), $Sheet.Widths[$i]))
+        }
+        [void]$top.Append('</cols>')
+    }
+    return $top.ToString()
 }
 
 function ConvertTo-SheetXml {
@@ -4674,16 +4791,7 @@ function ConvertTo-SheetXml {
     foreach ($link in $Links) { $linked[$link.Ref] = $true }
     $xml = New-Object System.Text.StringBuilder
     [void]$xml.Append('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="' + $script:MainNs + '" xmlns:r="' + $script:RelNs + '">')
-    if ($Sheet.List) {
-        [void]$xml.Append('<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>')
-    }
-    if ($Sheet.Widths) {
-        [void]$xml.Append('<cols>')
-        for ($i = 0; $i -lt $Sheet.Widths.Count; $i++) {
-            [void]$xml.Append(('<col min="{0}" max="{0}" width="{1}" customWidth="1"/>' -f ($i + 1), $Sheet.Widths[$i]))
-        }
-        [void]$xml.Append('</cols>')
-    }
+    [void]$xml.Append((Get-SheetTopXml $Sheet))
     [void]$xml.Append('<sheetData><row r="1">')
     for ($i = 0; $i -lt $Sheet.Columns.Count; $i++) { [void]$xml.Append((ConvertTo-CellXml ((Get-ColumnLetter ($i + 1)) + '1') $Sheet.Columns[$i] 1)) }
     [void]$xml.Append('</row>')
@@ -4698,12 +4806,17 @@ function ConvertTo-SheetXml {
             if (-not $Sheet.List -and $i -eq 0) { $style = 1 }   # Summary tab: the label column is bold
             if ($Sheet.WrapColumns -contains $i) { $style = 3 }
             if ($linked.ContainsKey($ref)) { $style = 2 }
-            [void]$xml.Append((ConvertTo-CellXml $ref $cells[$i] $style))
+            $value = $cells[$i]
+            $when = [datetime]::MinValue
+            if ($Sheet.DateColumns -contains $i -and $value -is [string] -and [datetime]::TryParseExact($value, $script:DateFormats,
+                    [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::None, [ref]$when)) { $value = $when.ToOADate(); $style = 4 }
+            if ($i -eq $Sheet.FillColumn -and $script:FillStyle.ContainsKey([string]$value)) { $style = $script:FillStyle[[string]$value] }
+            [void]$xml.Append((ConvertTo-CellXml $ref $value $style))
         }
         [void]$xml.Append('</row>')
     }
     [void]$xml.Append('</sheetData>')
-    if ($Sheet.List -and $Sheet.Columns.Count -gt 0) {
+    if ($Sheet.List -and $Sheet.Columns.Count -gt 0 -and -not $Sheet.Table) {   # a table has its own filter buttons
         [void]$xml.Append(('<autoFilter ref="A1:{0}{1}"/>' -f (Get-ColumnLetter $Sheet.Columns.Count), [Math]::Max(2, $rowNumber)))
     }
     [void]$xml.Append((ConvertTo-ChoicesXml $Sheet ([Math]::Max(2, $rowNumber))))
@@ -4712,6 +4825,8 @@ function ConvertTo-SheetXml {
         foreach ($link in $Links) { [void]$xml.Append(('<hyperlink ref="{0}" r:id="{1}"/>' -f $link.Ref, $link.Id)) }
         [void]$xml.Append('</hyperlinks>')
     }
+    [void]$xml.Append($script:PrintXml)
+    if ($Sheet.List -and $Sheet.Table) { [void]$xml.Append('<tableParts count="1"><tablePart r:id="rIdTable"/></tableParts>') }
     [void]$xml.Append('</worksheet>')
     return $xml.ToString()
 }
@@ -4798,6 +4913,12 @@ function Export-Xlsx {
         $rels += '<Relationship Id="rId' + $i + '" Type="' + $script:RelNs + '/worksheet" Target="worksheets/sheet' + $i + '.xml"/>'
     }
     $rels += '<Relationship Id="rId' + ($Sheets.Count + 1) + '" Type="' + $script:RelNs + '/styles" Target="styles.xml"/></Relationships>'
+    $tables = @{}   # tab number -> table number
+    for ($i = 1; $i -le $Sheets.Count; $i++) {
+        if (-not ($Sheets[$i - 1].List -and $Sheets[$i - 1].Table)) { continue }
+        $tables[$i] = $tables.Count + 1
+        $types += '<Override PartName="/xl/tables/table' + $tables[$i] + '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml"/>'
+    }
     $stream = New-Object System.IO.FileStream($Path, [System.IO.FileMode]::CreateNew)   # CreateNew: never overwrite
     $zip = $null
     $written = $false
@@ -4806,13 +4927,15 @@ function Export-Xlsx {
         Add-ZipText $zip '[Content_Types].xml' ($types + '</Types>')
         Add-ZipText $zip '_rels/.rels' ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="' + $script:PackageRelNs + '">' +
             '<Relationship Id="rId1" Type="' + $script:RelNs + '/officeDocument" Target="xl/workbook.xml"/></Relationships>')
-        Add-ZipText $zip 'xl/workbook.xml' ($book + '</sheets></workbook>')
+        Add-ZipText $zip 'xl/workbook.xml' ($book + '</sheets><calcPr fullCalcOnLoad="1"/></workbook>')   # formulas recalculate on open
         Add-ZipText $zip 'xl/_rels/workbook.xml.rels' $rels
         Add-ZipText $zip 'xl/styles.xml' $script:StylesXml
         for ($i = 1; $i -le $Sheets.Count; $i++) {
             $links = @(Get-SheetLinks $Sheets[$i - 1])
             Add-ZipText $zip ('xl/worksheets/sheet' + $i + '.xml') (ConvertTo-SheetXml $Sheets[$i - 1] $links)
-            if ($links.Count -gt 0) { Add-ZipText $zip ('xl/worksheets/_rels/sheet' + $i + '.xml.rels') (ConvertTo-SheetRelsXml $links) }
+            $table = if ($tables.ContainsKey($i)) { $tables[$i] } else { 0 }
+            if ($links.Count -gt 0 -or $table) { Add-ZipText $zip ('xl/worksheets/_rels/sheet' + $i + '.xml.rels') (ConvertTo-SheetRelsXml $links $table) }
+            if ($table) { Add-ZipText $zip ('xl/tables/table' + $table + '.xml') (ConvertTo-TableXml $Sheets[$i - 1] $table) }
         }
         $written = $true
     }
@@ -4829,7 +4952,7 @@ function Export-Xlsx {
 Report.psm1 - the scan results for a person: the report rows and the summary on screen.
 
   Purpose:     Holds the report rows, sorts them worst PII type first and shows the summary (totals and hits per type).
-               The workbook (Summary tab first, one tab per type, Low confidence, Not scanned; the PAM, 2026-11-20: tabs
+               The workbook (Summary tab first, Hits and Files tables, Not scanned; the PAM, 2026-11-20: tabs
                to cut noise; no .txt or .csv) is built by ReportBook.psm1, split from this file (fleet v2 DEC 6, 2026-11-23).
   Inputs:      report rows (New-ReportRow) from ChannelScan.psm1; values in them are already masked.
   Outputs:     the summary on screen; report rows.
@@ -5204,13 +5327,13 @@ function Add-PartRows {
 <#
 ReportBook.psm1 - the results workbook: its tabs, its Summary rows and where it is saved.
 
-  Purpose:     Builds the workbook tabs (Summary first, one tab per PII type, Low confidence, Not scanned) with the
-               review columns, and saves it as a new file under the output folder; the breach advice is on the Summary
+  Purpose:     Builds the workbook tabs (Summary first, Hits and Files as Excel Tables, Not scanned, By account, Method)
+               with the review columns, and saves it as a new file under the output folder; the breach advice is on the Summary
                tab and on screen at the end. Split from Report.psm1 (fleet v2 DEC 6, 2026-11-23: 450 lines for
                hand-written code).
   Inputs:      report rows (Report.psm1 New-ReportRow); values in them are already masked.
   Outputs:     <OutputFolder>\<site>\Ion <site> <yyyy-MM-dd HHmm>.xlsx, and its path.
-  Depends on:  PiiDetectors.psm1 (Get-ConfidenceRank), PiiMasking.psm1 (Protect-PiiName), XlsxWriter.psm1,
+  Depends on:  PiiDetectors.psm1 (Get-ConfidenceRank), PiiMasking.psm1 (Protect-PiiName), XlsxWriter.psm1 (New-XlsxSheet, New-XlsxFormula, Export-Xlsx),
                Report.psm1 (Write-Ui, Get-SeverityIndex,
                Get-TypeCounts, Get-NotScannedGroup, Get-NotScannedCounts, Get-ScanMetrics, Get-ScanSummaryText),
                imported first; at run time also ScanMeter.psm1 and Accountability.psm1 (the By account and Method tabs).
@@ -5232,9 +5355,10 @@ $script:ToolTitle = 'Ion - DoD365 PII Reporter'
 
 $script:MaxNameInPath = 40   # the site name is in the path twice: at most 40 characters keeps it under 260 (review of PR 41)
 # C6, the review columns the person fills in (the PAM, 2026-11-21), each with its dropdown (empty = free text); Ion never fills them.
-$script:ReviewColumns = [ordered]@{ 'Reviewed by' = @(); 'Review date' = @(); 'Is it PII?' = @('Yes', 'No', 'Not sure')
+# Order: the answers first, then who and when (the PAM, 2026-11-24, the approved preview).
+$script:ReviewColumns = [ordered]@{ 'Is it PII?' = @('Yes', 'No', 'Not sure')
     'Action taken' = @('Removed', 'Moved', 'Access limited', 'Left (not PII)', 'Other')
-    'Reported to Privacy Manager' = @('Yes', 'No', 'Not needed') }
+    'Reported to Privacy Manager' = @('Yes', 'No', 'Not needed'); 'Reviewed by' = @(); 'Review date' = @() }
 # What to do with PII found where it should not be (rule source: AFI 33-332 para 3.1.2 as changed by AFI33-332_DAFGM2026-01,
 # 7 July 2026; edition: docs/DECISIONS.md). The wording is the README's "If it finds PII" section; scripts/build_site.py --check fails when they differ (the PAM, 2026-11-20).
 $script:BreachAdvice = 'PII where it should not be is a potential or actual breach; report it to your servicing Privacy ' +
@@ -5278,17 +5402,48 @@ function Get-ResultPath {
 }
 
 function Get-HitCells {
-    # One row of a hit tab: the hit's cells in the order of $HitColumns.
-    param($Hit)
-    @($Hit.Confidence, $Hit.Channel, $Hit.Item, $Hit.MaskedValue, $Hit.Context, $Hit.Modified, $Hit.Link, $Hit.Source,
-        $Hit.Created, $Hit.CreatedBy, $Hit.ModifiedBy, $Hit.AddedOn, $Hit.AddedBy, $Hit.HistoryNote) + @('') * $script:ReviewColumns.Count
+    # One row of the Hits tab, in the order of its columns: ID, what was found, the review columns, then who and when.
+    param($Hit, [int]$Number)
+    @(('H{0:000}' -f $Number), $Hit.Detector, $Hit.Confidence, $Hit.Channel, $Hit.Item, $Hit.MaskedValue, $Hit.Context) +
+        @('') * $script:ReviewColumns.Count +
+        @($Hit.Modified, $Hit.ModifiedBy, $Hit.AddedOn, $Hit.AddedBy, $Hit.Created, $Hit.CreatedBy, $Hit.HistoryNote, $Hit.Source, $Hit.Link)
+}
+
+function Get-FileRows {
+    <#
+    .SYNOPSIS
+      The rows of the Files tab: one per file with hits, worst first: its counts, its types, how many hits a reviewer
+      has answered "Is it PII?" for (a formula on the Hits table), and who saved it.
+    .PARAMETER Hits
+      The hit rows, in the Hits tab's order.
+    .PARAMETER FolderLabel
+      The name of the folder column (Channel or Folder), as in the Hits table.
+    .OUTPUTS
+      [object[]] rows, each an array of cells.
+    #>
+    param([object[]]$Hits, [string]$FolderLabel)
+    $groups = @($Hits | Group-Object { $_.Channel + "`n" + $_.Item } | ForEach-Object {
+        $g = @($_.Group)
+        [pscustomobject]@{ First = $g[0]; Count = $g.Count; High = @($g | Where-Object { $_.Confidence -eq 'High' }).Count
+            Medium = @($g | Where-Object { $_.Confidence -eq 'Medium' }).Count; Low = @($g | Where-Object { $_.Confidence -eq 'Low' }).Count
+            Types = (@($g | ForEach-Object { $_.Detector } | Select-Object -Unique) -join ', ')
+            AddedBy = (@($g | ForEach-Object { $_.AddedBy } | Where-Object { $_ } | Select-Object -Unique) -join ', ') }
+    } | Sort-Object @{ Expression = 'High'; Descending = $true }, @{ Expression = 'Medium'; Descending = $true },
+        @{ Expression = 'Low'; Descending = $true }, @{ Expression = { $_.First.Channel } }, @{ Expression = { $_.First.Item } })
+    $row = 1
+    foreach ($f in $groups) {
+        $row++
+        $reviewed = New-XlsxFormula ('SUMPRODUCT((tblHits[{0}]=A{1})*(tblHits[File]=B{1})*(tblHits[Is it PII?]<>""))' -f $FolderLabel, $row) 0
+        , @($f.First.Channel, $f.First.Item, [long]$f.Count, [long]$f.High, [long]$f.Medium, [long]$f.Low, $f.Types, $reviewed,
+            $f.First.Modified, $f.First.ModifiedBy, $f.AddedBy, $f.First.Link)
+    }
 }
 
 function Get-WorkbookSheets {
     <#
     .SYNOPSIS
-      The tabs of the workbook: Summary first, then one tab per PII type with High or Medium hits (worst type
-      first), then Low confidence and Not scanned when they have rows (the PAM, 2026-11-20).
+      The tabs of the workbook: Summary first; Hits (every hit, one Excel Table: filter, sort, pivot) and Files (one row
+      per file) when there are hits; then Not scanned, By account and Method (the PAM, 2026-11-24: as previewed).
     .PARAMETER Rows
       All report rows.
     .PARAMETER ItemsScanned
@@ -5301,77 +5456,123 @@ function Get-WorkbookSheets {
       [object[]] New-XlsxSheet objects.
     #>
     param([object[]]$Rows, [int]$ItemsScanned, [System.Collections.IDictionary]$Header, [string]$FolderLabel)
-    $hits = @($Rows | Where-Object { (Get-ConfidenceRank $_.Confidence) -gt 0 })
-    # Accountability columns, names and order: the PAM, 2026-11-21 (docs/DECISIONS.md); the Method tab explains them.
-    $columns = @('Confidence', $FolderLabel, 'File', 'Masked value', 'Context', 'Last saved', 'Link', 'Found in',
-        'Created', 'Created by', 'Last saved by', 'PII first saved', 'PII first saved by', 'History note') + @($script:ReviewColumns.Keys)
-    $widths = @(11, 22, 45, 18, 60, 17, 50, 10, 17, 30, 30, 17, 30, 50) + @(20) * $script:ReviewColumns.Count
-    $choices = @{}; $offset = $columns.Count - $script:ReviewColumns.Count; $lowChoices = @{}   # the review columns' dropdowns
-    foreach ($name in @($script:ReviewColumns.Keys)) {
-        if ($script:ReviewColumns[$name]) { $choices[$offset] = $script:ReviewColumns[$name]; $lowChoices[$offset + 1] = $script:ReviewColumns[$name] }
-        $offset++
-    }
-    $byRank = @{ Expression = { Get-ConfidenceRank $_.Confidence }; Descending = $true }
+    $hits = @($Rows | Where-Object { (Get-ConfidenceRank $_.Confidence) -gt 0 } |
+        Sort-Object @{ Expression = { Get-ConfidenceRank $_.Confidence }; Descending = $true }, @{ Expression = { Get-SeverityIndex $_.Detector } }, Channel, Item)
+    # The review columns right after the hit, then who and when (accountability names: the PAM, 2026-11-21; the Method tab explains them).
+    $columns = @('ID', 'Type', 'Confidence', $FolderLabel, 'File', 'Masked value', 'Context') + @($script:ReviewColumns.Keys) +
+        @('Last saved', 'Last saved by', 'PII first saved', 'PII first saved by', 'Created', 'Created by', 'History note', 'Found in', 'Link')
+    $widths = @(7, 15, 11, 16, 40, 16, 50) + @(16) * $script:ReviewColumns.Count + @(16, 22, 16, 22, 16, 22, 40, 10, 50)
+    $choices = @{}; $offset = 7
+    foreach ($name in @($script:ReviewColumns.Keys)) { if ($script:ReviewColumns[$name]) { $choices[$offset] = $script:ReviewColumns[$name] }; $offset++ }
+    $after = 7 + $script:ReviewColumns.Count   # the first column after the review columns
     $sheets = New-Object System.Collections.Generic.List[object]
-    $sheets.Add((New-XlsxSheet 'Summary' @($script:ToolTitle, '', '', '', '') (Get-SummaryRows $Rows $ItemsScanned $Header) @(28, 70, 9, 9, 9)))
-    foreach ($type in @(Get-TypeCounts $hits | Where-Object { $_.High + $_.Medium -gt 0 } | ForEach-Object { $_.Type })) {
-        $typeHits = @($hits | Where-Object { $_.Detector -eq $type -and $_.Confidence -ne 'Low' } | Sort-Object $byRank, Channel, Item)
-        $sheets.Add((New-XlsxSheet $type $columns @($typeHits | ForEach-Object { , (Get-HitCells $_) }) $widths -List -LinkColumn 6 -Choices $choices))
-    }
-    $low = @($hits | Where-Object { $_.Confidence -eq 'Low' } | Sort-Object { Get-SeverityIndex $_.Detector }, Channel, Item)
-    if ($low.Count -gt 0) {
-        $lowCells = @($low | ForEach-Object { , (@($_.Detector) + (Get-HitCells $_)) })
-        $sheets.Add((New-XlsxSheet 'Low confidence' (@('Type') + $columns) $lowCells (@(16) + $widths) -List -LinkColumn 7 -Choices $lowChoices))
+    $sheets.Add((New-XlsxSheet 'Summary' @($script:ToolTitle, '', '', '', '', '') (Get-SummaryRows $Rows $ItemsScanned $Header $hits) @(34, 70, 9, 9, 9, 10)))
+    if ($hits.Count -gt 0) {
+        $n = 0
+        $sheets.Add((New-XlsxSheet 'Hits' $columns @($hits | ForEach-Object { $n++; , (Get-HitCells $_ $n) }) $widths -List -Table 'tblHits' `
+            -LinkColumn 4 -LinkTarget ($columns.Count - 1) -Choices $choices -WrapColumns @(6) -DateColumns @($after, ($after + 2), ($after + 4)) `
+            -FreezeColumns 5 -FillColumn 2))
+        $sheets.Add((New-XlsxSheet 'Files' @($FolderLabel, 'File', 'Hits', 'High', 'Medium', 'Low', 'Types', 'Reviewed', 'Last saved',
+            'Last saved by', 'PII first saved by', 'Link') @(Get-FileRows $hits $FolderLabel) @(16, 40, 7, 7, 9, 7, 40, 10, 16, 22, 30, 50) `
+            -List -Table 'tblFiles' -LinkColumn 1 -LinkTarget 11 -DateColumns @(8) -FreezeColumns 2))
     }
     $notes = @($Rows | Where-Object { (Get-ConfidenceRank $_.Confidence) -eq 0 })
     if ($notes.Count -gt 0) {
         # A Group column, so the tab filters by the groups the Summary counts (the PAM, 2026-11-21).
         $sheets.Add((New-XlsxSheet 'Not scanned' @('Status', $FolderLabel, 'File', 'Reason', 'Group', 'Link') `
             @($notes | ForEach-Object { , @($_.Detector, $_.Channel, $_.Item, $_.Context, (Get-NotScannedGroup $_), $_.Link) }) `
-            @(14, 22, 45, 70, 30, 50) -List -LinkColumn 5))
+            @(14, 22, 45, 70, 30, 50) -List -Table 'tblNotScanned' -LinkColumn 2 -LinkTarget 5))
     }
     $accounts = @(Get-AccountRows $hits)   # C6 (the PAM, 2026-11-21): whom to contact first
     if ($accounts.Count -gt 0) {
-        $sheets.Add((New-XlsxSheet 'By account' @('PII first saved by', 'Files', 'High', 'Medium', 'Low') $accounts @(40, 9, 9, 9, 9) -List))
+        $sheets.Add((New-XlsxSheet 'By account' @('PII first saved by', 'Files', 'High', 'Medium', 'Low') $accounts @(40, 9, 9, 9, 9) -List -Table 'tblAccounts'))
     }
     $method = @(Get-MethodRows | Where-Object { $accounts.Count -gt 0 -or $_[0] -ne 'By account tab' })   # no row for a tab that is not there
-    $sheets.Add((New-XlsxSheet 'Method' @('Topic', 'How Ion works it out') $method @(34, 110) -List -WrapColumns @(1)))   # the PAM, 2026-11-21
+    $sheets.Add((New-XlsxSheet 'Method' @('Topic', 'How Ion works it out') $method @(34, 110) -List -Table 'tblMethod' -WrapColumns @(1)))   # the PAM, 2026-11-21
     return $sheets.ToArray()
+}
+
+function Get-TypeTableRows {
+    <#
+    .SYNOPSIS
+      The Summary tab's hits per type (worst first): High, Medium, Low, Total and Reviewed, as formulas on the Hits table
+      with Ion's values, and a Total row.
+    .PARAMETER Hits
+      The hit rows (the Hits tab).
+    .PARAMETER StartRow
+      The sheet row of the table's header row.
+    .OUTPUTS
+      [object[]] rows, each an array of cells.
+    #>
+    param([object[]]$Hits, [int]$StartRow)
+    $list = New-Object System.Collections.Generic.List[object]
+    $list.Add(@('Possible PII by type (worst first)', 'High', 'Medium', 'Low', 'Total', 'Reviewed'))
+    $first = $StartRow + $list.Count   # the sheet row of the first type (row 1 is the title)
+    foreach ($type in @(Get-TypeCounts $Hits)) {
+        $r = $StartRow + $list.Count
+        $cells = @($type.Type)
+        foreach ($level in @(@('High', $type.High), @('Medium', $type.Medium), @('Low', $type.Low))) {
+            $cells += New-XlsxFormula ('COUNTIFS(tblHits[Type],$A{0},tblHits[Confidence],"{1}")' -f $r, $level[0]) $level[1]
+        }
+        $list.Add($cells + @((New-XlsxFormula ('SUM(B{0}:D{0})' -f $r) $type.Total), (New-XlsxFormula ('COUNTIFS(tblHits[Type],$A{0},tblHits[Is it PII?],"<>")' -f $r) 0)))
+    }
+    if ($Hits.Count -eq 0) { $list.Add(@('None found in the files that were read.')) }
+    else {
+        $last = $StartRow + $list.Count - 1
+        $total = @('Total')
+        foreach ($c in @('B', 'C', 'D', 'E', 'F')) {
+            $value = switch ($c) { 'B' { @($Hits | Where-Object { $_.Confidence -eq 'High' }).Count } 'C' { @($Hits | Where-Object { $_.Confidence -eq 'Medium' }).Count }
+                'D' { @($Hits | Where-Object { $_.Confidence -eq 'Low' }).Count } 'E' { $Hits.Count } default { 0 } }
+            $total += New-XlsxFormula ('SUM({0}{1}:{0}{2})' -f $c, $first, $last) $value
+        }
+        $list.Add($total)
+    }
+    return $list.ToArray()   # one row per item (each row stays an array)
 }
 
 function Get-SummaryRows {
     <#
     .SYNOPSIS
-      The rows of the Summary tab: the scan's details and totals, the hits per type (worst first), the not-scanned
-      files per reason, then how to read the tabs, the breach step and the handling note.
+      The rows of the Summary tab: the scan's details and totals, the reviewer's progress, the hits per type (worst
+      first; counts as formulas on the Hits table, so they follow a reviewer's filter-free edits), the not-scanned files
+      per reason, then how to read the tabs, the breach step and the handling note.
     .PARAMETER Rows
       All report rows.
     .PARAMETER ItemsScanned
       How many files were read.
     .PARAMETER Header
       Label and value pairs for the top (site, folders, time).
+    .PARAMETER Hits
+      The hit rows (the Hits tab).
     .OUTPUTS
       [object[]] rows, each an array of cells.
     #>
-    param([object[]]$Rows, [int]$ItemsScanned, [System.Collections.IDictionary]$Header)
-    $hits = @($Rows | Where-Object { (Get-ConfidenceRank $_.Confidence) -gt 0 })
-    foreach ($pair in @($Header.GetEnumerator()) + @((Get-ScanMetrics $Rows $ItemsScanned).GetEnumerator())) { , @($pair.Key, $pair.Value) }
-    , @('')
-    , @('Possible PII by type (worst first)', 'High', 'Medium', 'Low', 'Total')
-    foreach ($type in @(Get-TypeCounts $hits)) { , @($type.Type, $type.High, $type.Medium, $type.Low, $type.Total) }
-    if ($hits.Count -eq 0) { , @('None found in the files that were read.') }
+    param([object[]]$Rows, [int]$ItemsScanned, [System.Collections.IDictionary]$Header, [object[]]$Hits)
+    $out = New-Object System.Collections.Generic.List[object]
+    foreach ($pair in @($Header.GetEnumerator()) + @((Get-ScanMetrics $Rows $ItemsScanned).GetEnumerator())) {
+        if ($pair.Key -ne 'High / Medium / Low') { $out.Add(@($pair.Key, $pair.Value)) }   # the type table below has these as numbers
+        if ($pair.Key -eq 'Run') { $out.Add(@('Finished', (Get-Date -Format 'yyyy-MM-dd HH:mm'))) }
+    }
+    if ($Hits.Count -gt 0) {
+        $out.Add(@('Hits reviewed ("Is it PII?" filled in)', (New-XlsxFormula 'COUNTIF(tblHits[Is it PII?],"<>")' 0)))
+        $out.Add(@('Confirmed PII ("Is it PII?" = Yes)', (New-XlsxFormula 'COUNTIF(tblHits[Is it PII?],"Yes")' 0)))
+    }
+    $out.Add(@(''))
+    foreach ($row in @(Get-TypeTableRows $Hits ($out.Count + 2))) { $out.Add($row) }
     $skipped = @(Get-NotScannedCounts $Rows)
     if ($skipped.Count -gt 0) {
-        , @('')
-        , @('Not scanned: check by hand', 'Files')
-        foreach ($group in $skipped) { , @($group.Reason, $group.Count) }
+        $out.Add(@(''))
+        $out.Add(@('Not scanned: check by hand', 'Files'))
+        foreach ($group in $skipped) { $out.Add(@($group.Reason, $group.Count)) }
     }
-    , @('')
-    , @('Tabs', 'One tab per type with High or Medium hits, worst type first; then Low confidence; then Not scanned; then Method (how each column is worked out).')
-    , @('Confidence', 'A pattern guess, not proof: open each item and check it before you act.')
-    , @('If you find PII', $script:BreachLines[0])
-    if ($script:BreachLines.Count -gt 1) { , @('Rule source', ($script:BreachLines[1] -replace '^Source: ', '')) }
-    , @('Handling', 'Handle this file as CUI: it shows where PII is. Every value in it is masked.')
+    $out.Add(@(''))
+    $out.Add(@('Tabs', ('Hits: one row per hit, one Excel Table (filter, sort, pivot); fill in the review columns there. ' +
+        'Files: one row per file. Then Not scanned, By account and Method (how each column is worked out).')))
+    $out.Add(@('Confidence', 'A pattern guess, not proof: open each item and check it before you act.'))
+    $out.Add(@('If you find PII', $script:BreachLines[0]))
+    if ($script:BreachLines.Count -gt 1) { $out.Add(@('Rule source', ($script:BreachLines[1] -replace '^Source: ', ''))) }
+    $out.Add(@('Handling', 'Handle this file as CUI: it shows where PII is. Every value in it is masked.'))
+    return , $out.ToArray()
 }
 
 function Publish-ScanReport {
@@ -6579,8 +6780,8 @@ function Get-MethodRows {
     , @('By account tab', ('How many files and hits each "PII first saved by" account first saved, most first: a list of whom to contact first. ' +
         'It has the same limits as that column: evidence, not proof.'))
     , @('')
-    , @('Review columns', ('Reviewed by, Review date, Is it PII?, Action taken and Reported to Privacy Manager are for you to fill in as you ' +
-        'check each hit. Ion leaves them empty. The last three have a dropdown list.'))
+    , @('Review columns', ('Is it PII?, Action taken, Reported to Privacy Manager, Reviewed by and Review date (Hits tab) are for you to fill in as you ' +
+        'check each hit. Ion leaves them empty. The first three have a dropdown list.'))
 }
 
 # ==== Module SiteTarget.psm1 ====

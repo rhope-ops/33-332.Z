@@ -2,7 +2,7 @@
 Report.psm1 - the scan results for a person: the report rows and the summary on screen.
 
   Purpose:     Holds the report rows, sorts them worst PII type first and shows the summary (totals and hits per type).
-               The workbook (Summary tab first, one tab per type, Low confidence, Not scanned; the PAM, 2026-11-20: tabs
+               The workbook (Summary tab first, Hits and Files tables, Not scanned; the PAM, 2026-11-20: tabs
                to cut noise; no .txt or .csv) is built by ReportBook.psm1, split from this file (fleet v2 DEC 6, 2026-11-23).
   Inputs:      report rows (New-ReportRow) from ChannelScan.psm1; values in them are already masked.
   Outputs:     the summary on screen; report rows.
