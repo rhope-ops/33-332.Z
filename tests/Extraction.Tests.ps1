@@ -96,6 +96,11 @@ Assert-Equal "Person,SSN,DoD ID,DOB`r`nPerson A,SSN: `"$($Sample.Ssn)`",DoD ID: 
 Assert-Equal 'SSN/High/***-**-6789 DoD ID/High/******7890 Date of birth/High/[date masked]' ((Get-HitSummary $csvText) -join ' ') 'Roster csv: values found by their header'
 $tsv = "Name`tPassport`nPerson A`t$($Sample.Passport)"
 Assert-Equal "Name`tPassport`nPerson A`tPassport: $($Sample.Passport)" (Get-TextFromBytes -Bytes ([System.Text.Encoding]::UTF8.GetBytes($tsv)) -FileName 'r.tsv').Text 'Roster tsv: tab fields'
+$csvReach = "Ref,DoD ID,Order`n(a note row, so that the header text is out of reach)`n$otherTen,$($Sample.DodId),$otherTen`n$otherTen`n"
+$csvReachText = (Get-TextFromBytes -Bytes ([System.Text.Encoding]::UTF8.GetBytes($csvReach)) -FileName 'r.csv').Text
+Assert-Equal 'DoD ID/High/******7890' (Get-HitSummary $csvReachText) 'Roster csv: the DoD ID label does not reach the next field or the next line'
+$csvDate = "Name,Date of birth,Suspense`nPerson A,03/14/1985,5 Mar 27`n"   # a date with 3 digits: the fewest a DOB has
+Assert-Equal 1 @(Find-PiiInText (Get-TextFromBytes -Bytes ([System.Text.Encoding]::UTF8.GetBytes($csvDate)) -FileName 'd.csv').Text).Count 'Roster csv: the DOB label does not reach a suspense date'
 $plainCsv = "Person,Code,Number`r`nPerson A,`"$($Sample.Ssn)`",$otherTen`r`n"
 Assert-Equal $plainCsv (Get-TextFromBytes -Bytes ([System.Text.Encoding]::UTF8.GetBytes($plainCsv)) -FileName 'p.csv').Text 'Roster csv: no header row, text not changed'
 

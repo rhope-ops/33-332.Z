@@ -344,12 +344,12 @@ function Get-EmailParts {
 # A header cell: the whole cell is one label of this list (case ignored; quotes, and a trailing ':', '#' or '.', allowed).
 $script:RosterHeaderPattern = '^\s*"?\s*(?:(?<ssn>SSN|SSAN)|(?<dod>DoD\s*ID|DODID|EDIPI)|(?<dob>DOB|Date\s+of\s+birth)|(?<pp>Passport(?:\s+No)?))\s*[:#.]*\s*"?\s*$'
 $script:RosterLabelText = @{ ssn = 'SSN'; dod = 'DoD ID'; dob = 'Date of birth'; pp = 'Passport' }
-$script:RosterWords = New-Object regex ('SSN|SSAN|DoD|EDIPI|DOB|birth|Passport', 'IgnoreCase')   # none in the first rows: no header (speed)
+$script:RosterWords = [regex]::new('SSN|SSAN|DoD|EDIPI|DOB|birth|Passport', 'IgnoreCase')   # none in the first rows: no header (speed)
 $script:RosterHeaderRows = 5   # the header row is looked for in this many first rows (the author's choice, 2026-11-24)
 # A label reaches a value that starts at most 40 characters after it ($KeywordWindowChars, PiiPatterns.psm1); a value
-# of another cell with at least $RosterMinDigits digits (a date such as 1/2/90; not a row number) is moved out of reach.
+# of another cell with at least $RosterMinDigits digits (a date such as 5 Mar 27; not a row number) is moved out of reach.
 $script:RosterReachChars = 41
-$script:RosterMinDigits = 4
+$script:RosterMinDigits = 3
 
 function Find-RosterHeader {
     <#
@@ -442,7 +442,7 @@ function Add-CsvRosterLabels {
     # A .csv or .tsv text with roster labels; a field is quoted ("...", quotes kept) or runs to the next Delimiter.
     param([string]$Text, [string]$Delimiter)
     $d = [regex]::Escape($Delimiter)
-    return (Join-RosterText $Text.Split("`n") $Text $null 0 (New-Object regex ('(?:^|' + $d + ')("(?:[^"]|"")*"|[^"\r' + $d + ']*)')))
+    return (Join-RosterText $Text.Split("`n") $Text $null 0 ([regex]::new('(?:^|' + $d + ')("(?:[^"]|"")*"|[^"\r' + $d + ']*)')))
 }
 
 Export-ModuleMember -Function Get-ArchiveParts, Get-EmailParts, Read-LimitedStream, ConvertTo-SheetText, Add-CsvRosterLabels
