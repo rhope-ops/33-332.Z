@@ -42,6 +42,8 @@ function Reset-FakePnP {
         TypedSite   = New-Object System.Collections.Generic.Queue[string]   # the fake Read-Host's answers, in order; none = Enter
         NoAccess    = $false                                      # the site refuses the signed-in person (403)
         StopInFolder2 = $false                                    # the scan stops (as at Ctrl+C) when it reaches folder 2
+        StaleWeb    = $false                                      # the web after a sign-in is another site's (the last connection was kept)
+        StaleHost   = $false                                      # the web after a sign-in has the same path on another host
         SiteGroupId = [guid]'11111111-2222-3333-4444-555555555555'
         LookupSite  = ''                                          # the tenant root's answer for a Teams link's group ('' = none; 'fail' = refused)
         OpenAnswer  = ''                                          # the answer to "Open the workbook now?" ('' = Enter = yes)
@@ -52,8 +54,8 @@ function Reset-FakePnP {
 }
 
 function Set-FakePnPOption {
-    # Changes one switch of the fake site: ListFails, ConnectFails, SiteFails or NoAccess.
-    param([ValidateSet('ListFails', 'ConnectFails', 'SiteFails', 'NoAccess', 'StopInFolder2')][string]$Name, [bool]$Value)
+    # Changes one switch of the fake site: one of the names in the ValidateSet below (Reset-FakePnP says what each does).
+    param([ValidateSet('ListFails', 'ConnectFails', 'SiteFails', 'NoAccess', 'StopInFolder2', 'StaleWeb', 'StaleHost')][string]$Name, [bool]$Value)
     $global:FakePnP[$Name] = $Value
 }
 
@@ -109,6 +111,13 @@ function Get-FakePnPConnection {
 function Get-FakeProgressText {
     # Everything the progress bar showed since the last Reset-FakePnP, as one string.
     return ($global:FakePnP.Progress -join ' | ')
+}
+
+function Get-FakeCallIndex {
+    # The position of the first (or, with -Last, the last) such fake call since the last Reset-FakePnP; -1 when none.
+    param([string]$Name, [switch]$Last)
+    if ($Last) { return $global:FakePnP.Calls.LastIndexOf($Name) }
+    return $global:FakePnP.Calls.IndexOf($Name)
 }
 
 function Get-FakeCallCount {
@@ -260,10 +269,23 @@ function global:Disconnect-PnPOnline {
 }
 
 function global:Get-PnPWeb {
-    # Fake: the site's web; refused (403) when NoAccess is set.
-    [CmdletBinding()] param()
+    <#
+    .SYNOPSIS
+      Fake: the web of the last site signed in to (its full address), or of another site when StaleWeb is
+      set (a failed sign-in that kept the last connection); refused (403) when NoAccess is set.
+    .PARAMETER Includes
+      The properties to load (ignored: the fake web always has Title and Url).
+    .OUTPUTS
+      [pscustomobject] Title, Url.
+    #>
+    [CmdletBinding()] param($Includes)
     if ($global:FakePnP.NoAccess) { throw 'The remote server returned an error: (403) Forbidden.' }
-    [pscustomobject]@{ Title = 'Team A' }
+    $last = @(Get-FakePnPConnection | Select-Object -Last 1)
+    $url = ''
+    if ($last.Count) { $url = $last[0] }
+    if ($global:FakePnP.StaleHost) { $url = 'https://otherhost.example.com' + ([uri]$url).AbsolutePath }   # same path, other host
+    elseif ($global:FakePnP.StaleWeb) { $url = 'https://tenant.example.com/sites/SomeOtherSite' }
+    [pscustomobject]@{ Title = 'Team A'; Url = $url }
 }
 
 function global:Get-PnPSite {

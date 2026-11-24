@@ -1,5 +1,5 @@
 <#
-  Ion - DoD365 PII Reporter (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
+  Ion - DoD365 PII Reporter, build b48cf938 (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
 
   HOW TO RUN
     1. Optional: read this text first (Open the script shows it as a .txt in your browser).
@@ -21,7 +21,7 @@
     src/PiiPatterns.psm1, sha256 f7ef8ca1789f
     src/PiiSignedIds.psm1, sha256 0b83d916e727
     src/PiiDetectors.psm1, sha256 66e3b48368e2
-    src/PiiMasking.psm1, sha256 1d3d74e20c8d
+    src/PiiMasking.psm1, sha256 9bf871e9e244
     src/OcrText.psm1, sha256 a39acab441d4
     src/OleText.psm1, sha256 2f5d0a036e97
     src/ContainerText.psm1, sha256 a450ff355e6c
@@ -40,10 +40,10 @@
     src/ScanMeter.psm1, sha256 18c82f0b37c3
     src/ScanQueue.psm1, sha256 645d963c7455
     src/Accountability.psm1, sha256 8bf31404f723
-    src/SiteTarget.psm1, sha256 152226baaa78
+    src/SiteTarget.psm1, sha256 2e693a68f413
     src/ChannelScan.psm1, sha256 0cd4894c7c7b
     src/DriveScan.psm1, sha256 8b4305c3a6fc
-    src/Find-ChannelPII.ps1, sha256 841a9b195c52
+    src/Find-ChannelPII.ps1, sha256 2538a2022fac
 
   Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.
   Run target: Windows PowerShell 5.1 with PnP.PowerShell 1.12.0; no admin rights, no file to unblock.
@@ -53,35 +53,35 @@
 
   Contents (line numbers of this file):
     line    87  Settings
-    line    98  Reader block
-    line   104  Module PiiPatterns.psm1
-    line   504  Module PiiSignedIds.psm1
-    line   822  Module PiiDetectors.psm1
-    line  1002  Module PiiMasking.psm1
-    line  1242  Module OcrText.psm1
-    line  1395  Module OleText.psm1
-    line  1534  Module ContainerText.psm1
-    line  1981  Module PdfCore.psm1
-    line  2343  Module PdfObjects.psm1
-    line  2701  Module PdfFonts.psm1
-    line  3019  Module PdfShown.psm1
-    line  3270  Module PdfLayout.psm1
-    line  3410  Module PdfContent.psm1
-    line  3740  Module PdfText.psm1
-    line  3932  Module TextExtract.psm1
-    line  4364  Module ReaderPool.psm1
-    line  4689  Reader block end
-    line  4693  Module XlsxWriter.psm1
-    line  5130  Module Report.psm1
-    line  5506  Module ReportBook.psm1
-    line  5810  Module ScanMeter.psm1
-    line  6207  Module ScanQueue.psm1
-    line  6601  Module Accountability.psm1
-    line  6985  Module SiteTarget.psm1
-    line  7327  Module ChannelScan.psm1
-    line  7729  Module DriveScan.psm1
-    line  8095  Body of Find-ChannelPII.ps1
-    line  8296  Clean-up
+    line    99  Reader block
+    line   105  Module PiiPatterns.psm1
+    line   505  Module PiiSignedIds.psm1
+    line   823  Module PiiDetectors.psm1
+    line  1003  Module PiiMasking.psm1
+    line  1250  Module OcrText.psm1
+    line  1403  Module OleText.psm1
+    line  1542  Module ContainerText.psm1
+    line  1989  Module PdfCore.psm1
+    line  2351  Module PdfObjects.psm1
+    line  2709  Module PdfFonts.psm1
+    line  3027  Module PdfShown.psm1
+    line  3278  Module PdfLayout.psm1
+    line  3418  Module PdfContent.psm1
+    line  3748  Module PdfText.psm1
+    line  3940  Module TextExtract.psm1
+    line  4372  Module ReaderPool.psm1
+    line  4697  Reader block end
+    line  4701  Module XlsxWriter.psm1
+    line  5138  Module Report.psm1
+    line  5514  Module ReportBook.psm1
+    line  5818  Module ScanMeter.psm1
+    line  6215  Module ScanQueue.psm1
+    line  6609  Module Accountability.psm1
+    line  6993  Module SiteTarget.psm1
+    line  7350  Module ChannelScan.psm1
+    line  7752  Module DriveScan.psm1
+    line  8118  Body of Find-ChannelPII.ps1
+    line  8323  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -94,6 +94,7 @@ $previousErrorAction = $ErrorActionPreference
 try {
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
+$IonBuild = 'b48cf938'       # the build ID: Ion shows it at the start (do not edit)
 
 # ==== Reader modules ==== (one script block: this script loads it as an in-memory module, and each reader
 # worker loads the same text; nothing is read from a file)
@@ -1217,12 +1218,18 @@ function Protect-PiiText {
     return ((Protect-PiiName $Text) -replace '\d', '#')
 }
 
+# An SSN shape in a name, also next to a dash ("TeamA-123-45-6789-x"): 3, 2 and 4 digits with dashes, no digit on
+# either side. Only for names (Protect-PiiName), never a finding: the detectors keep their own rules.
+$script:NameSsnShapePattern = '(?<![0-9])[0-9]{3}-[0-9]{2}-(?<last>[0-9]{4})(?![0-9])'
+
 function Protect-PiiName {
     <#
     .SYNOPSIS
       Masks a site, folder or file name the person must find again: each found value becomes its masked value and
       every e-mail name becomes '***'; other digits stay (the PAM, 2026-11-20: "FY27 Plan.docx" stays as it is, so the
-      file can be found). Example: "Roster_123-45-6789.docx" -> "Roster_***-**-6789.docx".
+      file can be found). Example: "Roster_123-45-6789.docx" -> "Roster_***-**-6789.docx". An SSN shape that the
+      detectors skip because a dash or a digit group joins it (a site name "TeamA-123-45-6789") is masked too (the
+      PAM, 2026-11-24): a name is masked more, never less.
     .PARAMETER Text
       The name or path.
     .OUTPUTS
@@ -1236,7 +1243,8 @@ function Protect-PiiName {
         $masked = Get-MaskedValue $hit.Detector $hit.Value
         $result = $result.Substring(0, $hit.Index) + $masked + $result.Substring($hit.Index + $hit.Length)
     }
-    return [regex]::Replace($result, $script:EmailLocalPartPattern, '***')
+    $result = [regex]::Replace($result, $script:EmailLocalPartPattern, '***')
+    return [regex]::Replace($result, $script:NameSsnShapePattern, '***-**-${last}')
 }
 
 # ==== Module OcrText.psm1 ====
@@ -6997,7 +7005,9 @@ SiteTarget.psm1 - what the person gives Ion to scan, and the sign-in to that one
   Network:     the tenant root (one group-site lookup for a Teams link) and the one site; nothing lists other
                sites, teams or users ("No reconnaissance").
   Writes:      none.
-  Credentials: the person's own CAC sign-in (PnP web login). Nothing is stored.
+  Credentials: the person's own CAC sign-in (PnP web login). Nothing is stored. One sign-in per host: each next site
+               connects without a sign-out between sites; Find-ChannelPII.ps1 signs out once, at the end of the run
+               (the PAM, 2026-11-24; probe 3, second run: docs/reviews/2026-11-24-device-probe-3.md).
 #>
 
 
@@ -7107,8 +7117,8 @@ function Get-ScanTarget {
 function Assert-SiteGroup {
     <#
     .SYNOPSIS
-      Checks that the connected site belongs to the team in the Teams link; throws when not (Connect-TeamSite
-      then signs out), so nothing of another site is read.
+      Checks that the connected site belongs to the team in the Teams link; throws when not, so nothing of another
+      site is read (Connect-TeamSite returns no site; the run signs out at its end).
     .PARAMETER GroupId
       The group ID from the Teams link.
     #>
@@ -7199,7 +7209,7 @@ function Find-TeamSiteByGroup {
     #>
     param([guid]$GroupId)
     Write-Ui "Teams link: looking up this team's site ..." 'Muted'
-    Write-Ui '  A sign-in window opens now, and a second one for the team site after it (if you do not see one, press Alt+Tab).' 'Muted'
+    Write-Ui '  If a sign-in window opens, sign in with your CAC. If you do not see the window, press Alt+Tab.' 'Muted'
     try {
         Connect-PnPOnline -Url $script:TenantRoot -UseWebLogin -WarningAction SilentlyContinue
         Set-SharePointTimeout
@@ -7225,13 +7235,34 @@ function Set-SharePointTimeout {
     if ($context.RequestTimeout -le 0 -or $context.RequestTimeout -gt $script:SharePointCallMs) { $context.RequestTimeout = $script:SharePointCallMs }
 }
 
+function Assert-ConnectedSite {
+    <#
+    .SYNOPSIS
+      Checks that the signed-in connection reaches the given site: its web's full address (host and path) equals the
+      site's address. A sign-in without a sign-out keeps the last site's connection when it fails; this check makes
+      sure that no read goes to that other site (also on another host). Throws when the web is another site, or cannot
+      be read (no access).
+    .PARAMETER Site
+      The site address that was signed in to.
+    #>
+    param([string]$Site)
+    $want = [uri]::UnescapeDataString(([uri]$Site).GetLeftPart([UriPartial]::Path)).TrimEnd('/')
+    $web = Get-PnPWeb -Includes Url -ErrorAction Stop
+    $actual = [uri]::UnescapeDataString([string]$web.Url).TrimEnd('/')
+    if (-not [string]::Equals($actual, $want, [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'The sign-in did not reach this site. Nothing was scanned. Close Windows PowerShell ISE. Open it again. Then run Ion again.'
+    }
+}
+
 function Connect-TeamSite {
     <#
     .SYNOPSIS
       Signs in (own CAC, PnP web login) to the site and returns its address. For a Teams link (a team's or a
       channel's) it looks the site up at the tenant root (Find-TeamSiteByGroup), and asks for the site address only
-      when that fails; it then checks that the site belongs to the team in the link. It then checks that the person can open the site. On any error or cancel it signs out
-      and throws a message a person can act on (ConvertTo-FriendlyError).
+      when that fails; it then checks that the site belongs to the team in the link. It then checks that the connection
+      reaches that site (Assert-ConnectedSite) and that the person can open it. On any error it throws a message a
+      person can act on (ConvertTo-FriendlyError). It does not sign out: the next site connects without a sign-out,
+      and Find-ChannelPII.ps1 signs out once at the end of the run, after an error or Ctrl+C too (the PAM, 2026-11-24).
     .PARAMETER Target
       Output of Get-ScanTarget.
     .OUTPUTS
@@ -7239,7 +7270,6 @@ function Connect-TeamSite {
     #>
     param($Target)
     $site = $Target.SiteUrl
-    $ok = $false   # set only at the end: a cancel (Ctrl+C, Cancel on a prompt) skips 'catch' but not 'finally'
     $signingIn = $false   # true only while the sign-in itself runs: only its errors get the sync steps (review of PR 59)
     try {
         if ($null -ne $Target.GroupId) {
@@ -7253,15 +7283,14 @@ function Connect-TeamSite {
             }
         }
         Write-Ui ('Signing in to ' + (Protect-PiiName $site) + ' ...') 'Muted'
-        Write-Ui '  A sign-in window opens (if you do not see it, press Alt+Tab). If it says you have no access, close it.' 'Muted'
+        Write-Ui '  If a sign-in window opens, sign in with your CAC. If you do not see the window, press Alt+Tab. If it says that you have no access, close it.' 'Muted'
         # PnP prints a warning that suggests -Interactive (and its update notice): not useful to the person, so hidden (the PAM, 2026-11-20).
         $signingIn = $true
         Connect-PnPOnline -Url $site -UseWebLogin -WarningAction SilentlyContinue
         $signingIn = $false
         Set-SharePointTimeout
-        $null = Get-PnPWeb -ErrorAction Stop   # can this person open the site? A refusal here is "no access", before any scan
+        Assert-ConnectedSite $site   # also: can this person open the site? A refusal here is "no access", before any scan
         if ($null -ne $Target.GroupId) { Assert-SiteGroup $Target.GroupId }
-        $ok = $true
         return $site
     }
     catch {
@@ -7269,12 +7298,6 @@ function Connect-TeamSite {
         # Not "no access", "not found" or "sign-in not finished": the sign-in itself does not work here (blocked, missing).
         if ($signingIn -and $friendly -eq (Protect-PiiText $_.Exception.Message)) { $friendly += $script:SyncSteps }
         throw $friendly
-    }
-    finally {
-        # No scan starts after an error or a cancel here: sign out, so no connection stays open in the ISE session.
-        if (-not $ok) {
-            try { Disconnect-PnPOnline } catch { Write-Verbose 'Already signed out.' }  # nothing to sign out of: not an error
-        }
     }
 }
 
@@ -8098,8 +8121,8 @@ function Invoke-DriveScan {
 function Invoke-SiteFiles {
     <#
     .SYNOPSIS
-      Scans one signed-in site, saves the workbook and signs out (after an error or cancel too: the results so far say
-      INCOMPLETE). Returns the workbook path; $null after no (or a cancel) at "Scan now?": nothing read or saved.
+      Scans one signed-in site and saves the workbook (after an error or cancel too: the results so far say
+      INCOMPLETE). It does not sign out: the run signs out once, at its end. Returns the workbook path; $null after no (or a cancel) at "Scan now?": nothing read or saved.
     .PARAMETER SiteUrl
       The signed-in site.
     .PARAMETER OutputFolder
@@ -8140,17 +8163,10 @@ function Invoke-SiteFiles {
     finally {
         if (-not $finished -and $progress.ContainsKey('Meter')) { $scanned = $progress.Meter.Read }   # stopped part way: the live count
         Add-IncompleteRow -Rows $rows -Finished $finished
-        try {
-            if ($progress.ContainsKey('Declined') -and $progress.Declined) { Write-Ui 'Not scanned: nothing was saved.' 'Accent' }   # "No" to "Scan now?"
-            else {
-                $header = Get-SiteHeader $SiteUrl $listName $folderLabel $selected $clock.Elapsed
-                $path = Publish-ScanReport -Rows $rows.ToArray() -ItemsScanned $scanned -Header $header -OutputFolder $OutputFolder -SiteUrl $SiteUrl -FolderLabel $folderLabel
-            }
-        }
-        finally {
-            # Sign out even when the results could not be saved (for example, a folder that cannot be written).
-            try { Disconnect-PnPOnline }
-            catch { Write-Verbose 'Already signed out.' }  # nothing to sign out of: not an error for the person
+        if ($progress.ContainsKey('Declined') -and $progress.Declined) { Write-Ui 'Not scanned: nothing was saved.' 'Accent' }   # "No" to "Scan now?"
+        else {
+            $header = Get-SiteHeader $SiteUrl $listName $folderLabel $selected $clock.Elapsed
+            $path = Publish-ScanReport -Rows $rows.ToArray() -ItemsScanned $scanned -Header $header -OutputFolder $OutputFolder -SiteUrl $SiteUrl -FolderLabel $folderLabel
         }
     }
     return $path
@@ -8209,11 +8225,11 @@ function Invoke-ScanTarget {
     .PARAMETER List
       Part of a list of several targets.
     .OUTPUTS
-      [pscustomobject] Label, Path (the workbook, or empty), Note (why there is none), Time, SignedIn.
+      [pscustomobject] Label, Path (the workbook, or empty), Note (why there is none), Time.
     #>
     param($Target, [switch]$List)
     $clock = [Diagnostics.Stopwatch]::StartNew()
-    $result = [pscustomobject]@{ Label = (Get-TargetLabel $Target); Path = ''; Note = ''; Time = ''; SignedIn = $false }
+    $result = [pscustomobject]@{ Label = (Get-TargetLabel $Target); Path = ''; Note = ''; Time = '' }
     $saving = $true   # false only during the sign-in, whose errors are already in words a person can act on
     try {
         if ($Target.DrivePath) {
@@ -8221,7 +8237,7 @@ function Invoke-ScanTarget {
             $result.Path = Invoke-DriveScan -Path $Target.DrivePath -OutputFolder $OutputFolder -MaxFileMB $MaxFileMB -Init $IonWorkerInit -AutoStart:$List
         }
         else {
-            $result.SignedIn = $true   # a sign-in is tried (Connect-TeamSite signs out again on every path)
+            $script:IonSignInTried = $true   # set before the sign-in, so a Ctrl+C during it still gets the run's one sign-out
             $saving = $false; $site = Connect-TeamSite $Target; $saving = $true
             $result.Label = Protect-PiiName $site
             $result.Path = Invoke-SiteFiles -SiteUrl $site -OutputFolder $OutputFolder -MaxFileMB $MaxFileMB -AutoStart:$List
@@ -8264,34 +8280,45 @@ function Show-ListResult {
 }
 
 Write-Banner 'Ion - DoD365 PII Reporter' -Mark
+Write-Ui ('Build ' + $IonBuild) 'Muted'   # which Ion ran: the PAM copies this line with the results (2026-11-24)
 Write-Ui 'Read-only. Every PII value found is masked on screen and in the results.' 'Muted'
 # What it scans and how to stop early (the PAM, 2026-11-21): a cancel still saves the results so far ('finally').
 Write-Ui ('Scans the files of Teams teams, SharePoint sites or drive folders you paste. Files over {0} MB are listed, not read.' -f $MaxFileMB) 'Muted'
 Write-Ui 'To stop early: Ctrl+C (in ISE: the red Stop button). The results so far are still saved.' 'Muted'
-$signedIn = $false   # the closing line says "nothing stays signed in" only after a site scan (a drive needs no sign-in)
+$script:IonSignInTried = $false   # true after the first site sign-in is tried: the run then signs out once, at its end
 
 # ---- Ask for one or more targets, then scan each and save its workbook; then offer more, until the person presses Enter ----
 # A wrong paste is explained and asked again (Read-ScanTarget); a site the person cannot open is reported as "no access"
 # and nothing is saved for it (Connect-TeamSite); only the targets the person pastes are touched ("No reconnaissance").
-$targets = @(Read-ScanTargetList $SiteUrl 'What to scan')
-while ($targets.Count -gt 0) {
-    $list = $targets.Count -gt 1
-    $go = $true
-    if ($list) {   # several: listed and asked once (the PAM, 2026-11-24: one workbook per site)
-        Write-Ui ('{0} to scan, one after the other (a sign-in window for each site):' -f $targets.Count) 'Label'
-        $n = 0; foreach ($t in $targets) { $n++; Write-Ui ('{0,2}. {1}' -f $n, (Get-TargetLabel $t)) 'Text' }
-        $answer = Read-Host ('Scan these {0} now? [Y/n]' -f $targets.Count)
-        $go = -not ($answer -and $answer.Trim() -match '^(n|no)$')
+# One sign-in per host (the PAM, 2026-11-24): each site connects without a sign-out between sites (probe 3, second run);
+# the run signs out once here, at its end, also after an error or Ctrl+C ('finally' runs on both).
+try {
+    $targets = @(Read-ScanTargetList $SiteUrl 'What to scan')
+    while ($targets.Count -gt 0) {
+        $list = $targets.Count -gt 1
+        $go = $true
+        if ($list) {   # several: listed and asked once (the PAM, 2026-11-24: one workbook per site)
+            Write-Ui ('{0} to scan, one after the other (sign-in windows open only when needed):' -f $targets.Count) 'Label'
+            $n = 0; foreach ($t in $targets) { $n++; Write-Ui ('{0,2}. {1}' -f $n, (Get-TargetLabel $t)) 'Text' }
+            $answer = Read-Host ('Scan these {0} now? [Y/n]' -f $targets.Count)
+            $go = -not ($answer -and $answer.Trim() -match '^(n|no)$')
+        }
+        if ($go) {
+            $results = @(foreach ($t in $targets) { Invoke-ScanTarget $t -List:$list; Write-Ui '' })
+            if ($list) { Show-ListResult $results }
+        }
+        Write-Ui ''
+        $targets = @(Read-ScanTargetList '' 'Scan more: paste it, or press Enter to exit' -NoHelp)
     }
-    if ($go) {
-        $results = @(foreach ($t in $targets) { Invoke-ScanTarget $t -List:$list; Write-Ui '' })
-        if (@($results | Where-Object { $_.SignedIn }).Count) { $signedIn = $true }
-        if ($list) { Show-ListResult $results }
-    }
-    Write-Ui ''
-    $targets = @(Read-ScanTargetList '' 'Scan more: paste it, or press Enter to exit' -NoHelp)
 }
-if ($signedIn) { Write-Ui 'Ion is done: nothing stays signed in.' 'Good' } else { Write-Ui 'Ion is done.' 'Good' }
+finally {
+    if ($script:IonSignInTried) {
+        try { Disconnect-PnPOnline }
+        catch { Write-Verbose 'Already signed out.' }  # nothing to sign out of: not an error for the person
+    }
+}
+# The CAC sign-in of the window lasts until ISE closes (probe 3, second run): the PAM, 2026-11-24, chose this text.
+if ($script:IonSignInTried) { Write-Ui 'Ion is done: signed out. Close Windows PowerShell ISE to end the CAC session.' 'Good' } else { Write-Ui 'Ion is done.' 'Good' }
 
 # ==== Clean-up ====
 } finally {
