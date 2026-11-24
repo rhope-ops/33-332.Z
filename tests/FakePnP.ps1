@@ -54,7 +54,7 @@ function Reset-FakePnP {
 }
 
 function Set-FakePnPOption {
-    # Changes one switch of the fake site: ListFails, ConnectFails, SiteFails or NoAccess.
+    # Changes one switch of the fake site: one of the names in the ValidateSet below (Reset-FakePnP says what each does).
     param([ValidateSet('ListFails', 'ConnectFails', 'SiteFails', 'NoAccess', 'StopInFolder2', 'StaleWeb', 'StaleHost')][string]$Name, [bool]$Value)
     $global:FakePnP[$Name] = $Value
 }
