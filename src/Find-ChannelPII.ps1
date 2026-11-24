@@ -250,7 +250,7 @@ try {
         $list = $targets.Count -gt 1
         $go = $true
         if ($list) {   # several: listed and asked once (the PAM, 2026-11-24: one workbook per site)
-            Write-Ui ('{0} to scan, one after the other (one sign-in for the sites on the same host):' -f $targets.Count) 'Label'
+            Write-Ui ('{0} to scan, one after the other (sign-in windows open only when needed):' -f $targets.Count) 'Label'
             $n = 0; foreach ($t in $targets) { $n++; Write-Ui ('{0,2}. {1}' -f $n, (Get-TargetLabel $t)) 'Text' }
             $answer = Read-Host ('Scan these {0} now? [Y/n]' -f $targets.Count)
             $go = -not ($answer -and $answer.Trim() -match '^(n|no)$')

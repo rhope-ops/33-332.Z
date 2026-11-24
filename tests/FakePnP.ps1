@@ -43,6 +43,7 @@ function Reset-FakePnP {
         NoAccess    = $false                                      # the site refuses the signed-in person (403)
         StopInFolder2 = $false                                    # the scan stops (as at Ctrl+C) when it reaches folder 2
         StaleWeb    = $false                                      # the web after a sign-in is another site's (the last connection was kept)
+        StaleHost   = $false                                      # the web after a sign-in has the same path on another host
         SiteGroupId = [guid]'11111111-2222-3333-4444-555555555555'
         LookupSite  = ''                                          # the tenant root's answer for a Teams link's group ('' = none; 'fail' = refused)
         OpenAnswer  = ''                                          # the answer to "Open the workbook now?" ('' = Enter = yes)
@@ -54,7 +55,7 @@ function Reset-FakePnP {
 
 function Set-FakePnPOption {
     # Changes one switch of the fake site: ListFails, ConnectFails, SiteFails or NoAccess.
-    param([ValidateSet('ListFails', 'ConnectFails', 'SiteFails', 'NoAccess', 'StopInFolder2', 'StaleWeb')][string]$Name, [bool]$Value)
+    param([ValidateSet('ListFails', 'ConnectFails', 'SiteFails', 'NoAccess', 'StopInFolder2', 'StaleWeb', 'StaleHost')][string]$Name, [bool]$Value)
     $global:FakePnP[$Name] = $Value
 }
 
@@ -270,20 +271,21 @@ function global:Disconnect-PnPOnline {
 function global:Get-PnPWeb {
     <#
     .SYNOPSIS
-      Fake: the web of the last site signed in to (its server-relative address), or of another site when StaleWeb is
+      Fake: the web of the last site signed in to (its full address), or of another site when StaleWeb is
       set (a failed sign-in that kept the last connection); refused (403) when NoAccess is set.
     .PARAMETER Includes
-      The properties to load (ignored: the fake web always has Title and ServerRelativeUrl).
+      The properties to load (ignored: the fake web always has Title and Url).
     .OUTPUTS
-      [pscustomobject] Title, ServerRelativeUrl.
+      [pscustomobject] Title, Url.
     #>
     [CmdletBinding()] param($Includes)
     if ($global:FakePnP.NoAccess) { throw 'The remote server returned an error: (403) Forbidden.' }
     $last = @(Get-FakePnPConnection | Select-Object -Last 1)
-    $path = ''
-    if ($last.Count) { $path = [uri]::UnescapeDataString(([uri]$last[0]).AbsolutePath) }
-    if ($global:FakePnP.StaleWeb) { $path = '/sites/SomeOtherSite' }
-    [pscustomobject]@{ Title = 'Team A'; ServerRelativeUrl = $path }
+    $url = ''
+    if ($last.Count) { $url = $last[0] }
+    if ($global:FakePnP.StaleHost) { $url = 'https://otherhost.example.com' + ([uri]$url).AbsolutePath }   # same path, other host
+    elseif ($global:FakePnP.StaleWeb) { $url = 'https://tenant.example.com/sites/SomeOtherSite' }
+    [pscustomobject]@{ Title = 'Team A'; Url = $url }
 }
 
 function global:Get-PnPSite {

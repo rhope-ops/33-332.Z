@@ -40,10 +40,10 @@
     src/ScanMeter.psm1, sha256 18c82f0b37c3
     src/ScanQueue.psm1, sha256 645d963c7455
     src/Accountability.psm1, sha256 8bf31404f723
-    src/SiteTarget.psm1, sha256 f6b8e2a0d87b
+    src/SiteTarget.psm1, sha256 93ca131834dd
     src/ChannelScan.psm1, sha256 0cd4894c7c7b
     src/DriveScan.psm1, sha256 8b4305c3a6fc
-    src/Find-ChannelPII.ps1, sha256 8562e2b41709
+    src/Find-ChannelPII.ps1, sha256 49336ca39282
 
   Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.
   Run target: Windows PowerShell 5.1 with PnP.PowerShell 1.12.0; no admin rights, no file to unblock.
@@ -78,10 +78,10 @@
     line  6085  Module ScanQueue.psm1
     line  6479  Module Accountability.psm1
     line  6863  Module SiteTarget.psm1
-    line  7219  Module ChannelScan.psm1
-    line  7621  Module DriveScan.psm1
-    line  7987  Body of Find-ChannelPII.ps1
-    line  8190  Clean-up
+    line  7220  Module ChannelScan.psm1
+    line  7622  Module DriveScan.psm1
+    line  7988  Body of Find-ChannelPII.ps1
+    line  8191  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -7108,18 +7108,19 @@ function Set-SharePointTimeout {
 function Assert-ConnectedSite {
     <#
     .SYNOPSIS
-      Checks that the signed-in connection reaches the given site: its web's server-relative address equals the
-      site's path. A sign-in without a sign-out keeps the last site's connection when it fails; this check makes sure
-      that no read goes to that other site. Throws when the web is another site, or cannot be read (no access).
+      Checks that the signed-in connection reaches the given site: its web's full address (host and path) equals the
+      site's address. A sign-in without a sign-out keeps the last site's connection when it fails; this check makes
+      sure that no read goes to that other site (also on another host). Throws when the web is another site, or cannot
+      be read (no access).
     .PARAMETER Site
       The site address that was signed in to.
     #>
     param([string]$Site)
-    $want = [uri]::UnescapeDataString(([uri]$Site).AbsolutePath).TrimEnd('/')
-    $web = Get-PnPWeb -Includes ServerRelativeUrl -ErrorAction Stop
-    $actual = ([string]$web.ServerRelativeUrl).TrimEnd('/')
+    $want = [uri]::UnescapeDataString(([uri]$Site).GetLeftPart([UriPartial]::Path)).TrimEnd('/')
+    $web = Get-PnPWeb -Includes Url -ErrorAction Stop
+    $actual = [uri]::UnescapeDataString([string]$web.Url).TrimEnd('/')
     if (-not [string]::Equals($actual, $want, [StringComparison]::OrdinalIgnoreCase)) {
-        throw 'The sign-in did not reach this site. Nothing was scanned. Close Windows PowerShell ISE, open it again, and run Ion again.'
+        throw 'The sign-in did not reach this site. Nothing was scanned. Close Windows PowerShell ISE. Then open it and run Ion again.'
     }
 }
 
@@ -8166,7 +8167,7 @@ try {
         $list = $targets.Count -gt 1
         $go = $true
         if ($list) {   # several: listed and asked once (the PAM, 2026-11-24: one workbook per site)
-            Write-Ui ('{0} to scan, one after the other (one sign-in for the sites on the same host):' -f $targets.Count) 'Label'
+            Write-Ui ('{0} to scan, one after the other (sign-in windows open only when needed):' -f $targets.Count) 'Label'
             $n = 0; foreach ($t in $targets) { $n++; Write-Ui ('{0,2}. {1}' -f $n, (Get-TargetLabel $t)) 'Text' }
             $answer = Read-Host ('Scan these {0} now? [Y/n]' -f $targets.Count)
             $go = -not ($answer -and $answer.Trim() -match '^(n|no)$')

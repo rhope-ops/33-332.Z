@@ -118,6 +118,11 @@ Set-FakePnPOption StaleWeb $true
 $staleError = ''
 try { Connect-TeamSite (Get-ScanTarget $Sample.Site) 6>$null | Out-Null } catch { $staleError = $_.Exception.Message }  # expected: another site's web
 Assert-Equal $true ($staleError -match 'did not reach this site') 'Connection reaches another site: refused before any read'
+Reset-FakePnP @{}
+Set-FakePnPOption StaleHost $true
+$staleError = ''
+try { Connect-TeamSite (Get-ScanTarget $Sample.Site) 6>$null | Out-Null } catch { $staleError = $_.Exception.Message }  # expected: same path, other host
+Assert-Equal $true ($staleError -match 'did not reach this site') 'Connection reaches the same path on another host: refused'
 $meter = @{ Total = 40; Done = 10; Read = 8; Skipped = 2; Hits = 3; HitItems = 2; Clock = [pscustomobject]@{ Elapsed = [TimeSpan]::FromSeconds(30) } }
 $expected = '10 of 40 files (25%) | read 8 | not scanned 2 | possible PII 3 in 2 files | 00:30 elapsed, about 01:30 left'
 Assert-Equal $expected (Get-ScanMeterText $meter 'file') 'Meter text (the scan bar middle line): done of total with percent, counts, time elapsed and left'

@@ -246,18 +246,19 @@ function Set-SharePointTimeout {
 function Assert-ConnectedSite {
     <#
     .SYNOPSIS
-      Checks that the signed-in connection reaches the given site: its web's server-relative address equals the
-      site's path. A sign-in without a sign-out keeps the last site's connection when it fails; this check makes sure
-      that no read goes to that other site. Throws when the web is another site, or cannot be read (no access).
+      Checks that the signed-in connection reaches the given site: its web's full address (host and path) equals the
+      site's address. A sign-in without a sign-out keeps the last site's connection when it fails; this check makes
+      sure that no read goes to that other site (also on another host). Throws when the web is another site, or cannot
+      be read (no access).
     .PARAMETER Site
       The site address that was signed in to.
     #>
     param([string]$Site)
-    $want = [uri]::UnescapeDataString(([uri]$Site).AbsolutePath).TrimEnd('/')
-    $web = Get-PnPWeb -Includes ServerRelativeUrl -ErrorAction Stop
-    $actual = ([string]$web.ServerRelativeUrl).TrimEnd('/')
+    $want = [uri]::UnescapeDataString(([uri]$Site).GetLeftPart([UriPartial]::Path)).TrimEnd('/')
+    $web = Get-PnPWeb -Includes Url -ErrorAction Stop
+    $actual = [uri]::UnescapeDataString([string]$web.Url).TrimEnd('/')
     if (-not [string]::Equals($actual, $want, [StringComparison]::OrdinalIgnoreCase)) {
-        throw 'The sign-in did not reach this site. Nothing was scanned. Close Windows PowerShell ISE, open it again, and run Ion again.'
+        throw 'The sign-in did not reach this site. Nothing was scanned. Close Windows PowerShell ISE. Then open it and run Ion again.'
     }
 }
 
