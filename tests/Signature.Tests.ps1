@@ -46,8 +46,12 @@ $SignatureLayouts = [ordered]@{
     'S24 CRLF, then 3-2-4-1'      = "$sigName`r`n$sig3241"
     'S25 one digit, then nine'    = "$sigName$($sigId.Substring(0, 1)) $($sigId.Substring(1))"
 }
+# A CAC name, white space, then an SSN shape and one more digit, with no signature word: also a roster row (third review of
+# PR 60), so it stays an SSN, as on main, until the PAM decides (asked 2026-11-24).
+$sigAsSsn = @{ 'S23 space, then 3-2-4-1' = 'SSN/Medium/***-**-6789'; 'S24 CRLF, then 3-2-4-1' = 'SSN/Medium/***-**-6789'; 'OE' = 'SSN/Low/***-**-6789' }
 foreach ($layout in $SignatureLayouts.Keys) {
-    Assert-Equal 'DoD ID/Low/******7890' ((Get-HitSummary $SignatureLayouts[$layout]) -join ',') "E-signature layout $layout"
+    $expected = if ($sigAsSsn.ContainsKey($layout)) { $sigAsSsn[$layout] } else { 'DoD ID/Low/******7890' }
+    Assert-Equal $expected ((Get-HitSummary $SignatureLayouts[$layout]) -join ',') "E-signature layout $layout"
 }
 
 # ---- The source's 25 layouts (tool retirement session, 2026-11-23; same shapes, this repo's invented name and ID) ----
@@ -65,7 +69,8 @@ $SourceLayouts = [ordered]@{
     'OJ' = "$srcName$($sigId.Substring(0, 3))-$($sigId.Substring(3, 2))-$($sigId.Substring(5, 4))-$($sigId.Substring(9))"
 }
 foreach ($layout in $SourceLayouts.Keys) {
-    Assert-Equal 'DoD ID/Low/******7890' ((Get-HitSummary $SourceLayouts[$layout]) -join ',') "E-signature source layout $layout"
+    $expected = if ($sigAsSsn.ContainsKey($layout)) { $sigAsSsn[$layout] } else { 'DoD ID/Low/******7890' }
+    Assert-Equal $expected ((Get-HitSummary $SourceLayouts[$layout]) -join ',') "E-signature source layout $layout"
 }
 # By design: no dotted name and no signature word. A stays an SSN (still reported); F, 10 spaced digits alone, is not reported.
 Assert-Equal 'SSN/Medium/***-**-6789' ((Get-HitSummary "DOE JOHN A $sig3241") -join ',') 'E-signature source layout OA: SSN, by design'
@@ -138,3 +143,32 @@ $timer = [System.Diagnostics.Stopwatch]::StartNew()
 foreach ($run in $sigRuns) { $null = Find-PiiInText $run }
 $timer.Stop()
 Assert-Equal $true ($timer.Elapsed.TotalSeconds -lt 4) "E-signature: long name and digit runs scanned in under 4 s (took $([int]$timer.Elapsed.TotalMilliseconds) ms)"
+
+# ---- No loss (third review of PR 60): the e-signature pass only adds. Every hit found without it is still there, the same,
+# except an SSN (not High) wholly inside an added DoD ID. Values next to CAC names and signature words, from parts. ----
+$invAt = '@'; $invId = $sigId; $invPhone = $Sample.Phone
+$invValues = @($invId, $sig3241, $sig91, $Sample.Ssn, $sigSsnBare, ($sigSsnBare -replace ' ', ''), $invPhone, ($invPhone -replace '-', ' '),
+    ($invPhone -replace '-', '.'), '01-02-1990', 'X1234567', '4111 1111 1111 1111', "jdoe$invAt$('gmail.com')", "$invId$invAt$('gmail.com')")
+$invLost = 0; $invCount = 0
+foreach ($context in @('', 'Digitally signed by ', 'Name: Jane Doe ', 'born ')) {
+    foreach ($name in @($sigName, 'Doe.Jane.Q.', 'DOE JANE Q ', '')) {
+        foreach ($gap in @('', ' ', "`n", "`t")) {
+            foreach ($value in $invValues) {
+                foreach ($tail in @('', ' 2 copies', "`n2 ROE.JOHN.A.", "`t5")) {
+                    $text = $context + $name + $gap + $value + $tail
+                    $off = & (Get-Module PiiDetectors) { param($t) Remove-OverlappingHits @(Get-AllHits $t.Replace('_', ' ')) } $text
+                    $on = @(Get-PiiSpan $text)
+                    $invCount++
+                    foreach ($hit in $off) {
+                        if (@($on | Where-Object { $_.Detector -eq $hit.Detector -and $_.Index -eq $hit.Index -and $_.Length -eq $hit.Length -and
+                                ($_.Confidence -eq $hit.Confidence -or $_.Detector -eq 'Name') }).Count) { continue }
+                        $swapped = $hit.Detector -eq 'SSN' -and $hit.Confidence -ne 'High' -and @($on | Where-Object { $_.Detector -eq 'DoD ID' -and
+                            $_.Index -le $hit.Index -and $hit.Index + $hit.Length -le $_.Index + $_.Length }).Count
+                        if (-not $swapped) { $invLost++ }
+                    }
+                }
+            }
+        }
+    }
+}
+Assert-Equal 0 $invLost "E-signature pass only adds: no hit lost or changed in $invCount texts"

@@ -5,7 +5,11 @@ Evidence: archimedes_lever docs/reviews/2026-11-23-tool-retirement-plan.md secti
 3 give SSN, 7 give no hit). That source gives counts only. This session first built its own 25 layouts (S01-S25) from a
 matrix of 1,110 texts; the source's 25 layouts then came from the tool retirement session (O01-OJ, below). Both sets are tests.
 
-## Rule (src/PiiPatterns.psm1, Find-SignedIdHits)
+## Rule (src/PiiPatterns.psm1 Find-SignedIdHits; src/PiiDetectors.psm1 Add-SignedIdHits)
+
+Since the third review: main's SSN and DoD ID detectors are unchanged. Find-SignedIdHits gives candidates; Get-PiiSpan adds
+a candidate after the overlap removal, only where no kept hit is. The one exception: SSN hits (not High, no dashes) wholly
+inside a candidate give way when a signature word is just before the candidate or its digits touch the name's last dot.
 
 - A CAC name in capitals, or in any case after "signed", "signature", "CN=" or "DN:" (within 40 characters before), then
   the 10 digits; or the 10 digits, then a CAC name in capitals (the ID on the line above the name).
@@ -15,17 +19,16 @@ matrix of 1,110 texts; the source's 25 layouts then came from the tool retiremen
   follow on the same line.
 - The 10 digits alone on one line after a signature word also count (gaps: spaces only; no small word after them), but
   not a date (19xx or 20xx then a separator, or yyyymmdd) and not a phone (3-3-4 with any one separator).
-- A phone shape (3-3-4) after a CAC name is no ID when white space or dashes come with it; touching the name with single
-  spaces it is a DoD ID, as on main. No ID ends at "@" (an e-mail address stays one).
-- Every such hit is DoD ID, Low (the PAM, 2026-11-21: e-signature DoD ID is Low, history not read); High with a DoD ID label.
-- An unlabelled SSN match inside such a hit is dropped. A labelled SSN and a dashed SSN stay SSNs.
+- A phone shape (3-3-4) after white space is no candidate. Any hit the other detectors find (phone, e-mail, date, passport,
+  card, dashed or labelled SSN) keeps its place: a candidate that overlaps it is not added.
+- Every added hit is DoD ID, Low (the PAM, 2026-11-21: e-signature DoD ID is Low, history not read); High with a DoD ID label.
 
 ## The source's 25 layouts (tests/Signature.Tests.ps1, O01-OJ; same shapes, invented name and ID)
 
 | Result | main b278ab0 | This PR |
 |---|---|---|
-| DoD ID Low | 10 (1, 2, 6, 7, 9, 10, 12, 13, 14, I) | 23 |
-| SSN | 3 (A Medium, E Low, G Low) | 1 (A, Medium) |
+| DoD ID Low | 10 (1, 2, 6, 7, 9, 10, 12, 13, 14, I) | 22 |
+| SSN | 3 (A Medium, E Low, G Low) | 2 (A Medium; E Low, open with the PAM) |
 | No hit | 12 (3, 4, 5, 8, 11, 15, B, C, D, F, H, J) | 1 (F) |
 
 The source counted 9 DoD ID on its run (main 6cbc517): it had 14 ("O'BRIEN.SEAN.P.") as no hit; b278ab0 finds it.
@@ -58,10 +61,10 @@ F (10 spaced digits, no name, no signature word) is not reported, as 10 bare dig
 | S20 "signed", ID 3-2-4-1, no name | no hit | DoD ID Low |
 | S21 "signed", ID, no name | no hit | DoD ID Low |
 | S22 file name with underscores | no hit | DoD ID Low |
-| S23 space, then ID 3-2-4-1 | SSN Medium | DoD ID Low |
-| S24 CRLF, then ID 3-2-4-1 | SSN Medium | DoD ID Low |
+| S23 space, then ID 3-2-4-1 | SSN Medium | SSN Medium (open with the PAM) |
+| S24 CRLF, then ID 3-2-4-1 | SSN Medium | SSN Medium (open with the PAM) |
 | S25 one digit, then nine | SSN Low | DoD ID Low |
-| Total | 9 DoD ID, 3 SSN, 13 no hit | 25 DoD ID |
+| Total | 9 DoD ID, 3 SSN, 13 no hit | 23 DoD ID, 2 SSN (open with the PAM) |
 
 Matrix (1,110 texts, scratchpad only): before 45 DoD ID, 377 SSN, 688 no hit; after 1,034 DoD ID, 39 SSN, 37 no hit. The 76
 left are by design: a title-case name with no signature word (60), digits with no name and no signature word (10), or
@@ -103,6 +106,20 @@ break inside the ID give the same result as main.
   5,000 rows of 10 digits 264 / 199 ms; 5,000 rows of 5+5 digits 30 / 30 ms.
 Minor, fixed: "signature" is not a signature word for the older SSN rule (Test-SsnPartOfLonger, as on main); an ID alone
 after a signature word has space gaps only and no small word after it; yyyymmdd dates are no ID.
+
+## Third fresh review of 878b867 (2026-11-24) and the redesign
+
+4 MAJOR: main DoD ID hits lost (an "@" or a tab and a digit after the ID, a name part over 40 letters); new DoD ID hits that
+took over e-mail, date of birth and passport hits; SSNs dropped in a numbered roster ("DOE.JANE.Q. 123 45 6789" then a line
+"2 ROE.JOHN.A."); and slower runs. Three rounds of regex fixes each found new shapes, so the design changed (Rule, above):
+the new rules can only add. A repo test proves it ("pass only adds": 3,584 texts with phones, SSNs, dates, passports, cards
+and e-mails next to CAC names and signature words; a broken copy of the pass fails it with 108 losses). A run of 21,420
+such texts in the scratchpad, main against this branch: every main hit kept, except 936 SSNs inside a signature ID that
+became DoD ID Low (10 of them with a labelled name near, which goes from High to Low, as e-signature IDs never raise a name).
+Open with the PAM: layouts S23, S24 and E (a CAC name, white space, then an SSN shape and one more digit, no signature word)
+look the same as a roster row. They stay SSN, as on main, until the PAM decides.
+Speed, each run in its own process, main then branch, 3 runs each: 1.2 MB prose 460-564 / 521-569 ms; 5,000 form rows
+13.5-14.6 / 13.8-14.4 s; 2,000 signature blocks 1.7-1.8 / 3.1-3.2 s.
 
 ## Known gaps (not fixed here)
 

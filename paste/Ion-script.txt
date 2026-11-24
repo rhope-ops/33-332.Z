@@ -18,8 +18,8 @@
   the files at each library's top), or the drive folder and all its subfolders. Channel posts are not read.
 
   Built from these files; to change it, change them and rebuild with: python3 scripts/build_paste.py
-    src/PiiPatterns.psm1, sha256 757007cdae2a
-    src/PiiDetectors.psm1, sha256 a457daf74a21
+    src/PiiPatterns.psm1, sha256 191fd44e9123
+    src/PiiDetectors.psm1, sha256 9b731ab93a14
     src/PiiMasking.psm1, sha256 752c251a94b2
     src/OcrText.psm1, sha256 a39acab441d4
     src/OleText.psm1, sha256 2f5d0a036e97
@@ -38,7 +38,7 @@
     src/ReportBook.psm1, sha256 63fb7318eda3
     src/ScanMeter.psm1, sha256 18c82f0b37c3
     src/ScanQueue.psm1, sha256 ae11c97d5b8b
-    src/Accountability.psm1, sha256 c703bb205d74
+    src/Accountability.psm1, sha256 04176513a089
     src/SiteTarget.psm1, sha256 3ffe3086e86b
     src/ChannelScan.psm1, sha256 0cd4894c7c7b
     src/DriveScan.psm1, sha256 f307e810f8f5
@@ -55,31 +55,31 @@
     line    96  Reader block
     line   102  Module PiiPatterns.psm1
     line   549  Module PiiDetectors.psm1
-    line   763  Module PiiMasking.psm1
-    line   963  Module OcrText.psm1
-    line  1116  Module OleText.psm1
-    line  1255  Module ContainerText.psm1
-    line  1594  Module PdfCore.psm1
-    line  1956  Module PdfObjects.psm1
-    line  2314  Module PdfFonts.psm1
-    line  2632  Module PdfShown.psm1
-    line  2883  Module PdfLayout.psm1
-    line  3023  Module PdfContent.psm1
-    line  3353  Module PdfText.psm1
-    line  3545  Module TextExtract.psm1
-    line  3963  Module ReaderPool.psm1
-    line  4288  Reader block end
-    line  4292  Module XlsxWriter.psm1
-    line  4599  Module Report.psm1
-    line  4975  Module ReportBook.psm1
-    line  5187  Module ScanMeter.psm1
-    line  5584  Module ScanQueue.psm1
-    line  5974  Module Accountability.psm1
-    line  6359  Module SiteTarget.psm1
-    line  6630  Module ChannelScan.psm1
-    line  7032  Module DriveScan.psm1
-    line  7264  Body of Find-ChannelPII.ps1
-    line  7405  Clean-up
+    line   803  Module PiiMasking.psm1
+    line  1003  Module OcrText.psm1
+    line  1156  Module OleText.psm1
+    line  1295  Module ContainerText.psm1
+    line  1634  Module PdfCore.psm1
+    line  1996  Module PdfObjects.psm1
+    line  2354  Module PdfFonts.psm1
+    line  2672  Module PdfShown.psm1
+    line  2923  Module PdfLayout.psm1
+    line  3063  Module PdfContent.psm1
+    line  3393  Module PdfText.psm1
+    line  3585  Module TextExtract.psm1
+    line  4003  Module ReaderPool.psm1
+    line  4328  Reader block end
+    line  4332  Module XlsxWriter.psm1
+    line  4639  Module Report.psm1
+    line  5015  Module ReportBook.psm1
+    line  5227  Module ScanMeter.psm1
+    line  5624  Module ScanQueue.psm1
+    line  6014  Module Accountability.psm1
+    line  6398  Module SiteTarget.psm1
+    line  6669  Module ChannelScan.psm1
+    line  7071  Module DriveScan.psm1
+    line  7303  Body of Find-ChannelPII.ps1
+    line  7444  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -134,38 +134,39 @@ $script:ShortKeywordWindowChars = 30
 # re-parsed them. A larger cache keeps them all (a speed-up for many files; the author's choice, 2026-11-20).
 [regex]::CacheSize = 64
 
-# A CAC name as certificates and digital signatures write it: 2 to 4 name parts, each ending in a dot. $CacNameEnd is the
-# name alone, at the end of the text before an SSN-shaped match; $CacNameChars is how far back it is looked for.
+# A CAC name as certificates and digital signatures write it: 2 to 4 name parts, each ending in a dot, then the 10-digit
+# DoD ID (single spaces allowed between digits: PDF signature blocks are often drawn with gaps). $CacNameEnd is the
+# same name part alone, at the end of the text before an SSN-shaped match; $CacNameChars is how far back it is looked for.
 # Certificates write the name in capitals: the last name has 2 letters or more, so initials ("J.A.", "U.S.") and lower-case
 # words ("e.g.", "Acct.No.", "backup.config.") are no CAC name; nor are capital abbreviations such as "REF.NO." (review of PR 49).
 $script:CacNamePrefix = "(?<![\w.])(?!(?:NO|NR|NUM|REF|ACCT|ACC|TEL|PH|FAX|ID|DOC|REV|VER)\.)[A-Z][A-Z'-]+\." +
     "(?!(?:NO|NR|NUM|REF|ACCT|TEL|PH|FAX|ID)\.)[A-Z][A-Z'-]*\.(?:[A-Z][A-Z'-]*\.){0,2}"
-# Words that put a number in a digital signature, looked for just before it (Test-SsnPartOfLonger: as on main; the e-signature rules: one more).
-$script:SsnSignatureWords = '(?i:\bsigned\b|\bCN\s*=|\bDN\s*:)'
-$script:SignatureWords = '(?i:\bsigned\b|\bsignature\b|\bCN\s*=|\bDN\s*:)'
+# Words that put a number in a digital signature (where a gapped DoD ID is drawn), looked for just before it.
+$script:SignatureWords = '(?i:\bsigned\b|\bCN\s*=|\bDN\s*:)'
+$script:CacNamePattern = $script:CacNamePrefix + '(?<id>\d(?: ?\d){9})(?![\w-]| \d)'
 $script:CacNameEnd = $script:CacNamePrefix + '$'
 $script:CacNameChars = 120
+$script:DodIdLabels = 'DoD\s*ID|DODID|EDIPI|\bCAC\b|DoD\s*(?:ID\s*)?(?:#|no\.?|number)'
 
-# E-signature DoD IDs (docs/reviews/2026-11-23-ion-esignature-layouts.md). $SignedName: a CAC name (a line break in or after a
-# part, up to 3 words in a later part, at most 40 letters a part: linear time), then 10 digits with one space, tab, no-break
-# space or line break between any two (dashes right after the name), no digit after them; a phone shape only touching it.
-$script:SignedCache = @($null, @())
+# E-signature DoD IDs the rule above misses (docs/reviews/2026-11-23-ion-esignature-layouts.md). $SignedName: a CAC name (line
+# breaks in or after parts, up to 3 words a later part, 40 letters a part: linear time), then 10 digits with one space, tab,
+# no-break space or line break between any two (or dashes right after the name), no digit after them, no phone shape.
 $script:SignedPart = "[A-Z][A-Z'-]{0,39}(?:\r?\n[A-Z'-]{1,40})?"
-$script:SignedId = '(?<id>\d(?:(?:[ \t\u00A0]|\r?\n)?\d){9})(?![\w@-])(?![ \t\u00A0]\d)'
-# The same on one line, gaps of spaces only, no small word after it (an ID alone), or with dashes (right after a CAC name); a phone is no ID.
-$script:SignedIdLine = '(?<id>\d(?:[ \u00A0]?\d){9})(?![\w@-])(?![ \t\u00A0]\d)(?![ \t\u00A0]+[a-z])'
-$script:SignedIdDash = '(?<id>\d(?:[ \t\u00A0-]?\d){9})(?![\w@-])(?![ \t\u00A0]\d)'
+$script:SignedId = '(?<id>\d(?:(?:[ \t\u00A0]|\r?\n)?\d){9})(?![\w-])(?![ \t\u00A0]\d)'
+# The same on one line, space gaps, no small word after (the ID alone after a signature word), or with dashes (right after a CAC name).
+$script:SignedIdLine = '(?<id>\d(?:[ \u00A0]?\d){9})(?![\w-])(?![ \t\u00A0]\d)(?![ \t\u00A0]+[a-z])'
+$script:SignedIdDash = '(?<id>\d(?:[ \t\u00A0-]?\d){9})(?![\w-])(?![ \t\u00A0]\d)'
 $script:NotPhone = '(?!\d{3}(?:[ \t\u00A0.-]|\r?\n)\d{3}(?:[ \t\u00A0.-]|\r?\n)\d{4}(?![\w-]))'
 $script:SignedNameText = ('(?<![\w.])(?!(?:NO|NR|NUM|REF|ACCT|ACC|TEL|PH|FAX|ID|DOC|REV|VER)\.)(?<name>' +
     "[A-Z](?:[A-Z'-]{1,39}(?:\r?\n[A-Z'-]{1,40})?|\r?\n[A-Z'-]{1,40})\.(?:\r?\n)?(?!(?:NO|NR|NUM|REF|ACCT|TEL|PH|FAX|ID)\.)" +
     "$script:SignedPart(?: $script:SignedPart){0,2}\.(?:(?:\r?\n)?$script:SignedPart(?: $script:SignedPart){0,2}\.){0,2})" +
-    "(?:$script:NotPhone$script:SignedIdDash|$script:SignedId|(?:[ \t\u00A0]+(?:\r?\n[ \t\u00A0]*)?|\r?\n[ \t\u00A0]*)$script:NotPhone$script:SignedId)")
+    "(?:$script:SignedIdDash|$script:SignedId|(?:[ \t\u00A0]+(?:\r?\n[ \t\u00A0]*)?|\r?\n[ \t\u00A0]*)$script:NotPhone$script:SignedId)")
 $script:SignedName = [regex]$script:SignedNameText
 $script:SignedNameAnyCase = [regex]('(?i)' + $script:SignedNameText)
+$script:SignedWords = '(?i:\bsigned\b|\bsignature\b|\bCN\s*=|\bDN\s*:)'
 # The 10 digits alone on one line after a signature word ("Signed_1234567890.pdf"): not a date, a phone or in a dotted name.
-$script:SignedBareId = [regex]('(?<![\w.-])(?!(?:19|20)\d\d(?:[ \t\u00A0./-]|\r?\n|(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])))' +
-    $script:NotPhone + $script:SignedIdLine)
-# The 10 digits in a row just before a CAC name in capitals (the ID above the name); not before "REF.NO." (review of PR 60).
+$script:SignedBareId = [regex]('(?<![\w.-])(?!(?:19|20)\d\d(?:[ \t\u00A0./-]|\r?\n|(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])))' + $script:NotPhone + $script:SignedIdLine)
+# The 10 digits in a row just before a CAC name in capitals (the ID above the name; not "REF.NO." and the like).
 $script:SignedIdThenName = [regex]('(?<![\w.-])(?<id>\d{10})(?![\w-])[ \t\u00A0]*(?:\r?\n[ \t\u00A0]*)?' +
     "(?!(?:NO|NR|NUM|REF|ACCT|ACC|TEL|PH|FAX|ID|DOC|REV|VER)\.)(?=[A-Z][A-Z'-]+\.[A-Z][A-Z'-]*\.)")
 
@@ -301,7 +302,7 @@ function Test-SsnPartOfLonger {
     $loneDigit = $end + 1 -lt $Text.Length -and $Text[$end] -eq ' ' -and [char]::IsDigit($Text[$end + 1]) -and
         ($end + 2 -ge $Text.Length -or -not [char]::IsLetterOrDigit($Text[$end + 2]))
     # A lone digit after it ("... 2 copies") is a gapped DoD ID only in a signature ("Digitally signed by", "CN=").
-    if ($loneDigit -and (Test-KeywordBefore $Text $Match.Index $script:SsnSignatureWords)) { return $true }
+    if ($loneDigit -and (Test-KeywordBefore $Text $Match.Index $script:SignatureWords)) { return $true }
     $start = [Math]::Max(0, $Match.Index - $script:CacNameChars)
     return [regex]::IsMatch($Text.Substring($start, $Match.Index - $start), $script:CacNameEnd)
 }
@@ -309,30 +310,33 @@ function Test-SsnPartOfLonger {
 function Find-SignedIdHits {
     <#
     .SYNOPSIS
-      E-signature DoD IDs, Low (the PAM, 2026-11-21): after a CAC name ($SignedName), alone after a signature word
-      ($SignedBareId), or before a CAC name in capitals ($SignedIdThenName). Find-SsnHits drops an unlabelled SSN inside one.
+      E-signature DoD ID candidates (Low, the PAM, 2026-11-21) that the CAC-name rule of Find-DodIdHits misses: after a
+      CAC name ($SignedName; small letters only after a signature word), alone after a signature word ($SignedBareId), or
+      before a CAC name in capitals ($SignedIdThenName). Get-PiiSpan adds a candidate only where no other hit is.
     .PARAMETER Text
       The text to search.
     .OUTPUTS
-      Hit objects (New-PiiHit), DoD ID / Low, one per ID.
+      Hit objects (New-PiiHit), DoD ID / Low (High with a DoD ID label just before), each with Sure = $true when a
+      signature word is just before it or the digits touch the name's last dot.
     #>
     param([string]$Text)
-    # Find-SsnHits, then Find-DodIdHits ask for the same text: the second call gets copies of the first result. A name in
-    # small letters, and the digits alone, count only after a signature word: those scans run only when the text has one.
-    if ([object]::ReferenceEquals($script:SignedCache[0], $Text)) { return @($script:SignedCache[1] | ForEach-Object { $_.PSObject.Copy() }) }
     $seen = @{}
-    $rules = @(($script:SignedName, ''), ($script:SignedIdThenName, ''))
-    if ([regex]::IsMatch($Text, $script:SignatureWords)) { $rules += ,($script:SignedNameAnyCase, 'word'); $rules += ,($script:SignedBareId, 'word') }
-    $hits = @(foreach ($rule in $rules) {
+    $hasWord = [regex]::IsMatch($Text, $script:SignedWords)   # the scans that need a signature word run only then (speed)
+    $rules = @(($script:SignedName, $false), ($script:SignedIdThenName, $false))
+    if ($hasWord) { $rules += , ($script:SignedNameAnyCase, $true); $rules += , ($script:SignedBareId, $true) }
+    foreach ($rule in $rules) {
         foreach ($m in $rule[0].Matches($Text)) {
             $digits = $m.Groups['id']
-            if ($seen.ContainsKey($digits.Index) -or ($rule[1] -and -not (Test-KeywordBefore $Text $m.Index $script:SignatureWords))) { continue }
+            if ($seen.ContainsKey($digits.Index)) { continue }
+            $word = $hasWord -and (Test-KeywordBefore $Text $m.Index $script:SignedWords)
+            if ($rule[1] -and -not $word) { continue }
             $seen[$digits.Index] = $true
-            New-PiiHit 'DoD ID' 'Low' $digits.Index $digits.Value
+            $confidence = if (Test-KeywordBefore $Text $digits.Index $script:DodIdLabels) { 'High' } else { 'Low' }
+            $hit = New-PiiHit 'DoD ID' $confidence $digits.Index $digits.Value
+            $hit | Add-Member -NotePropertyName Sure -NotePropertyValue ($word -or ($digits.Index -gt 0 -and $Text[$digits.Index - 1] -eq '.'))
+            $hit
         }
-    })
-    $script:SignedCache = @($Text, $hits)
-    return @($hits | ForEach-Object { $_.PSObject.Copy() })
+    }
 }
 
 function Find-SsnHits {
@@ -354,18 +358,12 @@ function Find-SsnHits {
     # No letter, digit, underscore or dash may touch the number: Word bookmarks (_Toc123456789) and IDs (ABC123456789)
     # are not SSNs (the PAM, 2026-11-20: trim false positives).
     $pattern = '(?<![\w-])(\d{3})([- ]?)(\d{2})\2(\d{4})(?![\w-])'
-    # Which e-signature DoD ID covers each character (0: none), so each SSN match is checked in constant time.
-    $signedIds = @(Find-SignedIdHits $Text)
-    $signedAt = if ($signedIds.Count -gt 0) { New-Object 'int[]' ($Text.Length + 1) } else { $null }
-    for ($k = 0; $k -lt $signedIds.Count; $k++) { foreach ($i in 0..($signedIds[$k].Length - 1)) { $signedAt[$signedIds[$k].Index + $i] = $k + 1 } }
     foreach ($m in [regex]::Matches($Text, $pattern)) {
         if (-not (Test-SsnValid $m.Groups[1].Value $m.Groups[3].Value $m.Groups[4].Value)) { continue }
         $labelled = Test-KeywordBefore $Text $m.Index $labels
-        # Without a label, 9 digits without dashes inside an e-signature DoD ID, or part of a gapped DoD ID, are no SSN (the
-        # PAM's gov run, 2026-11-21: DoD IDs in PDF signature blocks were shown as SSNs; a dashed SSN stays: review of PR 60).
-        $inSignedId = $null -ne $signedAt -and $m.Groups[2].Value -ne '-' -and $signedAt[$m.Index] -gt 0 -and
-            $signedAt[$m.Index] -eq $signedAt[$m.Index + $m.Length - 1]
-        if (-not $labelled -and ($inSignedId -or (Test-SsnPartOfLonger $Text $m))) { continue }
+        # Without a label, 9 digits that are part of a gapped DoD ID are no SSN (Test-SsnPartOfLonger). The PAM's
+        # gov run, 2026-11-21: DoD IDs in PDF signature blocks were shown as SSNs.
+        if (-not $labelled -and (Test-SsnPartOfLonger $Text $m)) { continue }
         $confidence = 'Low'
         if ($m.Groups[2].Value -ne '') { $confidence = 'Medium' }
         if ($labelled) { $confidence = 'High' }
@@ -384,15 +382,17 @@ function Find-DodIdHits {
       Hit objects (New-PiiHit): High with a label; Low at the end of a CAC name (an e-signature).
     #>
     param([string]$Text)
-    $labels = 'DoD\s*ID|DODID|EDIPI|\bCAC\b|DoD\s*(?:ID\s*)?(?:#|no\.?|number)'
-    $labelledAt = @{}
+    $labels = $script:DodIdLabels
     foreach ($m in [regex]::Matches($Text, '(?<!\w)\d{10}(?!\w)')) {
-        if (Test-KeywordBefore $Text $m.Index $labels) { $labelledAt[$m.Index] = $true; New-PiiHit 'DoD ID' 'High' $m.Index $m.Value }
+        if (Test-KeywordBefore $Text $m.Index $labels) { New-PiiHit 'DoD ID' 'High' $m.Index $m.Value }
     }
-    foreach ($hit in @(Find-SignedIdHits $Text)) {   # e-signature: Low, the only Low DoD ID, no history read (the PAM, 2026-11-21)
-        if ($labelledAt.ContainsKey($hit.Index)) { continue }   # already found above, with its label
-        if (Test-KeywordBefore $Text $hit.Index $labels) { $hit.Confidence = 'High' }   # a label, then gaps in the digits (review of PR 60)
-        $hit
+    # A CAC name, as a digital signature shows it: LAST.FIRST.MIDDLE. then the DoD ID (the digits may be drawn with single
+    # spaces between them): Low, the only Low DoD ID, so the scan reads no version history for it (the PAM, 2026-11-21:
+    # "Low tab, no history").
+    foreach ($m in [regex]::Matches($Text, $script:CacNamePattern)) {
+        $digits = $m.Groups['id']
+        if (Test-KeywordBefore $Text $digits.Index $labels) { continue }   # already found above, with its label
+        New-PiiHit 'DoD ID' 'Low' $digits.Index $digits.Value
     }
 }
 
@@ -693,6 +693,45 @@ function Remove-OverlappingHits {
     return , $kept
 }
 
+function Add-SignedIdHits {
+    <#
+    .SYNOPSIS
+      Adds the e-signature DoD IDs of Find-SignedIdHits that the other detectors did not see (the e-signature fix,
+      2026-11-23). A candidate is added only where no kept hit is, so no other hit is lost or changed. One exception: SSN
+      hits (not High, no dashes) wholly inside a sure candidate (a signature word before it, or digits touching the name) give way (the PAM,
+      2026-11-21: e-signature DoD IDs were shown as SSNs). Added after the overlap removal, so it never outranks a hit.
+    .PARAMETER Text
+      The text searched (as the detectors saw it).
+    .PARAMETER Kept
+      The kept hits (Remove-OverlappingHits); changed in place.
+    .OUTPUTS
+      None.
+    #>
+    param([string]$Text, [System.Collections.Generic.List[object]]$Kept)
+    $candidates = @(Find-SignedIdHits $Text)
+    if ($candidates.Count -eq 0) { return }
+    $owner = New-Object 'int[]' ($Text.Length + 1)   # which kept hit holds each character: its place + 1 (0: none)
+    for ($k = 0; $k -lt $Kept.Count; $k++) { for ($i = $Kept[$k].Index; $i -lt $Kept[$k].Index + $Kept[$k].Length; $i++) { $owner[$i] = $k + 1 } }
+    $giveWay = New-Object System.Collections.Generic.List[int]
+    foreach ($candidate in $candidates) {
+        $end = $candidate.Index + $candidate.Length
+        $held = @{}
+        for ($i = $candidate.Index; $i -lt $end; $i++) { if ($owner[$i] -gt 0) { $held[$owner[$i] - 1] = $true } }
+        $free = $true
+        foreach ($k in $held.Keys) {
+            $hit = $Kept[$k]
+            $isSignedSsn = $candidate.Sure -and $hit.Detector -eq 'SSN' -and $hit.Confidence -ne 'High' -and
+                $hit.Value -notmatch '-' -and $hit.Index -ge $candidate.Index -and $hit.Index + $hit.Length -le $end
+            if (-not $isSignedSsn) { $free = $false }
+        }
+        if (-not $free) { continue }
+        foreach ($k in $held.Keys) { $giveWay.Add($k) }
+        $Kept.Add((New-PiiHit 'DoD ID' $candidate.Confidence $candidate.Index $candidate.Value))
+        for ($i = $candidate.Index; $i -lt $end; $i++) { $owner[$i] = $Kept.Count }
+    }
+    foreach ($k in @($giveWay | Sort-Object -Unique -Descending)) { $Kept.RemoveAt($k) }
+}
+
 function Set-NameNearIdentifierHigh {
     <#
     .SYNOPSIS
@@ -753,6 +792,7 @@ function Get-PiiSpan {
     # Seen as spaces by the detectors only; the length is the same, so positions still fit the text.
     $searchText = $Text.Replace('_', ' ')
     $kept = Remove-OverlappingHits @(Get-AllHits $searchText)
+    Add-SignedIdHits $searchText $kept
     Set-NameNearIdentifierHigh $kept.ToArray()
     # A Low hit inside unreadable text (symbols, a font read wrong) is noise: it is dropped. High and Medium hits stay.
     $kept = @($kept | Where-Object { $_.Confidence -ne 'Low' -or -not (Test-GarbledNear $searchText $_.Index $_.Length) })
@@ -6311,11 +6351,10 @@ function Get-MethodRows {
         'Without a label, 9 digits that go on into a longer number (a digit one space away, ' +
         'or a CAC name such as LAST.FIRST.M. just before) or that are part of an e-signature DoD ID are not an SSN.'))
     , @('DoD ID', ('A 10-digit number, found only with a label just before it ("DoD ID", "DODID", "EDIPI", "CAC", "DoD #", "DoD number"), ' +
-        'High. In an e-signature: Low, and its version history is not read (History note "Not looked up"). An e-signature is ' +
-        'a CAC name in capitals (LAST.FIRST.M.) then the 10 digits (or the 10 digits, then the name), or a CAC name in any case ' +
-        'or the 10 digits alone on one line after "signed", "signature", "CN=" or "DN:". Line breaks in the name, and spaces, tabs ' +
-        'and line breaks before and between the digits, are allowed (right after a CAC name, dashes too). A phone number with ' +
-        'dashes or after white space stays a phone, a dashed SSN stays an SSN, and an e-mail address stays an e-mail address.'))
+        'High. In an e-signature: Low, history not read ("Not looked up"). An e-signature is a CAC name (LAST.FIRST.M.) then the ' +
+        '10 digits, or the reverse, or the 10 digits after "signed", "signature", "CN=" or "DN:"; spaces, tabs and line breaks may ' +
+        'split it. It is added only where no other match is. An SSN match (no label, no dashes) inside it becomes this DoD ID ' +
+        'only after a signature word or when the digits touch the name.'))
     , @('Date of birth', ('A date written as 1/2/1990, 01-02-90, 1990-01-02, 2 Jan 1990, 02JAN1990 or January 2, 1990, found only with a label ' +
         'just before it ("DOB", "D.O.B.", "date of birth", "birth date", "birthdate", "born"): always High. Other date forms are not found.'))
     , @('Payment card', ('Medium: 13 to 19 digits (the length each card network uses), starting with that network''s digits, and the whole ' +

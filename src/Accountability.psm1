@@ -338,11 +338,10 @@ function Get-MethodRows {
         'Without a label, 9 digits that go on into a longer number (a digit one space away, ' +
         'or a CAC name such as LAST.FIRST.M. just before) or that are part of an e-signature DoD ID are not an SSN.'))
     , @('DoD ID', ('A 10-digit number, found only with a label just before it ("DoD ID", "DODID", "EDIPI", "CAC", "DoD #", "DoD number"), ' +
-        'High. In an e-signature: Low, and its version history is not read (History note "Not looked up"). An e-signature is ' +
-        'a CAC name in capitals (LAST.FIRST.M.) then the 10 digits (or the 10 digits, then the name), or a CAC name in any case ' +
-        'or the 10 digits alone on one line after "signed", "signature", "CN=" or "DN:". Line breaks in the name, and spaces, tabs ' +
-        'and line breaks before and between the digits, are allowed (right after a CAC name, dashes too). A phone number with ' +
-        'dashes or after white space stays a phone, a dashed SSN stays an SSN, and an e-mail address stays an e-mail address.'))
+        'High. In an e-signature: Low, history not read ("Not looked up"). An e-signature is a CAC name (LAST.FIRST.M.) then the ' +
+        '10 digits, or the reverse, or the 10 digits after "signed", "signature", "CN=" or "DN:"; spaces, tabs and line breaks may ' +
+        'split it. It is added only where no other match is. An SSN match (no label, no dashes) inside it becomes this DoD ID ' +
+        'only after a signature word or when the digits touch the name.'))
     , @('Date of birth', ('A date written as 1/2/1990, 01-02-90, 1990-01-02, 2 Jan 1990, 02JAN1990 or January 2, 1990, found only with a label ' +
         'just before it ("DOB", "D.O.B.", "date of birth", "birth date", "birthdate", "born"): always High. Other date forms are not found.'))
     , @('Payment card', ('Medium: 13 to 19 digits (the length each card network uses), starting with that network''s digits, and the whole ' +

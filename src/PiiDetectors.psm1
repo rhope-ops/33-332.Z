@@ -145,6 +145,45 @@ function Remove-OverlappingHits {
     return , $kept
 }
 
+function Add-SignedIdHits {
+    <#
+    .SYNOPSIS
+      Adds the e-signature DoD IDs of Find-SignedIdHits that the other detectors did not see (the e-signature fix,
+      2026-11-23). A candidate is added only where no kept hit is, so no other hit is lost or changed. One exception: SSN
+      hits (not High, no dashes) wholly inside a sure candidate (a signature word before it, or digits touching the name) give way (the PAM,
+      2026-11-21: e-signature DoD IDs were shown as SSNs). Added after the overlap removal, so it never outranks a hit.
+    .PARAMETER Text
+      The text searched (as the detectors saw it).
+    .PARAMETER Kept
+      The kept hits (Remove-OverlappingHits); changed in place.
+    .OUTPUTS
+      None.
+    #>
+    param([string]$Text, [System.Collections.Generic.List[object]]$Kept)
+    $candidates = @(Find-SignedIdHits $Text)
+    if ($candidates.Count -eq 0) { return }
+    $owner = New-Object 'int[]' ($Text.Length + 1)   # which kept hit holds each character: its place + 1 (0: none)
+    for ($k = 0; $k -lt $Kept.Count; $k++) { for ($i = $Kept[$k].Index; $i -lt $Kept[$k].Index + $Kept[$k].Length; $i++) { $owner[$i] = $k + 1 } }
+    $giveWay = New-Object System.Collections.Generic.List[int]
+    foreach ($candidate in $candidates) {
+        $end = $candidate.Index + $candidate.Length
+        $held = @{}
+        for ($i = $candidate.Index; $i -lt $end; $i++) { if ($owner[$i] -gt 0) { $held[$owner[$i] - 1] = $true } }
+        $free = $true
+        foreach ($k in $held.Keys) {
+            $hit = $Kept[$k]
+            $isSignedSsn = $candidate.Sure -and $hit.Detector -eq 'SSN' -and $hit.Confidence -ne 'High' -and
+                $hit.Value -notmatch '-' -and $hit.Index -ge $candidate.Index -and $hit.Index + $hit.Length -le $end
+            if (-not $isSignedSsn) { $free = $false }
+        }
+        if (-not $free) { continue }
+        foreach ($k in $held.Keys) { $giveWay.Add($k) }
+        $Kept.Add((New-PiiHit 'DoD ID' $candidate.Confidence $candidate.Index $candidate.Value))
+        for ($i = $candidate.Index; $i -lt $end; $i++) { $owner[$i] = $Kept.Count }
+    }
+    foreach ($k in @($giveWay | Sort-Object -Unique -Descending)) { $Kept.RemoveAt($k) }
+}
+
 function Set-NameNearIdentifierHigh {
     <#
     .SYNOPSIS
@@ -205,6 +244,7 @@ function Get-PiiSpan {
     # Seen as spaces by the detectors only; the length is the same, so positions still fit the text.
     $searchText = $Text.Replace('_', ' ')
     $kept = Remove-OverlappingHits @(Get-AllHits $searchText)
+    Add-SignedIdHits $searchText $kept
     Set-NameNearIdentifierHigh $kept.ToArray()
     # A Low hit inside unreadable text (symbols, a font read wrong) is noise: it is dropped. High and Medium hits stay.
     $kept = @($kept | Where-Object { $_.Confidence -ne 'Low' -or -not (Test-GarbledNear $searchText $_.Index $_.Length) })
