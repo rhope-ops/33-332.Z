@@ -63,14 +63,15 @@ The probe is a .txt file (Project rules, "Paste format"): `docs/reviews/2026-11-
     1. Press **Ctrl+V**.
     2. Press **Enter**.
     You see that the screen clears. Go on.
-13. If a sign-in window asks "continue running scripts", click **Yes**. You see the CAC sign-in. Go on.
-14. If a sign-in window opens, sign in with your CAC. The window closes. Write down the number of sign-in windows and PIN prompts.
+13. If a window asks if you want to continue running scripts, click **Yes**. You see the sign-in window. Go on.
+14. If a sign-in window opens, sign in with your CAC. The window closes. Go on.
 15. In the ISE output pane, wait until the line **Done.** shows. Do not copy before then.
-16. In the ISE output pane, do these actions:
+16. On paper, write down the number of sign-in windows and the number of PIN prompts. If no sign-in window opened, write down `0`. You see the 2 numbers on the paper. Go on.
+17. In the ISE output pane, do these actions:
     1. Select the lines from the first line to **Done.**.
     2. Press **Ctrl+C**.
     You see the lines selected. Go on.
-17. In an e-mail to yourself, do these actions:
+18. In an e-mail to yourself, do these actions:
     1. Press **Ctrl+V**.
     2. Type the number of sign-in windows and the number of PIN prompts that you wrote down.
     3. Send the message.

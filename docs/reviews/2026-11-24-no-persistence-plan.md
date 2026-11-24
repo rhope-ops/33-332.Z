@@ -21,10 +21,12 @@ permissions as scope only ("No reconnaissance": no user names listed); month-nam
 
 ## Status
 
-- Step 0: probe 2 run (OneDrive maps to its address; second sign-in failed); probe 3 merged (PRs 84, 86), the PAM runs it.
+- Step 0: probe 2 run; probe 3 run twice (second run recorded, PR 89): connect without sign-out works; the OneDrive
+  file was not in its library. Probe 4 (PR 91): OneDrive web files at the mapped local path; the PAM runs it.
 - Step 1: merged (PRs 82, 85). Detectors frozen after PR 85 (the PAM, 2026-11-24), except the roster header fix.
 - Step 2: merged (PRs 80, 83). Step 3: merged (PR 81).
-- Step 4 (OneDrive hybrid) and one sign-in per host (the PAM, 2026-11-24): wait on probe 3's second run.
+- One sign-in per host: merged (PRs 90, 92): no sign-out between sites, one at the end of the run; full-address site check.
+- Step 4 (OneDrive hybrid): waits on probe 4.
 - Step 5 (permission scope): waits on probe 3 (no permission read ran yet). Step 6 (parallel downloads): open.
-- Added 2026-11-24: seeded recall test (PR 87; local baseline 46/53 found, 87%); roster header fix in work
-  (claude/roster-headers); the PAM to run the recall test on the device after probe 3.
+- Added 2026-11-24: seeded recall test (PR 87; local baseline 46/53 found, 87%); roster header fix rebuilt
+  on claude/roster-labels (the first branch could not be pushed: file-size cap); the PAM runs the recall test.
