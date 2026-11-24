@@ -99,5 +99,5 @@ To skip a question, press **Enter** without an answer.
   ok; paths A, B and C found=False; web read failed (PSInvalidOperationException); disk read "0 KB" (rounded: under
   512 bytes). The cause of found=False is not known yet (assumption, not proven: the file is not on the web, or the
   path is built wrong). Fixed: any address inside a site works; empty, hidden and system files are skipped; a new line
-  "T4 name in library" shows if the file is on the web and if its path starts with the address; the size is in bytes.
+  "T4 name in library" shows if the file is on the web, and if a match is at the path built from the address; the size is in bytes.
 - Second run: not run yet.
