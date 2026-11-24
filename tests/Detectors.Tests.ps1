@@ -155,9 +155,12 @@ Assert-Equal 'D**.J.Q. and N*.A.B. and D**.J***.Q**** and e.g. i.e. U.S.' $oneLe
 $astral = & (Get-Module PiiMasking) { param($t) Get-MaskedText $t @() } ([char]::ConvertFromUtf32(0x1D400) + 'BC.DEF.Q.')
 Assert-Equal ([char]::ConvertFromUtf32(0x1D400) + '**.D**.Q.') $astral 'Snippet: a letter outside the BMP counts as a letter'
 $clock = [Diagnostics.Stopwatch]::StartNew()
-$longTexts = @(('AA.' * 100000), ('A.' * 150000), ('AA.BB ' * 50000), ('Amount 12.50 and 7.25 ' * 50000), ('a.b. ' * 100000), ('e.g. U.S. ' * 50000))
+$longTexts = @(('AA.' * 100000), ('A.' * 150000), ('AA.BB ' * 50000), ('Amount 12.50 and 7.25 ' * 50000), ('a.b. ' * 100000),
+    ('e.g. U.S. ' * 50000), ('A..' * 100000), ("'.." * 100000), ('_A' * 150000))
 foreach ($adv in $longTexts) { $null = & (Get-Module PiiMasking) { param($t) Get-MaskedText $t @() } $adv }
 Assert-Equal $true ($clock.ElapsedMilliseconds -lt 10000) 'Snippet: long dotted text masks fast'
+$longPart = & (Get-Module PiiMasking) { param($x) Get-MaskedText $x @() } (('_' * 45) + 'DOE.' + 'JANE.Q.')
+Assert-Equal (('_' * 45) + 'D**.J***.Q.') $longPart 'Snippet: a long part before a CAC name does not hide it'
 
 # ---- Detection in names: underscores and accented e-mail names ----
 Assert-Equal 'DoD ID/High/******7890' (Get-HitSummary "CAC_$($Sample.DodId).docx") 'DoD ID after an underscore'
