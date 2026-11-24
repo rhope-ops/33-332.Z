@@ -1,4 +1,4 @@
-![33-332.Z: Privacy Act Management](https://repository-images.githubusercontent.com/1465745904/63428ac3-60d0-44c2-be58-475984d11817)
+![33-332.Z: Privacy Act Management](docs/assets/33-332.Z-social-preview.png)
 
 # Ion
 **DoD365 PII Reporter**
