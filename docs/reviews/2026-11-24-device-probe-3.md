@@ -40,7 +40,7 @@ Use 2 teams that you scan. Keep the results in Notepad.
    You see address 2. Go on.
 10. In Teams, in the list of teams, do these actions:
    1. Click **...** next to the name of the first team.
-   2. Click **Get link to team**.
+   2. Click **Get link to team** (new Teams: **Copy link**).
    3. Click **Copy**.
    You see that the link is copied. Go on.
 11. In Notepad, press **Ctrl+V**. You see the Teams link. The task is complete.
@@ -96,7 +96,8 @@ To skip a question, press **Enter** without an answer.
 
 - First run, 2026-11-24 (the PAM, by e-mail; kinds and counts only): Questions 2-4 were not used (the probe accepted
   only a bare site address, and the Teams link had no groupId), so T1-T3 did not run. T4: 2 matching entries; sign-in
-  ok; paths A, B and C found=False; web read failed (PSInvalidOperationException); disk read 0 KB. The 0 KB file was
-  most likely a hidden system file that OneDrive does not upload, so the paths were not tested. Fixed: any address
-  inside a site works, hidden and empty files are skipped, the steps name the Teams menu.
+  ok; paths A, B and C found=False; web read failed (PSInvalidOperationException); disk read "0 KB" (rounded: under
+  512 bytes). The cause of found=False is not known yet (assumption, not proven: the file is not on the web, or the
+  path is built wrong). Fixed: any address inside a site works; empty, hidden and system files are skipped; a new line
+  "T4 name in library" shows if the file is on the web and if its path starts with the address; the size is in bytes.
 - Second run: not run yet.

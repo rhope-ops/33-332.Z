@@ -16,7 +16,8 @@ $given = @{ A = [bool]$siteA; B = [bool]$siteB }
 $siteA = Get-SiteAddress $siteA; $siteB = Get-SiteAddress $siteB
 if ($given.A -and -not $siteA) { 'Question 2: no site in this address (https://<host>/sites/<name> or /teams/<name>): T1-T3 skipped' }
 if ($given.B -and -not $siteB) { 'Question 3: no site in this address: T3 skipped' }
-if ($teams -and $teams -notmatch 'groupId=') { 'Question 4: this link has no groupId: in Teams, ... next to the team name > Get link to team' }
+if ($teams -and $teams -notmatch 'groupId=([0-9a-fA-F-]{36})') { 'Question 4: no groupId in this link: in Teams, ... next to the team name > Get link to team (or Copy link)' }
+if ($teams -and -not $siteA) { 'Question 4: T1 needs the site address of Question 2 too: T1 skipped' }
 function Get-Kind($err) {
     $m = [string]$err.Exception.Message
     $kind = 'Other'
@@ -85,8 +86,17 @@ if ($folder) {
             $lib = Get-PnPList -Includes RootFolder | Where-Object { $_.BaseTemplate -eq 700 -or $_.BaseTemplate -eq 101 } | Select-Object -First 1
             'found={0}' -f [bool](Get-PnPFile -Url ($lib.RootFolder.ServerRelativeUrl.TrimEnd('/') + $inner) -AsListItem)
         }
+        # Where is the file on the web? Its name in the library list, and whether its web path starts with the address.
+        Test-Step 'T4 name in library' {
+            $lib = Get-PnPList -Includes RootFolder | Where-Object { ($_.BaseTemplate -eq 700 -or $_.BaseTemplate -eq 101) -and -not $_.Hidden } | Select-Object -First 1
+            $hit = @(Get-PnPListItem -List $lib -PageSize 500 -Fields 'FileLeafRef', 'FileRef' | Select-Object -First 5000 | Where-Object { [string]$_['FileLeafRef'] -eq $file[0].Name } | Select-Object -First 1)
+            if (-not $hit) { return 'found=False (in the first 5000 items)' }
+            $ref = [string]$hit[0]['FileRef']
+            'found=True ref starts with address={0} ref equals path A={1} library root equals address={2}' -f $ref.StartsWith($nsPath, [StringComparison]::OrdinalIgnoreCase),
+                ($ref -eq ($nsPath + $inner)), ($lib.RootFolder.ServerRelativeUrl.TrimEnd('/') -eq $nsPath)
+        }
         Test-Step 'T4 web read' { $s = Get-PnPFile -Url ($nsPath + $inner) -AsMemoryStream; $n = $s.Length; $s.Dispose(); 'KB={0}' -f [int]($n / 1KB) }
-        Test-Step 'T4 disk read' { $b = [IO.File]::ReadAllBytes($file[0].FullName); 'KB={0}' -f [int]($b.Length / 1KB) }
+        Test-Step 'T4 disk read' { $b = [IO.File]::ReadAllBytes($file[0].FullName); 'bytes={0}' -f $b.Length }
         }
     }
 }
