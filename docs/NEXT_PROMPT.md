@@ -28,4 +28,6 @@ Title: 33-332.Z · <task> · <date>. Read AGENTS.md first.
     step 3 = parallel downloads in a planned order, and version-history reads off the main thread (slow run 28:49).
 17. 2026-11-24 merged: PRs 58-87. The PAM to run: probe 3, then the recall test; Excel and local OneDrive tests open.
 18. Plan approved 2026-11-24, continue it: docs/reviews/2026-11-24-no-persistence-plan.md (Status).
-19. 2026-11-24 merged: PRs 89-92 (probe 3 run 2, one sign-in per host, probe 4). The PAM runs probe 4 and the recall test.
+19. 2026-11-24 merged: PRs 89-97 (probe 3 run 2, one sign-in per host, probe 4, close-ISE line, build ID, passport
+   rule, roster labels; local recall 53/53). The PAM runs probe 4, a 2-site run and the recall test. Roster
+   follow-ups: plan Status.
