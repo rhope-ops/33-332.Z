@@ -149,15 +149,17 @@ finally {
 # libraries ("No reconnaissance"), so Ion asks first; Enter = no. A folder inside it, or any other folder: no question.
 $odRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('ion-od-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path (Join-Path $odRoot 'Team A') -Force | Out-Null
-$savedOneDrive = $env:OneDrive
+$savedOneDrive = $env:OneDrive; $savedCommercial = $env:OneDriveCommercial; $savedConsumer = $env:OneDriveConsumer
 try {
     $env:OneDrive = $odRoot
     # Two variables for one folder (common on a work PC) and one for a folder that is gone: each top folder once, no error.
     $env:OneDriveCommercial = $odRoot
     $env:OneDriveConsumer = Join-Path $odRoot 'gone'
     Set-FakeRootAnswer ''
-    Assert-Equal $false (Confirm-OneDriveRoot (Split-Path $odRoot -Parent) 6>$null) 'Same folder twice and a gone folder: still asked, no error'
-    $env:OneDriveCommercial = $null; $env:OneDriveConsumer = $null
+    $shown = @(Confirm-OneDriveRoot (Split-Path $odRoot -Parent) 6>&1 | ForEach-Object { [string]$_ })
+    $topLine = @($shown | Where-Object { $_ -like '*top folders in OneDrive*' })
+    Assert-Equal '1 False' ('{0} {1}' -f $topLine.Count, $shown[-1]) 'Same folder twice and a gone folder: asked once, no error'
+    Assert-Equal 1 ([regex]::Matches($topLine[0], 'Team A').Count) 'Same folder twice: each top folder shown once'
     Set-FakeRootAnswer ''
     Assert-Equal $false (Confirm-OneDriveRoot $odRoot 6>$null) 'Whole OneDrive folder, answer Enter: not scanned'
     Set-FakeRootAnswer 'y'
@@ -180,7 +182,7 @@ try {
     Assert-Equal $false (Test-Path -LiteralPath $odOut) 'Whole OneDrive folder, a cancel at the question: nothing saved'
 }
 finally {
-    $env:OneDrive = $savedOneDrive
+    $env:OneDrive = $savedOneDrive; $env:OneDriveCommercial = $savedCommercial; $env:OneDriveConsumer = $savedConsumer
     Remove-Item -LiteralPath $odRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
 
