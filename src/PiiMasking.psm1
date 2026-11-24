@@ -42,7 +42,7 @@ $script:EmailLocalPartPattern = '(?<=^|[\s@<>()\[\],;:"/\\])[^\s@<>()\[\],;:"/\\
 # ending in a dot; it starts only after a character that cannot be part of a name (no slow restarts on long text). In
 # the Context column only the first letter of each part stays (approved 2026-11-21: "mask the CAC name in Context"); a
 # dotted host or file name that looks the same is masked too, which hides nothing needed.
-$script:MaskedCacName = "(?<![A-Za-z0-9.'-])[A-Za-z][A-Za-z'-]+\.[A-Za-z][A-Za-z'-]+\.(?:[A-Za-z][A-Za-z'-]*\.){0,2}"
+$script:MaskedCacName = "(?<![\p{L}0-9.'-])\p{L}[\p{L}'-]+\.\p{L}[\p{L}'-]+\.(?:\p{L}[\p{L}'-]*\.){0,2}"
 
 # =====================================================================================
 # Masking one value
@@ -110,7 +110,13 @@ function Get-MaskedText {
     param([string]$Text, [object[]]$Hits)
     $sameLengthStars = [System.Text.RegularExpressions.MatchEvaluator] { param($m) '*' * $m.Length }
     $masked = [regex]::Replace($Text, $script:EmailLocalPartPattern, $sameLengthStars) -replace '\d', '#'
-    $initials = [System.Text.RegularExpressions.MatchEvaluator] { param($m) [regex]::Replace($m.Value, '(?<=(?:^|\.)[A-Za-z][^.]*)[A-Za-z]', '*') }
+    # One pass over the name: the first letter of each part stays, every other letter becomes '*' (linear: review of PR 81).
+    $initials = [System.Text.RegularExpressions.MatchEvaluator] {
+        param($m)
+        $c = $m.Value.ToCharArray()
+        for ($i = 1; $i -lt $c.Length; $i++) { if ($c[$i - 1] -ne '.' -and [char]::IsLetter($c[$i])) { $c[$i] = '*' } }
+        New-Object string (, $c)
+    }
     $masked = [regex]::Replace($masked, $script:MaskedCacName, $initials)
     $chars = $masked.ToCharArray()
     foreach ($hit in $Hits) {

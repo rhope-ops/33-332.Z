@@ -143,6 +143,11 @@ $cacOk = $cacHits.Count -eq 1 -and $cacHits[0].Context -match 'D\*\*\.J\*\*\*\.Q
 Assert-Equal $true ($cacOk -and $cacHits[0].Context -match 'e\.g\.') 'Snippet: a CAC name keeps only its initials'
 $oddName = & (Get-Module PiiMasking) { param($t) Get-MaskedText $t @() } ("O'" + "NEIL.MARY-" + "ANN.B. and _DOE." + "JANE.Q. and DOE." + "JANE.QUINN.SMITH.")
 Assert-Equal "O'****.M***-***.B. and _D**.J***.Q. and D**.J***.Q****.S****." $oddName 'Snippet: apostrophes, hyphens, an underscore before and four parts are masked'
+$longRun = 'x ' + ('A' * 160000) + '.BB. z'
+$clock = [Diagnostics.Stopwatch]::StartNew(); $null = & (Get-Module PiiMasking) { param($t) Get-MaskedText $t @() } $longRun
+Assert-Equal $true ($clock.ElapsedMilliseconds -lt 3000) 'Snippet: a 160,000-letter name part masks fast (linear)'
+$umlaut = & (Get-Module PiiMasking) { param($t) Get-MaskedText $t @() } ('M' + [char]0xDC + 'LLER.JANE.Q.')
+Assert-Equal 'M*****.J***.Q.' $umlaut 'Snippet: a name with non-ASCII letters is masked'
 
 # ---- Detection in names: underscores and accented e-mail names ----
 Assert-Equal 'DoD ID/High/******7890' (Get-HitSummary "CAC_$($Sample.DodId).docx") 'DoD ID after an underscore'

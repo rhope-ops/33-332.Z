@@ -44,11 +44,13 @@ $script:BreachAdvice = 'PII where it should not be is a potential or actual brea
 # person sees; checked by hand, as scripts/check_instructions.py cannot read text in code. Reporting a breach is the
 # "If you find PII" row (one home).
 $script:StartHere = @(
-    @('Start here: 1', 'On the tab Hits, do these actions: (1) Click the filter button of the column Confidence. (2) Select only High. You see only the High rows.'),
+    @('Start here: 1', ('On the tab Hits, do these actions: (1) Click the filter button of the column Confidence. (2) Select only ' +
+        'High. (3) Click OK. You see only the High rows. If there are none, select Medium.')),
     @('Start here: 2', 'In a row, click the name in the column File. The file opens.'),
-    @('Start here: 3', 'In the file, find the text that the cell Context shows. You see the full value. Go back to the tab Hits.'),
-    @('Start here: 4', ('In the same row, do these actions: (1) Select Is it PII?. (2) Select Action taken. (3) Select Reported to ' +
-        'Privacy Manager. (4) Type your name in Reviewed by. (5) Type the date in Review date. The row is complete.')))
+    @('Start here: 3', 'In the file, find the text that the cell Context shows. You see the full value.'),
+    @('Start here: 4', ('On the tab Hits, in the same row, do these actions: (1) In Is it PII, select Yes, No or Not sure. ' +
+        '(2) In Action taken, select the action you did. (3) In Reported to Privacy Manager, select Yes, No or Not needed. ' +
+        '(4) In Reviewed by, type your name. (5) In Review date, type the date of your check. The row is complete.')))
 # Shown as two lines, the advice and its rule source (the PAM, 2026-11-21); one line if no "(AFI ...)." part is found.
 $script:BreachLines = @($script:BreachAdvice)
 if ($script:BreachAdvice -match '^(.*) \((AFI .*)\)\.$') { $script:BreachLines = @(($Matches[1] + '.'), ('Source: ' + $Matches[2] + '.')) }
