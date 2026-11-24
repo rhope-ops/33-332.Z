@@ -38,6 +38,20 @@ $script:KeepLastPassportChars = 3
 # once, not once per character.
 $script:EmailLocalPartPattern = '(?<=^|[\s@<>()\[\],;:"/\\])[^\s@<>()\[\],;:"/\\]+(?=@[^\s@<>()\[\],;:"/\\.]+\.)'
 
+# A CAC name in an e-signature ("DOE.JANE.Q."): in the Context column each part keeps only its first letter (approved
+# 2026-11-21: "mask the CAC name in Context"). $CacCandidate finds two or more dotted parts in a row (and the part
+# after them) that hold a part of two letters; a plain word, "e.g." or "U.S." never reaches Protect-CacName. A run
+# starts only at its first character (or right after a dot that follows a non-name character), each start reads its
+# run once (atomic groups, the two-letter test part by part), and no part length is capped, so a long part cannot
+# hide the name after it (reviews of PR 81: speed and leaks). A dotted host or file name is masked too.
+$script:CacCandidate = [regex]("(?:(?<![\p{L}\p{M}\p{Cs}_'#.-])|(?<=(?<![\p{L}\p{M}\p{Cs}_'#-])\.))" +
+    "(?=(?:[\p{L}\p{M}\p{Cs}_'#-]+\.)*?(?>[\p{M}_'#-]*)[\p{L}\p{Cs}](?>[\p{M}_'#-]*)[\p{L}\p{Cs}])" +
+    "(?>[\p{L}\p{M}\p{Cs}_'#-]+\.){2,}(?>[\p{L}\p{M}\p{Cs}_'#-]*)")
+$script:NameLetter = [regex]'[\p{L}\p{M}\p{Cs}]'   # a letter, a mark, or half of a letter outside the BMP
+# The first part of two letters or more (where a name starts), and the first letter of each part (it stays).
+$script:NameStart = [regex]'(?:^|(?<=\.))(?=[^.\p{L}\p{Cs}]*[\p{L}\p{Cs}][^.\p{L}\p{Cs}]*[\p{L}\p{Cs}])'
+$script:PartInitial = [regex]'(?:^|(?<=\.))[^.\p{L}\p{Cs}]*(\p{L}|\p{Cs}\p{Cs})'
+
 # =====================================================================================
 # Masking one value
 # =====================================================================================
@@ -87,11 +101,35 @@ function Get-MaskedValue {
 # Masking a whole text, then cutting snippets from it
 # =====================================================================================
 
+function Protect-CacName {
+    <#
+    .SYNOPSIS
+      One candidate ($CacCandidate) with its name parts masked: from the first part of two letters or more on, every
+      letter and mark becomes '*' except the first letter of each part. The regexes do the per-letter work in .NET (one
+      pass each); this loop only puts back one letter per part (fifth review of PR 81: speed). The length stays.
+    .PARAMETER Text
+      The candidate, for example "DOE.JANE.Q." or "DOE.J.Q.".
+    .OUTPUTS
+      [string]
+    #>
+    param([string]$Text)
+    $start = $script:NameStart.Match($Text)
+    if (-not $start.Success) { return $Text }   # no part of two letters: "e.g.", "U.S."
+    $tail = $Text.Substring($start.Index)
+    $masked = $script:NameLetter.Replace($tail, '*').ToCharArray()
+    foreach ($m in $script:PartInitial.Matches($tail)) {
+        $g = $m.Groups[1]
+        for ($k = $g.Index; $k -lt $g.Index + $g.Length; $k++) { $masked[$k] = $tail[$k] }
+    }
+    return $Text.Substring(0, $start.Index) + (New-Object string (, $masked))
+}
+
 function Get-MaskedText {
     <#
     .SYNOPSIS
       Masks a whole text and keeps its length: every digit becomes '#', every e-mail local part
-      becomes '*', and every hit (names and addresses included) becomes '*'. Because the length
+      becomes '*', a CAC name keeps only the first letter of each part (Protect-CacName), and every hit (names
+      and addresses included) becomes '*'. Because the length
       stays the same, hit positions from the raw text still point to the right place.
     .PARAMETER Text
       The raw text.
@@ -103,6 +141,8 @@ function Get-MaskedText {
     param([string]$Text, [object[]]$Hits)
     $sameLengthStars = [System.Text.RegularExpressions.MatchEvaluator] { param($m) '*' * $m.Length }
     $masked = [regex]::Replace($Text, $script:EmailLocalPartPattern, $sameLengthStars) -replace '\d', '#'
+    # One pass over the name: the first letter of each part stays, every other letter becomes '*' (linear: review of PR 81).
+    $masked = $script:CacCandidate.Replace($masked, [System.Text.RegularExpressions.MatchEvaluator] { param($m) Protect-CacName $m.Value })
     $chars = $masked.ToCharArray()
     foreach ($hit in $Hits) {
         for ($i = $hit.Index; $i -lt $hit.Index + $hit.Length; $i++) {

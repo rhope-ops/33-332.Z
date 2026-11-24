@@ -136,6 +136,31 @@ $quoted = @(Find-PiiInText "SSN $($Sample.Ssn) mail $($Sample.EmailQuote)")
 Assert-Equal $false (($quoted | ForEach-Object { $_.Context }) -join ' ' -match 'connor|jane') "Snippet hides an e-mail name with an apostrophe"
 $named = @(Find-PiiInText "Name: Pat Q. Sample SSN $($Sample.Ssn)")
 Assert-Equal $false (($named | ForEach-Object { $_.Context }) -join ' ' -match 'Pat|Sample') 'Snippet hides a found name'
+# A CAC name in an e-signature keeps only its initials in the snippet (approved 2026-11-21); "e.g." stays readable.
+$cacId = '1234' + '567890'
+$cacHits = @(Find-PiiInText ('Digitally signed by ' + 'DOE.' + 'JANE.Q.' + $cacId + ' e.g. on the form'))
+$cacOk = $cacHits.Count -eq 1 -and $cacHits[0].Context -match 'D\*\*\.J\*\*\*\.Q\.' -and $cacHits[0].Context -notmatch 'DOE|JANE'
+Assert-Equal $true ($cacOk -and $cacHits[0].Context -match 'e\.g\.') 'Snippet: a CAC name keeps only its initials'
+$oddName = & (Get-Module PiiMasking) { param($t) Get-MaskedText $t @() } ("O'" + "NEIL.MARY-" + "ANN.B. and _DOE." + "JANE.Q. and DOE." + "JANE.QUINN.SMITH.")
+Assert-Equal "O'****.M***-***.B. and _D**.J***.Q. and D**.J***.Q****.S****." $oddName 'Snippet: apostrophes, hyphens, an underscore before and four parts are masked'
+$longRun = 'x ' + ('A' * 160000) + '.BB. z'
+$clock = [Diagnostics.Stopwatch]::StartNew(); $null = & (Get-Module PiiMasking) { param($t) Get-MaskedText $t @() } $longRun
+Assert-Equal $true ($clock.ElapsedMilliseconds -lt 3000) 'Snippet: a 160,000-letter name part masks fast (linear)'
+$umlaut = & (Get-Module PiiMasking) { param($t) Get-MaskedText $t @() } ('M' + [char]0xDC + 'LLER.JANE.Q.')
+Assert-Equal 'M*****.J***.Q.' $umlaut 'Snippet: a name with non-ASCII letters is masked'
+$after = & (Get-Module PiiMasking) { param($t) Get-MaskedText $t @() } ("by 'DOE." + "JANE.Q.' and -DOE." + "JANE.Q. and a.DOE." + "JANE.Q. and AAA.BBB.CCC.DOE." + "JANE.Q.")
+Assert-Equal "by 'D**.J***.Q.' and -D**.J***.Q. and a.D**.J***.Q. and A**.B**.C**.D**.J***.Q." $after 'Snippet: a CAC name after a quote, a dash, a short part or other parts is masked'
+$oneLetter = & (Get-Module PiiMasking) { param($t) Get-MaskedText $t @() } ('DOE.' + 'J.Q. and NG.' + 'A.B. and DOE.' + 'JANE.QUINN and e.g. i.e. U.S.')
+Assert-Equal 'D**.J.Q. and N*.A.B. and D**.J***.Q**** and e.g. i.e. U.S.' $oneLetter 'Snippet: one-letter parts and a last part without a dot; e.g., i.e., U.S. stay'
+$astral = & (Get-Module PiiMasking) { param($t) Get-MaskedText $t @() } ([char]::ConvertFromUtf32(0x1D400) + 'BC.DEF.Q.')
+Assert-Equal ([char]::ConvertFromUtf32(0x1D400) + '**.D**.Q.') $astral 'Snippet: a letter outside the BMP counts as a letter'
+$clock = [Diagnostics.Stopwatch]::StartNew()
+$longTexts = @(('AA.' * 100000), ('A.' * 150000), ('AA.BB ' * 50000), ('Amount 12.50 and 7.25 ' * 50000), ('a.b. ' * 100000),
+    ('e.g. U.S. ' * 50000), ('A..' * 100000), ("'.." * 100000), ('_A' * 150000))
+foreach ($adv in $longTexts) { $null = & (Get-Module PiiMasking) { param($t) Get-MaskedText $t @() } $adv }
+Assert-Equal $true ($clock.ElapsedMilliseconds -lt 10000) 'Snippet: long dotted text masks fast'
+$longPart = & (Get-Module PiiMasking) { param($x) Get-MaskedText $x @() } (('_' * 45) + 'DOE.' + 'JANE.Q.')
+Assert-Equal (('_' * 45) + 'D**.J***.Q.') $longPart 'Snippet: a long part before a CAC name does not hide it'
 
 # ---- Detection in names: underscores and accented e-mail names ----
 Assert-Equal 'DoD ID/High/******7890' (Get-HitSummary "CAC_$($Sample.DodId).docx") 'DoD ID after an underscore'

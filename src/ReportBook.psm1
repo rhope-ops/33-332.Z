@@ -39,6 +39,18 @@ $script:ReviewColumns = [ordered]@{ 'Is it PII?' = @('Yes', 'No', 'Not sure')
 $script:BreachAdvice = 'PII where it should not be is a potential or actual breach; report it to your servicing Privacy ' +
                        'Manager/Monitor without delay (AFI 33-332 para 3.1.2, as changed by AFI33-332_DAFGM2026-01 (7 July 2026), ' +
                        'page 1, second paragraph).'
+# "Start here" on the Summary tab: 4 steps (the approved workbook list of 2026-11-21, item 4 of
+# docs/reviews/2026-11-24-ion-detector-handoff.md). STE: each step is one screen, its actions numbered, then what the
+# person sees; checked by hand, as scripts/check_instructions.py cannot read text in code. Reporting a breach is the
+# "If you find PII" row (one home).
+$script:StartHere = @(
+    @('Start here: 1', ('On the tab Hits, do these actions: (1) Click the filter button of the column Confidence. (2) Clear ' +
+        '(Select All). (3) Select High and Medium. (4) Click OK. You see the High and Medium rows.')),
+    @('Start here: 2', 'In a row, click the name in the column File. The file opens.'),
+    @('Start here: 3', 'In the file, find the words that the cell Context shows next to the masked value. You see the full value.'),
+    @('Start here: 4', ('On the tab Hits, in the same row, do these actions: (1) In Is it PII?, select Yes, No or Not sure. ' +
+        '(2) In Action taken, select the action that you did. (3) In Reported to Privacy Manager, select Yes, No or Not needed. ' +
+        '(4) In Reviewed by, type your name. (5) In Review date, type the date of your check. The row is complete.')))
 # Shown as two lines, the advice and its rule source (the PAM, 2026-11-21); one line if no "(AFI ...)." part is found.
 $script:BreachLines = @($script:BreachAdvice)
 if ($script:BreachAdvice -match '^(.*) \((AFI .*)\)\.$') { $script:BreachLines = @(($Matches[1] + '.'), ('Source: ' + $Matches[2] + '.')) }
@@ -146,6 +158,7 @@ function Get-WorkbookSheets {
         $n = 0
         $sheets.Add((New-XlsxSheet 'Hits' $columns @($hits | ForEach-Object { $n++; , (Get-HitCells $_ $n) }) $widths -List -Table 'tblHits' `
             -LinkColumn 4 -LinkTarget ($columns.Count - 1) -Choices $choices -WrapColumns @(6) -DateColumns @($after, ($after + 2), ($after + 4)) `
+            -DateChecks @(7 + @($script:ReviewColumns.Keys).IndexOf('Review date')) `
             -FreezeColumns 5 -FillColumn 2))
         $sheets.Add((New-XlsxSheet 'Files' @($FolderLabel, 'File', 'Hits', 'High', 'Medium', 'Low', 'Types', 'Reviewed', 'Last saved',
             'Last saved by', 'PII first saved by', 'Link') @(Get-FileRows $hits $FolderLabel) @(16, 40, 7, 7, 9, 7, 40, 10, 16, 22, 30, 50) `
@@ -224,6 +237,7 @@ function Get-SummaryRows {
     #>
     param([object[]]$Rows, [int]$ItemsScanned, [System.Collections.IDictionary]$Header, [object[]]$Hits)
     $out = New-Object System.Collections.Generic.List[object]
+    if ($Hits.Count -gt 0) { foreach ($step in $script:StartHere) { $out.Add(@($step[0], $step[1])) }; $out.Add(@('')) }
     foreach ($pair in @($Header.GetEnumerator()) + @((Get-ScanMetrics $Rows $ItemsScanned).GetEnumerator())) {
         if ($pair.Key -ne 'High / Medium / Low') { $out.Add(@($pair.Key, $pair.Value)) }   # the type table below has these as numbers
         if ($pair.Key -eq 'Run') { $out.Add(@('Finished', (Get-Date -Format 'yyyy-MM-dd HH:mm'))) }
