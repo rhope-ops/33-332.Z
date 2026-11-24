@@ -90,6 +90,25 @@ Assert-Equal 'SSN/High/***-**-6789' ((Get-HitSummary "Digitally signed by $sigNa
 Assert-Equal 'Phone/Medium/***-***-0142' ((Get-HitSummary "Signed copy, cell $($Sample.Phone -replace '-', ' ')") -join ',') 'Signature: a spaced cell phone stays a phone'
 Assert-Equal 'SSN/Medium/***-**-6789' ((Get-HitSummary "Signed by: $($Sample.Ssn)") -join ',') 'Signature: a dashed SSN stays an SSN'
 Assert-Equal 'DoD ID/High/******7890' ((Get-HitSummary "EDIPI $sigId signed by $sigName$sigId") -join ',').Split(',')[0] 'A labelled DoD ID stays High'
+Assert-Equal 'DoD ID/High/******7890' ((Get-HitSummary "Signed, EDIPI $sig3241") -join ',') 'A labelled DoD ID with gaps in a signature: High'
+
+# ---- Review of PR 60: phones and dashed SSNs near a CAC name or a signature word keep their type and confidence ----
+$revPhone = $Sample.Phone -replace '-', ' '
+$revCases = [ordered]@{
+    'Phone/Low/***-***-0142'    = @("$sigName $revPhone", "Signed by Doe.Jane.Q. $revPhone", "$sigName`n$revPhone")
+    'Phone/Medium/***-***-0142' = @("Signed form.`nCall my cell.`n$($Sample.Phone)", "CALL ME.`nCELL PHONE.`n$($Sample.Phone)", "Signature page.`nMy cell.`n$revPhone")
+    'SSN/Medium/***-**-6789'    = @("$sigName`t$($Sample.Ssn)`t5", "$sigName`n$($Sample.Ssn)`n2 copies", "Signed by applicant $sigSsnBare`n1", "$sigSsnBare 0`n$sigName")
+}
+foreach ($expected in $revCases.Keys) {
+    foreach ($case in $revCases[$expected]) {
+        Assert-Equal $expected ((Get-HitSummary $case) -join ',') "Not an e-signature ID: $($case -replace '\d', '#' -replace "`r?`n", ' / ')"
+    }
+}
+Assert-Equal 0 @(Get-HitSummary 'Order 4455667788 REF.NO. 5' | Where-Object { $_ -like 'DoD ID/*' }).Count 'No CAC name: digits before REF.NO.'
+$timer = [System.Diagnostics.Stopwatch]::StartNew()
+$null = Find-PiiInText (("$sigName$sig3241" + "`n") * 2000)
+$timer.Stop()
+Assert-Equal $true ($timer.Elapsed.TotalSeconds -lt 8) "E-signature: 2,000 signature rows in under 8 s (took $([int]$timer.Elapsed.TotalMilliseconds) ms)"
 
 # ---- Masking: a value with a gap, a tab or a line break inside shows no full ID anywhere ----
 foreach ($layout in @('S06 digits 3-2-4-1', 'S09 LF before the ID', 'S12 tab before the ID', 'S14 LF inside the ID', 'S19 no-break-space gaps')) {

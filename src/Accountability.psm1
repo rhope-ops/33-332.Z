@@ -341,7 +341,8 @@ function Get-MethodRows {
         'High. In an e-signature: Low, and its version history is not read (History note "Not looked up"). An e-signature is ' +
         'a CAC name in capitals (LAST.FIRST.M.) then the 10 digits (or the 10 digits, then the name), or a CAC name in any case ' +
         'or the 10 digits alone after "signed", "signature", "CN=" or "DN:". Spaces, tabs and line breaks in the name and between ' +
-        'the digits are allowed; after a CAC name, dashes too. A phone number written 3-3-4 stays a phone.'))
+        'the digits are allowed (right after a CAC name, dashes too). A phone number (3-3-4) after white space stays a phone, and ' +
+        'a dashed SSN stays an SSN.'))
     , @('Date of birth', ('A date written as 1/2/1990, 01-02-90, 1990-01-02, 2 Jan 1990, 02JAN1990 or January 2, 1990, found only with a label ' +
         'just before it ("DOB", "D.O.B.", "date of birth", "birth date", "birthdate", "born"): always High. Other date forms are not found.'))
     , @('Payment card', ('Medium: 13 to 19 digits (the length each card network uses), starting with that network''s digits, and the whole ' +

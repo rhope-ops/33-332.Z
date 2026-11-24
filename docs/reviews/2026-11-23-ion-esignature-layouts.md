@@ -61,8 +61,9 @@ F (10 spaced digits, no name, no signature word) is not reported, as 10 bare dig
 | S25 one digit, then nine | SSN Low | DoD ID Low |
 | Total | 9 DoD ID, 3 SSN, 13 no hit | 25 DoD ID |
 
-Matrix (1,110 texts, scratchpad only): before 45 DoD ID, 377 SSN, 688 no hit; after 1,040 DoD ID, 35 SSN, 35 no hit. The 70
-left are by design: a title-case name with no signature word (60), or digits with no name and no signature word (10).
+Matrix (1,110 texts, scratchpad only): before 45 DoD ID, 377 SSN, 688 no hit; after 1,034 DoD ID, 39 SSN, 37 no hit. The 76
+left are by design: a title-case name with no signature word (60), digits with no name and no signature word (10), or
+no name and a line break inside the digits (6).
 
 ## Checks
 
@@ -75,6 +76,19 @@ left are by design: a title-case name with no signature word (60), or digits wit
 - Speed: 5 runs of 80,000 to 100,000 characters (dotted capitals, short lines, digit runs) under 4 s together. A first
   version let a name part run over every line (205 s); each part is now at most 40 letters with one line break.
 - One old test changed: "Digitally signed by" 9 digits then 1 digit was 0 hits; it is now DoD ID Low.
+
+## Fresh review of 29fe0f5 (2026-11-23) and the fixes
+
+The review found 3 MAJOR issues, all fixed and tested in tests/Signature.Tests.ps1 ("Review of PR 60"):
+- A phone after a CAC name and white space, or across lines after a signature word, became DoD ID Low. Now a 3-3-4 phone
+  shape is no ID after white space, and the ID alone after a signature word is on one line.
+- A dashed SSN after a CAC name and a tab or a line break became DoD ID Low. Dashes now count only right after the name's
+  last dot, and then with no line break.
+- The SSN check looked at every signature ID for every SSN match (4,000 rows: 73 s). It now uses a lookup per character
+  (4,000 rows: 3.2 s; main: 3.3 s).
+Also: an ID with gaps after a label in a signature ("Signed, EDIPI 123 45 6789 0") was lost (no hit on main too); it is now
+DoD ID High. An ID before "REF.NO." is no ID. The 1,110-text matrix now gives 1,034 DoD ID: 6 texts with no name and a line
+break inside the ID give the same result as main.
 
 ## Known gaps (not fixed here)
 
