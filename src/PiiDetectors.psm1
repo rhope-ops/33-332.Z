@@ -189,6 +189,9 @@ function Test-GarbledNear {
     return (@($script:GarbledChar.Matches($around)).Count / $visible) -ge $script:GarbledShare
 }
 
+# Characters that end an e-mail name to the left (white space and the e-mail detector's delimiters).
+$script:MailNameEnd = [char[]](' ', "`t", "`r", "`n", "`f", "`v", [char]0xA0, [char]0x2028, [char]0x2029, '@', '<', '>', '(', ')', '[', ']', ',', ';', ':', '"', '/', '\')
+
 function Expand-MailOverUnderscore {
     <#
     .SYNOPSIS
@@ -202,16 +205,26 @@ function Expand-MailOverUnderscore {
       None.
     #>
     param([string]$Text, [object[]]$Hits)
-    # Hits in text order: an e-mail grows left at most to the end of the hit before it (linear time: reviews of PR 61).
-    if (-not @($Hits | Where-Object { $_.Detector -eq 'Personal e-mail' -and $_.Index -gt 0 -and $Text[$_.Index - 1] -eq '_' })) { return }
-    $sorted = @($Hits | Sort-Object Index)
-    for ($k = 0; $k -lt $sorted.Count; $k++) {
-        $mail = $sorted[$k]
-        if ($mail.Detector -ne 'Personal e-mail' -or $mail.Index -eq 0 -or $Text[$mail.Index - 1] -ne '_') { continue }
+    # An e-mail grows left at most to the end of the hit before it (reviews of PR 61).
+    $mails = New-Object System.Collections.Generic.List[object]
+    $ends = New-Object System.Collections.Generic.List[int]
+    foreach ($hit in $Hits) {
+        $ends.Add($hit.Index + $hit.Length)
+        if ($hit.Detector -eq 'Personal e-mail' -and $hit.Index -gt 0 -and $Text[$hit.Index - 1] -eq '_') { $mails.Add($hit) }
+    }
+    if ($mails.Count -eq 0) { return }
+    # Hits never overlap: the largest hit end at or before an e-mail's start is the end of the hit before it (speed).
+    $endArray = $ends.ToArray()
+    [Array]::Sort($endArray)
+    foreach ($mail in $mails) {
+        $place = [Array]::BinarySearch($endArray, $mail.Index)
+        if ($place -lt 0) { $place = (-bnot $place) - 1 }
         $limit = 0
-        if ($k -gt 0) { $limit = $sorted[$k - 1].Index + $sorted[$k - 1].Length }
-        $start = $mail.Index
-        while ($start -gt $limit -and -not [char]::IsWhiteSpace($Text[$start - 1]) -and '@<>()[],;:"/\'.IndexOf($Text[$start - 1]) -lt 0) { $start-- }
+        if ($place -ge 0) { $limit = $endArray[$place] }
+        # The last character before the e-mail that ends an e-mail name (one .NET call: speed on long names, review of PR 61).
+        $stop = if ($mail.Index -gt $limit) { $Text.LastIndexOfAny($script:MailNameEnd, $mail.Index - 1, $mail.Index - $limit) } else { -1 }
+        if ($stop -ge 0 -and $Text[$stop] -eq '@') { continue }   # it ran into another address: do not grow (review of PR 61)
+        $start = [Math]::Max($limit, $stop + 1)
         while ($Text[$start] -eq '_') { $start++ }
         $mail.Length += $mail.Index - $start
         $mail.Index = $start

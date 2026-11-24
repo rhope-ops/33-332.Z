@@ -18,8 +18,8 @@
   the files at each library's top), or the drive folder and all its subfolders. Channel posts are not read.
 
   Built from these files; to change it, change them and rebuild with: python3 scripts/build_paste.py
-    src/PiiPatterns.psm1, sha256 e4c2efe87ecb
-    src/PiiDetectors.psm1, sha256 365ed1b31dd8
+    src/PiiPatterns.psm1, sha256 c487df0e0d34
+    src/PiiDetectors.psm1, sha256 a2f30bbd4cfe
     src/PiiMasking.psm1, sha256 752c251a94b2
     src/OcrText.psm1, sha256 a39acab441d4
     src/OleText.psm1, sha256 2f5d0a036e97
@@ -38,7 +38,7 @@
     src/ReportBook.psm1, sha256 63fb7318eda3
     src/ScanMeter.psm1, sha256 18c82f0b37c3
     src/ScanQueue.psm1, sha256 ae11c97d5b8b
-    src/Accountability.psm1, sha256 831111a6663a
+    src/Accountability.psm1, sha256 2294a075b734
     src/SiteTarget.psm1, sha256 3ffe3086e86b
     src/ChannelScan.psm1, sha256 0cd4894c7c7b
     src/DriveScan.psm1, sha256 f307e810f8f5
@@ -54,32 +54,32 @@
     line    85  Settings
     line    96  Reader block
     line   102  Module PiiPatterns.psm1
-    line   507  Module PiiDetectors.psm1
-    line   751  Module PiiMasking.psm1
-    line   951  Module OcrText.psm1
-    line  1104  Module OleText.psm1
-    line  1243  Module ContainerText.psm1
-    line  1582  Module PdfCore.psm1
-    line  1944  Module PdfObjects.psm1
-    line  2302  Module PdfFonts.psm1
-    line  2620  Module PdfShown.psm1
-    line  2871  Module PdfLayout.psm1
-    line  3011  Module PdfContent.psm1
-    line  3341  Module PdfText.psm1
-    line  3533  Module TextExtract.psm1
-    line  3951  Module ReaderPool.psm1
-    line  4276  Reader block end
-    line  4280  Module XlsxWriter.psm1
-    line  4587  Module Report.psm1
-    line  4963  Module ReportBook.psm1
-    line  5175  Module ScanMeter.psm1
-    line  5572  Module ScanQueue.psm1
-    line  5962  Module Accountability.psm1
-    line  6345  Module SiteTarget.psm1
-    line  6616  Module ChannelScan.psm1
-    line  7018  Module DriveScan.psm1
-    line  7250  Body of Find-ChannelPII.ps1
-    line  7391  Clean-up
+    line   509  Module PiiDetectors.psm1
+    line   766  Module PiiMasking.psm1
+    line   966  Module OcrText.psm1
+    line  1119  Module OleText.psm1
+    line  1258  Module ContainerText.psm1
+    line  1597  Module PdfCore.psm1
+    line  1959  Module PdfObjects.psm1
+    line  2317  Module PdfFonts.psm1
+    line  2635  Module PdfShown.psm1
+    line  2886  Module PdfLayout.psm1
+    line  3026  Module PdfContent.psm1
+    line  3356  Module PdfText.psm1
+    line  3548  Module TextExtract.psm1
+    line  3966  Module ReaderPool.psm1
+    line  4291  Reader block end
+    line  4295  Module XlsxWriter.psm1
+    line  4602  Module Report.psm1
+    line  4978  Module ReportBook.psm1
+    line  5190  Module ScanMeter.psm1
+    line  5587  Module ScanQueue.psm1
+    line  5977  Module Accountability.psm1
+    line  6360  Module SiteTarget.psm1
+    line  6631  Module ChannelScan.psm1
+    line  7033  Module DriveScan.psm1
+    line  7265  Body of Find-ChannelPII.ps1
+    line  7406  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -491,15 +491,17 @@ function Find-HomeAddressHits {
     $first = @([regex]::Matches($Text, $start + $streetTypes + ')\b\.?' + $cityStateZip))
     $capitals = @([regex]::Matches($Text, $start + $streetTypes.ToUpperInvariant() + ')\b\.?' + $cityStateZip))
     $j = 0   # both lists are in text order: one walk finds the first-pass match a capital one overlaps (linear time)
-    $keep = @($first) + @(foreach ($m in $capitals) {
-        while ($j -lt $first.Count -and $first[$j].Index + $first[$j].Length -le $m.Index) { $j++ }
-        if ($j -lt $first.Count -and $first[$j].Index -lt $m.Index + $m.Length) { continue }
-        $m
-    })
-    foreach ($m in $keep) {
+    foreach ($m in $first) {
         $confidence = 'Low'
         if ($m.Value -match '\b[A-Z]{2}\s+\d{5}') { $confidence = 'Medium' }
         if (Test-KeywordBefore $Text $m.Index $labels) { $confidence = 'High' }
+        New-PiiHit 'Home address' $confidence $m.Index $m.Value
+    }
+    foreach ($m in $capitals) {
+        while ($j -lt $first.Count -and $first[$j].Index + $first[$j].Length -le $m.Index) { $j++ }
+        if ($j -lt $first.Count -and $first[$j].Index -lt $m.Index + $m.Length) { continue }
+        # Capital text is often not an address: Low, or Medium with ", <state> <ZIP>"; never High (review of PR 61).
+        $confidence = if ($m.Value -match ',\s*[A-Z]{2}\s+\d{5}') { 'Medium' } else { 'Low' }
         New-PiiHit 'Home address' $confidence $m.Index $m.Value
     }
 }
@@ -695,6 +697,9 @@ function Test-GarbledNear {
     return (@($script:GarbledChar.Matches($around)).Count / $visible) -ge $script:GarbledShare
 }
 
+# Characters that end an e-mail name to the left (white space and the e-mail detector's delimiters).
+$script:MailNameEnd = [char[]](' ', "`t", "`r", "`n", "`f", "`v", [char]0xA0, [char]0x2028, [char]0x2029, '@', '<', '>', '(', ')', '[', ']', ',', ';', ':', '"', '/', '\')
+
 function Expand-MailOverUnderscore {
     <#
     .SYNOPSIS
@@ -708,16 +713,26 @@ function Expand-MailOverUnderscore {
       None.
     #>
     param([string]$Text, [object[]]$Hits)
-    # Hits in text order: an e-mail grows left at most to the end of the hit before it (linear time: reviews of PR 61).
-    if (-not @($Hits | Where-Object { $_.Detector -eq 'Personal e-mail' -and $_.Index -gt 0 -and $Text[$_.Index - 1] -eq '_' })) { return }
-    $sorted = @($Hits | Sort-Object Index)
-    for ($k = 0; $k -lt $sorted.Count; $k++) {
-        $mail = $sorted[$k]
-        if ($mail.Detector -ne 'Personal e-mail' -or $mail.Index -eq 0 -or $Text[$mail.Index - 1] -ne '_') { continue }
+    # An e-mail grows left at most to the end of the hit before it (reviews of PR 61).
+    $mails = New-Object System.Collections.Generic.List[object]
+    $ends = New-Object System.Collections.Generic.List[int]
+    foreach ($hit in $Hits) {
+        $ends.Add($hit.Index + $hit.Length)
+        if ($hit.Detector -eq 'Personal e-mail' -and $hit.Index -gt 0 -and $Text[$hit.Index - 1] -eq '_') { $mails.Add($hit) }
+    }
+    if ($mails.Count -eq 0) { return }
+    # Hits never overlap: the largest hit end at or before an e-mail's start is the end of the hit before it (speed).
+    $endArray = $ends.ToArray()
+    [Array]::Sort($endArray)
+    foreach ($mail in $mails) {
+        $place = [Array]::BinarySearch($endArray, $mail.Index)
+        if ($place -lt 0) { $place = (-bnot $place) - 1 }
         $limit = 0
-        if ($k -gt 0) { $limit = $sorted[$k - 1].Index + $sorted[$k - 1].Length }
-        $start = $mail.Index
-        while ($start -gt $limit -and -not [char]::IsWhiteSpace($Text[$start - 1]) -and '@<>()[],;:"/\'.IndexOf($Text[$start - 1]) -lt 0) { $start-- }
+        if ($place -ge 0) { $limit = $endArray[$place] }
+        # The last character before the e-mail that ends an e-mail name (one .NET call: speed on long names, review of PR 61).
+        $stop = if ($mail.Index -gt $limit) { $Text.LastIndexOfAny($script:MailNameEnd, $mail.Index - 1, $mail.Index - $limit) } else { -1 }
+        if ($stop -ge 0 -and $Text[$stop] -eq '@') { continue }   # it ran into another address: do not grow (review of PR 61)
+        $start = [Math]::Max($limit, $stop + 1)
         while ($Text[$start] -eq '_') { $start++ }
         $mail.Length += $mail.Index - $start
         $mail.Index = $start
@@ -6312,7 +6327,7 @@ function Get-MethodRows {
         'are not found; a +1 in front is allowed. Low: no label (office numbers are common). Medium: "cell", "mobile", "home", "personal", ' +
         '"my number" or "my phone" just before it.'))
     , @('Personal e-mail', 'Low: an address that does not end in .gov or .mil. Medium: a personal mail service (Gmail, Yahoo and the like).')
-    , @('Home address', 'Low: number, street name and street type (as written or in capitals). Medium: it ends with a state and ZIP code. High: "home address" or similar before it.')
+    , @('Home address', 'Low: number, street name and street type (in capitals only: Low, or Medium with ", state ZIP"). Medium: it ends with a state and ZIP code. High: "home address" or similar before it.')
     , @('Name', 'Low: a name after "Name:", "Member:", "Spouse:" and the like. High: the same, with an SSN, DoD ID, date of birth, passport or card number close by.')
     , @('Noise', ('A Low match is dropped when, of the visible characters within 40 on each side (at least 20 of them), 30% or more are ' +
         'unreadable signs (symbols, a font read wrong). High and Medium matches are always kept.'))

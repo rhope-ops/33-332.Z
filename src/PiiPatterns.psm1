@@ -390,15 +390,17 @@ function Find-HomeAddressHits {
     $first = @([regex]::Matches($Text, $start + $streetTypes + ')\b\.?' + $cityStateZip))
     $capitals = @([regex]::Matches($Text, $start + $streetTypes.ToUpperInvariant() + ')\b\.?' + $cityStateZip))
     $j = 0   # both lists are in text order: one walk finds the first-pass match a capital one overlaps (linear time)
-    $keep = @($first) + @(foreach ($m in $capitals) {
-        while ($j -lt $first.Count -and $first[$j].Index + $first[$j].Length -le $m.Index) { $j++ }
-        if ($j -lt $first.Count -and $first[$j].Index -lt $m.Index + $m.Length) { continue }
-        $m
-    })
-    foreach ($m in $keep) {
+    foreach ($m in $first) {
         $confidence = 'Low'
         if ($m.Value -match '\b[A-Z]{2}\s+\d{5}') { $confidence = 'Medium' }
         if (Test-KeywordBefore $Text $m.Index $labels) { $confidence = 'High' }
+        New-PiiHit 'Home address' $confidence $m.Index $m.Value
+    }
+    foreach ($m in $capitals) {
+        while ($j -lt $first.Count -and $first[$j].Index + $first[$j].Length -le $m.Index) { $j++ }
+        if ($j -lt $first.Count -and $first[$j].Index -lt $m.Index + $m.Length) { continue }
+        # Capital text is often not an address: Low, or Medium with ", <state> <ZIP>"; never High (review of PR 61).
+        $confidence = if ($m.Value -match ',\s*[A-Z]{2}\s+\d{5}') { 'Medium' } else { 'Low' }
         New-PiiHit 'Home address' $confidence $m.Index $m.Value
     }
 }

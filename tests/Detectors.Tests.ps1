@@ -205,7 +205,8 @@ foreach ($layout in $layouts.Keys) {
 # (4 and 5) are in their own pull request (the PAM, 2026-11-24) ----
 # 1. Street types as written or in capitals.
 Assert-Equal 'Home address/Medium/[address masked]' ((Get-HitSummary ('42 ELM ST, SPRINGFIELD, IL ' + '62704')) -join ',') 'Address in capitals'
-Assert-Equal 'Home address/High/[address masked]' ((Get-HitSummary 'Home: 12 OAK RD') -join ',') 'Capital street type with a label'
+Assert-Equal 'Home address/Low/[address masked]' ((Get-HitSummary 'Home: 12 OAK RD') -join ',') 'Capital street type: never High (capital text is often no address)'
+Assert-Equal 'Home address/Low/[address masked]' ((Get-HitSummary 'REPLACE 2 HARD DRIVE SERIAL NO 12345') -join ',') 'Capital street type, no comma before the state: Low'
 foreach ($case in @('the 3 Day way', '4 Games st', '10 Tips ct', '3 Big Dogs cir')) {
     Assert-Equal 0 @(Get-HitSummary $case | Where-Object { $_ -like 'Home address/*' }).Count "No address: street type in small letters ($case)"
 }
@@ -239,6 +240,8 @@ foreach ($case in $mailCases.Keys) {
     $spans = (@(Get-PiiSpan $case) | ForEach-Object { $_.Detector + ':' + $_.Value }) -join '|'
     Assert-Equal $mailCases[$case] $spans "E-mail and underscore, same hits as main or better: $($case -replace '\d', '#')"
 }
+$gluedGov = 'jdoe' + '@unit.af.' + 'mi' + 'l' + '_jane' + '@gmail.com'
+Assert-Equal '***@***@gmail.com' (Protect-PiiText $gluedGov) 'E-mail after a glued government address: no name shown (review of PR 61)'
 $noisyMail = 'Intro ' + ([string][char]0xA4 * 30) + ' monthlyreportfinalversion2026_jdoe' + '@example.com is the contact for the team and more text here.'
 Assert-Equal 1 @(Get-HitSummary $noisyMail | Where-Object { $_ -like 'Personal e-mail/*' }).Count 'A grown e-mail is not dropped by the unreadable-text filter'
 $manyMails = (1..1000 | ForEach-Object { "pat_lee$_$('@')gmail.com" }) -join '; '
