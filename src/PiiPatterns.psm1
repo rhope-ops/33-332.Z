@@ -47,27 +47,6 @@ $script:CacNameEnd = $script:CacNamePrefix + '$'
 $script:CacNameChars = 120
 $script:DodIdLabels = 'DoD\s*ID|DODID|EDIPI|\bCAC\b|DoD\s*(?:ID\s*)?(?:#|no\.?|number)'
 
-# E-signature DoD IDs the rule above misses (docs/reviews/2026-11-23-ion-esignature-layouts.md). $SignedName: a CAC name (line
-# breaks in or after parts, up to 3 words a later part, 40 letters a part: linear time), then 10 digits with one space, tab,
-# no-break space or line break between any two (or dashes right after the name), no digit after them, no phone shape.
-$script:SignedPart = "[A-Z][A-Z'-]{0,39}(?:\r?\n[A-Z'-]{1,40})?"
-$script:SignedId = '(?<id>\d(?:(?:[ \t\u00A0]|\r?\n)?\d){9})(?![\w-])(?![ \t\u00A0]\d)'
-# The same on one line, space gaps, no small word after (the ID alone after a signature word), or with dashes (right after a CAC name).
-$script:SignedIdLine = '(?<id>\d(?:[ \u00A0]?\d){9})(?![\w-])(?![ \t\u00A0]\d)(?![ \t\u00A0]+[a-z])'
-$script:SignedIdDash = '(?<id>\d(?:[ \t\u00A0-]?\d){9})(?![\w-])(?![ \t\u00A0]\d)'
-$script:NotPhone = '(?!\d{3}(?:[ \t\u00A0.-]|\r?\n)\d{3}(?:[ \t\u00A0.-]|\r?\n)\d{4}(?![\w-]))'
-$script:SignedNameText = ('(?<![\w.])(?!(?:NO|NR|NUM|REF|ACCT|ACC|TEL|PH|FAX|ID|DOC|REV|VER)\.)(?<name>' +
-    "[A-Z](?:[A-Z'-]{1,39}(?:\r?\n[A-Z'-]{1,40})?|\r?\n[A-Z'-]{1,40})\.(?:\r?\n)?(?!(?:NO|NR|NUM|REF|ACCT|TEL|PH|FAX|ID)\.)" +
-    "$script:SignedPart(?: $script:SignedPart){0,2}\.(?:(?:\r?\n)?$script:SignedPart(?: $script:SignedPart){0,2}\.){0,2})" +
-    "(?:$script:SignedIdDash|$script:SignedId|(?:[ \t\u00A0]+(?:\r?\n[ \t\u00A0]*)?|\r?\n[ \t\u00A0]*)$script:NotPhone$script:SignedId)")
-$script:SignedName = [regex]$script:SignedNameText
-$script:SignedNameAnyCase = [regex]('(?i)' + $script:SignedNameText)
-$script:SignedWords = '(?i:\bsigned\b|\bsignature\b|\bCN\s*=|\bDN\s*:)'
-# The 10 digits alone on one line after a signature word ("Signed_1234567890.pdf"): not a date, a phone or in a dotted name.
-$script:SignedBareId = [regex]('(?<![\w.-])(?!(?:19|20)\d\d(?:[ \t\u00A0./-]|\r?\n|(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])))' + $script:NotPhone + $script:SignedIdLine)
-# The 10 digits in a row just before a CAC name in capitals (the ID above the name; not "REF.NO." and the like).
-$script:SignedIdThenName = [regex]('(?<![\w.-])(?<id>\d{10})(?![\w-])[ \t\u00A0]*(?:\r?\n[ \t\u00A0]*)?' +
-    "(?!(?:NO|NR|NUM|REF|ACCT|ACC|TEL|PH|FAX|ID|DOC|REV|VER)\.)(?=[A-Z][A-Z'-]+\.[A-Z][A-Z'-]*\.)")
 
 # E-mail top-level labels that mark a government address (not reported as personal e-mail).
 $script:GovernmentMailLabels = @('gov', 'mil')
@@ -108,6 +87,12 @@ function Test-KeywordBefore {
     $start = [Math]::Max(0, $Index - $Window)
     $before = $Text.Substring($start, $Index - $start)
     return [regex]::IsMatch($before, $Pattern, 'IgnoreCase')
+}
+
+function Test-DodIdLabelBefore {
+    # True when a DoD ID label ($DodIdLabels) is just before the given place (PiiDetectors.psm1 Find-SignedIdHits).
+    param([string]$Text, [int]$Index)
+    return (Test-KeywordBefore $Text $Index $script:DodIdLabels)
 }
 
 function Test-SsnValid {
@@ -204,38 +189,6 @@ function Test-SsnPartOfLonger {
     if ($loneDigit -and (Test-KeywordBefore $Text $Match.Index $script:SignatureWords)) { return $true }
     $start = [Math]::Max(0, $Match.Index - $script:CacNameChars)
     return [regex]::IsMatch($Text.Substring($start, $Match.Index - $start), $script:CacNameEnd)
-}
-
-function Find-SignedIdHits {
-    <#
-    .SYNOPSIS
-      E-signature DoD ID candidates (Low, the PAM, 2026-11-21) that the CAC-name rule of Find-DodIdHits misses: after a
-      CAC name ($SignedName; small letters only after a signature word), alone after a signature word ($SignedBareId), or
-      before a CAC name in capitals ($SignedIdThenName). Get-PiiSpan adds a candidate only where no other hit is.
-    .PARAMETER Text
-      The text to search.
-    .OUTPUTS
-      Hit objects (New-PiiHit), DoD ID / Low (High with a DoD ID label just before), each with Sure = $true when a
-      signature word is just before it or the digits touch the name's last dot.
-    #>
-    param([string]$Text)
-    $seen = @{}
-    $hasWord = [regex]::IsMatch($Text, $script:SignedWords)   # the scans that need a signature word run only then (speed)
-    $rules = @(($script:SignedName, $false), ($script:SignedIdThenName, $false))
-    if ($hasWord) { $rules += , ($script:SignedNameAnyCase, $true); $rules += , ($script:SignedBareId, $true) }
-    foreach ($rule in $rules) {
-        foreach ($m in $rule[0].Matches($Text)) {
-            $digits = $m.Groups['id']
-            if ($seen.ContainsKey($digits.Index)) { continue }
-            $word = $hasWord -and (Test-KeywordBefore $Text $m.Index $script:SignedWords)
-            if ($rule[1] -and -not $word) { continue }
-            $seen[$digits.Index] = $true
-            $confidence = if (Test-KeywordBefore $Text $digits.Index $script:DodIdLabels) { 'High' } else { 'Low' }
-            $hit = New-PiiHit 'DoD ID' $confidence $digits.Index $digits.Value
-            $hit | Add-Member -NotePropertyName Sure -NotePropertyValue ($word -or ($digits.Index -gt 0 -and $Text[$digits.Index - 1] -eq '.'))
-            $hit
-        }
-    }
 }
 
 function Find-SsnHits {
@@ -445,5 +398,5 @@ function Find-HomeAddressHits {
     }
 }
 
-Export-ModuleMember -Function New-PiiHit, Test-Luhn, Test-SsnValid, Find-SsnHits, Find-DodIdHits, Find-SignedIdHits, Find-CardHits, Find-DobHits,
+Export-ModuleMember -Function New-PiiHit, Test-KeywordBefore, Test-DodIdLabelBefore, Test-Luhn, Test-SsnValid, Find-SsnHits, Find-DodIdHits, Find-CardHits, Find-DobHits,
     Find-PassportHits, Find-PhoneHits, Find-PersonalEmailHits, Find-HomeAddressHits

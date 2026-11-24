@@ -7,7 +7,7 @@ PiiDetectors.psm1 - finds text that looks like PII and returns where it is.
   Inputs:      plain text (from TextExtract.psm1).
   Outputs:     hit objects WITH the raw value. Only PiiMasking.psm1 reads them; it masks every value
                before anything is shown or saved (the PAM, 2026-11-20: all values masked).
-  Depends on:  PiiPatterns.psm1 (the one-type detectors and New-PiiHit), imported first.
+  Depends on:  PiiPatterns.psm1 (the one-type detectors, New-PiiHit, Test-KeywordBefore, Test-DodIdLabelBefore), imported first.
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7).
   Network:     none.
@@ -48,6 +48,33 @@ $script:IdentifierTypes = @('SSN', 'DoD ID', 'Date of birth', 'Passport', 'Payme
 
 # Confidence labels as numbers, for sorting (High first).
 $script:ConfidenceRank = @{ 'High' = 3; 'Medium' = 2; 'Low' = 1 }
+
+# E-signature DoD IDs that PiiPatterns.psm1 Find-DodIdHits misses (docs/reviews/2026-11-23-ion-esignature-layouts.md). $SignedName: a CAC name (line
+# breaks in or after parts, up to 3 words a later part, 40 letters a part: linear time), then 10 digits with one space, tab,
+# no-break space or line break between any two (or dashes right after the name), no digit after them, no phone shape.
+$script:SignedPart = "[A-Z][A-Z'-]{0,39}(?:\r?\n[A-Z'-]{1,40})?"
+$script:SignedId = '(?<id>\d(?:(?:[ \t\u00A0]|\r?\n)?\d){9})(?![\w-])(?![ \t\u00A0]\d)'
+# The same on one line, space gaps, no small word after (the ID alone after a signature word), or with dashes (right after a CAC name).
+$script:SignedIdLine = '(?<id>\d(?:[ \u00A0]?\d){9})(?![\w-])(?![ \t\u00A0]\d)(?![ \t\u00A0]+[a-z])'
+$script:SignedIdDash = '(?<id>\d(?:[ \t\u00A0-]?\d){9})(?![\w-])(?![ \t\u00A0]\d)'
+$script:NotPhone = '(?!\d{3}(?:[ \t\u00A0.-]|\r?\n)\d{3}(?:[ \t\u00A0.-]|\r?\n)\d{4}(?![\w-]))'
+# Each pattern starts with a letter or digit, then looks back, so the engine skips ahead fast on long text (review of PR 60).
+$script:SignedNameText = ("(?<name>[A-Z](?<=(?:^|[^\w.])[A-Z])(?:[A-Z'-]{1,39}(?:\r?\n[A-Z'-]{1,40})?|\r?\n[A-Z'-]{1,40})\." +
+    '(?<!(?:^|[^\w.])(?:NO|NR|NUM|REF|ACCT|ACC|TEL|PH|FAX|ID|DOC|REV|VER)\.)' +
+    "(?:\r?\n)?(?!(?:NO|NR|NUM|REF|ACCT|TEL|PH|FAX|ID)\.)" +
+    "$script:SignedPart(?: $script:SignedPart){0,2}\.(?:(?:\r?\n)?$script:SignedPart(?: $script:SignedPart){0,2}\.){0,2})" +
+    "(?:$script:SignedIdDash|$script:SignedId|(?:[ \t\u00A0]+(?:\r?\n[ \t\u00A0]*)?|\r?\n[ \t\u00A0]*)$script:NotPhone$script:SignedId)")
+$script:SignedName = [regex]$script:SignedNameText
+$script:SignedNameAnyCase = [regex]('(?i)' + $script:SignedNameText)
+$script:SignedNameAnyCaseAt = [regex]('(?i)\G(?:' + $script:SignedNameText + ')')   # \G: only at the given place
+$script:SignedWords = '(?i:(?:sign(?:ed|ature)\b|CN\s*=|DN\s*:)(?<!\w(?:sign(?:ed|ature)|CN\s*=|DN\s*:)))'   # a word start, said last (speed)
+# The 10 digits alone on one line after a signature word ("Signed_1234567890.pdf"): not a date, a phone or in a dotted name.
+$script:SignedBareText = '(?<![\w.-])(?!(?:19|20)\d\d(?:[ \t\u00A0./-]|\r?\n|(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])))' + $script:NotPhone + $script:SignedIdLine
+$script:SignedBareId = [regex]$script:SignedBareText
+$script:SignedBareIdAt = [regex]('\G(?:' + $script:SignedBareText + ')')
+# The 10 digits in a row just before a CAC name in capitals (the ID above the name; not "REF.NO." and the like).
+$script:SignedIdThenName = [regex]('(?<id>\d(?<=(?:^|[^\w.-])\d)\d{9})(?![\w-])[ \t\u00A0]*(?:\r?\n[ \t\u00A0]*)?' +
+    "(?!(?:NO|NR|NUM|REF|ACCT|ACC|TEL|PH|FAX|ID|DOC|REV|VER)\.)(?=[A-Z][A-Z'-]+\.[A-Z][A-Z'-]*\.)")
 
 # =====================================================================================
 # Small helper and the labelled-name detector (it calls Get-PiiSpan, so it stays here)
@@ -145,6 +172,50 @@ function Remove-OverlappingHits {
     return , $kept
 }
 
+function Find-SignedIdHits {
+    <#
+    .SYNOPSIS
+      E-signature DoD ID candidates (Low, the PAM, 2026-11-21) that the CAC-name rule of Find-DodIdHits misses: after a
+      CAC name ($SignedName; small letters only after a signature word), alone after a signature word ($SignedBareId), or
+      before a CAC name in capitals ($SignedIdThenName). Get-PiiSpan adds a candidate only where no other hit is.
+    .PARAMETER Text
+      The text to search.
+    .OUTPUTS
+      Hit objects (New-PiiHit), DoD ID / Low (High with a DoD ID label just before), each with Sure = $true when a
+      signature word is just before it or the digits touch the name's last dot.
+    #>
+    param([string]$Text)
+    if ($Text.IndexOfAny([char[]]'0123456789') -lt 0) { return }   # every rule needs the digits (speed)
+    $seen = @{}
+    $found = New-Object System.Collections.Generic.List[object]   # (match, needs a signature word)
+    foreach ($m in $script:SignedName.Matches($Text)) { $found.Add(@($m, $false)) }
+    foreach ($m in $script:SignedIdThenName.Matches($Text)) { $found.Add(@($m, $false)) }
+    # The any-case name and the digits alone: only in the 400 characters from each signature word, each match then checked
+    # on the whole text (review of PR 60: one word must not make long text slow).
+    $ranges = New-Object System.Collections.Generic.List[int[]]   # the windows, overlapping ones joined (each part read once)
+    foreach ($w in [regex]::Matches($Text, $script:SignedWords)) {
+        $end = [Math]::Min($Text.Length, $w.Index + 400)
+        if ($ranges.Count -gt 0 -and $w.Index -le $ranges[$ranges.Count - 1][1]) { $ranges[$ranges.Count - 1][1] = $end } else { $ranges.Add(@($w.Index, $end)) }
+    }
+    foreach ($range in $ranges) {
+        $window = $Text.Substring($range[0], $range[1] - $range[0])
+        foreach ($pair in @(($script:SignedNameAnyCase, $script:SignedNameAnyCaseAt), ($script:SignedBareId, $script:SignedBareIdAt))) {
+            foreach ($m in $pair[0].Matches($window)) { $full = $pair[1].Match($Text, $range[0] + $m.Index); if ($full.Success) { $found.Add(@($full, $true)) } }
+        }
+    }
+    foreach ($item in $found) {
+        $m = $item[0]
+        $digits = $m.Groups['id']
+        if ($seen.ContainsKey($digits.Index)) { continue }
+        $word = Test-KeywordBefore $Text $m.Index $script:SignedWords
+        if ($item[1] -and -not $word) { continue }
+        $seen[$digits.Index] = $true
+        $confidence = if (Test-DodIdLabelBefore $Text $digits.Index) { 'High' } else { 'Low' }
+        [pscustomobject]@{ Detector = 'DoD ID'; Confidence = $confidence; Index = $digits.Index; Length = $digits.Length; Value = $digits.Value
+            Sure = ($word -or ($digits.Index -gt 0 -and $Text[$digits.Index - 1] -eq '.')) }
+    }
+}
+
 function Add-SignedIdHits {
     <#
     .SYNOPSIS
@@ -165,6 +236,7 @@ function Add-SignedIdHits {
     $owner = New-Object 'int[]' ($Text.Length + 1)   # which kept hit holds each character: its place + 1 (0: none)
     for ($k = 0; $k -lt $Kept.Count; $k++) { for ($i = $Kept[$k].Index; $i -lt $Kept[$k].Index + $Kept[$k].Length; $i++) { $owner[$i] = $k + 1 } }
     $giveWay = New-Object System.Collections.Generic.List[int]
+    $garbledText = $script:GarbledChar.IsMatch($Text)   # the unreadable-text check only when the text has such a character
     foreach ($candidate in $candidates) {
         $end = $candidate.Index + $candidate.Length
         $held = @{}
@@ -176,9 +248,12 @@ function Add-SignedIdHits {
                 $hit.Value -notmatch '-' -and $hit.Index -ge $candidate.Index -and $hit.Index + $hit.Length -le $end
             if (-not $isSignedSsn) { $free = $false }
         }
-        if (-not $free) { continue }
+        # Not where the unreadable-text filter would drop it (a Low hit), or a swapped SSN would be lost (review of PR 60).
+        if (-not $free -or ($garbledText -and $candidate.Confidence -eq 'Low' -and (Test-GarbledNear $Text $candidate.Index $candidate.Length))) { continue }
         foreach ($k in $held.Keys) { $giveWay.Add($k) }
-        $Kept.Add((New-PiiHit 'DoD ID' $candidate.Confidence $candidate.Index $candidate.Value))
+        # Signed: never raises a name (Set-NameNearIdentifierHigh).
+        $Kept.Add([pscustomobject]@{ Detector = 'DoD ID'; Confidence = $candidate.Confidence; Index = $candidate.Index
+            Length = $candidate.Length; Value = $candidate.Value; Signed = $true })
         for ($i = $candidate.Index; $i -lt $end; $i++) { $owner[$i] = $Kept.Count }
     }
     foreach ($k in @($giveWay | Sort-Object -Unique -Descending)) { $Kept.RemoveAt($k) }
@@ -197,8 +272,9 @@ function Set-NameNearIdentifierHigh {
     foreach ($nameHit in @($Hits | Where-Object { $_.Detector -eq 'Name' })) {
         foreach ($other in $Hits) {
             $near = [Math]::Abs($other.Index - $nameHit.Index) -le $script:NameToIdentifierChars
-            # An e-signature DoD ID (Low) does not raise a name: the name would be surer than the ID (review of PR 50).
-            $signatureId = $other.Detector -eq 'DoD ID' -and $other.Confidence -eq 'Low'
+            # An e-signature DoD ID (Low, or added by Add-SignedIdHits) does not raise a name: the name would be surer than the
+            # ID (reviews of PR 50 and PR 60).
+            $signatureId = $other.Detector -eq 'DoD ID' -and ($other.Confidence -eq 'Low' -or $other.PSObject.Properties['Signed'])
             if ($near -and -not $signatureId -and $script:IdentifierTypes -contains $other.Detector) { $nameHit.Confidence = 'High'; break }
         }
     }

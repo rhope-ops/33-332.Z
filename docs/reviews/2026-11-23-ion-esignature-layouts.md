@@ -5,7 +5,7 @@ Evidence: archimedes_lever docs/reviews/2026-11-23-tool-retirement-plan.md secti
 3 give SSN, 7 give no hit). That source gives counts only. This session first built its own 25 layouts (S01-S25) from a
 matrix of 1,110 texts; the source's 25 layouts then came from the tool retirement session (O01-OJ, below). Both sets are tests.
 
-## Rule (src/PiiPatterns.psm1 Find-SignedIdHits; src/PiiDetectors.psm1 Add-SignedIdHits)
+## Rule (src/PiiDetectors.psm1 Find-SignedIdHits and Add-SignedIdHits)
 
 Since the third review: main's SSN and DoD ID detectors are unchanged. Find-SignedIdHits gives candidates; Get-PiiSpan adds
 a candidate after the overlap removal, only where no kept hit is. The one exception: SSN hits (not High, no dashes) wholly
@@ -120,6 +120,16 @@ Open with the PAM: layouts S23, S24 and E (a CAC name, white space, then an SSN 
 look the same as a roster row. They stay SSN, as on main, until the PAM decides.
 Speed, each run in its own process, main then branch, 3 runs each: 1.2 MB prose 460-564 / 521-569 ms; 5,000 form rows
 13.5-14.6 / 13.8-14.4 s; 2,000 signature blocks 1.7-1.8 / 3.1-3.2 s.
+
+## Fourth fresh review of a397614 (2026-11-24) and the fixes
+
+3 MAJOR, fixed: an added ID with a DoD ID label raised a nearby name to High (now an added ID never raises a name); in
+unreadable text a swapped SSN was lost (no swap or add where the unreadable-text filter would drop the new Low hit); one
+signature word made the any-case and digits-alone scans read the whole text (now only 400 characters after each word,
+joined where they overlap, each match checked again on the whole text). Patterns start with a letter or digit (faster),
+and a text with no digit skips the finder. The PAM set the budget (2026-11-24): signature-heavy text up to 2x main.
+Speed, second call in each process, median of 5, main / branch: 1.2 MB prose with digits 433 / 494 ms (1.14x); 1.2 MB prose,
+one signature word 472 / 428 ms; 5,000 form rows 10.6 / 10.9 s (1.03x); 2,000 signature blocks 1.32 / 2.03 s (1.53x).
 
 ## Known gaps (not fixed here)
 

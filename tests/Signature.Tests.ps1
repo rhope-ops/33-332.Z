@@ -1,5 +1,5 @@
 <#
-Signature.Tests.ps1 - tests of the e-signature DoD ID (PiiPatterns.psm1 Find-SignedIdHits): 25 layouts, decoys, masking, speed.
+Signature.Tests.ps1 - tests of the e-signature DoD ID (PiiDetectors.psm1 Find-SignedIdHits, Add-SignedIdHits): 25 layouts, decoys, masking, speed.
 
   Purpose:     Each layout of docs/reviews/2026-11-23-ion-esignature-layouts.md (this session's 25 and the source's 25) gives
                exactly one hit, a DoD ID (Low), and no SSN, except 2 source layouts by design; decoys give no DoD ID;
@@ -150,7 +150,7 @@ $invAt = '@'; $invId = $sigId; $invPhone = $Sample.Phone
 $invValues = @($invId, $sig3241, $sig91, $Sample.Ssn, $sigSsnBare, ($sigSsnBare -replace ' ', ''), $invPhone, ($invPhone -replace '-', ' '),
     ($invPhone -replace '-', '.'), '01-02-1990', 'X1234567', '4111 1111 1111 1111', "jdoe$invAt$('gmail.com')", "$invId$invAt$('gmail.com')")
 $invLost = 0; $invCount = 0
-foreach ($context in @('', 'Digitally signed by ', 'Name: Jane Doe ', 'born ')) {
+foreach ($context in @('', 'Digitally signed by ', 'Name: Jane Doe ', 'born ', 'Name: John Smith DoD ID: ')) {
     foreach ($name in @($sigName, 'Doe.Jane.Q.', 'DOE JANE Q ', '')) {
         foreach ($gap in @('', ' ', "`n", "`t")) {
             foreach ($value in $invValues) {
@@ -172,3 +172,9 @@ foreach ($context in @('', 'Digitally signed by ', 'Name: Jane Doe ', 'born ')) 
     }
 }
 Assert-Equal 0 $invLost "E-signature pass only adds: no hit lost or changed in $invCount texts"
+
+# Fourth review of PR 60: an added ID never raises a name, and no hit is lost in unreadable text.
+Assert-Equal 'Low' (@(Find-PiiInText "Name: John Smith DoD ID: $sigName$($sigId.Substring(0, 5))`n$($sigId.Substring(5))" |
+    Where-Object { $_.Detector -eq 'Name' })[0].Confidence) 'An added e-signature DoD ID does not raise a name'
+$sigNoise = -join (1..16 | ForEach-Object { [char](0xE000 + $_) })
+Assert-Equal 1 @(Get-HitSummary "${sigNoise}signed by doe.jane.q. $sigSsnBare`n0$sigNoise").Count 'Unreadable text around a signature: the SSN is kept'
