@@ -9,8 +9,8 @@ TextExtract.psm1 - turns file bytes into plain text, in memory.
   Outputs:     an object with Status ('OK' or 'NOT SCANNED'), Reason, Text, Note and Parts (Get-TextFromBytes).
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
   Depends on:  PdfText.psm1 (Get-PdfText), OcrText.psm1 (Get-ImageText), OleText.psm1 (Get-OleText) and
-               ContainerText.psm1 (Get-ArchiveParts, Get-EmailParts, Read-LimitedStream; ConvertTo-SheetText,
-               Add-CsvRosterLabels and Select-RosterText: roster labels), imported first by Find-ChannelPII.ps1.
+               ContainerText.psm1 (Get-ArchiveParts, Get-EmailParts, Read-LimitedStream; Add-RosterValues,
+               Add-RosterSection and Add-CsvRosterLabels: roster labels), imported first by Find-ChannelPII.ps1.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7); .NET System.IO.Compression only.
   Network:     none.
   Writes:      none. Bytes stay in memory; nothing is saved to disk.
@@ -87,10 +87,14 @@ function Convert-SheetXmlToText {
       The worksheet XML.
     .PARAMETER Shared
       The shared strings of the workbook, in order (a cell of type "s" holds an index into them).
+    .PARAMETER Offset
+      Where this sheet's text starts in the text of the whole file.
+    .PARAMETER Found
+      The roster cells of the file (Add-RosterValues, ContainerText.psm1): this sheet's are added.
     .OUTPUTS
-      [string[]] the text, and the text with roster labels (ConvertTo-SheetText, ContainerText.psm1).
+      [string]
     #>
-    param([string]$Xml, [string[]]$Shared)
+    param([string]$Xml, [string[]]$Shared, [int]$Offset, [System.Collections.Generic.List[object]]$Found)
     # Tags may carry a namespace prefix (<x:row>, <x:c>): some tools write them so, and a missed tag would be a silent miss.
     $rows = New-Object System.Collections.Generic.List[object]
     foreach ($row in [regex]::Matches($Xml, '(?s)<(?:\w+:)?row\b([^>]*)>(.*?)</(?:\w+:)?row>')) {
@@ -116,7 +120,9 @@ function Convert-SheetXmlToText {
         }
         $rows.Add(@($texts, $columns, $number))
     }
-    return (ConvertTo-SheetText $rows $script:CellBreak)   # ContainerText.psm1: roster columns get their labels
+    $lines = [string[]]@(foreach ($row in $rows) { $row[0] -join $script:CellBreak })
+    Add-RosterValues $lines $rows $script:CellBreak.Length $null $Offset $Found   # ContainerText.psm1: the roster cells
+    return ($lines -join "`n")
 }
 
 function Convert-XmlToText {
@@ -252,14 +258,15 @@ function Get-ZipPartText {
     $zip = New-Object System.IO.Compression.ZipArchive($memory, [System.IO.Compression.ZipArchiveMode]::Read)
     try {
         $shared = @(Get-SharedStrings $zip)
-        $texts = New-Object System.Collections.Generic.List[string]; $labelled = New-Object System.Collections.Generic.List[string]
+        $texts = New-Object System.Collections.Generic.List[string]; $found = New-Object System.Collections.Generic.List[object]; $offset = 0
         foreach ($entry in ($zip.Entries | Where-Object { $_.FullName -match $PartPattern } | Sort-Object FullName)) {
             $xml = Read-ZipEntry $entry
-            if ($entry.FullName -match '^xl/worksheets/') { $pair = Convert-SheetXmlToText $xml $shared; $texts.Add($pair[0]); $labelled.Add($pair[1]) }
-            else { $one = Convert-XmlToText $xml; $texts.Add($one); $labelled.Add($one) }
+            if ($entry.FullName -match '^xl/worksheets/') { $one = Convert-SheetXmlToText $xml $shared $offset $found }
+            else { $one = Convert-XmlToText $xml }
+            $texts.Add($one); $offset += $one.Length + 1
         }
-        # The roster labels only when no hit of the whole text is lost (Select-RosterText, ContainerText.psm1).
-        return (Select-RosterText ($texts -join "`n") ($labelled -join "`n"))
+        # The text as it is, then the roster values that no hit touches, with their labels (Add-RosterSection, ContainerText.psm1).
+        return (Add-RosterSection ($texts -join "`n") $found)
     }
     finally { $zip.Dispose(); $memory.Dispose() }
 }
