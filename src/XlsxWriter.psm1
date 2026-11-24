@@ -100,15 +100,17 @@ function New-XlsxSheet {
       With List: how many columns on the left stay in view when the tab scrolls right.
     .PARAMETER FillColumn
       The column (0-based) of High, Medium, Low cells that get a fill (styles 5-7); -1 for none.
+    .PARAMETER DateChecks
+      Columns (0-based) the person fills in where Excel accepts only a date (after 2000-01-01), with a short message.
     .OUTPUTS
       [pscustomobject]
     #>
     param([string]$Name, [string[]]$Columns, [object[]]$Rows, [int[]]$Widths, [switch]$List, [int]$LinkColumn = -1,
           [int[]]$WrapColumns = @(), [hashtable]$Choices = @{}, [string]$Table = '', [int]$LinkTarget = -1,
-          [int[]]$DateColumns = @(), [int]$FreezeColumns = 0, [int]$FillColumn = -1)
+          [int[]]$DateColumns = @(), [int]$FreezeColumns = 0, [int]$FillColumn = -1, [int[]]$DateChecks = @())
     [pscustomobject]@{ Name = $Name; Columns = $Columns; Rows = @($Rows); Widths = $Widths; List = [bool]$List; LinkColumn = $LinkColumn
         WrapColumns = $WrapColumns; Choices = $Choices; Table = $Table; LinkTarget = $LinkTarget; DateColumns = $DateColumns
-        FreezeColumns = $FreezeColumns; FillColumn = $FillColumn }
+        FreezeColumns = $FreezeColumns; FillColumn = $FillColumn; DateChecks = $DateChecks }
 }
 
 function New-XlsxFormula {
@@ -315,8 +317,8 @@ function ConvertTo-SheetXml {
 function ConvertTo-ChoicesXml {
     <#
     .SYNOPSIS
-      The dropdown lists of one tab (ECMA-376 dataValidations, after autoFilter and before hyperlinks): one list per column
-      in Choices, for rows 2 to the last row; blank cells are allowed.
+      The checks of one tab (ECMA-376 dataValidations, after autoFilter and before hyperlinks): a date check per column in
+      DateChecks and a dropdown list per column in Choices, for rows 2 to the last row; blank cells are allowed.
     .PARAMETER Sheet
       Output of New-XlsxSheet.
     .PARAMETER LastRow
@@ -325,8 +327,13 @@ function ConvertTo-ChoicesXml {
       [string] empty when the tab has no choices.
     #>
     param($Sheet, [int]$LastRow)
-    if (-not $Sheet.Choices -or $Sheet.Choices.Count -eq 0) { return '' }
-    $xml = '<dataValidations count="' + $Sheet.Choices.Count + '">'
+    $checks = @($Sheet.DateChecks)
+    if ((-not $Sheet.Choices -or $Sheet.Choices.Count -eq 0) -and $checks.Count -eq 0) { return '' }
+    $xml = '<dataValidations count="' + ($Sheet.Choices.Count + $checks.Count) + '">'
+    foreach ($column in $checks) {   # 36526 = 2000-01-01 as an Excel date number
+        $xml += ('<dataValidation type="date" operator="greaterThan" allowBlank="1" showErrorMessage="1" errorTitle="Not a date" ' +
+            'error="Type a date, for example 2026-11-24." sqref="{0}2:{0}{1}"><formula1>36526</formula1></dataValidation>') -f (Get-ColumnLetter ($column + 1)), $LastRow
+    }
     foreach ($column in @($Sheet.Choices.Keys | Sort-Object)) {
         $letter = Get-ColumnLetter ([int]$column + 1)
         $list = (@($Sheet.Choices[$column]) | ForEach-Object { ([string]$_) -replace '[",]', '' }) -join ','

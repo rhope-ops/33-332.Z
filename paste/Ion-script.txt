@@ -21,7 +21,7 @@
     src/PiiPatterns.psm1, sha256 f7ef8ca1789f
     src/PiiSignedIds.psm1, sha256 c7f6ec25ebd8
     src/PiiDetectors.psm1, sha256 66e3b48368e2
-    src/PiiMasking.psm1, sha256 752c251a94b2
+    src/PiiMasking.psm1, sha256 d7f5a3a06491
     src/OcrText.psm1, sha256 a39acab441d4
     src/OleText.psm1, sha256 2f5d0a036e97
     src/ContainerText.psm1, sha256 7378569bd7e6
@@ -34,9 +34,9 @@
     src/PdfText.psm1, sha256 dffef7dc6f8b
     src/TextExtract.psm1, sha256 5e02d07ddf10
     src/ReaderPool.psm1, sha256 32b2e4cfb2ae
-    src/XlsxWriter.psm1, sha256 578535140b04
+    src/XlsxWriter.psm1, sha256 c5b6468965f7
     src/Report.psm1, sha256 ef3a24aa8a55
-    src/ReportBook.psm1, sha256 089bfd2a7198
+    src/ReportBook.psm1, sha256 16e42b192b16
     src/ScanMeter.psm1, sha256 18c82f0b37c3
     src/ScanQueue.psm1, sha256 ae11c97d5b8b
     src/Accountability.psm1, sha256 8bf31404f723
@@ -58,30 +58,30 @@
     line   504  Module PiiSignedIds.psm1
     line   811  Module PiiDetectors.psm1
     line   991  Module PiiMasking.psm1
-    line  1191  Module OcrText.psm1
-    line  1344  Module OleText.psm1
-    line  1483  Module ContainerText.psm1
-    line  1822  Module PdfCore.psm1
-    line  2184  Module PdfObjects.psm1
-    line  2542  Module PdfFonts.psm1
-    line  2860  Module PdfShown.psm1
-    line  3111  Module PdfLayout.psm1
-    line  3251  Module PdfContent.psm1
-    line  3581  Module PdfText.psm1
-    line  3773  Module TextExtract.psm1
-    line  4191  Module ReaderPool.psm1
-    line  4516  Reader block end
-    line  4520  Module XlsxWriter.psm1
-    line  4950  Module Report.psm1
-    line  5326  Module ReportBook.psm1
-    line  5616  Module ScanMeter.psm1
-    line  6013  Module ScanQueue.psm1
-    line  6403  Module Accountability.psm1
-    line  6787  Module SiteTarget.psm1
-    line  7082  Module ChannelScan.psm1
-    line  7484  Module DriveScan.psm1
-    line  7849  Body of Find-ChannelPII.ps1
-    line  7990  Clean-up
+    line  1199  Module OcrText.psm1
+    line  1352  Module OleText.psm1
+    line  1491  Module ContainerText.psm1
+    line  1830  Module PdfCore.psm1
+    line  2192  Module PdfObjects.psm1
+    line  2550  Module PdfFonts.psm1
+    line  2868  Module PdfShown.psm1
+    line  3119  Module PdfLayout.psm1
+    line  3259  Module PdfContent.psm1
+    line  3589  Module PdfText.psm1
+    line  3781  Module TextExtract.psm1
+    line  4199  Module ReaderPool.psm1
+    line  4524  Reader block end
+    line  4528  Module XlsxWriter.psm1
+    line  4965  Module Report.psm1
+    line  5341  Module ReportBook.psm1
+    line  5639  Module ScanMeter.psm1
+    line  6036  Module ScanQueue.psm1
+    line  6426  Module Accountability.psm1
+    line  6810  Module SiteTarget.psm1
+    line  7105  Module ChannelScan.psm1
+    line  7507  Module DriveScan.psm1
+    line  7872  Body of Find-ChannelPII.ps1
+    line  8013  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -1028,6 +1028,11 @@ $script:KeepLastPassportChars = 3
 # once, not once per character.
 $script:EmailLocalPartPattern = '(?<=^|[\s@<>()\[\],;:"/\\])[^\s@<>()\[\],;:"/\\]+(?=@[^\s@<>()\[\],;:"/\\.]+\.)'
 
+# A CAC name in an e-signature ("DOE.JANE.Q."): two or three dotted parts, the first two of two letters or more, each
+# ending in a dot. In the Context column only the first letter of each part stays (approved 2026-11-21: "mask the CAC
+# name in Context"); a dotted host or file name that looks the same is masked too, which hides nothing needed.
+$script:MaskedCacName = "(?<![\w.])[A-Za-z][A-Za-z'-]+\.[A-Za-z][A-Za-z'-]+\.(?:[A-Za-z][A-Za-z'-]*\.)?"
+
 # =====================================================================================
 # Masking one value
 # =====================================================================================
@@ -1081,7 +1086,8 @@ function Get-MaskedText {
     <#
     .SYNOPSIS
       Masks a whole text and keeps its length: every digit becomes '#', every e-mail local part
-      becomes '*', and every hit (names and addresses included) becomes '*'. Because the length
+      becomes '*', a CAC name keeps only the first letter of each part ($MaskedCacName), and every hit (names
+      and addresses included) becomes '*'. Because the length
       stays the same, hit positions from the raw text still point to the right place.
     .PARAMETER Text
       The raw text.
@@ -1093,6 +1099,8 @@ function Get-MaskedText {
     param([string]$Text, [object[]]$Hits)
     $sameLengthStars = [System.Text.RegularExpressions.MatchEvaluator] { param($m) '*' * $m.Length }
     $masked = [regex]::Replace($Text, $script:EmailLocalPartPattern, $sameLengthStars) -replace '\d', '#'
+    $initials = [System.Text.RegularExpressions.MatchEvaluator] { param($m) [regex]::Replace($m.Value, "(?<=[A-Za-z])[A-Za-z'-]", '*') }
+    $masked = [regex]::Replace($masked, $script:MaskedCacName, $initials)
     $chars = $masked.ToCharArray()
     foreach ($hit in $Hits) {
         for ($i = $hit.Index; $i -lt $hit.Index + $hit.Length; $i++) {
@@ -4619,15 +4627,17 @@ function New-XlsxSheet {
       With List: how many columns on the left stay in view when the tab scrolls right.
     .PARAMETER FillColumn
       The column (0-based) of High, Medium, Low cells that get a fill (styles 5-7); -1 for none.
+    .PARAMETER DateChecks
+      Columns (0-based) the person fills in where Excel accepts only a date (after 2000-01-01), with a short message.
     .OUTPUTS
       [pscustomobject]
     #>
     param([string]$Name, [string[]]$Columns, [object[]]$Rows, [int[]]$Widths, [switch]$List, [int]$LinkColumn = -1,
           [int[]]$WrapColumns = @(), [hashtable]$Choices = @{}, [string]$Table = '', [int]$LinkTarget = -1,
-          [int[]]$DateColumns = @(), [int]$FreezeColumns = 0, [int]$FillColumn = -1)
+          [int[]]$DateColumns = @(), [int]$FreezeColumns = 0, [int]$FillColumn = -1, [int[]]$DateChecks = @())
     [pscustomobject]@{ Name = $Name; Columns = $Columns; Rows = @($Rows); Widths = $Widths; List = [bool]$List; LinkColumn = $LinkColumn
         WrapColumns = $WrapColumns; Choices = $Choices; Table = $Table; LinkTarget = $LinkTarget; DateColumns = $DateColumns
-        FreezeColumns = $FreezeColumns; FillColumn = $FillColumn }
+        FreezeColumns = $FreezeColumns; FillColumn = $FillColumn; DateChecks = $DateChecks }
 }
 
 function New-XlsxFormula {
@@ -4834,8 +4844,8 @@ function ConvertTo-SheetXml {
 function ConvertTo-ChoicesXml {
     <#
     .SYNOPSIS
-      The dropdown lists of one tab (ECMA-376 dataValidations, after autoFilter and before hyperlinks): one list per column
-      in Choices, for rows 2 to the last row; blank cells are allowed.
+      The checks of one tab (ECMA-376 dataValidations, after autoFilter and before hyperlinks): a date check per column in
+      DateChecks and a dropdown list per column in Choices, for rows 2 to the last row; blank cells are allowed.
     .PARAMETER Sheet
       Output of New-XlsxSheet.
     .PARAMETER LastRow
@@ -4844,8 +4854,13 @@ function ConvertTo-ChoicesXml {
       [string] empty when the tab has no choices.
     #>
     param($Sheet, [int]$LastRow)
-    if (-not $Sheet.Choices -or $Sheet.Choices.Count -eq 0) { return '' }
-    $xml = '<dataValidations count="' + $Sheet.Choices.Count + '">'
+    $checks = @($Sheet.DateChecks)
+    if ((-not $Sheet.Choices -or $Sheet.Choices.Count -eq 0) -and $checks.Count -eq 0) { return '' }
+    $xml = '<dataValidations count="' + ($Sheet.Choices.Count + $checks.Count) + '">'
+    foreach ($column in $checks) {   # 36526 = 2000-01-01 as an Excel date number
+        $xml += ('<dataValidation type="date" operator="greaterThan" allowBlank="1" showErrorMessage="1" errorTitle="Not a date" ' +
+            'error="Type a date, for example 2026-11-24." sqref="{0}2:{0}{1}"><formula1>36526</formula1></dataValidation>') -f (Get-ColumnLetter ($column + 1)), $LastRow
+    }
     foreach ($column in @($Sheet.Choices.Keys | Sort-Object)) {
         $letter = Get-ColumnLetter ([int]$column + 1)
         $list = (@($Sheet.Choices[$column]) | ForEach-Object { ([string]$_) -replace '[",]', '' }) -join ','
@@ -5364,6 +5379,12 @@ $script:ReviewColumns = [ordered]@{ 'Is it PII?' = @('Yes', 'No', 'Not sure')
 $script:BreachAdvice = 'PII where it should not be is a potential or actual breach; report it to your servicing Privacy ' +
                        'Manager/Monitor without delay (AFI 33-332 para 3.1.2, as changed by AFI33-332_DAFGM2026-01 (7 July 2026), ' +
                        'page 1, second paragraph).'
+# "Start here" on the Summary tab: 4 steps for the reviewer (approved 2026-11-21; STE: one action a step, checked by hand,
+# as scripts/check_instructions.py cannot read text in code).
+$script:StartHere = @(@('Start here: 1', 'Open the tab Hits. In the column Confidence, filter to High. Do the High hits first.'),
+    @('Start here: 2', 'For each hit, click the file name. Find the masked value in the file, then check it.'),
+    @('Start here: 3', 'In the same row, select Is it PII?, Action taken and Reported to Privacy Manager.'),
+    @('Start here: 4', 'If it is PII where it should not be, report it to your servicing Privacy Manager/Monitor without delay.'))
 # Shown as two lines, the advice and its rule source (the PAM, 2026-11-21); one line if no "(AFI ...)." part is found.
 $script:BreachLines = @($script:BreachAdvice)
 if ($script:BreachAdvice -match '^(.*) \((AFI .*)\)\.$') { $script:BreachLines = @(($Matches[1] + '.'), ('Source: ' + $Matches[2] + '.')) }
@@ -5471,6 +5492,7 @@ function Get-WorkbookSheets {
         $n = 0
         $sheets.Add((New-XlsxSheet 'Hits' $columns @($hits | ForEach-Object { $n++; , (Get-HitCells $_ $n) }) $widths -List -Table 'tblHits' `
             -LinkColumn 4 -LinkTarget ($columns.Count - 1) -Choices $choices -WrapColumns @(6) -DateColumns @($after, ($after + 2), ($after + 4)) `
+            -DateChecks @(7 + @($script:ReviewColumns.Keys).IndexOf('Review date')) `
             -FreezeColumns 5 -FillColumn 2))
         $sheets.Add((New-XlsxSheet 'Files' @($FolderLabel, 'File', 'Hits', 'High', 'Medium', 'Low', 'Types', 'Reviewed', 'Last saved',
             'Last saved by', 'PII first saved by', 'Link') @(Get-FileRows $hits $FolderLabel) @(16, 40, 7, 7, 9, 7, 40, 10, 16, 22, 30, 50) `
@@ -5549,6 +5571,7 @@ function Get-SummaryRows {
     #>
     param([object[]]$Rows, [int]$ItemsScanned, [System.Collections.IDictionary]$Header, [object[]]$Hits)
     $out = New-Object System.Collections.Generic.List[object]
+    if ($Hits.Count -gt 0) { foreach ($step in $script:StartHere) { $out.Add(@($step[0], $step[1])) }; $out.Add(@('')) }
     foreach ($pair in @($Header.GetEnumerator()) + @((Get-ScanMetrics $Rows $ItemsScanned).GetEnumerator())) {
         if ($pair.Key -ne 'High / Medium / Low') { $out.Add(@($pair.Key, $pair.Value)) }   # the type table below has these as numbers
         if ($pair.Key -eq 'Run') { $out.Add(@('Finished', (Get-Date -Format 'yyyy-MM-dd HH:mm'))) }

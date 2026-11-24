@@ -21,4 +21,4 @@ permissions as scope only ("No reconnaissance": no user names listed); month-nam
 
 ## Status
 
-- Step 0: open. Step 1: open. Step 2: open. Step 3: open. Step 4: open. Step 5: open. Step 6: open.
+- Step 0: open. Step 1: open. Step 2: open. Step 3: built (claude/workbook-qol), in review. Step 4: open. Step 5: open. Step 6: open.

@@ -39,6 +39,12 @@ $script:ReviewColumns = [ordered]@{ 'Is it PII?' = @('Yes', 'No', 'Not sure')
 $script:BreachAdvice = 'PII where it should not be is a potential or actual breach; report it to your servicing Privacy ' +
                        'Manager/Monitor without delay (AFI 33-332 para 3.1.2, as changed by AFI33-332_DAFGM2026-01 (7 July 2026), ' +
                        'page 1, second paragraph).'
+# "Start here" on the Summary tab: 4 steps for the reviewer (approved 2026-11-21; STE: one action a step, checked by hand,
+# as scripts/check_instructions.py cannot read text in code).
+$script:StartHere = @(@('Start here: 1', 'Open the tab Hits. In the column Confidence, filter to High. Do the High hits first.'),
+    @('Start here: 2', 'For each hit, click the file name. Find the masked value in the file, then check it.'),
+    @('Start here: 3', 'In the same row, select Is it PII?, Action taken and Reported to Privacy Manager.'),
+    @('Start here: 4', 'If it is PII where it should not be, report it to your servicing Privacy Manager/Monitor without delay.'))
 # Shown as two lines, the advice and its rule source (the PAM, 2026-11-21); one line if no "(AFI ...)." part is found.
 $script:BreachLines = @($script:BreachAdvice)
 if ($script:BreachAdvice -match '^(.*) \((AFI .*)\)\.$') { $script:BreachLines = @(($Matches[1] + '.'), ('Source: ' + $Matches[2] + '.')) }
@@ -146,6 +152,7 @@ function Get-WorkbookSheets {
         $n = 0
         $sheets.Add((New-XlsxSheet 'Hits' $columns @($hits | ForEach-Object { $n++; , (Get-HitCells $_ $n) }) $widths -List -Table 'tblHits' `
             -LinkColumn 4 -LinkTarget ($columns.Count - 1) -Choices $choices -WrapColumns @(6) -DateColumns @($after, ($after + 2), ($after + 4)) `
+            -DateChecks @(7 + @($script:ReviewColumns.Keys).IndexOf('Review date')) `
             -FreezeColumns 5 -FillColumn 2))
         $sheets.Add((New-XlsxSheet 'Files' @($FolderLabel, 'File', 'Hits', 'High', 'Medium', 'Low', 'Types', 'Reviewed', 'Last saved',
             'Last saved by', 'PII first saved by', 'Link') @(Get-FileRows $hits $FolderLabel) @(16, 40, 7, 7, 9, 7, 40, 10, 16, 22, 30, 50) `
@@ -224,6 +231,7 @@ function Get-SummaryRows {
     #>
     param([object[]]$Rows, [int]$ItemsScanned, [System.Collections.IDictionary]$Header, [object[]]$Hits)
     $out = New-Object System.Collections.Generic.List[object]
+    if ($Hits.Count -gt 0) { foreach ($step in $script:StartHere) { $out.Add(@($step[0], $step[1])) }; $out.Add(@('')) }
     foreach ($pair in @($Header.GetEnumerator()) + @((Get-ScanMetrics $Rows $ItemsScanned).GetEnumerator())) {
         if ($pair.Key -ne 'High / Medium / Low') { $out.Add(@($pair.Key, $pair.Value)) }   # the type table below has these as numbers
         if ($pair.Key -eq 'Run') { $out.Add(@('Finished', (Get-Date -Format 'yyyy-MM-dd HH:mm'))) }

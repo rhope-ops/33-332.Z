@@ -136,6 +136,11 @@ $quoted = @(Find-PiiInText "SSN $($Sample.Ssn) mail $($Sample.EmailQuote)")
 Assert-Equal $false (($quoted | ForEach-Object { $_.Context }) -join ' ' -match 'connor|jane') "Snippet hides an e-mail name with an apostrophe"
 $named = @(Find-PiiInText "Name: Pat Q. Sample SSN $($Sample.Ssn)")
 Assert-Equal $false (($named | ForEach-Object { $_.Context }) -join ' ' -match 'Pat|Sample') 'Snippet hides a found name'
+# A CAC name in an e-signature keeps only its initials in the snippet (approved 2026-11-21); "e.g." stays readable.
+$cacId = '1234' + '567890'
+$cacHits = @(Find-PiiInText ('Digitally signed by ' + 'DOE.' + 'JANE.Q.' + $cacId + ' e.g. on the form'))
+$cacOk = $cacHits.Count -eq 1 -and $cacHits[0].Context -match 'D\*\*\.J\*\*\*\.Q\.' -and $cacHits[0].Context -notmatch 'DOE|JANE'
+Assert-Equal $true ($cacOk -and $cacHits[0].Context -match 'e\.g\.') 'Snippet: a CAC name keeps only its initials'
 
 # ---- Detection in names: underscores and accented e-mail names ----
 Assert-Equal 'DoD ID/High/******7890' (Get-HitSummary "CAC_$($Sample.DodId).docx") 'DoD ID after an underscore'

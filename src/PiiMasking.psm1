@@ -38,6 +38,11 @@ $script:KeepLastPassportChars = 3
 # once, not once per character.
 $script:EmailLocalPartPattern = '(?<=^|[\s@<>()\[\],;:"/\\])[^\s@<>()\[\],;:"/\\]+(?=@[^\s@<>()\[\],;:"/\\.]+\.)'
 
+# A CAC name in an e-signature ("DOE.JANE.Q."): two or three dotted parts, the first two of two letters or more, each
+# ending in a dot. In the Context column only the first letter of each part stays (approved 2026-11-21: "mask the CAC
+# name in Context"); a dotted host or file name that looks the same is masked too, which hides nothing needed.
+$script:MaskedCacName = "(?<![\w.])[A-Za-z][A-Za-z'-]+\.[A-Za-z][A-Za-z'-]+\.(?:[A-Za-z][A-Za-z'-]*\.)?"
+
 # =====================================================================================
 # Masking one value
 # =====================================================================================
@@ -91,7 +96,8 @@ function Get-MaskedText {
     <#
     .SYNOPSIS
       Masks a whole text and keeps its length: every digit becomes '#', every e-mail local part
-      becomes '*', and every hit (names and addresses included) becomes '*'. Because the length
+      becomes '*', a CAC name keeps only the first letter of each part ($MaskedCacName), and every hit (names
+      and addresses included) becomes '*'. Because the length
       stays the same, hit positions from the raw text still point to the right place.
     .PARAMETER Text
       The raw text.
@@ -103,6 +109,8 @@ function Get-MaskedText {
     param([string]$Text, [object[]]$Hits)
     $sameLengthStars = [System.Text.RegularExpressions.MatchEvaluator] { param($m) '*' * $m.Length }
     $masked = [regex]::Replace($Text, $script:EmailLocalPartPattern, $sameLengthStars) -replace '\d', '#'
+    $initials = [System.Text.RegularExpressions.MatchEvaluator] { param($m) [regex]::Replace($m.Value, "(?<=[A-Za-z])[A-Za-z'-]", '*') }
+    $masked = [regex]::Replace($masked, $script:MaskedCacName, $initials)
     $chars = $masked.ToCharArray()
     foreach ($hit in $Hits) {
         for ($i = $hit.Index; $i -lt $hit.Index + $hit.Length; $i++) {
