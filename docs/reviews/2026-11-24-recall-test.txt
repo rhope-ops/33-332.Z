@@ -1,0 +1,694 @@
+# Ion recall test (2026-11-24): the first measured catch rate of Ion, with invented files only.
+#
+#   Purpose:     Make mode writes 12 invented files with known PII-shaped values (53 values, 8 types) and decoys into
+#                one empty folder. Score mode reads Ion's results workbook of that folder and prints, per type, how
+#                many values were planted, found and missed, and how many hits were false; then recall and precision.
+#   Inputs:      Make: the path of an empty folder. Score: the path of Ion's results workbook (.xlsx).
+#   Outputs:     Make: the 12 files, and one count line. Score: count lines with type names only: no value, no path, no name.
+#   How to run:  paste all of this text into Windows PowerShell ISE (File > New), press F5, answer the questions.
+#   Run target:  Windows PowerShell 5.1 (also PowerShell 7). .NET only: no module, no Excel, no network.
+#   Network:     none.
+#   Writes:      Make: the 12 invented files in the empty folder you give (never into a folder with files in it).
+#                Score: nothing (the workbook is only read).
+#   Credentials: none.
+#
+#   Test data:   all invented, from a fixed seed (the same files and the same key on every run and device). The values
+#                are built from parts when the script runs (Data boundary rule): this text holds no whole SSN, DoD ID,
+#                card, phone, address or e-mail. SSNs and cards are in the ranges Ion accepts (SSA rules, Luhn, card
+#                prefixes), so Ion can find them; the decoys must not be hits. Phones use the fictional 555-01xx lines.
+#   Key match:   by file and type: the last 4 digits (SSN, DoD ID, card, phone), the last 3 characters (passport), the
+#                domain (e-mail), or the count only (date of birth, home address: Ion masks them whole).
+
+Add-Type -AssemblyName System.IO.Compression
+
+# ---- Settings ----
+$script:RecallSeed = 33332            # the fixed seed: change it and the key changes (the author's choice, 2026-11-24)
+$script:RecallKeyName = '2026-11-24'  # printed by Score, so a result names the key it was scored against
+$script:RecallTypes = @('SSN', 'DoD ID', 'Date of birth', 'Payment card', 'Passport', 'Phone', 'Personal e-mail', 'Home address')
+
+# ---- Seeded numbers: integer arithmetic only, so Windows PowerShell 5.1 and PowerShell 7 give the same key ----
+function New-RecallRandom {
+    # A Park-Miller generator (multiplier 48271, modulus 2^31-1) from the fixed seed.
+    param([long]$Seed)
+    return @{ State = [long]$Seed }
+}
+
+function Get-RecallNumber {
+    # The next seeded whole number from Min to Max (both included).
+    param([hashtable]$Rng, [long]$Min, [long]$Max)
+    $Rng.State = ($Rng.State * 48271L) % 2147483647L
+    return [long]($Min + ($Rng.State % ($Max - $Min + 1L)))
+}
+
+function Get-RecallPick {
+    # One item of a list, picked with the seeded numbers.
+    param([hashtable]$Rng, [object[]]$Items)
+    return $Items[[int](Get-RecallNumber $Rng 0 ($Items.Count - 1))]
+}
+
+function Get-RecallDigits {
+    # A seeded number of the given length as digits, leading zeros kept.
+    param([hashtable]$Rng, [int]$Length)
+    $text = ''
+    while ($text.Length -lt $Length) { $text += ([string](Get-RecallNumber $Rng 0 9999)).PadLeft(4, '0') }
+    return $text.Substring(0, $Length)
+}
+
+function Get-RecallLuhnDigit {
+    # The Luhn check digit for the digits before it (ISO/IEC 7812, as card numbers use).
+    param([string]$Payload)
+    $sum = 0
+    $double = $true
+    for ($i = $Payload.Length - 1; $i -ge 0; $i--) {
+        $digit = [int][string]$Payload[$i]
+        if ($double) { $digit = $digit * 2; if ($digit -gt 9) { $digit = $digit - 9 } }
+        $sum += $digit
+        $double = -not $double
+    }
+    return [string]((10 - ($sum % 10)) % 10)
+}
+
+function Get-RecallKey {
+    # The part of a value that Ion's masked value keeps: the same function reads a planted value and a masked hit.
+    param([string]$Type, [string]$Value)
+    $digits = $Value -replace '\D', ''
+    switch ($Type) {
+        { $_ -in @('SSN', 'DoD ID', 'Payment card', 'Phone') } { return $digits.Substring([Math]::Max(0, $digits.Length - 4)) }
+        'Passport' { return $Value.Substring([Math]::Max(0, $Value.Length - 3)) }
+        'Personal e-mail' { return (($Value -split '@')[-1]).ToLower() }
+        default { return '' }
+    }
+}
+
+# ---- The plan: files, their lines or cells, and the key of planted values ----
+function New-RecallFile {
+    # One test file of the plan: its name, kind (txt, csv, docx, xlsx, pdf), lines or rows, and planted values.
+    param([string]$Name, [string]$Kind)
+    return @{ Name = $Name; Kind = $Kind; Lines = (New-Object System.Collections.Generic.List[string])
+        Rows = (New-Object System.Collections.Generic.List[object]); Plants = (New-Object System.Collections.Generic.List[object]); Tails = @{} }
+}
+
+function Test-RecallTailFree {
+    # True when no value already planted in the file ends in the same key (so each hit matches one planted value).
+    param([hashtable]$File, [string]$Type, [string]$Raw)
+    $key = Get-RecallKey $Type $Raw
+    if ($key -eq '') { return $true }
+    return -not $File.Tails.ContainsKey($Type + '|' + $key)
+}
+
+function Add-RecallPlant {
+    # Records one planted value in the file's key and returns it; a second value with the same key is an error.
+    param([hashtable]$File, [string]$Type, [string]$Form, [string]$Raw)
+    $key = Get-RecallKey $Type $Raw
+    if ($key -ne '') {
+        if ($File.Tails.ContainsKey($Type + '|' + $key)) { throw ('Recall plan: two ' + $Type + ' values with one key in one file') }
+        $File.Tails[$Type + '|' + $key] = $true
+    }
+    $digits = $Raw -replace '\D', ''
+    if ($digits.Length -ge 4) { $File.Tails['digits|' + $digits.Substring($digits.Length - 4)] = $true }
+    $File.Plants.Add(@{ Type = $Type; Form = $Form; Key = $key; Raw = $Raw })
+    return $Raw
+}
+
+function Add-RecallSsn {
+    # A planted SSN, valid by the SSA rules (area 100-899 but 666, group 01-99, serial 0001-9999): dashed or 9 in a row.
+    param([hashtable]$Rng, [hashtable]$File, [string]$Form, [switch]$Bare)
+    do {
+        $area = Get-RecallNumber $Rng 100 899
+        if ($area -eq 666) { continue }
+        $group = ([string](Get-RecallNumber $Rng 1 99)).PadLeft(2, '0')
+        $serial = ([string](Get-RecallNumber $Rng 1 9999)).PadLeft(4, '0')
+        $value = '{0}-{1}-{2}' -f $area, $group, $serial
+        if ($Bare) { $value = $value -replace '-', '' }
+    } while ($area -eq 666 -or -not (Test-RecallTailFree $File 'SSN' $value))
+    return (Add-RecallPlant $File 'SSN' $Form $value)
+}
+
+function Add-RecallDodId {
+    # A planted DoD ID: 10 digits, the first not 0.
+    param([hashtable]$Rng, [hashtable]$File, [string]$Form)
+    do { $value = [string](Get-RecallNumber $Rng 1 9) + (Get-RecallDigits $Rng 9) } while (-not (Test-RecallTailFree $File 'DoD ID' $value))
+    return (Add-RecallPlant $File 'DoD ID' $Form $value)
+}
+
+function Get-RecallCacName {
+    # An invented CAC name as certificates write it: LAST.FIRST.M. (capitals, each part ends in a dot).
+    param([hashtable]$Rng)
+    $last = Get-RecallPick $Rng @(('TES' + 'TER'), ('SAM' + 'PLE'), ('EXAM' + 'PLE'), ('MOCK' + 'UP'))
+    $first = Get-RecallPick $Rng @(('AL' + 'EX'), ('P' + 'AT'), ('S' + 'AM'), ('JOR' + 'DAN'))
+    $middle = [string][char](65 + (Get-RecallNumber $Rng 0 25))
+    return ($last + '.' + $first + '.' + $middle + '.')
+}
+
+function Add-RecallCard {
+    # A planted payment card with a network prefix and a Luhn check digit: Visa (4), Mastercard (51-55) or Amex (34, 37).
+    param([hashtable]$Rng, [hashtable]$File, [string]$Form, [ValidateSet('Visa', 'Mastercard', 'Amex')][string]$Network, [string]$Separator = ' ')
+    do {
+        switch ($Network) {
+            'Visa' { $payload = '4' + (Get-RecallDigits $Rng 14) }
+            'Mastercard' { $payload = '5' + [string](Get-RecallNumber $Rng 1 5) + (Get-RecallDigits $Rng 13) }
+            default { $payload = '3' + (Get-RecallPick $Rng @('4', '7')) + (Get-RecallDigits $Rng 12) }
+        }
+        $digits = $payload + (Get-RecallLuhnDigit $payload)
+        if ($Network -eq 'Amex') { $value = $digits.Substring(0, 4) + $Separator + $digits.Substring(4, 6) + $Separator + $digits.Substring(10) }
+        else { $value = ($digits -replace '(\d{4})(?=\d)', ('$1' + $Separator)) }
+    } while (-not (Test-RecallTailFree $File 'Payment card' $value))
+    return (Add-RecallPlant $File 'Payment card' $Form $value)
+}
+
+function Add-RecallPhone {
+    # A planted US phone number on the fictional 555-0100 to 555-0199 lines: (NPA) 555-01xx, NPA-555-01xx or NPA.555.01xx.
+    param([hashtable]$Rng, [hashtable]$File, [string]$Form, [ValidateSet('Paren', 'Dash', 'Dot')][string]$Style = 'Paren')
+    do {
+        $npa = [string](Get-RecallNumber $Rng 201 989)
+        $line = '01' + ([string](Get-RecallNumber $Rng 0 99)).PadLeft(2, '0')
+        $value = switch ($Style) { 'Paren' { '(' + $npa + ') 555-' + $line } 'Dash' { $npa + '-555-' + $line } default { $npa + '.555.' + $line } }
+    } while (-not (Test-RecallTailFree $File 'Phone' $value))
+    return (Add-RecallPlant $File 'Phone' $Form $value)
+}
+
+function Add-RecallEmail {
+    # A planted personal e-mail address at the given provider domain (one domain once in a file: it is the key).
+    param([hashtable]$Rng, [hashtable]$File, [string]$Form, [string]$Domain)
+    $first = Get-RecallPick $Rng @(('al' + 'ex'), ('p' + 'at'), ('s' + 'am'), ('ca' + 'sey'))
+    $last = Get-RecallPick $Rng @(('tes' + 'ter'), ('sam' + 'ple'), ('mock' + 'up'))
+    $value = $first + '.' + $last + [string](Get-RecallNumber $Rng 10 99) + '@' + $Domain
+    return (Add-RecallPlant $File 'Personal e-mail' $Form $value)
+}
+
+function Add-RecallPassport {
+    # A planted passport number: a letter and 8 digits, or 9 digits (first digit 1-5, as older US passports).
+    param([hashtable]$Rng, [hashtable]$File, [string]$Form, [switch]$NineDigits)
+    do {
+        if ($NineDigits) { $value = [string](Get-RecallNumber $Rng 1 5) + (Get-RecallDigits $Rng 8) }
+        else { $value = [string][char](65 + (Get-RecallNumber $Rng 0 25)) + [string](Get-RecallNumber $Rng 1 9) + (Get-RecallDigits $Rng 7) }
+    } while (-not (Test-RecallTailFree $File 'Passport' $value))
+    return (Add-RecallPlant $File 'Passport' $Form $value)
+}
+
+function Add-RecallDob {
+    # A planted date of birth (1960-2003) in one of the forms Ion reads: US, ISO, written or military.
+    param([hashtable]$Rng, [hashtable]$File, [string]$Form, [ValidateSet('Us', 'Iso', 'Written', 'Military')][string]$Style)
+    $year = Get-RecallNumber $Rng 1960 2003
+    $month = [int](Get-RecallNumber $Rng 1 12)
+    $day = Get-RecallNumber $Rng 1 28
+    $names = @('January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December')
+    $value = switch ($Style) {
+        'Us' { '{0:00}/{1:00}/{2}' -f $month, $day, $year }
+        'Iso' { '{0}-{1:00}-{2:00}' -f $year, $month, $day }
+        'Written' { '{0} {1}, {2}' -f $names[$month - 1], $day, $year }
+        default { '{0} {1} {2}' -f $day, $names[$month - 1].Substring(0, 3), $year }
+    }
+    return (Add-RecallPlant $File 'Date of birth' $Form $value)
+}
+
+function Add-RecallAddress {
+    # A planted US street address: number, street, street type, city, state and ZIP code.
+    param([hashtable]$Rng, [hashtable]$File, [string]$Form)
+    $street = Get-RecallPick $Rng @('Elm', 'Oak', 'Maple', 'Cedar', 'Willow', 'Birch')
+    $type = Get-RecallPick $Rng @('Street', 'Avenue', 'Road', 'Drive', 'Lane', 'Court')
+    $city = Get-RecallPick $Rng @(('Spring' + 'field'), ('River' + 'ton'), ('Fair' + 'view'), ('Green' + 'ville'))
+    $state = Get-RecallPick $Rng @('IL', 'OH', 'TX', 'GA', 'VA')
+    $value = '{0} {1} {2}, {3}, {4} {5}' -f (Get-RecallNumber $Rng 10 9999), $street, $type, $city, $state, (Get-RecallNumber $Rng 10000 99999)
+    return (Add-RecallPlant $File 'Home address' $Form $value)
+}
+
+function Get-RecallDecoy {
+    # A decoy number that must not be a hit (order, tracking, an SSN with area 9xx, a card that fails Luhn); its last 4
+    # digits differ from every planted value in the file, so a false hit on it can never match the key.
+    param([hashtable]$Rng, [hashtable]$File, [ValidateSet('Order7', 'Order8', 'Tracking', 'BadSsn', 'BadCard')][string]$Kind)
+    do {
+        switch ($Kind) {
+            'Order7' { $value = [string](Get-RecallNumber $Rng 1 9) + (Get-RecallDigits $Rng 6) }
+            'Order8' { $value = [string](Get-RecallNumber $Rng 1 9) + (Get-RecallDigits $Rng 7) }
+            'Tracking' { $value = [string](Get-RecallNumber $Rng 1 9) + (Get-RecallDigits $Rng 9) }
+            'BadSsn' { $value = '{0}-{1}-{2}' -f (Get-RecallNumber $Rng 900 999), (Get-RecallDigits $Rng 2), (Get-RecallDigits $Rng 4) }
+            default {
+                $payload = '4' + (Get-RecallDigits $Rng 14)
+                $wrong = [string](([int](Get-RecallLuhnDigit $payload) + 1) % 10)
+                $value = (($payload + $wrong) -replace '(\d{4})(?=\d)', '$1 ')
+            }
+        }
+        $digits = $value -replace '\D', ''
+    } while ($File.Tails.ContainsKey('digits|' + $digits.Substring($digits.Length - 4)))
+    return $value
+}
+
+function Add-RecallTextFiles {
+    # The plain text and CSV files of the plan (notes, contacts, mail list, leave list, signature block, decoys).
+    param([hashtable]$Rng, [System.Collections.Generic.List[object]]$Files)
+    $f = New-RecallFile 'notes.txt' 'txt'
+    $f.Lines.Add('Unit notes (invented test data)')
+    $f.Lines.Add('Line 2 of the form shows ' + (Add-RecallSsn $Rng $f 'unlabelled 3-2-4') + ' for the record.')
+    $f.Lines.Add('Cell: ' + (Add-RecallPhone $Rng $f 'labelled cell'))
+    $f.Lines.Add('Personal e-mail: ' + (Add-RecallEmail $Rng $f 'labelled' ('gmail' + '.com')))
+    $f.Lines.Add('SSN: ' + (Add-RecallSsn $Rng $f 'labelled'))
+    $f.Lines.Add('Order no. ' + (Get-RecallDecoy $Rng $f 'Order7') + ' ships in 3 days.')
+    $f.Lines.Add('Tracking number ' + (Get-RecallDecoy $Rng $f 'Tracking') + ' was sent to the office.')
+    $f.Lines.Add('Suspense: 15 Mar 2027')
+    $Files.Add($f)
+
+    $f = New-RecallFile 'contacts.csv' 'csv'
+    $f.Lines.Add('Person,Cell phone,Personal e-mail,Home address,Order')
+    $n = 0
+    foreach ($domain in @(('yahoo' + '.com'), ('hotmail' + '.com'), ('gmail' + '.com'))) {
+        $n++
+        $f.Lines.Add(('Person {0},{1},{2},"{3}",{4}' -f [char](64 + $n), (Add-RecallPhone $Rng $f 'csv column' 'Dash'),
+            (Add-RecallEmail $Rng $f 'csv column' $domain), (Add-RecallAddress $Rng $f 'csv column'), (Get-RecallDecoy $Rng $f 'Order7')))
+    }
+    $Files.Add($f)
+
+    $f = New-RecallFile 'mail-list.txt' 'txt'
+    $f.Lines.Add('Personal e-mail addresses (invented test data):')
+    foreach ($domain in @(('outlook' + '.com'), ('aol' + '.com'), ('icloud' + '.com'))) { $f.Lines.Add((Add-RecallEmail $Rng $f 'list' $domain)) }
+    $f.Lines.Add('Mobile: ' + (Add-RecallPhone $Rng $f 'labelled mobile' 'Dot'))
+    $f.Lines.Add('Tracking number ' + (Get-RecallDecoy $Rng $f 'Tracking') + ' for the box.')
+    $Files.Add($f)
+
+    $f = New-RecallFile 'leave.csv' 'csv'
+    $f.Lines.Add('Person,Details,Contact')
+    foreach ($n in 1..2) { $f.Lines.Add(('Person {0},DOB {1},cell {2}' -f [char](64 + $n), (Add-RecallDob $Rng $f 'labelled csv' 'Iso'), (Add-RecallPhone $Rng $f 'labelled cell' 'Paren'))) }
+    $Files.Add($f)
+
+    $f = New-RecallFile 'signature-block.txt' 'txt'
+    $f.Lines.Add('Review sheet (invented test data)')
+    $f.Lines.Add((Get-RecallCacName $Rng) + (Add-RecallDodId $Rng $f 'e-signature'))
+    $f.Lines.Add('Digitally signed by ' + (Get-RecallCacName $Rng) + (Add-RecallDodId $Rng $f 'signed by'))
+    $f.Lines.Add('Reason: I approve this document')
+    $f.Lines.Add('EDIPI: ' + (Add-RecallDodId $Rng $f 'labelled'))
+    $Files.Add($f)
+
+    $f = New-RecallFile 'decoys.txt' 'txt'
+    $f.Lines.Add('Decoys only: none of these is PII (invented test data).')
+    $f.Lines.Add('Order no. ' + (Get-RecallDecoy $Rng $f 'Order7'))
+    $f.Lines.Add('Order ' + (Get-RecallDecoy $Rng $f 'Order8') + ' is late.')
+    $f.Lines.Add('Tracking number ' + (Get-RecallDecoy $Rng $f 'Tracking') + ' is in transit.')
+    $f.Lines.Add('Suspense: 15 Mar 2027')
+    $f.Lines.Add('The meeting is on 2027-01-12.')
+    $f.Lines.Add('Case ' + (Get-RecallDecoy $Rng $f 'BadSsn') + ' is closed.')
+    $f.Lines.Add('Account ' + (Get-RecallDecoy $Rng $f 'BadCard'))
+    $Files.Add($f)
+}
+
+function Add-RecallOfficeFiles {
+    # The Word, Excel and PDF files of the plan (roster with a header row, pay sheet with a label per row, memo,
+    # travel request, signed form, receipt).
+    param([hashtable]$Rng, [System.Collections.Generic.List[object]]$Files)
+    $f = New-RecallFile 'roster.xlsx' 'xlsx'
+    $f.Rows.Add(@('Person', 'SSN', 'DoD ID', 'Date of birth'))
+    foreach ($n in 1..3) {
+        $f.Rows.Add(@(('Person ' + [char](64 + $n)), (Add-RecallSsn $Rng $f 'header row only'), [long](Add-RecallDodId $Rng $f 'header row only'),
+            (Add-RecallDob $Rng $f 'header row only' 'Us')))
+    }
+    $Files.Add($f)
+
+    $f = New-RecallFile 'pay.xlsx' 'xlsx'
+    $f.Rows.Add(@('SSN', [long](Add-RecallSsn $Rng $f 'labelled number cell' -Bare)))
+    $f.Rows.Add(@('SSN', [long](Add-RecallSsn $Rng $f 'labelled number cell' -Bare)))
+    $f.Rows.Add(@('DoD ID', [long](Add-RecallDodId $Rng $f 'labelled number cell')))
+    $f.Rows.Add(@('Card', (Add-RecallCard $Rng $f 'labelled' 'Visa' ' ')))
+    $f.Rows.Add(@('Order', [long](Get-RecallDecoy $Rng $f 'Order8')))
+    $f.Rows.Add(@('Suspense', '2027-03-15'))
+    $Files.Add($f)
+
+    $f = New-RecallFile 'memo.docx' 'docx'
+    $f.Lines.Add('Memo for record (invented test data)')
+    $f.Lines.Add('The old file number ' + (Add-RecallSsn $Rng $f '9 in a row, no label' -Bare) + ' is in the box.')
+    $f.Lines.Add('Passport no. ' + (Add-RecallPassport $Rng $f 'letter and 8 digits'))
+    $f.Lines.Add('Home address: ' + (Add-RecallAddress $Rng $f 'labelled'))
+    $f.Lines.Add('Date of birth: ' + (Add-RecallDob $Rng $f 'labelled written' 'Written'))
+    $f.Lines.Add('Home phone ' + (Add-RecallPhone $Rng $f 'labelled home' 'Dash'))
+    $f.Lines.Add('Tracking number ' + (Get-RecallDecoy $Rng $f 'Tracking') + ' for the file box.')
+    $Files.Add($f)
+
+    $f = New-RecallFile 'travel.docx' 'docx'
+    $f.Lines.Add('Travel request (invented test data)')
+    $f.Lines.Add('Passport: ' + (Add-RecallPassport $Rng $f '9 digits' -NineDigits))
+    $f.Lines.Add('Trip date 2027-01-12')
+    $f.Lines.Add('Passport number ' + (Add-RecallPassport $Rng $f 'letter and 8 digits'))
+    $f.Lines.Add('Card: ' + (Add-RecallCard $Rng $f 'labelled' 'Visa' ' '))
+    $f.Lines.Add('Mastercard ' + (Add-RecallCard $Rng $f 'labelled' 'Mastercard' '-'))
+    $f.Lines.Add('Tracking number ' + (Get-RecallDecoy $Rng $f 'Tracking') + ' for the bags.')
+    $Files.Add($f)
+
+    $f = New-RecallFile 'signed-form.pdf' 'pdf'
+    $f.Lines.Add('Leave request (invented test data)')
+    $f.Lines.Add('Approved: ' + (Get-RecallCacName $Rng) + (Add-RecallDodId $Rng $f 'e-signature'))
+    $f.Lines.Add('Digitally signed by ' + (Get-RecallCacName $Rng) + (Add-RecallDodId $Rng $f 'signed by'))
+    $f.Lines.Add("Date: 2026.11.20 10:15:00 -06'00'")
+    $f.Lines.Add('DoD ID: ' + (Add-RecallDodId $Rng $f 'labelled'))
+    $f.Lines.Add('SSN: ' + (Add-RecallSsn $Rng $f 'labelled'))
+    $Files.Add($f)
+
+    $f = New-RecallFile 'receipt.pdf' 'pdf'
+    $f.Lines.Add('Receipt ' + (Get-RecallDecoy $Rng $f 'Order8') + ' (invented test data)')
+    $f.Lines.Add('Paid with ' + (Add-RecallCard $Rng $f 'no label' 'Amex' ' '))
+    $f.Lines.Add('Ship to: ' + (Add-RecallAddress $Rng $f 'no label, state and ZIP'))
+    $f.Lines.Add('Born ' + (Add-RecallDob $Rng $f 'labelled born' 'Military'))
+    $Files.Add($f)
+}
+
+function Get-RecallPlan {
+    <#
+    .SYNOPSIS
+      The 12 test files and the key of planted values, built from the fixed seed (the same on every run).
+    .OUTPUTS
+      [System.Collections.Generic.List[object]] one hashtable per file: Name, Kind, Lines, Rows, Plants (Type, Form, Key, Raw).
+    #>
+    $rng = New-RecallRandom $script:RecallSeed
+    $files = New-Object System.Collections.Generic.List[object]
+    Add-RecallTextFiles $rng $files
+    Add-RecallOfficeFiles $rng $files
+    return , $files
+}
+
+# ---- File builders: minimal Office Open XML (a zip of XML parts) and a minimal text PDF, .NET only ----
+function ConvertTo-RecallXml {
+    # Text made safe for XML (& < > " ').
+    param([string]$Text)
+    return [System.Security.SecurityElement]::Escape($Text)
+}
+
+function New-RecallZip {
+    # A zip in memory from part name -> UTF-8 text (no byte order mark).
+    param([System.Collections.Specialized.OrderedDictionary]$Parts)
+    $memory = New-Object System.IO.MemoryStream
+    $zip = New-Object System.IO.Compression.ZipArchive($memory, [System.IO.Compression.ZipArchiveMode]::Create, $true)
+    foreach ($name in $Parts.Keys) {
+        $writer = New-Object System.IO.StreamWriter($zip.CreateEntry($name).Open(), (New-Object System.Text.UTF8Encoding($false)))
+        $writer.Write([string]$Parts[$name])
+        $writer.Dispose()
+    }
+    $zip.Dispose()
+    return , $memory.ToArray()
+}
+
+function ConvertTo-RecallDocx {
+    # A minimal Word file: one paragraph per line.
+    param([string[]]$Lines)
+    $head = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    $rel = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+    $body = -join @($Lines | ForEach-Object { '<w:p><w:r><w:t xml:space="preserve">' + (ConvertTo-RecallXml $_) + '</w:t></w:r></w:p>' })
+    $parts = [ordered]@{
+        '[Content_Types].xml' = $head + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+            '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>' +
+            '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>'
+        '_rels/.rels' = $head + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+            '<Relationship Id="rId1" Type="' + $rel + '/officeDocument" Target="word/document.xml"/></Relationships>'
+        'word/document.xml' = $head + '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>' + $body + '</w:body></w:document>'
+    }
+    return , (New-RecallZip $parts)
+}
+
+function ConvertTo-RecallXlsx {
+    # A minimal Excel file, one sheet: a text cell is an inline string, a [long] cell is a number cell.
+    param([object[]]$Rows)
+    $head = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    $rel = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+    $rowXml = New-Object System.Text.StringBuilder
+    for ($r = 0; $r -lt $Rows.Count; $r++) {
+        [void]$rowXml.Append('<row r="' + ($r + 1) + '">')
+        $cells = @($Rows[$r])
+        for ($c = 0; $c -lt $cells.Count; $c++) {
+            $ref = [string][char](65 + $c) + ($r + 1)
+            if ($cells[$c] -is [long]) { [void]$rowXml.Append('<c r="' + $ref + '"><v>' + $cells[$c] + '</v></c>') }
+            else { [void]$rowXml.Append('<c r="' + $ref + '" t="inlineStr"><is><t xml:space="preserve">' + (ConvertTo-RecallXml ([string]$cells[$c])) + '</t></is></c>') }
+        }
+        [void]$rowXml.Append('</row>')
+    }
+    $parts = [ordered]@{
+        '[Content_Types].xml' = $head + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+            '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>' +
+            '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+            '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>'
+        '_rels/.rels' = $head + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+            '<Relationship Id="rId1" Type="' + $rel + '/officeDocument" Target="xl/workbook.xml"/></Relationships>'
+        'xl/workbook.xml' = $head + '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="' + $rel + '">' +
+            '<sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>'
+        'xl/_rels/workbook.xml.rels' = $head + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+            '<Relationship Id="rId1" Type="' + $rel + '/worksheet" Target="worksheets/sheet1.xml"/></Relationships>'
+        'xl/worksheets/sheet1.xml' = $head + '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>' +
+            $rowXml.ToString() + '</sheetData></worksheet>'
+    }
+    return , (New-RecallZip $parts)
+}
+
+function ConvertTo-RecallPdf {
+    # A minimal one-page PDF (PDF 1.4): Helvetica text, one line per Td move, an uncompressed stream and a cross-reference table.
+    param([string[]]$Lines)
+    $latin1 = [System.Text.Encoding]::GetEncoding(28591)
+    $shown = -join @($Lines | ForEach-Object { '(' + ($_ -replace '([\\()])', '\$1') + ') Tj 0 -16 Td ' })
+    $content = 'BT /F1 11 Tf 72 740 Td ' + $shown + 'ET'
+    $objects = @('<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+        '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>',
+        ('<< /Length ' + $content.Length + " >>`nstream`n" + $content + "`nendstream"), '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>')
+    $text = New-Object System.Text.StringBuilder
+    [void]$text.Append("%PDF-1.4`n")
+    $offsets = New-Object System.Collections.Generic.List[int]
+    for ($i = 0; $i -lt $objects.Count; $i++) {
+        $offsets.Add($text.Length)
+        [void]$text.Append(('{0} 0 obj' -f ($i + 1)) + "`n" + $objects[$i] + "`nendobj`n")
+    }
+    $xref = $text.Length
+    [void]$text.Append("xref`n0 " + ($objects.Count + 1) + "`n0000000000 65535 f `n")
+    foreach ($offset in $offsets) { [void]$text.Append(('{0:D10} 00000 n ' -f $offset) + "`n") }
+    [void]$text.Append('trailer << /Size ' + ($objects.Count + 1) + " /Root 1 0 R >>`nstartxref`n" + $xref + "`n%%EOF`n")
+    return , $latin1.GetBytes($text.ToString())
+}
+
+function Get-RecallFileBytes {
+    # The bytes of one planned file, by its kind.
+    param([hashtable]$File)
+    switch ($File.Kind) {
+        'docx' { return , (ConvertTo-RecallDocx $File.Lines.ToArray()) }
+        'xlsx' { return , (ConvertTo-RecallXlsx $File.Rows.ToArray()) }
+        'pdf' { return , (ConvertTo-RecallPdf $File.Lines.ToArray()) }
+        default { return , (New-Object System.Text.UTF8Encoding($false)).GetBytes(($File.Lines -join "`r`n") + "`r`n") }
+    }
+}
+
+function Invoke-RecallMake {
+    <#
+    .SYNOPSIS
+      Make mode: writes the 12 test files into an empty folder that exists. A folder with anything in it is refused.
+    .PARAMETER Folder
+      The folder path.
+    .OUTPUTS
+      [string] one result line (counts only, no path).
+    #>
+    param([string]$Folder)
+    if (-not $Folder -or -not (Test-Path -LiteralPath $Folder -PathType Container)) { return 'Result: that folder does not exist. Make it, then press F5 again.' }
+    if (@(Get-ChildItem -LiteralPath $Folder -Force).Count -gt 0) { return 'Result: that folder is not empty. Give an empty folder, then press F5 again.' }
+    $plan = Get-RecallPlan
+    foreach ($file in $plan) {
+        $bytes = [byte[]](Get-RecallFileBytes $file)
+        $stream = New-Object System.IO.FileStream((Join-Path $Folder $file.Name), [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write)
+        try { $stream.Write($bytes, 0, $bytes.Length) } finally { $stream.Dispose() }
+    }
+    $planted = @($plan | ForEach-Object { $_.Plants }).Count
+    return ('Done: {0} test files with {1} planted values are in the folder (key {2}). Next: scan this folder with Ion.' -f $plan.Count, $planted, $script:RecallKeyName)
+}
+
+# ---- Score: read Ion's workbook (no Excel), match it to the key ----
+function Read-RecallZipText {
+    # The text of one zip part, or '' when the part is not there.
+    param([System.IO.Compression.ZipArchive]$Zip, [string]$Name)
+    $entry = $Zip.GetEntry($Name)
+    if (-not $entry) { return '' }
+    $reader = New-Object System.IO.StreamReader($entry.Open(), [System.Text.Encoding]::UTF8)
+    try { return $reader.ReadToEnd() } finally { $reader.Dispose() }
+}
+
+function Get-RecallCellText {
+    # The text of one cell: a shared string, an inline string (all its runs) or a value.
+    param([string]$Attributes, [string]$Inner, [string[]]$Shared)
+    $type = [regex]::Match($Attributes, '\bt="(\w+)"').Groups[1].Value
+    if ($type -eq 'inlineStr') { return [System.Net.WebUtility]::HtmlDecode((-join @([regex]::Matches($Inner, '(?s)<t[^>]*>(.*?)</t>') | ForEach-Object { $_.Groups[1].Value }))) }
+    $value = [System.Net.WebUtility]::HtmlDecode([regex]::Match($Inner, '(?s)<v>(.*?)</v>').Groups[1].Value)
+    if ($type -eq 's') { $index = 0; if ([int]::TryParse($value, [ref]$index) -and $index -lt $Shared.Count) { return $Shared[$index] }; return '' }
+    return $value
+}
+
+function Get-RecallCell {
+    # One cell of a row by its column index; '' when the row is shorter (an empty cell is not written).
+    param([string[]]$Cells, [int]$Index)
+    if ($Index -lt 0 -or $Index -ge $Cells.Count) { return '' }
+    return [string]$Cells[$Index]
+}
+
+function Get-RecallLeaf {
+    # The file name alone (after the last slash), in small letters, to match the key.
+    param([string]$Path)
+    return (($Path -split '[\\/]')[-1]).ToLower()
+}
+
+function Read-RecallSheet {
+    <#
+    .SYNOPSIS
+      One tab of a workbook as rows of cell texts, each cell at its column; no rows when the tab is not there.
+    .PARAMETER Zip
+      The open workbook.
+    .PARAMETER Tab
+      The tab name (Hits, Not scanned).
+    .PARAMETER Shared
+      The shared strings (a workbook that Excel saved keeps its text there).
+    .OUTPUTS
+      [object[]] rows, each a [string[]].
+    #>
+    param([System.IO.Compression.ZipArchive]$Zip, [string]$Tab, [string[]]$Shared)
+    $sheetTag = [regex]::Match((Read-RecallZipText $Zip 'xl/workbook.xml'), '<sheet\b[^>]*\bname="' + [regex]::Escape((ConvertTo-RecallXml $Tab)) + '"[^>]*/>')
+    if (-not $sheetTag.Success) { return , @() }
+    $id = [regex]::Match($sheetTag.Value, '\br:id="([^"]+)"').Groups[1].Value
+    $rels = Read-RecallZipText $Zip 'xl/_rels/workbook.xml.rels'
+    $target = [regex]::Match($rels, '<Relationship\b[^>]*\bId="' + [regex]::Escape($id) + '"[^>]*/>').Value
+    $path = [regex]::Match($target, '\bTarget="([^"]+)"').Groups[1].Value
+    if ($path.StartsWith('/')) { $path = $path.TrimStart('/') } else { $path = 'xl/' + $path }
+    $rows = New-Object System.Collections.Generic.List[object]
+    foreach ($row in [regex]::Matches((Read-RecallZipText $Zip $path), '(?s)<row\b[^>]*>(.*?)</row>')) {
+        $cells = New-Object System.Collections.Generic.List[string]
+        foreach ($c in [regex]::Matches($row.Groups[1].Value, '(?s)<c\b([^>]*?)(?:/>|>(.*?)</c>)')) {
+            $letters = [regex]::Match($c.Groups[1].Value, '\br="([A-Z]+)\d+"').Groups[1].Value
+            $column = 0; foreach ($ch in $letters.ToCharArray()) { $column = $column * 26 + ([int]$ch - 64) }
+            while ($cells.Count -lt $column - 1) { $cells.Add('') }
+            $cells.Add((Get-RecallCellText $c.Groups[1].Value $c.Groups[2].Value $Shared))
+        }
+        $rows.Add($cells.ToArray())
+    }
+    return , $rows.ToArray()
+}
+
+function Read-RecallWorkbook {
+    <#
+    .SYNOPSIS
+      Ion's results workbook: each hit (type, file name, masked value) and each Not scanned file name. The file is
+      opened for reading only, and also when Excel has it open.
+    .PARAMETER Path
+      The .xlsx file.
+    .OUTPUTS
+      [hashtable] Hits (each @{ Type; File; Masked }), NotScanned (file names).
+    #>
+    param([string]$Path)
+    $stream = New-Object System.IO.FileStream($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+    $zip = New-Object System.IO.Compression.ZipArchive($stream, [System.IO.Compression.ZipArchiveMode]::Read)
+    try {
+        $shared = @([regex]::Matches((Read-RecallZipText $zip 'xl/sharedStrings.xml'), '(?s)<si>(.*?)</si>') | ForEach-Object {
+                [System.Net.WebUtility]::HtmlDecode((-join @([regex]::Matches($_.Groups[1].Value, '(?s)<t[^>]*>(.*?)</t>') | ForEach-Object { $_.Groups[1].Value }))) })
+        $result = @{ Hits = (New-Object System.Collections.Generic.List[object]); NotScanned = (New-Object System.Collections.Generic.List[string]) }
+        $hits = Read-RecallSheet $zip 'Hits' $shared   # one array of rows (not @(): that wraps it again)
+        if ($hits.Count -gt 1) {
+            $header = @($hits[0])
+            $type = [array]::IndexOf($header, 'Type'); $file = [array]::IndexOf($header, 'File'); $masked = [array]::IndexOf($header, 'Masked value')
+            if ($type -lt 0 -or $file -lt 0 -or $masked -lt 0) { throw 'The Hits tab has no Type, File or Masked value column: is this an Ion workbook?' }
+            for ($i = 1; $i -lt $hits.Count; $i++) {   # by index: a pipeline would split a one-row result into its cells
+                $cells = @($hits[$i])
+                if ((Get-RecallCell $cells $type) -eq '') { continue }
+                $result.Hits.Add(@{ Type = (Get-RecallCell $cells $type); File = (Get-RecallLeaf (Get-RecallCell $cells $file)); Masked = (Get-RecallCell $cells $masked) })
+            }
+        }
+        $skipped = Read-RecallSheet $zip 'Not scanned' $shared
+        if ($skipped.Count -gt 1) {
+            $file = [array]::IndexOf(@($skipped[0]), 'File')
+            for ($i = 1; $i -lt $skipped.Count; $i++) { if ($file -ge 0) { $result.NotScanned.Add((Get-RecallLeaf (Get-RecallCell @($skipped[$i]) $file))) } }
+        }
+        return $result
+    }
+    finally { $zip.Dispose(); $stream.Dispose() }
+}
+
+function Get-RecallScore {
+    <#
+    .SYNOPSIS
+      Matches Ion's hits to the key by file and type: a hit with the key of a planted value not matched yet is found;
+      any other hit is false (decoys, a wrong type, a file not in the test). A planted value with no hit is missed.
+    .PARAMETER Plan
+      Output of Get-RecallPlan.
+    .PARAMETER Book
+      Output of Read-RecallWorkbook (or the same shape).
+    .OUTPUTS
+      [hashtable] ByType and ByForm (name -> @{ Planted; Found; False }), NotScanned (test files in that tab), OutsideHits.
+    #>
+    param([System.Collections.Generic.List[object]]$Plan, [hashtable]$Book)
+    $byType = [ordered]@{}; $byForm = [ordered]@{}
+    foreach ($type in $script:RecallTypes) { $byType[$type] = @{ Planted = 0; Found = 0; False = 0 } }
+    $open = @{}
+    foreach ($file in $Plan) {
+        foreach ($p in $file.Plants) {
+            $formName = $p.Type + ' / ' + $p.Form
+            if (-not $byForm.Contains($formName)) { $byForm[$formName] = @{ Planted = 0; Found = 0; False = 0 } }
+            $byType[$p.Type].Planted++; $byForm[$formName].Planted++
+            $slot = $file.Name.ToLower() + '|' + $p.Type
+            if (-not $open.ContainsKey($slot)) { $open[$slot] = New-Object System.Collections.Generic.List[object] }
+            $open[$slot].Add(@{ Key = $p.Key; Form = $formName })
+        }
+    }
+    $names = @($Plan | ForEach-Object { $_.Name.ToLower() })
+    $outside = 0
+    foreach ($hit in $Book.Hits) {
+        if (-not $byType.Contains($hit.Type)) { $byType[$hit.Type] = @{ Planted = 0; Found = 0; False = 0 } }
+        if ($names -notcontains $hit.File) { $outside++ }
+        $slot = $hit.File + '|' + $hit.Type
+        $key = Get-RecallKey $hit.Type $hit.Masked
+        $match = $null
+        if ($open.ContainsKey($slot)) { $match = @($open[$slot] | Where-Object { $_.Key -eq $key } | Select-Object -First 1) }
+        if ($match) { [void]$open[$slot].Remove($match[0]); $byType[$hit.Type].Found++; $byForm[$match[0].Form].Found++ }
+        else { $byType[$hit.Type].False++ }
+    }
+    $notScanned = @($Book.NotScanned | Where-Object { $names -contains $_ } | Sort-Object -Unique).Count
+    return @{ ByType = $byType; ByForm = $byForm; NotScanned = $notScanned; OutsideHits = $outside; Files = $Plan.Count }
+}
+
+function Get-RecallPercent {
+    # A whole percent as text ('-' when there is nothing to divide).
+    param([int]$Part, [int]$Whole)
+    if ($Whole -eq 0) { return '-' }
+    return ([string][Math]::Round(100.0 * $Part / $Whole) + '%')
+}
+
+function Format-RecallScore {
+    <#
+    .SYNOPSIS
+      The score as lines to copy: counts, percents and type names only (no value, no path, no name).
+    .PARAMETER Score
+      Output of Get-RecallScore.
+    .OUTPUTS
+      [string[]]
+    #>
+    param([hashtable]$Score)
+    $lines = New-Object System.Collections.Generic.List[string]
+    $row = '{0,-42} {1,7} {2,5} {3,6} {4,6} {5,7}'
+    $lines.Add(('Ion recall test, key {0}: {1} test files' -f $script:RecallKeyName, $Score.Files))
+    $lines.Add(($row -f 'Type', 'Planted', 'Found', 'Missed', 'False', 'Recall'))
+    $total = @{ Planted = 0; Found = 0; False = 0 }
+    foreach ($type in $Score.ByType.Keys) {
+        $t = $Score.ByType[$type]
+        $lines.Add(($row -f $type, $t.Planted, $t.Found, ($t.Planted - $t.Found), $t.False, (Get-RecallPercent $t.Found $t.Planted)))
+        $total.Planted += $t.Planted; $total.Found += $t.Found; $total.False += $t.False
+    }
+    $lines.Add(($row -f 'All types', $total.Planted, $total.Found, ($total.Planted - $total.Found), $total.False, (Get-RecallPercent $total.Found $total.Planted)))
+    $lines.Add(('Recall {0} ({1} of {2} planted values found). Precision {3} ({1} of {4} hits match the key).' -f (Get-RecallPercent $total.Found $total.Planted),
+            $total.Found, $total.Planted, (Get-RecallPercent $total.Found ($total.Found + $total.False)), ($total.Found + $total.False)))
+    $lines.Add(('Test files in the Not scanned tab: {0}. Hits in files that are not test files: {1}.' -f $Score.NotScanned, $Score.OutsideHits))
+    $lines.Add('By form:')
+    $forms = @($Score.ByForm.Keys) | Sort-Object { [array]::IndexOf($script:RecallTypes, ($_ -split ' / ')[0]) }, { $_ }   # in type order
+    foreach ($form in $forms) { $f = $Score.ByForm[$form]; $lines.Add(($row -f $form, $f.Planted, $f.Found, ($f.Planted - $f.Found), '', (Get-RecallPercent $f.Found $f.Planted))) }
+    return , $lines.ToArray()
+}
+
+# ==== Questions: the run starts here (the code above only defines functions) ====
+$ErrorActionPreference = 'Stop'
+Write-Host 'Ion recall test. Invented files only. It prints counts and type names only.'
+$recallMode = [string](Read-Host 'Type M to make the test files, or S to score the Ion workbook')
+if ($recallMode.Trim() -match '^[Mm]$') {
+    $recallFolder = ([string](Read-Host 'Path of the empty test folder')).Trim().Trim('"')
+    Write-Host (Invoke-RecallMake $recallFolder)
+}
+elseif ($recallMode.Trim() -match '^[Ss]$') {
+    $recallBook = ([string](Read-Host 'Path of the Ion workbook (.xlsx)')).Trim().Trim('"')
+    if (-not $recallBook -or -not (Test-Path -LiteralPath $recallBook -PathType Leaf)) { Write-Host 'Result: no workbook at that path. Press F5 to start again.' }
+    else {
+        try { foreach ($line in (Format-RecallScore (Get-RecallScore (Get-RecallPlan) (Read-RecallWorkbook $recallBook)))) { Write-Host $line } }
+        catch { Write-Host ('Result: the workbook could not be read (' + ($_.Exception.Message -replace '\d', '#') + ').') }
+        Write-Host 'Done. Copy the lines from "Ion recall test" to "Done."'
+    }
+}
+else { Write-Host 'Result: type M or S. Press F5 to start again.' }
