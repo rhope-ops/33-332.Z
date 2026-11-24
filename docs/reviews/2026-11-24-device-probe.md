@@ -50,4 +50,11 @@ The probe is a .txt file (Project rules, "Paste format"): `docs/reviews/2026-11-
 
 ## Result
 
-Not run yet.
+- Date: 2026-11-24. The PAM ran the probe on the gov device (sent by e-mail; counts and kinds only).
+- Part A: `A1 folder opens=True`, `A2 sync entries=5`, two `A3 matching entry` lines, both with MountPoint, UrlNamespace
+  and LibraryType and `shape=personal`; `A4 web address found=True`. So Ion can map a local OneDrive folder to its web
+  address (plan step 4).
+- Part B: `B-onedrive sign-in ok=True`, but `B-onedrive a file found=False`: the web path built from the address and
+  the folder did not find the file. `B-team sign-in: failed (PSInvalidOperationException)`: the second sign-in in the
+  same run, after a sign-out, failed. No permission read ran (plan step 5 stays blocked).
+- Next: probe 3 (docs/reviews/2026-11-24-device-probe-3.md) tests one sign-in for several sites and the file path.
