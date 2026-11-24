@@ -7,8 +7,8 @@ $siteA = (Read-Host 'Question 2: a team site address you scan').Trim().TrimEnd('
 $siteB = (Read-Host 'Question 3: a second team site address on the same host (or press Enter to skip)').Trim().TrimEnd('/')
 $teams = (Read-Host 'Question 4: a Teams link of a team you scan (or press Enter to skip)').Trim()
 Clear-Host
-if ($siteA -notmatch '^https://[^/]+/(sites|teams)/[^/]+$') { $siteA = '' }
-if ($siteB -notmatch '^https://[^/]+/(sites|teams)/[^/]+$') { $siteB = '' }
+if ($siteA -notmatch '^https://[^/]+/(sites|teams)/[^/]+$') { if ($siteA) { 'Question 2: not a site address (https://<host>/sites/<name> or /teams/<name>): T1-T3 skipped' }; $siteA = '' }
+if ($siteB -notmatch '^https://[^/]+/(sites|teams)/[^/]+$') { if ($siteB) { 'Question 3: not a site address: T3 skipped' }; $siteB = '' }
 function Get-Kind($err) {
     $m = [string]$err.Exception.Message
     $kind = 'Other'
@@ -25,6 +25,12 @@ function Test-Step($tag, [scriptblock]$step) {
     try { $r = & $step; '{0} ok=True {1} ms={2}' -f $tag, $r, $clock.ElapsedMilliseconds } catch { '{0} ok=False {1} ms={2}' -f $tag, (Get-Kind $_), $clock.ElapsedMilliseconds }
 }
 function Get-SitePath($url) { [uri]::UnescapeDataString(([uri]$url).AbsolutePath).TrimEnd('/') }
+# Signs in to one site. True when it worked; then (and only then) the reads may run ("No reconnaissance").
+function Connect-Site($tag, $url) {
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    try { Connect-PnPOnline -Url $url -UseWebLogin -WarningAction SilentlyContinue; '{0} ok=True ms={1}' -f $tag, $clock.ElapsedMilliseconds | Write-Host; return $true }
+    catch { '{0} ok=False {1} ms={2}' -f $tag, (Get-Kind $_), $clock.ElapsedMilliseconds | Write-Host; return $false }
+}
 # Copies the signed-in session to another site on the same host (no new window). True when it worked.
 function Copy-Session($url) {
     try { $c = [Microsoft.SharePoint.Client.ClientContextExtensions]::Clone((Get-PnPContext), $url, $null); Set-PnPContext -Context $c; return $true }
@@ -61,7 +67,7 @@ if ($folder) {
         $sitePath = if ($nsPath -match '^/(personal|sites|teams)/[^/]+') { $Matches[0] } else { $nsPath }
         $site = ([uri]$match.Ns).GetLeftPart([UriPartial]::Authority) + $sitePath
         'T4 library part in the address={0}' -f ($nsPath -ne $sitePath)
-        Test-Step 'T4 sign-in' { Connect-PnPOnline -Url $site -UseWebLogin -WarningAction SilentlyContinue; '' }
+        if (Connect-Site 'T4 sign-in' $site) {
         Test-Step 'T4 path A (address + folder)' { 'found={0}' -f [bool](Get-PnPFile -Url ($nsPath + $inner) -AsListItem) }
         Test-Step 'T4 path B (site + Documents + folder)' { 'found={0}' -f [bool](Get-PnPFile -Url ($sitePath + '/Documents' + $inner) -AsListItem) }
         Test-Step 'T4 path C (first library + folder)' {
@@ -70,29 +76,29 @@ if ($folder) {
         }
         Test-Step 'T4 web read' { $s = Get-PnPFile -Url ($nsPath + $inner) -AsMemoryStream; $n = $s.Length; $s.Dispose(); 'KB={0}' -f [int]($n / 1KB) }
         Test-Step 'T4 disk read' { $b = [IO.File]::ReadAllBytes($file[0].FullName); 'KB={0}' -f [int]($b.Length / 1KB) }
+        }
     }
 }
 # ---- T1: a Teams link: sign in at the tenant root, then look up the team's site ----
 $root = ''
 if ($siteA -and $teams -match 'groupId=([0-9a-fA-F-]{36})') {
     $gid = $Matches[1]; $root = ([uri]$siteA).GetLeftPart([UriPartial]::Authority)
-    Test-Step 'T1 root sign-in' { Connect-PnPOnline -Url $root -UseWebLogin -WarningAction SilentlyContinue; '' }
-    Test-Step 'T1 site lookup' { $a = Invoke-PnPSPRestMethod -Method Post -Url '/_api/GroupSiteManager/GetSiteStatus' -Content @{ groupId = $gid }; 'site found={0}' -f [bool]$a.SiteUrl }
+    if (-not (Connect-Site 'T1 root sign-in' $root)) { $root = '' }   # then T2 signs in to site A by itself
+    else { Test-Step 'T1 site lookup' { $a = Invoke-PnPSPRestMethod -Method Post -Url '/_api/GroupSiteManager/GetSiteStatus' -Content @{ groupId = $gid }; 'site found={0}' -f [bool]$a.SiteUrl }
     $copied = Copy-Session $siteA
     'T1 copy to site A ok={0}' -f $copied
-    if ($copied) { Test-Reach 'T1 site A' $siteA }   # no read after a failed copy: it would read the tenant root
+    if ($copied) { Test-Reach 'T1 site A' $siteA } }   # no read after a failed copy: it would read the tenant root
 } elseif ($teams) { 'T1 skipped: the Teams link has no groupId' }
 # ---- T2: site A with its own sign-in (the way Ion signs in today) ----
-if ($siteA -and -not $root) { Test-Step 'T2 site A sign-in' { Connect-PnPOnline -Url $siteA -UseWebLogin -WarningAction SilentlyContinue; '' }; Test-Reach 'T2 site A' $siteA }
+if ($siteA -and -not $root) { if (Connect-Site 'T2 site A sign-in' $siteA) { Test-Reach 'T2 site A' $siteA } }
 # ---- T3: site B: a copy of the signed-in session (no new window), then a new sign-in without sign-out, then after sign-out ----
 if ($siteA -and $siteB) {
     $copied = Copy-Session $siteB
     'T3 copy to site B ok={0}' -f $copied
     if ($copied) { Test-Reach 'T3 copy B' $siteB }
-    Test-Step 'T3 sign-in B, no sign-out' { Connect-PnPOnline -Url $siteB -UseWebLogin -WarningAction SilentlyContinue; '' }
-    Test-Reach 'T3 new B' $siteB
+    if (Connect-Site 'T3 sign-in B, no sign-out' $siteB) { Test-Reach 'T3 new B' $siteB }
     Test-Step 'T3 sign-out' { Disconnect-PnPOnline; '' }
-    Test-Step 'T3 sign-in B after sign-out' { Connect-PnPOnline -Url $siteB -UseWebLogin -WarningAction SilentlyContinue; '' }
+    $null = Connect-Site 'T3 sign-in B after sign-out' $siteB
 }
 try { Disconnect-PnPOnline } catch { }
-Write-Host 'Done. The lines above show True/False, counts, error kinds and times only. Copy them and paste them in the chat.'
+Write-Host 'Done. The lines above show True/False, counts, error kinds and times only. Copy them into an e-mail to yourself.'
