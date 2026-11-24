@@ -121,9 +121,15 @@ try {
         'Online only (OneDrive), not downloaded: check by hand, or run Ion again and answer y to download' =
             'Online only (OneDrive), not downloaded: check by hand, or run Ion again and answer y to download'
         'The reader failed: Exception calling "ReadAllBytes": "Could not find file "C:\Users\Sample Person\x.docx"."' =
-            'The reader failed: Exception calling "ReadAllBytes": "Could not find file <path>."'
+            'The reader failed: Exception calling "ReadAllBytes": "Could not find file <path>'
         'Could not read the file (damaged or protected?): The network path \\host-one\Sample.Person\a b.docx was not found' = 'Could not read the file (damaged or protected?): The network path <path>'
         'The reader failed: at Sample\Person line 4 for sample.person@example.test and 1234567890' = 'The reader failed: at <path> line 4 for <address> and #'
+        # Review of PR 105: relative, forward-slash and nested-quote paths leave no word of the name.
+        'Access to the path ''..\Users\Sample Person'' is denied.' = 'Access to the path <path> is denied.'
+        'Access to the path ''/Users/Sample Person/x.docx'' is denied.' = 'Access to the path <path> is denied.'
+        'Could not find /sites/team-x/Shared Documents/Sample Person/x.docx' = 'Could not find <path>'
+        'Bad ''C:\Users\Samples'' Person Q\x.docx'' here' = 'Bad <path> here'
+        'Bad ''file:Users/Sample Person/x'' here' = 'Bad <path> here'
     }
     foreach ($case in $safeCases.Keys) { Assert-Equal $safeCases[$case] (Get-RecallSafeReason $case) ('Recall Score: a safe reason (' + $case.Substring(0, 18) + ')') }
     Assert-Equal 163 (Get-RecallSafeReason ('x' * 300)).Length 'Recall Score: a reason is cut at 160 characters'

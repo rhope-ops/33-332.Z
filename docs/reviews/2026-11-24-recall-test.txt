@@ -565,19 +565,22 @@ function Get-RecallSafeReason {
     <#
     .SYNOPSIS
       Ion's reason text without a path, a web or e-mail address or a long number (an error message can name the
-      profile folder, so a person's name): a quoted path becomes <path>; from any other path start to the end of the
-      text becomes <path>; a word with a backslash becomes <path>; an e-mail address becomes <address>; 5 or more digits
-      become #. At most 160 characters.
+      profile folder, so a person's name): a quoted text with a slash or backslash becomes <path>; from any other path
+      start to the end of the text becomes <path>; a word with a backslash becomes <path>; an e-mail address becomes
+      <address>; 5 or more digits become #. At most 160 characters. A name with no path near it is not removed (Ion's
+      reasons are its fixed texts and .NET file errors, which name a file only by its path).
     .PARAMETER Reason
       The Reason cell of the Not scanned tab.
     .OUTPUTS
       [string]
     #>
     param([string]$Reason)
-    # A quoted path ends at a quote followed by a space, a point, a comma, a semicolon, a colon, a bracket or the end
-    # (a quote inside a folder name, as in a name with an apostrophe, does not end it).
-    $safe = [regex]::Replace($Reason, '([''"])(?:[A-Za-z]:[\\/]|\\\\|[A-Za-z]+://).*?\1(?=[\s.,;:)]|$)', '<path>')
-    $safe = [regex]::Replace($safe, '(?s)(?:[A-Za-z]:[\\/]|\\\\|[A-Za-z]+://).*$', '<path>')
+    # A quoted text with a slash or backslash in it is a path. It ends at the LAST quote of the same kind followed by a
+    # space, a point, a comma, a semicolon, a colon, a bracket or the end (a quote inside a folder name, as in a name
+    # with an apostrophe, does not end it; more text masked is safe, less is not: review of PR 105).
+    $safe = [regex]::Replace($Reason, '([''"])[^''"\r\n]*[\\/].*\1(?=[\s.,;:)]|$)', '<path>')
+    # An unquoted path: from a drive, \\, a web address or a word that starts with / to the end of the text.
+    $safe = [regex]::Replace($safe, '(?s)(?:[A-Za-z]:[\\/]|\\\\|[A-Za-z]+:/|(?<!\S)/\S).*$', '<path>')
     $safe = [regex]::Replace($safe, '\S*\\\S*', '<path>')
     $safe = [regex]::Replace($safe, '\S+@\S+', '<address>')
     $safe = [regex]::Replace($safe, '\d{5,}', '#').Trim()
