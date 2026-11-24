@@ -1,0 +1,73 @@
+# Ion device probe 2 (plan of 2026-11-24, step 0): read-only. Prints only True/False, counts, type names and times:
+# no name, no address, no path, no value from a file. Part A: how a OneDrive folder maps to its web address (no sign-in).
+# Part B: which permission reads work for you without admin, and the time to read one file (one CAC sign-in per site).
+$ErrorActionPreference = 'Stop'
+function Show-Err($what, $err) { '{0}: failed ({1})' -f $what, $err.Exception.GetType().Name }
+function Get-Shape($url) {
+    if (-not $url) { return '(none)' }
+    if ($url -match '/personal/') { return 'personal' }; if ($url -match '/sites/') { return 'sites' }; if ($url -match '/teams/') { return 'teams' }
+    return 'other'
+}
+# ---- Part A: OneDrive folder -> web address ----
+$folder = (Read-Host 'Question 1: your OneDrive folder (paste the path)').Trim().Trim('"').TrimEnd('\')
+$team = (Read-Host 'Question 2: a team site address you scan (or press Enter to skip)').Trim()
+Clear-Host   # the answers are not on the screen when you copy the result lines
+'A1 folder opens={0}' -f [System.IO.Directory]::Exists($folder)
+$providers = @()
+try { $providers = @(Get-ChildItem -Path 'HKCU:\Software\SyncEngines\Providers\OneDrive' -ErrorAction Stop) } catch { Show-Err 'A2 sync list' $_ }
+'A2 sync entries={0}' -f $providers.Count
+$match = $null
+foreach ($p in $providers) {
+    $names = @($p.GetValueNames())
+    $mount = [string]$p.GetValue('MountPoint'); $ns = [string]$p.GetValue('UrlNamespace')
+    $under = $mount -and ($folder + '\').StartsWith($mount.TrimEnd('\') + '\', [System.StringComparison]::OrdinalIgnoreCase)
+    if ($under) {
+        'A3 matching entry: MountPoint={0} UrlNamespace={1} LibraryType={2} shape={3}' -f ($names -contains 'MountPoint'),
+            ($names -contains 'UrlNamespace'), ($names -contains 'LibraryType'), (Get-Shape $ns)
+    }
+    if ($under -and $ns -and (-not $match -or $mount.Length -gt $match.Mount.Length)) { $match = @{ Mount = $mount.TrimEnd('\'); Ns = $ns.TrimEnd('/') } }
+}
+'A4 web address found={0}' -f [bool]$match
+# ---- Part B: permission reads and one file read ----
+$sites = @()
+if ($match) {
+    # The smallest file on disk, at most 5 MB (not online only), so the read is quick and fits in memory.
+    $file = @(Get-ChildItem -LiteralPath $folder -File -ErrorAction SilentlyContinue | Where-Object { -not ($_.Attributes -band 0x441000) -and $_.Length -le 5MB } |
+        Sort-Object Length | Select-Object -First 1)
+    $path = [uri]::UnescapeDataString(([uri]$match.Ns).AbsolutePath).TrimEnd('/') + $folder.Substring($match.Mount.Length).Replace('\', '/')
+    if ($file) { $sites += , @('B-onedrive', ($match.Ns -replace '/[^/]+$', ''), ($path + '/' + $file[0].Name), $file[0].FullName) }
+    else { 'B-onedrive a file on disk found=False' }
+}
+if ($team) { $sites += , @('B-team', $team.TrimEnd('/'), '', '') }
+foreach ($s in $sites) {
+    $tag = $s[0]
+    try { Connect-PnPOnline -Url $s[1] -UseWebLogin -WarningAction SilentlyContinue; '{0} sign-in ok=True' -f $tag } catch { Show-Err "$tag sign-in" $_; continue }
+    try {
+        if ($s[2]) { $item = Get-PnPFile -Url $s[2] -AsListItem }
+        else {
+            $lib = Get-PnPList | Where-Object { $_.BaseTemplate -eq 101 -and -not $_.Hidden } | Select-Object -First 1
+            # The smallest file of the first 200, at most 5 MB, so the read is quick and fits in memory.
+            $item = @(Get-PnPListItem -List $lib -PageSize 200 -Fields 'FileRef', 'File_x0020_Size' | Select-Object -First 200 |
+                Where-Object { $_.FileSystemObjectType -eq 'File' -and [long]$_['File_x0020_Size'] -le 5MB } | Sort-Object { [long]$_['File_x0020_Size'] } | Select-Object -First 1)[0]
+        }
+        '{0} a file found={1}' -f $tag, [bool]$item
+        if (-not $item) { continue }
+        $listId = (Get-PnPProperty -ClientObject $item -Property ParentList).Id
+        try { $u = Get-PnPProperty -ClientObject $item -Property HasUniqueRoleAssignments; '{0} unique permissions read=True value={1}' -f $tag, $u } catch { Show-Err "$tag unique permissions" $_ }
+        try { $ra = Get-PnPProperty -ClientObject $item -Property RoleAssignments; '{0} role assignments read=True count={1}' -f $tag, @($ra).Count } catch { Show-Err "$tag role assignments" $_ }
+        try {
+            $info = Invoke-PnPSPRestMethod -Method Post -Url ("/_api/web/lists('{0}')/items({1})/GetSharingInformation?`$expand=sharingLinks" -f $listId, $item.Id)
+            $links = @(); if ($info.PSObject.Properties['sharingLinks']) { $links = @($info.sharingLinks) } elseif ($info.PSObject.Properties['d']) { $links = @($info.d.sharingLinks.results) }
+            $links = @($links | Where-Object { $_ -and $_.linkDetails -and $_.linkDetails.Url })   # only links that exist
+            $kinds = @($links | ForEach-Object { [string]$_.linkDetails.LinkKind }) | Group-Object | ForEach-Object { '{0}x{1}' -f $_.Count, $_.Name }
+            '{0} sharing information read=True links={1} kinds={2}' -f $tag, $links.Count, ($kinds -join ',')
+        } catch { Show-Err "$tag sharing information" $_ }
+        '{0} Get-PnPFileSharingLink exists={1}' -f $tag, [bool](Get-Command Get-PnPFileSharingLink -ErrorAction SilentlyContinue)
+        $clock = [System.Diagnostics.Stopwatch]::StartNew()
+        $stream = Get-PnPFile -Url $item['FileRef'] -AsMemoryStream; $size = $stream.Length; $stream.Dispose()
+        '{0} web read ms={1} KB={2}' -f $tag, $clock.ElapsedMilliseconds, [int]($size / 1KB)
+        if ($s[3]) { $clock.Restart(); $bytes = [System.IO.File]::ReadAllBytes($s[3]); '{0} disk read ms={1} KB={2}' -f $tag, $clock.ElapsedMilliseconds, [int]($bytes.Length / 1KB) }
+    } catch { Show-Err "$tag read" $_ }
+    finally { try { Disconnect-PnPOnline } catch { } }
+}
+Write-Host 'Done. The lines above show True/False, counts, kinds and times only. Copy them and paste them in the chat.'

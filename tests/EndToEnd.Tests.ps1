@@ -92,7 +92,8 @@ Assert-Equal $true ($shown -match "Not read: 'not a link' is not a SharePoint si
 Assert-Equal $true ($shown -match 'a drive folder: X:') 'Wrong paste: what can be pasted is listed'
 Assert-Equal $true ($shown -match 'To stop early: Ctrl\+C' -and $shown -match 'Ion is done: nothing stays signed in') 'Start: how to stop; end: signed out after a site'
 Assert-Equal 1 @(Get-ResultFiles $retryFolder).Count 'Wrong paste: asked again, then the right one scanned'
-Assert-Equal 3 (Get-FakeCallCount 'Read-Host') 'Wrong paste, right paste, then Enter to exit'
+# Wrong paste, right paste, Enter at "Add another" (starts the one target), Enter at "Scan more" (exits).
+Assert-Equal 4 (Get-FakeCallCount 'Read-Host') 'Wrong paste, right paste, then Enter to start and Enter to exit'
 
 # ---- A run that fails part way still saves a report ----
 Reset-FakePnP @{}
@@ -109,6 +110,53 @@ Reset-FakePnP @{ "$library/General/notes.txt" = $Txt; "$library/Ops/a.txt" = $Tx
 Set-FakePnPOption StopInFolder2 $true
 $stopShown = (& $script -SiteUrl $Sample.Site -OutputFolder (Join-Path $runFolder 'stop') 6>&1 | ForEach-Object { [string]$_ }) -join ' '
 Assert-Equal $true ($stopShown -match 'INCOMPLETE: the scan stopped early\. Only the 1 file read') 'Stopped part way: the red line counts the files read'
+
+# ---- Several targets in one run (the PAM, 2026-11-24): asked once, one workbook each, a closing table ----
+Reset-FakePnP @{ "$library/General/notes.txt" = $Txt }
+$siteB = $Sample.Site + 'B'
+Set-FakeSiteAnswer -TypedSite @($Sample.Site, $siteB)
+$listFolder = Join-Path $runFolder 'list'
+$listShown = (& $script -OutputFolder $listFolder 6>&1 | ForEach-Object { [string]$_ }) -join ' '
+Assert-Equal 2 @(Get-ResultFiles $listFolder).Count 'Several targets: one workbook each'
+Assert-Equal ($Sample.Site + '|' + $siteB) ((Get-FakePnPConnection) -join '|') 'Several targets: each site signed in, in order, and no other'
+$questions = '{0} {1} {2} {3}' -f (Get-FakeCallCount 'List question'), (Get-FakeCallCount 'Scan question'), (Get-FakeCallCount 'Open question'), (Get-FakeCallCount 'Folder question')
+Assert-Equal '1 0 0 1' $questions 'Several targets: asked once; no "Scan now?" or "Open the workbook?" per site; the folder offered once'
+Assert-Equal $true ($listShown -match 'Done: 2 of 2 saved' -and $listShown -match '2 to scan, one after the other') 'Several targets: the list and the closing table'
+Reset-FakePnP @{ "$library/General/notes.txt" = $Txt }
+Set-FakeSiteAnswer -TypedSite @($Sample.Site, $siteB) -ScanAnswer 'n'
+$noFolder = Join-Path $runFolder 'list-no'
+& $script -OutputFolder $noFolder 6>$null
+Assert-Equal 0 @(Get-ResultFiles $noFolder).Count 'Several targets: "n" to the list scans nothing'
+
+# Review of PR 80: a site that fails does not stop the list; site labels are masked; "n" signs in nowhere.
+Reset-FakePnP @{ "$library/General/notes.txt" = $Txt }
+Set-FakePnPOption NoAccess $true
+Set-FakeSiteAnswer -TypedSite @($Sample.Site, $siteB)
+$failFolder2 = Join-Path $runFolder 'list-fail'
+$failShown = (& $script -OutputFolder $failFolder2 6>&1 | ForEach-Object { [string]$_ }) -join ' '
+Assert-Equal $true ($failShown -match 'Done: 0 of 2 saved' -and @(Get-FakePnPConnection).Count -eq 2) 'Several targets: a site with no access does not stop the next one'
+Reset-FakePnP @{ "$library/General/notes.txt" = $Txt }
+$ssnSite = $Sample.Site + '_' + $Sample.Ssn
+Set-FakeSiteAnswer -TypedSite @($ssnSite, $siteB) -ScanAnswer 'n'
+$maskShown = (& $script -OutputFolder (Join-Path $runFolder 'list-mask') 6>&1 | ForEach-Object { [string]$_ }) -join ' '
+Assert-Equal $false $maskShown.Contains($Sample.Ssn) 'Several targets: site labels are masked'
+Assert-Equal 0 @(Get-FakePnPConnection).Count 'Several targets: "n" to the list signs in nowhere'
+
+# Second review of PR 80: a blocked sign-in keeps its numbered steps once per site, the table shows one line each;
+# a site name with an SSN shape is masked in "Signing in to", the results header, the workbook Summary and the table.
+Reset-FakePnP @{ "$library/General/notes.txt" = $Txt }
+Set-FakePnPOption ConnectFails $true
+Set-FakeSiteAnswer -TypedSite @($Sample.Site, $siteB)
+$blockShown = (& $script -OutputFolder (Join-Path $runFolder 'list-block') 6>&1 | ForEach-Object { [string]$_ }) -join "`n"
+Assert-Equal 2 ([regex]::Matches($blockShown, '(?m)^\s+1\. In Teams, click the channel')).Count 'Blocked sign-in: the numbered steps show once per site, with their numbers'
+Assert-Equal 0 ([regex]::Matches($blockShown, '#\. In Teams')).Count 'Blocked sign-in: no step number is masked'
+Reset-FakePnP @{ "$library/General/notes.txt" = $Txt }
+Set-FakeSiteAnswer -TypedSite @($ssnSite, $siteB)
+$ssnFolder = Join-Path $runFolder 'list-ssn'
+$ssnShown = (& $script -OutputFolder $ssnFolder 6>&1 | ForEach-Object { [string]$_ }) -join ' '
+$ssnBooks = @(Get-ResultFiles $ssnFolder)
+$ssnCells = (@($ssnBooks | ForEach-Object { (Get-XlsxSheets $_.FullName)['Summary'] | ForEach-Object { $_ -join ' ' } })) -join ' '
+Assert-Equal '2 False False' ('{0} {1} {2}' -f $ssnBooks.Count, $ssnShown.Contains($Sample.Ssn), $ssnCells.Contains($Sample.Ssn)) 'SSN-shaped site name: masked on screen and in the workbooks'
 
 # ---- A report that cannot be saved: the script still signs out ----
 Reset-FakePnP @{}

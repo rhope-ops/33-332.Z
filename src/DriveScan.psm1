@@ -317,16 +317,17 @@ function Invoke-DriveScan {
       Files larger than this are reported as NOT SCANNED.
     .PARAMETER Init
       How the reader workers load their code (New-ReaderPool).
+    .PARAMETER AutoStart
+      Do not ask "Scan now?" (the person said yes to a list of targets); the OneDrive question still asks.
     .OUTPUTS
       [string] the workbook path.
     #>
-    param([string]$Path, [string]$OutputFolder, [int]$MaxFileMB, [hashtable]$Init)
+    param([string]$Path, [string]$OutputFolder, [int]$MaxFileMB, [hashtable]$Init, [switch]$AutoStart)
     $clock = [Diagnostics.Stopwatch]::StartNew()
     $rows = New-Object System.Collections.Generic.List[object]
     $finished = $false
-    $groups = @()
-    $workbook = $null
-    $run = @{ Meter = (New-ScanMeter 0); Reading = [TimeSpan]::Zero; Workers = 0 }   # filled by Invoke-ScanRun
+    $groups = @(); $workbook = $null
+    $run = @{ Meter = (New-ScanMeter 0); Reading = [TimeSpan]::Zero; Workers = 0; AutoStart = [bool]$AutoStart }   # filled by Invoke-ScanRun
     try {
         if (-not (Test-Path -LiteralPath $Path -PathType Container)) { throw 'This folder cannot be opened (check the path, and that you can open it in File Explorer).' }
         # Own OneDrive folder: shortcuts to other teams' libraries ("No reconnaissance"); declined until a yes (a cancel too).

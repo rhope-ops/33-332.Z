@@ -283,6 +283,8 @@ function global:Read-Host {
     [CmdletBinding()] param($Prompt)
     # The open-the-workbook question has its own answer (Enter = open), so the queued addresses stay in order.
     if ([string]$Prompt -like 'Open the workbook*') { $global:FakePnP.Calls.Add('Open question'); return $global:FakePnP.OpenAnswer }
+    if ([string]$Prompt -like 'Open the results folder*') { $global:FakePnP.Calls.Add('Folder question'); return 'n' }   # never opens a real folder
+    if ([string]$Prompt -like 'Scan these*') { $global:FakePnP.Calls.Add('List question'); return $global:FakePnP.ScanAnswer }
     if ([string]$Prompt -like 'Scan all of them*') {
         $global:FakePnP.Calls.Add('Root question')
         if ($global:FakePnP.RootAnswer -eq 'cancel') { throw 'FAKE: prompt cancelled' }   # as a cancel at the question
