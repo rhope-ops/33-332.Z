@@ -581,7 +581,7 @@ foreach ($word in (('a e again an and another answer archive author available be
         'execute item same key already added given present dictionary current state error disk full space enough memory ' +
         'device ready sharing violation lock locked user mapped section volume medium drive share server busy ' +
         'are as attached attachments checked conflicting content deep excel first font for headers large map message ' +
-        'nested numbers pages parts some stored them unpack uses way which') -split ' ')) {
+        'nested numbers pages parts some stored them unpack uses way which library') -split ' ')) {
     if ($word) { $script:RecallReasonWords[$word] = $true }
 }
 
@@ -598,8 +598,9 @@ function Get-RecallSafeReason {
     #>
     param([string]$Reason)
     $out = New-Object System.Text.StringBuilder
-    # A word is a run of letters of any script (an accented name is one word: review of PR 105); digits are 0 to 9 only.
-    foreach ($m in [regex]::Matches($Reason, '\p{L}+|[0-9]+|\s+|.')) {
+    # A word is a run of letters of any script with their combining marks (an accented name is one word: review of
+    # PR 105); digits are 0 to 9 only. Known limit: a name that is also an allowed English word (May, Page) shows.
+    foreach ($m in [regex]::Matches($Reason, '[\p{L}\p{M}]+|[0-9]+|\s+|.')) {
         $t = $m.Value
         $keep = ($t -cmatch '^[A-Za-z]+$' -and $script:RecallReasonWords.ContainsKey($t.ToLowerInvariant())) -or
             ($t -match '^[0-9]{1,4}$') -or ($t -match '^[ \t]+$') -or ($t -match '^[.,;:()?!''"\-\[\]]$')

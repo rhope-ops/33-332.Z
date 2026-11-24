@@ -119,7 +119,8 @@ try {
     # The reason Score prints: allowed words only (review of PR 105). Each fixed reason of Ion prints unchanged.
     # The fixed reasons of Ion: each string in src/ (PowerShell parser) with 'check by hand' or a reason start; a variable
     # inside a string reads as 9.
-    $reasonStart = '^(Could not read the file|The reader failed|Scanned PDF|Download failed|Download gave|Empty file|Larger than|Encrypted[ (]|Sensitivity label)'
+    $reasonStart = '^(Could not read the file|The reader failed|Scanned PDF|Download failed|Download gave|Empty file|Larger than|' +
+        'Encrypted[ (]|Sensitivity label|Could not open this folder|Could not read this library)'
     $fixedReasons = @(Get-ChildItem (Join-Path $recallRoot 'src') -Filter '*.ps*1' | ForEach-Object {
             $ast = [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$null, [ref]$null)
             $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.StringConstantExpressionAst] -or
@@ -139,7 +140,9 @@ try {
         'The reader failed: path=/Users/Sample Person/x.docx', 'Could not find "/Users/Sample Person/x.docx',
         'Could not find Users/Sample Person/x.docx', 'Could not find ./Sample Person/x.docx',
         "Access to the path 'Sample O'Neil\x.docx' is denied.", 'The file is locked for editing by Sample Person.',
-        ('Locked by Sampl' + [char]0x00E9 + '.'), ('Locked by Sampl' + [char]0x00E9 + 'e Pers' + [char]0x00F6 + 'n.'), 'Locked by SampleException.')   # accents at run time: ASCII file
+        # Accents and combining marks are built at run time (the file stays ASCII for Windows PowerShell 5.1).
+        ('Locked by Sampl' + [char]0x00E9 + '.'), ('Locked by Sampl' + [char]0x00E9 + 'e Pers' + [char]0x00F6 + 'n.'), 'Locked by SampleException.',
+        ('Locked by Samp' + [char]0x0301 + 'le Pers' + [char]0x0308 + 'on.'))
     $leaked = @($leaky | ForEach-Object { Get-RecallSafeReason $_ } | Where-Object { $_ -match 'Samp|Pers|Neil|Arcy|host|Test Org|example|\d{5}' })
     Assert-Equal '' ($leaked -join ' || ') 'Recall Score: no word of a path or name shows'
     $inUse = 'Could not read the file (in use, damaged or protected?): The process cannot access the file '
