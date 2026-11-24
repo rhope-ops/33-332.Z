@@ -29,7 +29,7 @@ foreach ($module in $readerModules + $otherModules) {
 
 # Order matters: Extraction builds $Docx and $Txt, which the later files use.
 $testFiles = @('Detectors.Tests.ps1', 'Signature.Tests.ps1', 'Extraction.Tests.ps1', 'ReaderRounds.Tests.ps1', 'Protection.Tests.ps1', 'ChannelScan.Tests.ps1', 'DriveScan.Tests.ps1',
-    'Report.Tests.ps1', 'EndToEnd.Tests.ps1', 'Bundle.Tests.ps1')
+    'Report.Tests.ps1', 'EndToEnd.Tests.ps1', 'Bundle.Tests.ps1', 'Recall.Tests.ps1')
 foreach ($testFile in $testFiles) {
     . (Join-Path $PSScriptRoot $testFile)
 }
