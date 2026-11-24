@@ -21,9 +21,10 @@ permissions as scope only ("No reconnaissance": no user names listed); month-nam
 
 ## Status
 
-<<<<<<< HEAD
-- Step 0: open. Step 1: open. Step 2: open. Step 3: built (claude/workbook-qol), in review. Step 4: open. Step 5: open. Step 6: open.
-=======
-- Step 0: probe merged (PR 79, docs/reviews/2026-11-24-device-probe.md); waits on the PAM's run. Step 1: merged (PR 82).
-  Step 2: merged (PR 80). Step 3: in review (PR 81). Step 4: needs probe 3 (probe 2: address mapping works, file path not found). Step 5: needs probe 3 (no permission read ran). Step 6: open.
->>>>>>> origin/main
+- Step 0: probe 2 run (OneDrive maps to its address; second sign-in failed); probe 3 merged (PRs 84, 86), the PAM runs it.
+- Step 1: merged (PRs 82, 85). Detectors frozen after PR 85 (the PAM, 2026-11-24), except the roster header fix.
+- Step 2: merged (PRs 80, 83). Step 3: merged (PR 81).
+- Step 4 (OneDrive hybrid) and one sign-in per host (the PAM, 2026-11-24): wait on probe 3's second run.
+- Step 5 (permission scope): waits on probe 3 (no permission read ran yet). Step 6 (parallel downloads): open.
+- Added 2026-11-24: seeded recall test (PR 87; local baseline 46/53 found, 87%); roster header fix in work
+  (claude/roster-headers); the PAM to run the recall test on the device after probe 3.
