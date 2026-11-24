@@ -39,9 +39,10 @@ $script:KeepLastPassportChars = 3
 $script:EmailLocalPartPattern = '(?<=^|[\s@<>()\[\],;:"/\\])[^\s@<>()\[\],;:"/\\]+(?=@[^\s@<>()\[\],;:"/\\.]+\.)'
 
 # A CAC name in an e-signature ("DOE.JANE.Q."): two or three dotted parts, the first two of two letters or more, each
-# ending in a dot. In the Context column only the first letter of each part stays (approved 2026-11-21: "mask the CAC
-# name in Context"); a dotted host or file name that looks the same is masked too, which hides nothing needed.
-$script:MaskedCacName = "(?<![\w.])[A-Za-z][A-Za-z'-]+\.[A-Za-z][A-Za-z'-]+\.(?:[A-Za-z][A-Za-z'-]*\.)?"
+# ending in a dot; it starts only after a character that cannot be part of a name (no slow restarts on long text). In
+# the Context column only the first letter of each part stays (approved 2026-11-21: "mask the CAC name in Context"); a
+# dotted host or file name that looks the same is masked too, which hides nothing needed.
+$script:MaskedCacName = "(?<![\w.'-])[A-Za-z][A-Za-z'-]+\.[A-Za-z][A-Za-z'-]+\.(?:[A-Za-z][A-Za-z'-]*\.)?"
 
 # =====================================================================================
 # Masking one value

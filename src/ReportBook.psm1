@@ -39,12 +39,15 @@ $script:ReviewColumns = [ordered]@{ 'Is it PII?' = @('Yes', 'No', 'Not sure')
 $script:BreachAdvice = 'PII where it should not be is a potential or actual breach; report it to your servicing Privacy ' +
                        'Manager/Monitor without delay (AFI 33-332 para 3.1.2, as changed by AFI33-332_DAFGM2026-01 (7 July 2026), ' +
                        'page 1, second paragraph).'
-# "Start here" on the Summary tab: 4 steps for the reviewer (approved 2026-11-21; STE: one action a step, checked by hand,
+# "Start here" on the Summary tab: 7 steps for the reviewer (approved 2026-11-21; STE: one action a step, checked by hand,
 # as scripts/check_instructions.py cannot read text in code).
-$script:StartHere = @(@('Start here: 1', 'Open the tab Hits. In the column Confidence, filter to High. Do the High hits first.'),
-    @('Start here: 2', 'For each hit, click the file name. Find the masked value in the file, then check it.'),
-    @('Start here: 3', 'In the same row, select Is it PII?, Action taken and Reported to Privacy Manager.'),
-    @('Start here: 4', 'If it is PII where it should not be, report it to your servicing Privacy Manager/Monitor without delay.'))
+$script:StartHere = @(@('Start here: 1', 'Open the tab Hits. You see one row for each possible PII value.'),
+    @('Start here: 2', 'In the column Confidence, filter to High. You see only the High rows.'),
+    @('Start here: 3', 'In a row, click the file name. The file opens.'),
+    @('Start here: 4', 'In the file, find the value that ends with the last digits of the Masked value cell.'),
+    @('Start here: 5', 'In the row, select an answer in Is it PII?, Action taken and Reported to Privacy Manager.'),
+    @('Start here: 6', 'In the same row, type your name in Reviewed by and the date in Review date.'),
+    @('Start here: 7', 'If it is PII where it should not be, report it to your servicing Privacy Manager/Monitor without delay.'))
 # Shown as two lines, the advice and its rule source (the PAM, 2026-11-21); one line if no "(AFI ...)." part is found.
 $script:BreachLines = @($script:BreachAdvice)
 if ($script:BreachAdvice -match '^(.*) \((AFI .*)\)\.$') { $script:BreachLines = @(($Matches[1] + '.'), ('Source: ' + $Matches[2] + '.')) }

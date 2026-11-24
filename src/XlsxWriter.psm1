@@ -101,7 +101,7 @@ function New-XlsxSheet {
     .PARAMETER FillColumn
       The column (0-based) of High, Medium, Low cells that get a fill (styles 5-7); -1 for none.
     .PARAMETER DateChecks
-      Columns (0-based) the person fills in where Excel accepts only a date (after 2000-01-01), with a short message.
+      Columns (0-based) the person fills in where Excel accepts only a date (2000-01-01 or later), with a short message.
     .OUTPUTS
       [pscustomobject]
     #>
@@ -330,9 +330,9 @@ function ConvertTo-ChoicesXml {
     $checks = @($Sheet.DateChecks)
     if ((-not $Sheet.Choices -or $Sheet.Choices.Count -eq 0) -and $checks.Count -eq 0) { return '' }
     $xml = '<dataValidations count="' + ($Sheet.Choices.Count + $checks.Count) + '">'
-    foreach ($column in $checks) {   # 36526 = 2000-01-01 as an Excel date number
+    foreach ($column in $checks) {   # 36525 = 1999-12-31 as an Excel date number: 2000-01-01 and later
         $xml += ('<dataValidation type="date" operator="greaterThan" allowBlank="1" showErrorMessage="1" errorTitle="Not a date" ' +
-            'error="Type a date, for example 2026-11-24." sqref="{0}2:{0}{1}"><formula1>36526</formula1></dataValidation>') -f (Get-ColumnLetter ($column + 1)), $LastRow
+            'error="Type a date, for example 2026-11-24." sqref="{0}2:{0}{1}"><formula1>36525</formula1></dataValidation>') -f (Get-ColumnLetter ($column + 1)), $LastRow
     }
     foreach ($column in @($Sheet.Choices.Keys | Sort-Object)) {
         $letter = Get-ColumnLetter ([int]$column + 1)

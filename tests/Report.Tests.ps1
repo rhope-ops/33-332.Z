@@ -63,8 +63,8 @@ Assert-Equal $true ($tableXml -match 'displayName="tblHits" ref="A1:U4"' -and $t
 Assert-Equal $true ($sheetXml -match '<c r="M2" s="4"><v>\d+(\.\d+)?</v></c>') 'Last saved is a date cell'
 Assert-Equal $true ($sheetXml -match '<c r="C2" s="5"' -and $sheetXml -match '<c r="C4" s="7"') 'Confidence cells get the High and Low fill'
 Assert-Equal $true ($sheetXml -match 'xSplit="5"' -and $sheetXml -match '&amp;CCUI' -and $sheetXml -match 'fitToWidth="1"') 'Hits: columns frozen; CUI header and footer; one page wide'
-Assert-Equal $true ($sheetXml -match '<dataValidation type="date" operator="greaterThan"[^>]*sqref="L2:L4"><formula1>36526</formula1>') 'Review date: Excel accepts only a date'
-Assert-Equal $true ($summary -match '(?m)^Start here: 1\|Open the tab Hits' -and $summary -match '(?m)^Start here: 4\|') 'Summary: the 4 Start here steps'
+Assert-Equal $true ($sheetXml -match '<dataValidation type="date" operator="greaterThan"[^>]*sqref="L2:L4"><formula1>36525</formula1>') 'Review date: Excel accepts only a date'
+Assert-Equal $true ($summary -match '(?m)^Start here: 1\|Open the tab Hits' -and $summary -match '(?m)^Start here: 7\|') 'Summary: the 7 Start here steps'
 Assert-Equal $true ($summaryXml -match '<f>COUNTIFS\(tblHits\[Type\],\$A\d+,tblHits\[Confidence\],&quot;High&quot;\)</f><v>1</v>') 'Summary counts are formulas on the Hits table, with their value'
 Assert-Equal $true ($summary -match 'Possible PII hits\|3') 'Summary: total hits'
 $typeRows = $summary -match '(?m)^SSN\|1\|0\|0\|1\|0$' -and $summary -match '(?m)^Date of birth\|1\|0\|0\|1\|0$' -and $summary -match '(?m)^Phone\|0\|0\|1\|1\|0$' -and

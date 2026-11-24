@@ -21,7 +21,7 @@
     src/PiiPatterns.psm1, sha256 f7ef8ca1789f
     src/PiiSignedIds.psm1, sha256 c7f6ec25ebd8
     src/PiiDetectors.psm1, sha256 66e3b48368e2
-    src/PiiMasking.psm1, sha256 d7f5a3a06491
+    src/PiiMasking.psm1, sha256 fe974847ba97
     src/OcrText.psm1, sha256 a39acab441d4
     src/OleText.psm1, sha256 2f5d0a036e97
     src/ContainerText.psm1, sha256 7378569bd7e6
@@ -34,9 +34,9 @@
     src/PdfText.psm1, sha256 dffef7dc6f8b
     src/TextExtract.psm1, sha256 5e02d07ddf10
     src/ReaderPool.psm1, sha256 32b2e4cfb2ae
-    src/XlsxWriter.psm1, sha256 c5b6468965f7
+    src/XlsxWriter.psm1, sha256 2c4e448e230a
     src/Report.psm1, sha256 ef3a24aa8a55
-    src/ReportBook.psm1, sha256 16e42b192b16
+    src/ReportBook.psm1, sha256 8ed0479de31d
     src/ScanMeter.psm1, sha256 18c82f0b37c3
     src/ScanQueue.psm1, sha256 ae11c97d5b8b
     src/Accountability.psm1, sha256 8bf31404f723
@@ -58,30 +58,30 @@
     line   504  Module PiiSignedIds.psm1
     line   811  Module PiiDetectors.psm1
     line   991  Module PiiMasking.psm1
-    line  1199  Module OcrText.psm1
-    line  1352  Module OleText.psm1
-    line  1491  Module ContainerText.psm1
-    line  1830  Module PdfCore.psm1
-    line  2192  Module PdfObjects.psm1
-    line  2550  Module PdfFonts.psm1
-    line  2868  Module PdfShown.psm1
-    line  3119  Module PdfLayout.psm1
-    line  3259  Module PdfContent.psm1
-    line  3589  Module PdfText.psm1
-    line  3781  Module TextExtract.psm1
-    line  4199  Module ReaderPool.psm1
-    line  4524  Reader block end
-    line  4528  Module XlsxWriter.psm1
-    line  4965  Module Report.psm1
-    line  5341  Module ReportBook.psm1
-    line  5639  Module ScanMeter.psm1
-    line  6036  Module ScanQueue.psm1
-    line  6426  Module Accountability.psm1
-    line  6810  Module SiteTarget.psm1
-    line  7105  Module ChannelScan.psm1
-    line  7507  Module DriveScan.psm1
-    line  7872  Body of Find-ChannelPII.ps1
-    line  8013  Clean-up
+    line  1200  Module OcrText.psm1
+    line  1353  Module OleText.psm1
+    line  1492  Module ContainerText.psm1
+    line  1831  Module PdfCore.psm1
+    line  2193  Module PdfObjects.psm1
+    line  2551  Module PdfFonts.psm1
+    line  2869  Module PdfShown.psm1
+    line  3120  Module PdfLayout.psm1
+    line  3260  Module PdfContent.psm1
+    line  3590  Module PdfText.psm1
+    line  3782  Module TextExtract.psm1
+    line  4200  Module ReaderPool.psm1
+    line  4525  Reader block end
+    line  4529  Module XlsxWriter.psm1
+    line  4966  Module Report.psm1
+    line  5342  Module ReportBook.psm1
+    line  5643  Module ScanMeter.psm1
+    line  6040  Module ScanQueue.psm1
+    line  6430  Module Accountability.psm1
+    line  6814  Module SiteTarget.psm1
+    line  7109  Module ChannelScan.psm1
+    line  7511  Module DriveScan.psm1
+    line  7876  Body of Find-ChannelPII.ps1
+    line  8017  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -1029,9 +1029,10 @@ $script:KeepLastPassportChars = 3
 $script:EmailLocalPartPattern = '(?<=^|[\s@<>()\[\],;:"/\\])[^\s@<>()\[\],;:"/\\]+(?=@[^\s@<>()\[\],;:"/\\.]+\.)'
 
 # A CAC name in an e-signature ("DOE.JANE.Q."): two or three dotted parts, the first two of two letters or more, each
-# ending in a dot. In the Context column only the first letter of each part stays (approved 2026-11-21: "mask the CAC
-# name in Context"); a dotted host or file name that looks the same is masked too, which hides nothing needed.
-$script:MaskedCacName = "(?<![\w.])[A-Za-z][A-Za-z'-]+\.[A-Za-z][A-Za-z'-]+\.(?:[A-Za-z][A-Za-z'-]*\.)?"
+# ending in a dot; it starts only after a character that cannot be part of a name (no slow restarts on long text). In
+# the Context column only the first letter of each part stays (approved 2026-11-21: "mask the CAC name in Context"); a
+# dotted host or file name that looks the same is masked too, which hides nothing needed.
+$script:MaskedCacName = "(?<![\w.'-])[A-Za-z][A-Za-z'-]+\.[A-Za-z][A-Za-z'-]+\.(?:[A-Za-z][A-Za-z'-]*\.)?"
 
 # =====================================================================================
 # Masking one value
@@ -4628,7 +4629,7 @@ function New-XlsxSheet {
     .PARAMETER FillColumn
       The column (0-based) of High, Medium, Low cells that get a fill (styles 5-7); -1 for none.
     .PARAMETER DateChecks
-      Columns (0-based) the person fills in where Excel accepts only a date (after 2000-01-01), with a short message.
+      Columns (0-based) the person fills in where Excel accepts only a date (2000-01-01 or later), with a short message.
     .OUTPUTS
       [pscustomobject]
     #>
@@ -4857,9 +4858,9 @@ function ConvertTo-ChoicesXml {
     $checks = @($Sheet.DateChecks)
     if ((-not $Sheet.Choices -or $Sheet.Choices.Count -eq 0) -and $checks.Count -eq 0) { return '' }
     $xml = '<dataValidations count="' + ($Sheet.Choices.Count + $checks.Count) + '">'
-    foreach ($column in $checks) {   # 36526 = 2000-01-01 as an Excel date number
+    foreach ($column in $checks) {   # 36525 = 1999-12-31 as an Excel date number: 2000-01-01 and later
         $xml += ('<dataValidation type="date" operator="greaterThan" allowBlank="1" showErrorMessage="1" errorTitle="Not a date" ' +
-            'error="Type a date, for example 2026-11-24." sqref="{0}2:{0}{1}"><formula1>36526</formula1></dataValidation>') -f (Get-ColumnLetter ($column + 1)), $LastRow
+            'error="Type a date, for example 2026-11-24." sqref="{0}2:{0}{1}"><formula1>36525</formula1></dataValidation>') -f (Get-ColumnLetter ($column + 1)), $LastRow
     }
     foreach ($column in @($Sheet.Choices.Keys | Sort-Object)) {
         $letter = Get-ColumnLetter ([int]$column + 1)
@@ -5379,12 +5380,15 @@ $script:ReviewColumns = [ordered]@{ 'Is it PII?' = @('Yes', 'No', 'Not sure')
 $script:BreachAdvice = 'PII where it should not be is a potential or actual breach; report it to your servicing Privacy ' +
                        'Manager/Monitor without delay (AFI 33-332 para 3.1.2, as changed by AFI33-332_DAFGM2026-01 (7 July 2026), ' +
                        'page 1, second paragraph).'
-# "Start here" on the Summary tab: 4 steps for the reviewer (approved 2026-11-21; STE: one action a step, checked by hand,
+# "Start here" on the Summary tab: 7 steps for the reviewer (approved 2026-11-21; STE: one action a step, checked by hand,
 # as scripts/check_instructions.py cannot read text in code).
-$script:StartHere = @(@('Start here: 1', 'Open the tab Hits. In the column Confidence, filter to High. Do the High hits first.'),
-    @('Start here: 2', 'For each hit, click the file name. Find the masked value in the file, then check it.'),
-    @('Start here: 3', 'In the same row, select Is it PII?, Action taken and Reported to Privacy Manager.'),
-    @('Start here: 4', 'If it is PII where it should not be, report it to your servicing Privacy Manager/Monitor without delay.'))
+$script:StartHere = @(@('Start here: 1', 'Open the tab Hits. You see one row for each possible PII value.'),
+    @('Start here: 2', 'In the column Confidence, filter to High. You see only the High rows.'),
+    @('Start here: 3', 'In a row, click the file name. The file opens.'),
+    @('Start here: 4', 'In the file, find the value that ends with the last digits of the Masked value cell.'),
+    @('Start here: 5', 'In the row, select an answer in Is it PII?, Action taken and Reported to Privacy Manager.'),
+    @('Start here: 6', 'In the same row, type your name in Reviewed by and the date in Review date.'),
+    @('Start here: 7', 'If it is PII where it should not be, report it to your servicing Privacy Manager/Monitor without delay.'))
 # Shown as two lines, the advice and its rule source (the PAM, 2026-11-21); one line if no "(AFI ...)." part is found.
 $script:BreachLines = @($script:BreachAdvice)
 if ($script:BreachAdvice -match '^(.*) \((AFI .*)\)\.$') { $script:BreachLines = @(($Matches[1] + '.'), ('Source: ' + $Matches[2] + '.')) }
