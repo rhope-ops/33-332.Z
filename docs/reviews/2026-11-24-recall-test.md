@@ -169,6 +169,16 @@ The 7 misses and the 1 false hit:
 
 The baseline is a measurement only: the detectors were not changed for it. PR 97 changed the passport rule after it.
 
+After the roster fix (2026-11-24, branch `claude/roster-labels`; the detectors are not changed): `RECALL found=52/53 false=1`.
+SSN 9 of 9, DoD ID 10 of 10, Date of birth 7 of 7, Passport 2 of 3; the other types as above. Recall 98% (52 of 53),
+precision 98% (52 of 53 hits). The 1 miss and the 1 false hit are the 9-digit passport (see above). This run had the
+roster fix only, without the passport rule. The roster fix as merged (review of PR 96): the text stays as it is, and each
+value under a PII header cell (worksheet, .csv, .tsv) that no hit touches is written again with its label in a section
+after the text (`src/ContainerText.psm1`); a file text over 1 MB gets no section.
+
+After the passport rule and the roster fix together (2026-11-24, origin/main 2b9e1c2 merged into `claude/roster-labels`):
+the test prints `RECALL found=53/53 false=0`. Recall 100% (53 of 53), precision 100% (53 of 53 hits).
+
 Method note: with `-Init $null` (the reader modules loaded one by one in the workers), the PDFs were NOT SCANNED,
 because `$script:PdfTokenPattern` was not set in the worker. The bundle's reader block reads them. The baseline uses
 the bundle's reader block, the same code as on the gov device.

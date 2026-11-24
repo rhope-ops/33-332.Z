@@ -55,6 +55,93 @@ $realSsn = "<worksheet><sheetData><row><c t=`"inlineStr`"><is><t>SSN</t></is></c
 Assert-Equal 1 @(Find-PiiInText (Get-TextFromBytes -Bytes (New-ZipBytes @{ 'xl/worksheets/sheet1.xml' = $realSsn }) -FileName 'a.xlsx').Text |
     Where-Object { $_.Detector -eq 'SSN' }).Count 'Excel: a real SSN in a number cell is still found'
 
+# ---- Roster columns: a PII label only in a column header (the PAM, 2026-11-24; design: review of PR 96) ----
+function Get-RosterXlsxText {
+    # The text of a one-sheet workbook; each row a list of 'B2=text' cells (digits only: a number cell, else an inline string).
+    param([object[]]$Rows)
+    $xml = foreach ($row in $Rows) {
+        '<row r="' + ((@($row)[0] -split '=')[0] -replace '\D', '') + '">' + (-join @(foreach ($cell in $row) { $ref, $text = $cell -split '=', 2
+            if ($text -match '^\d+$') { "<c r=`"$ref`"><v>$text</v></c>" } else { "<c r=`"$ref`" t=`"inlineStr`"><is><t>$text</t></is></c>" } })) + '</row>'
+    }
+    return (Get-TextFromBytes -Bytes (New-ZipBytes @{ 'xl/worksheets/sheet1.xml' = '<worksheet><sheetData>' + (-join $xml) + '</sheetData></worksheet>' }) -FileName 'r.xlsx').Text
+}
+function Get-RosterCsvText {
+    # The text the reader gives for a .csv file.
+    param([string]$Csv)
+    return (Get-TextFromBytes -Bytes ([System.Text.Encoding]::UTF8.GetBytes($Csv)) -FileName 'r.csv').Text
+}
+function Get-FullHit {
+    # Find-PiiInText results with their snippet: 'Detector/Confidence/MaskedValue/Context'.
+    param([string]$Text)
+    return , @(Find-PiiInText $Text | ForEach-Object { '{0}/{1}/{2}/{3}' -f $_.Detector, $_.Confidence, $_.MaskedValue, $_.Context })
+}
+function Get-PlainSheet {
+    # The text main gives for the same rows: the cell texts joined by ' | ', one line per row.
+    param([object[]]$Rows)
+    return ((@($Rows) | ForEach-Object { @($_ | ForEach-Object { ($_ -split '=', 2)[1] }) -join ' | ' }) -join "`n")
+}
+$rosterGap = "`n" + (' ' * 121) + "`n(roster)`n"   # the break before the section and between its groups (ContainerText.psm1)
+$otherTen = '98765' + '43210'   # a 10-digit order number, no DoD ID
+$farNote = '(a note row so that the header text is out of reach of the values)'   # over 40 characters, no digit
+$rows = @(@('A1=Person', 'B1=SSN', 'C1=DoD ID', 'D1=Date of birth'), @('A2=Person A', "B2=$($Sample.Ssn)", "C2=$($Sample.DodId)", 'D2=03/14/1985'))
+$roster = Get-RosterXlsxText $rows
+$plain = Get-PlainSheet $rows
+Assert-Equal ($plain + $rosterGap + "DoD ID: $($Sample.DodId)" + $rosterGap + 'DOB: 03/14/1985') $roster 'Roster: the text as main has it, then each value no hit touches, with its label'
+Assert-Equal 'SSN/High/***-**-6789 DoD ID/High/******7890 Date of birth/High/[date masked]' ((Get-HitSummary $roster) -join ' ') 'Roster: SSN (main), DoD ID and DOB found'
+$gap = Get-RosterXlsxText @(@('A1=Person', 'B1=SSN', 'C1=DoD ID'), @("A2=$farNote"), @('A3=Person B', "C3=$($Sample.DodId)"))
+Assert-Equal $true ($gap.EndsWith($rosterGap + "DoD ID: $($Sample.DodId)")) 'Roster: the column comes from the cell reference, not the place (B3 is empty)'
+$variants = Get-RosterXlsxText @(@('A1=ssan:', 'B1=EDIPI #', 'C1=DOB.', 'D1=Passport No.'), @("A2=$farNote"), @("A3=$($Sample.Ssn)", "B3=$($Sample.DodId)", 'C3=1985-03-14', "D3=$($Sample.Passport)"))
+Assert-Equal 'Date of birth DoD ID Passport SSN' ((@(Find-PiiInText $variants) | ForEach-Object { $_.Detector } | Sort-Object) -join ' ') 'Roster: header cells in other forms (case, :, #, .)'
+$late = Get-RosterXlsxText @(@('A1=Person'), @('A2=a'), @('A3=b'), @('A4=c'), @('A5=d'), @('A6=DoD ID'), @("A7=$farNote"), @("A8=$($Sample.DodId)"))
+Assert-Equal $false $late.Contains('(roster)') 'Roster: a header below the first 5 rows is not taken'
+# Every hit of the text as main builds it stays, the same in place, type, confidence and snippet (review of PR 96, MAJOR 1);
+# only values that no hit touches get a labelled copy (a 9-digit Passport-column value found as an SSN Low stays so).
+$keep = @(
+    @(@('A1=Name', 'B1=SSN', 'C1=DoD ID (sponsor)'), @('A2=a', "B2=$($Sample.Ssn)", "C2=$($Sample.DodId)")),
+    @(@('A1=Kind', 'B1=Passport', 'C1=Value'), @('A2=DOB', "B2=$($Sample.Passport)", 'C2=03/14/1985')),
+    @(@('A1=Kind', 'B1=DoD ID', 'C1=Value'), @('A2=SSN', "B2=$($Sample.DodId)", "C2=$($Sample.SsnBare)")),
+    @(@('A1=Kind', 'B1=DoD ID', 'C1=Value', 'D1=SSN'), @('A2=SSN', "B2=$($Sample.DodId)", "C2=$($Sample.SsnBare)"), @("A3=$farNote", "D3=$($Sample.SsnBare)")),
+    @(@('A1=Name', 'B1=Passport'), @("A2=$farNote"), @('A3=a', "B3=$($Sample.SsnBare)"), @('A4=Name: Jane Smith')))
+$n = 0
+foreach ($case in $keep) {
+    $n++; $mainHits = Get-FullHit (Get-PlainSheet $case); $hits = Get-FullHit (Get-RosterXlsxText $case)
+    Assert-Equal ($mainHits -join "`n") (@($hits | Select-Object -First $mainHits.Count) -join "`n") "Roster: case $n keeps every hit main finds, with its snippet"
+    Assert-Equal $mainHits.Count $hits.Count "Roster: case $n adds no hit (every value is touched by a hit of main)"
+}
+# The section: a label never reaches the text before it or a value of another type (groups apart by $rosterGap).
+$section = Get-RosterXlsxText @(@('A1=Name', 'B1=DoD ID', 'C1=DOB', 'D1=Passport'), @("A2=$farNote"), @('A3=a', "B3=$($Sample.DodId)", 'C3=03/14/1985', "D3=$($Sample.Passport)"),
+    @('A4=b', "B4=$otherTen", 'C4=5 Mar 27'), @('A5=Name: Jane Smith'))
+$sectionPlain = Get-PlainSheet @(@('A1=Name', 'B1=DoD ID', 'C1=DOB', 'D1=Passport'), @("A2=$farNote"), @('A3=a', "B3=$($Sample.DodId)", 'C3=03/14/1985', "D3=$($Sample.Passport)"),
+    @('A4=b', "B4=$otherTen", 'C4=5 Mar 27'), @('A5=Name: Jane Smith'))
+$mainHits = Get-FullHit $sectionPlain
+Assert-Equal ($mainHits -join "`n") (@((Get-FullHit $section) | Select-Object -First $mainHits.Count) -join "`n") 'Roster: the name at the end of the text keeps its hit and snippet'
+$sectionKinds = (@(Find-PiiInText $section) | ForEach-Object { $_.Detector + '/' + $_.Confidence }) -join ' '
+Assert-Equal 'Name/Low DoD ID/High DoD ID/High Date of birth/High Date of birth/High Passport/Medium' $sectionKinds 'Roster: one hit per copied value, each of its own type'
+$nameRows = @(@('A1=Name', 'B1=Passport'), @("A2=$farNote"), @('A3=a', "B3=$($Sample.Passport)"), @('A4=Name: Jane Smith'))   # "Passport" is no stop word of a name
+$nameHits = Get-HitSummary (Get-RosterXlsxText $nameRows)   # snippets differ only where the copied value is masked too (found PII)
+Assert-Equal (((Get-HitSummary (Get-PlainSheet $nameRows)) + 'Passport/Medium/*****567') -join ' ') ($nameHits -join ' ') 'Roster: a name at the end of the text does not run on into the section'
+# Review of PR 96, MINOR 2: a row with no digit or an empty value does not end the labels; a new table after an empty row does.
+$both = Get-RosterCsvText "Name,DoD ID`nA,$($Sample.DodId)`nB,pending`nD,`n$farNote`nC,$otherTen`n"
+Assert-Equal 'DoD ID/High/******7890 DoD ID/High/******3210' ((Get-HitSummary $both) -join ' ') 'Roster csv: both IDs found past a row with no digit and an empty value'
+$second = Get-RosterXlsxText @(@('A1=Person', 'B1=DoD ID'), @('A2=Person A', "B2=$($Sample.DodId)"), @('A4=Vendor', 'B4=Order no'), @("A5=$farNote"), @('A6=Acme', "B6=$otherTen"))
+Assert-Equal 'DoD ID/High/******7890' (Get-HitSummary $second) 'Roster: a second table after a missing row gets no DoD ID label'
+$secondCsv = Get-RosterCsvText "Person,DoD ID`nPerson A,$($Sample.DodId)`n`nVendor,Order no`n$farNote`nAcme,$otherTen`n"
+Assert-Equal 'DoD ID/High/******7890' (Get-HitSummary $secondCsv) 'Roster csv: a second table after an empty line gets no DoD ID label'
+# Review of PR 96, MINOR 3/4: a quoted csv field over two lines (a digit on the opening line) ends the labels for the rest of the file.
+$multi = Get-RosterCsvText "Person,DoD ID,Note`nA,$($Sample.DodId),x`n$farNote`nC,`"line one 12`nline two, $otherTen`",z`n"
+Assert-Equal 'DoD ID/High/******7890' (Get-HitSummary $multi) 'Roster csv: no label in a quoted field over lines'
+# .csv and .tsv: the text is kept as it is (quotes, line ends); a file without a header row gets no section.
+$csv = "Person,SSN,DoD ID,DOB`r`n$farNote`r`nPerson A,`"$($Sample.Ssn)`",$($Sample.DodId),1985-03-14`r`n"
+$csvText = Get-RosterCsvText $csv
+Assert-Equal ($csv + $rosterGap + "DoD ID: $($Sample.DodId)" + $rosterGap + 'DOB: 1985-03-14') $csvText 'Roster csv: the text kept as it is, the section after it'
+Assert-Equal 'SSN/Medium/***-**-6789 DoD ID/High/******7890 Date of birth/High/[date masked]' ((Get-HitSummary $csvText) -join ' ') 'Roster csv: values found by their header'
+$tsv = "Name`tPassport`n$farNote`nPerson A`t$($Sample.Passport)"
+Assert-Equal 'Passport/Medium/*****567' (Get-HitSummary (Get-TextFromBytes -Bytes ([System.Text.Encoding]::UTF8.GetBytes($tsv)) -FileName 'r.tsv').Text) 'Roster tsv: tab fields'
+$plainCsv = "Person,Code,Number`r`nPerson A,`"$($Sample.Ssn)`",$otherTen`r`n"
+Assert-Equal $plainCsv (Get-RosterCsvText $plainCsv) 'Roster csv: no header row, text not changed'
+$numbered = "No.,DoD ID`n1,$($Sample.DodId)`n2,$otherTen`n"
+Assert-Equal "DoD ID/High/******7890 DoD ID/High/******3210" ((Get-HitSummary (Get-RosterCsvText $numbered)) -join ' ') 'Roster csv: a row number column does not stop a value'
+
 # ---- Word field codes are not read (a TOC bookmark number is no SSN) ----
 $fieldXml = "<w:document><w:p><w:r><w:instrText xml:space=`"preserve`"> PAGEREF _Toc$($Sample.SsnBare) \h </w:instrText></w:r><w:r><w:t>Chapter 1</w:t></w:r></w:p></w:document>"
 $fieldText = (Get-TextFromBytes -Bytes (New-ZipBytes @{ 'word/document.xml' = $fieldXml }) -FileName 'Plan.docx').Text
