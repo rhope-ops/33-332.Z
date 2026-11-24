@@ -49,3 +49,16 @@ The test is a .txt file (Project rules, "Paste format"): `docs/reviews/2026-11-2
     You see the lines in the chat. The task is complete.
 
 If you see **Result: the Ion script text is not on the clipboard**, do the actions of the browser page with the Ion script and of **F5** again: they put the Ion text on the clipboard and start the test.
+
+## Result (the PAM, gov device, 2026-11-24, Ion from main 050c170 with PRs 60 and 69)
+
+3 real e-signed PDFs (38,000 to 52,000 characters each), 30 runs of 9 or 10 digits in all (the test prints at most 10 a file).
+
+| Shape | Runs | Ion |
+|---|---|---|
+| CAC name in capitals with 2 to 4 parts, then the 10 digits, before or after "Digitally signed by" | 7 | DoD ID/Low (all 7) |
+| The same, with a line break inside the 10 digits (4, then 6) | 1 | DoD ID/Low |
+| 10 digits as a value in a web address (`?xxx=` then the digits) | 4 | no hit (correct: 10 bare digits are never reported) |
+| 12-digit runs in unreadable PDF data (symbols around them) | 18 | no hit (correct) |
+
+All 8 e-signature IDs are DoD ID Low; no false hit. The output held no name and no number.

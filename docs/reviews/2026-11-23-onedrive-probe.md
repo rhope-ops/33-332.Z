@@ -44,3 +44,15 @@ The probe is a .txt file (Project rules, "Paste format"): `docs/reviews/2026-11-
    1. Press **Ctrl+V**.
    2. Send the message.
    You see the lines in the chat. The task is complete.
+
+## Result (the PAM, gov device, 2026-11-24)
+
+| Count | Item | reparse | online | LinkType | Target |
+|---|---|---|---|---|---|
+| 61 | folder | True | False | (none) | (none) |
+| 33 | file | True | False | (none) | (none) |
+| 2 | file | False | False | (none) | (none) |
+| 1 | file | True | True | (none) | (none) |
+
+As expected: the OneDrive items are reparse points with no LinkType and no Target, so Ion tells them from a real link.
+The "in OneDrive" line was not in the pasted lines.

@@ -1,6 +1,6 @@
 # Ion detector fixes: handoff (2026-11-24)
 
-Paused at the PAM's request. Step 1 (PR 60) merged; steps 2-5 open. Approvals by the PAM in chat, 2026-11-24 (the plan below):
+Paused at the PAM's request. Steps 1 and 3 done; steps 2, 4 and 5 open. Approvals by the PAM in chat, 2026-11-24 (the plan below):
 merge PR 60 and PR 61 after a fresh review with no MAJOR; e-signature DoD IDs Low; an SSN swaps to a DoD ID only after a
 signature word or when the digits touch the CAC name (S23, S24, E stay SSN); passport over SSN; split the 2 name defects
 into their own PR; speed budget: +15% on prose and form rows, 2x on signature-heavy text, extra time accepted where new
@@ -18,7 +18,10 @@ IDs are found; workbook changes, all 4 groups (below). Record these in docs/DECI
    must apply only to ASCII digits (`$m.Value -match '^[0-9 ]+$'`), with a test (full-width digits after "Passport:");
    optional MINOR: e-mail grow crosses Unicode spaces not in $MailNameEnd. Then a fresh review, merge main into the
    branch, rebuild paste/Ion-script.txt, merge.
-3. The PAM tests the merged paste/Ion-script.txt on the gov device before users paste it again.
+3. Done 2026-11-24 (main 050c170, PRs 60 and 69): the PAM ran Ion on one team site: no DoD ID shown as an SSN; the
+   workbook opens fine. 1 SSN Low false positive: 9 digits after "CRC:" in a code file (a checksum); by design any bare
+   9-digit number the SSA could issue is SSN Low; a "not an SSN" label list (CRC, checksum, hash) is open with the PAM.
+   Shape test and OneDrive probe passed (results on their pages). After PR 61 merges: one more short device run.
 4. Workbook PR (preview first, lane C): mask the CAC name in Context; Ion version and Finished time on the Summary;
    CUI header and footer on every tab; review columns next to the hit; a Files tab; "Reviewed x of y" counts; the file
    name as the link; a confidence fill; aligned Summary counts and wrapped text; numeric High/Medium/Low cells;
