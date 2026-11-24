@@ -24,6 +24,8 @@ audit-ignore: paste/**
 # SharePoint host names: usaf.dps.mil is the site address people type; sharepoint-mil.us is the tenant host (the PAM, 2026-11-20).
 sharepoint-mil.us
 usaf.dps.mil
+# The kit's invented DoD-ID test number in its content-check tests (scripts/check_content_test*.py, kit P2 (b)); not a real ID (the Maintainer, 2026-11-24: "Allow in 33-332.Z .check").
+1234567890
 # A tool's scan report holds masked PII locations: never commit one (the PAM, 2026-11-20).
 block: PIIScan-*
 # The published rule source (publicly releasable, the PAM, 2026-11-20): its office mailboxes, .mil links and markings are
