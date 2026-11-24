@@ -216,12 +216,18 @@ function Protect-PiiText {
     return ((Protect-PiiName $Text) -replace '\d', '#')
 }
 
+# An SSN shape in a name, also next to a dash ("TeamA-123-45-6789-x"): 3, 2 and 4 digits with dashes, no digit on
+# either side. Only for names (Protect-PiiName), never a finding: the detectors keep their own rules.
+$script:NameSsnShapePattern = '(?<![0-9])[0-9]{3}-[0-9]{2}-(?<last>[0-9]{4})(?![0-9])'
+
 function Protect-PiiName {
     <#
     .SYNOPSIS
       Masks a site, folder or file name the person must find again: each found value becomes its masked value and
       every e-mail name becomes '***'; other digits stay (the PAM, 2026-11-20: "FY27 Plan.docx" stays as it is, so the
-      file can be found). Example: "Roster_123-45-6789.docx" -> "Roster_***-**-6789.docx".
+      file can be found). Example: "Roster_123-45-6789.docx" -> "Roster_***-**-6789.docx". An SSN shape that the
+      detectors skip because a dash or a digit group joins it (a site name "TeamA-123-45-6789") is masked too (the
+      PAM, 2026-11-24): a name is masked more, never less.
     .PARAMETER Text
       The name or path.
     .OUTPUTS
@@ -235,7 +241,8 @@ function Protect-PiiName {
         $masked = Get-MaskedValue $hit.Detector $hit.Value
         $result = $result.Substring(0, $hit.Index) + $masked + $result.Substring($hit.Index + $hit.Length)
     }
-    return [regex]::Replace($result, $script:EmailLocalPartPattern, '***')
+    $result = [regex]::Replace($result, $script:EmailLocalPartPattern, '***')
+    return [regex]::Replace($result, $script:NameSsnShapePattern, '***-**-${last}')
 }
 
 Export-ModuleMember -Function Find-PiiInText, Protect-PiiText, Protect-PiiName, Get-MaskedValue

@@ -1,5 +1,5 @@
 <#
-  Ion - DoD365 PII Reporter, build 0b2e9e6e (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
+  Ion - DoD365 PII Reporter, build ada89712 (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
 
   HOW TO RUN
     1. Optional: read this text first (Open the script shows it as a .txt in your browser).
@@ -21,7 +21,7 @@
     src/PiiPatterns.psm1, sha256 f7ef8ca1789f
     src/PiiSignedIds.psm1, sha256 0b83d916e727
     src/PiiDetectors.psm1, sha256 66e3b48368e2
-    src/PiiMasking.psm1, sha256 1d3d74e20c8d
+    src/PiiMasking.psm1, sha256 9bf871e9e244
     src/OcrText.psm1, sha256 a39acab441d4
     src/OleText.psm1, sha256 2f5d0a036e97
     src/ContainerText.psm1, sha256 7378569bd7e6
@@ -43,7 +43,7 @@
     src/SiteTarget.psm1, sha256 2e693a68f413
     src/ChannelScan.psm1, sha256 0cd4894c7c7b
     src/DriveScan.psm1, sha256 8b4305c3a6fc
-    src/Find-ChannelPII.ps1, sha256 e1647b7e0802
+    src/Find-ChannelPII.ps1, sha256 2538a2022fac
 
   Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.
   Run target: Windows PowerShell 5.1 with PnP.PowerShell 1.12.0; no admin rights, no file to unblock.
@@ -58,30 +58,30 @@
     line   505  Module PiiSignedIds.psm1
     line   823  Module PiiDetectors.psm1
     line  1003  Module PiiMasking.psm1
-    line  1243  Module OcrText.psm1
-    line  1396  Module OleText.psm1
-    line  1535  Module ContainerText.psm1
-    line  1874  Module PdfCore.psm1
-    line  2236  Module PdfObjects.psm1
-    line  2594  Module PdfFonts.psm1
-    line  2912  Module PdfShown.psm1
-    line  3163  Module PdfLayout.psm1
-    line  3303  Module PdfContent.psm1
-    line  3633  Module PdfText.psm1
-    line  3825  Module TextExtract.psm1
-    line  4243  Module ReaderPool.psm1
-    line  4568  Reader block end
-    line  4572  Module XlsxWriter.psm1
-    line  5009  Module Report.psm1
-    line  5385  Module ReportBook.psm1
-    line  5689  Module ScanMeter.psm1
-    line  6086  Module ScanQueue.psm1
-    line  6480  Module Accountability.psm1
-    line  6864  Module SiteTarget.psm1
-    line  7221  Module ChannelScan.psm1
-    line  7623  Module DriveScan.psm1
-    line  7989  Body of Find-ChannelPII.ps1
-    line  8193  Clean-up
+    line  1250  Module OcrText.psm1
+    line  1403  Module OleText.psm1
+    line  1542  Module ContainerText.psm1
+    line  1881  Module PdfCore.psm1
+    line  2243  Module PdfObjects.psm1
+    line  2601  Module PdfFonts.psm1
+    line  2919  Module PdfShown.psm1
+    line  3170  Module PdfLayout.psm1
+    line  3310  Module PdfContent.psm1
+    line  3640  Module PdfText.psm1
+    line  3832  Module TextExtract.psm1
+    line  4250  Module ReaderPool.psm1
+    line  4575  Reader block end
+    line  4579  Module XlsxWriter.psm1
+    line  5016  Module Report.psm1
+    line  5392  Module ReportBook.psm1
+    line  5696  Module ScanMeter.psm1
+    line  6093  Module ScanQueue.psm1
+    line  6487  Module Accountability.psm1
+    line  6871  Module SiteTarget.psm1
+    line  7228  Module ChannelScan.psm1
+    line  7630  Module DriveScan.psm1
+    line  7996  Body of Find-ChannelPII.ps1
+    line  8201  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -94,7 +94,7 @@ $previousErrorAction = $ErrorActionPreference
 try {
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
-$IonBuild = '0b2e9e6e'       # the build ID: Ion shows it at the start (do not edit)
+$IonBuild = 'ada89712'       # the build ID: Ion shows it at the start (do not edit)
 
 # ==== Reader modules ==== (one script block: this script loads it as an in-memory module, and each reader
 # worker loads the same text; nothing is read from a file)
@@ -1218,12 +1218,18 @@ function Protect-PiiText {
     return ((Protect-PiiName $Text) -replace '\d', '#')
 }
 
+# An SSN shape in a name, also next to a dash ("TeamA-123-45-6789-x"): 3, 2 and 4 digits with dashes, no digit on
+# either side. Only for names (Protect-PiiName), never a finding: the detectors keep their own rules.
+$script:NameSsnShapePattern = '(?<![0-9])[0-9]{3}-[0-9]{2}-(?<last>[0-9]{4})(?![0-9])'
+
 function Protect-PiiName {
     <#
     .SYNOPSIS
       Masks a site, folder or file name the person must find again: each found value becomes its masked value and
       every e-mail name becomes '***'; other digits stay (the PAM, 2026-11-20: "FY27 Plan.docx" stays as it is, so the
-      file can be found). Example: "Roster_123-45-6789.docx" -> "Roster_***-**-6789.docx".
+      file can be found). Example: "Roster_123-45-6789.docx" -> "Roster_***-**-6789.docx". An SSN shape that the
+      detectors skip because a dash or a digit group joins it (a site name "TeamA-123-45-6789") is masked too (the
+      PAM, 2026-11-24): a name is masked more, never less.
     .PARAMETER Text
       The name or path.
     .OUTPUTS
@@ -1237,7 +1243,8 @@ function Protect-PiiName {
         $masked = Get-MaskedValue $hit.Detector $hit.Value
         $result = $result.Substring(0, $hit.Index) + $masked + $result.Substring($hit.Index + $hit.Length)
     }
-    return [regex]::Replace($result, $script:EmailLocalPartPattern, '***')
+    $result = [regex]::Replace($result, $script:EmailLocalPartPattern, '***')
+    return [regex]::Replace($result, $script:NameSsnShapePattern, '***-**-${last}')
 }
 
 # ==== Module OcrText.psm1 ====
@@ -8188,7 +8195,8 @@ finally {
         catch { Write-Verbose 'Already signed out.' }  # nothing to sign out of: not an error for the person
     }
 }
-if ($script:IonSignInTried) { Write-Ui 'Ion is done: nothing stays signed in.' 'Good' } else { Write-Ui 'Ion is done.' 'Good' }
+# The CAC sign-in of the window lasts until ISE closes (probe 3, second run): the PAM, 2026-11-24, chose this text.
+if ($script:IonSignInTried) { Write-Ui 'Ion is done: signed out. Close Windows PowerShell ISE to end the CAC session.' 'Good' } else { Write-Ui 'Ion is done.' 'Good' }
 
 # ==== Clean-up ====
 } finally {
