@@ -131,6 +131,18 @@ and a text with no digit skips the finder. The PAM set the budget (2026-11-24): 
 Speed, second call in each process, median of 5, main / branch: 1.2 MB prose with digits 433 / 494 ms (1.14x); 1.2 MB prose,
 one signature word 472 / 428 ms; 5,000 form rows 10.6 / 10.9 s (1.03x); 2,000 signature blocks 1.32 / 2.03 s (1.53x).
 
+## Fifth fresh review of 94e1b61 (2026-11-24) and the fixes
+
+No hit lost or changed against main (the reviewer's own 64,000 single and 6,120 joined texts). 2 MAJOR on speed, fixed:
+the finder now gives raw candidates and the add-pass tests the cheap overlap first (words and labels only for free
+candidates); a window after a signature word is read only when 10 digits lie in it (one fast scan). MINOR fixed: a date
+and time after a CAC name is no ID; the Method text and README name the High case and the SSNs that stay SSNs.
+The "pass only adds" test compares with this branch's own detectors before the pass: they are main's, unchanged.
+Speed, second call in its own process, median of 5, main / branch (budget: the PAM, 2026-11-24): 2,000 signature blocks
+917 / 1,503 ms (1.63x; budget 2x); 1.2 MB prose with a signature word every 1,400 characters 422 / 476 ms (1.13x; +15%);
+5,000 tab rows 11.1 / 11.6 s (1.05x). 1,000 blocks where the branch finds 2 IDs that main misses: 330 / 1,565 ms; this
+extra time is the new hits (the budget does not name this case: open with the PAM).
+
 ## Known gaps (not fixed here)
 
 - A labelled DoD ID with gaps ("EDIPI 123 45 6789 0") is still an SSN Medium: the label rule takes 10 digits in a row only.

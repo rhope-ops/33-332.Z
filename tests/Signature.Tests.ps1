@@ -178,3 +178,8 @@ Assert-Equal 'Low' (@(Find-PiiInText "Name: John Smith DoD ID: $sigName$($sigId.
     Where-Object { $_.Detector -eq 'Name' })[0].Confidence) 'An added e-signature DoD ID does not raise a name'
 $sigNoise = -join (1..16 | ForEach-Object { [char](0xE000 + $_) })
 Assert-Equal 1 @(Get-HitSummary "${sigNoise}signed by doe.jane.q. $sigSsnBare`n0$sigNoise").Count 'Unreadable text around a signature: the SSN is kept'
+
+# Fifth review of PR 60: a date and time after a CAC name is no ID.
+foreach ($case in @("$sigName 2026 11 20 10:15", "DOE.JANE.`t20261120 10")) {
+    Assert-Equal 0 @(Get-HitSummary $case | Where-Object { $_ -like 'DoD ID/*' }).Count "No ID: a date after a CAC name ($($case -replace "`t", ' '))"
+}

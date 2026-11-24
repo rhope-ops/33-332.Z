@@ -336,9 +336,9 @@ function Get-MethodRows {
     , @('SSN', ('Numbers the SSA never issues (000, 666 or 9xx first; 00 in the middle; 0000 last) are skipped. High: "SSN", "SSAN", ' +
         '"social security" or "soc sec" just before it. Medium: 3-2-4 digits with dashes or spaces. Low: 9 digits in a row. ' +
         'Without a label, 9 digits that go on into a longer number (a digit one space away, ' +
-        'or a CAC name such as LAST.FIRST.M. just before) or that are part of an e-signature DoD ID are not an SSN.'))
+        'or a CAC name such as LAST.FIRST.M. just before) are not an SSN; nor are 9 digits inside an e-signature DoD ID (see DoD ID).'))
     , @('DoD ID', ('A 10-digit number, found only with a label just before it ("DoD ID", "DODID", "EDIPI", "CAC", "DoD #", "DoD number"), ' +
-        'High. In an e-signature: Low, history not read ("Not looked up"). An e-signature is a CAC name (LAST.FIRST.M.) then the ' +
+        'High. In an e-signature: Low, history not read ("Not looked up"); High with such a label. An e-signature is a CAC name then the ' +
         '10 digits, or the reverse, or the 10 digits after "signed", "signature", "CN=" or "DN:"; spaces, tabs and line breaks may ' +
         'split it. It is added only where no other match is. An SSN match (no label, no dashes) inside it becomes this DoD ID ' +
         'only after a signature word or when the digits touch the name.'))
