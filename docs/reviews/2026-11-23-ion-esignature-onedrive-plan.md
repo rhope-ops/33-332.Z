@@ -9,8 +9,10 @@ Notation: `#` = one digit (tests build invented values at run time); `\n` = line
 
 - PR 57 (PR 1): built, fresh-reviewed; waits on the PAM's shape lines (docs/reviews/2026-11-23-esignature-shape-test.md) before merge.
 - PR 58 (PR 2, hang): MERGED 2026-11-23 (main b278ab0; 3 fresh reviews, CI with ps51 green).
-- PR 59 (PR 3, OneDrive and the Connect-PnPOnline fallback; branch claude/ion-onedrive): built and reviewed; waits on the
-  PAM's probe (docs/reviews/2026-11-23-onedrive-probe.md on that branch) and the exact OCONUS error text.
+- PR 59 (PR 3, OneDrive and the Connect-PnPOnline fallback): MERGED 2026-11-24 (main ecd36fe) at the PAM's request,
+  before the gov-device probe (docs/reviews/2026-11-23-onedrive-probe.txt: still to run). PR 63 (its test fix): MERGED.
+- PR 62 (project rule "Paste format"): MERGED 2026-11-24 (main e508095).
+- PR 57 (this one): waits on the PAM's shape lines (docs/reviews/2026-11-23-esignature-shape-test.txt).
 - The PAM's answers 2026-11-23: a new branch per PR; a whole OneDrive folder: "Warn, then ask".
 - PR 57 known limits after 3 fresh reviews (accepted by the author, for the PAM to see): a lower-case 3-part dotted
   word with a one-letter last part ("www.site.a." then 10 digits) reads as a name; a row number on the line before a
