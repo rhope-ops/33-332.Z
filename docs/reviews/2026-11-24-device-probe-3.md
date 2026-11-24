@@ -39,10 +39,10 @@ Use 2 teams that you scan. Keep the results in Notepad.
    2. Press **Enter**.
    You see address 2. Go on.
 10. In Teams, in the list of teams, do these actions:
-   1. Click **...** next to the name of the first team.
-   2. Click **Get link to team** (new Teams: **Copy link**).
-   3. Click **Copy**.
-   You see that the link is copied. Go on.
+    1. Click **...** next to the name of the first team.
+    2. Click **Get link to team** (new Teams: **Copy link**).
+    3. Click **Copy**.
+    You see that the link is copied. Go on.
 11. In Notepad, press **Ctrl+V**. You see the Teams link. The task is complete.
 
 ## How to run it

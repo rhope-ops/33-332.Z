@@ -88,14 +88,16 @@ if ($folder) {
         }
         # Where is the file on the web? Its name in the library list, and whether its web path starts with the address.
         Test-Step 'T4 name in library' {
-            $lib = Get-PnPList -Includes RootFolder | Where-Object { ($_.BaseTemplate -eq 700 -or $_.BaseTemplate -eq 101) -and -not $_.Hidden } | Select-Object -First 1
-            $hit = @(Get-PnPListItem -List $lib -PageSize 500 -Fields 'FileLeafRef', 'FileRef' | Select-Object -First 5000 | Where-Object { [string]$_['FileLeafRef'] -eq $file[0].Name } | Select-Object -First 1)
-            if (-not $hit) { return 'found=False (in the first 5000 items)' }
-            $ref = [string]$hit[0]['FileRef']
-            'found=True ref starts with address={0} ref equals path A={1} library root equals address={2}' -f $ref.StartsWith($nsPath, [StringComparison]::OrdinalIgnoreCase),
-                ($ref -eq ($nsPath + $inner)), ($lib.RootFolder.ServerRelativeUrl.TrimEnd('/') -eq $nsPath)
+            $lib = Get-PnPList -Includes RootFolder | Where-Object { $_.BaseTemplate -eq 700 -or $_.BaseTemplate -eq 101 } | Select-Object -First 1
+            $rootOk = $lib.RootFolder.ServerRelativeUrl.TrimEnd('/') -eq $nsPath
+            $tail = $inner   # "/<folder part>/<file name>": the end of the file's web path
+            $items = @(Get-PnPListItem -List $lib -PageSize 500 -Fields 'FileRef' | Select-Object -First 5000)
+            $hits = @($items | Where-Object { ([string]$_['FileRef']).EndsWith($tail, [StringComparison]::OrdinalIgnoreCase) })
+            $ref = if ($hits) { [string]$hits[0]['FileRef'] } else { '' }
+            'listed={0} stopped at 5000={1} matches={2} ref equals path A={3} library root equals address={4}' -f $items.Count, ($items.Count -ge 5000),
+                $hits.Count, ($ref -and ($ref -eq ($nsPath + $inner))), $rootOk
         }
-        Test-Step 'T4 web read' { $s = Get-PnPFile -Url ($nsPath + $inner) -AsMemoryStream; $n = $s.Length; $s.Dispose(); 'KB={0}' -f [int]($n / 1KB) }
+        Test-Step 'T4 web read' { $s = Get-PnPFile -Url ($nsPath + $inner) -AsMemoryStream; $n = $s.Length; $s.Dispose(); 'bytes={0}' -f $n }
         Test-Step 'T4 disk read' { $b = [IO.File]::ReadAllBytes($file[0].FullName); 'bytes={0}' -f $b.Length }
         }
     }
