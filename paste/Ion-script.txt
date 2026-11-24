@@ -19,7 +19,7 @@
 
   Built from these files; to change it, change them and rebuild with: python3 scripts/build_paste.py
     src/PiiPatterns.psm1, sha256 f7ef8ca1789f
-    src/PiiSignedIds.psm1, sha256 c7f6ec25ebd8
+    src/PiiSignedIds.psm1, sha256 29fc4d31c181
     src/PiiDetectors.psm1, sha256 66e3b48368e2
     src/PiiMasking.psm1, sha256 fe974847ba97
     src/OcrText.psm1, sha256 a39acab441d4
@@ -56,32 +56,32 @@
     line    98  Reader block
     line   104  Module PiiPatterns.psm1
     line   504  Module PiiSignedIds.psm1
-    line   811  Module PiiDetectors.psm1
-    line   991  Module PiiMasking.psm1
-    line  1200  Module OcrText.psm1
-    line  1353  Module OleText.psm1
-    line  1492  Module ContainerText.psm1
-    line  1831  Module PdfCore.psm1
-    line  2193  Module PdfObjects.psm1
-    line  2551  Module PdfFonts.psm1
-    line  2869  Module PdfShown.psm1
-    line  3120  Module PdfLayout.psm1
-    line  3260  Module PdfContent.psm1
-    line  3590  Module PdfText.psm1
-    line  3782  Module TextExtract.psm1
-    line  4200  Module ReaderPool.psm1
-    line  4525  Reader block end
-    line  4529  Module XlsxWriter.psm1
-    line  4966  Module Report.psm1
-    line  5342  Module ReportBook.psm1
-    line  5643  Module ScanMeter.psm1
-    line  6040  Module ScanQueue.psm1
-    line  6430  Module Accountability.psm1
-    line  6814  Module SiteTarget.psm1
-    line  7109  Module ChannelScan.psm1
-    line  7511  Module DriveScan.psm1
-    line  7876  Body of Find-ChannelPII.ps1
-    line  8017  Clean-up
+    line   815  Module PiiDetectors.psm1
+    line   995  Module PiiMasking.psm1
+    line  1204  Module OcrText.psm1
+    line  1357  Module OleText.psm1
+    line  1496  Module ContainerText.psm1
+    line  1835  Module PdfCore.psm1
+    line  2197  Module PdfObjects.psm1
+    line  2555  Module PdfFonts.psm1
+    line  2873  Module PdfShown.psm1
+    line  3124  Module PdfLayout.psm1
+    line  3264  Module PdfContent.psm1
+    line  3594  Module PdfText.psm1
+    line  3786  Module TextExtract.psm1
+    line  4204  Module ReaderPool.psm1
+    line  4529  Reader block end
+    line  4533  Module XlsxWriter.psm1
+    line  4970  Module Report.psm1
+    line  5346  Module ReportBook.psm1
+    line  5647  Module ScanMeter.psm1
+    line  6044  Module ScanQueue.psm1
+    line  6434  Module Accountability.psm1
+    line  6818  Module SiteTarget.psm1
+    line  7113  Module ChannelScan.psm1
+    line  7515  Module DriveScan.psm1
+    line  7880  Body of Find-ChannelPII.ps1
+    line  8021  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -552,8 +552,12 @@ $script:NotPhone = '(?!\d{3}(?:[ \t\u00A0.-]|\r?\n)\d{3}(?:[ \t\u00A0.-]|\r?\n)?
 $script:NotPhoneAfterName = '(?!\d{3}(?:[ \t\u00A0.-]|\r?\n)\d{3}(?:[ \t\u00A0.-]|\r?\n)\d{4}(?![\w-]))'
 # Before bare digits after a signature word: a date, a time or a page number (a year alone: $SignedYearLeadIn), then one gap, is no part of the ID
 # (the PAM, 2026-11-24, "1a"; the guard of 013ca82 blocked every digit and gap: 0 of 400 such IDs found).
+# A date with an English month name or its 3 letters (any case, a dot or not) is a date: "20 Nov yyyy", "20NOVyyyy",
+# "Nov 20, yyyy", "yyyy-Nov-20" (the PAM, 2026-11-24, no-persistence plan step 1).
+$script:MonthName = '(?i:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?'
 $script:SignedLeadIn = '(?:(?:19|20)\d\d[./-]\d{1,2}[./-]\d{1,2}|\d{1,2}[./-]\d{1,2}[./-](?:(?:19|20)\d\d|\d\d)|\d{1,2}:\d\d(?::\d\d)?|' +
-    '(?i:page)[ \t\u00A0]+\d{1,4})[ \t\u00A0]'
+    '(?i:page)[ \t\u00A0]+\d{1,4}|\d{1,2}[ \t\u00A0]?' + $script:MonthName + '[ \t\u00A0]?(?:19|20)\d\d|' +
+    '(?<![A-Za-z])' + $script:MonthName + '[ \t\u00A0]\d{1,2},[ \t\u00A0](?:19|20)\d\d|(?:19|20)\d\d-' + $script:MonthName + '-\d{1,2})[ \t\u00A0]'
 # After a year alone only 10 digits in a row or the 3-2-4-1 shape are an ID ("Signed 2012 #### #### ##": no ID; the PAM, 2026-11-24, PR 69 MINORs).
 $script:SignedYearLeadIn = '(?<![\w.-])(?:19|20)\d\d[ \t\u00A0]'
 $script:SignedYearShape = '(?=(?:\d{10}|\d{3}[ \u00A0]\d{2}[ \u00A0]\d{4}[ \u00A0]\d)(?![\w-]))'
