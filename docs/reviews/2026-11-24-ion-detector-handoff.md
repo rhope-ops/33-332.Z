@@ -9,9 +9,9 @@ IDs are found; workbook changes, all 4 groups (below). Record these in docs/DECI
 ## Open, in order
 
 1. Done 2026-11-23 22:32 CST: PR 60 merged (8d1e03e). Seventh review: 2 MAJOR (an ID one gap after a hit; the seen
-   mark), fixed in 006919f; eighth review: no MAJOR. Open, the PAM's DEC 2026-11-24: a follow-up PR narrows the 013ca82
+   mark), fixed in 006919f; eighth review: no MAJOR. Open, the PAM's DECs 2026-11-24: the claude/ion-esig-gaps PR narrows the 013ca82
    guards ("digit, one gap, then the ID" after a signature word; 3-7 after a CAC name): docs/reviews/2026-11-23-ion-
-   esignature-layouts.md, Known gaps. Open with the PAM: PR 57 (another session, same feature) now conflicts with main.
+   esignature-layouts.md, Known gaps. PR 57 closed as superseded (the PAM, 2026-11-24).
    Method addition: a gate oracle (a speed filter off must give the same output); never Regex.Match(text, start) in a
    loop on long text (2.4 ms a call in pwsh 7).
 2. PR 61 (claude/ion-five-defects, head fd64a8e): fix the seventh review's MAJOR: the passport skip in Find-SsnHits
