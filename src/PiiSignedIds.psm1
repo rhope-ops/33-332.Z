@@ -52,7 +52,9 @@ $script:NotPhoneAfterName = '(?!\d{3}(?:[ \t\u00A0.-]|\r?\n)\d{3}(?:[ \t\u00A0.-
 # A date with an English month name or its 3 letters (any case, a dot or not) is a date: "20 Nov yyyy", "20NOVyyyy",
 # "Nov 20, yyyy", "yyyy-Nov-20" (the PAM, 2026-11-24, no-persistence plan step 1). Also (the PAM, 2026-11-24, question
 # dialog): "Nov 20 yyyy"; a 2-digit year in "20NOVyy", "20 Nov yy", "Nov 20, yy"; "20-Nov-yyyy", "20-Nov-yy"; ordinals
-# (st, nd, rd, th, any case) in "Nov 20th, yyyy", "20th Nov yyyy", "Nov 1st yyyy". Other mixes stay no date.
+# (st, nd, rd, th, any case) in "Nov 20th, yyyy", "20th Nov yyyy", "Nov 1st yyyy". Gaps (space, tab, no-break space;
+# optional in "20 Nov yy" as in "20 Nov yyyy"), the month's dot and the unbounded day are as in main's forms; "Nov 20 yy",
+# "20th Nov yy", "Nov 20th, yy", "20th-Nov-yyyy", "20thNovyyyy" and "Nov-20-yyyy" stay no date.
 $script:MonthName = '(?i:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?'
 $script:Ordinal = '(?i:st|nd|rd|th)'
 $script:SignedLeadIn = '(?:(?:19|20)\d\d[./-]\d{1,2}[./-]\d{1,2}|\d{1,2}[./-]\d{1,2}[./-](?:(?:19|20)\d\d|\d\d)|\d{1,2}:\d\d(?::\d\d)?|' +
