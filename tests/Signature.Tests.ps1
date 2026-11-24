@@ -302,3 +302,24 @@ $minorEdges = [ordered]@{
 foreach ($case in $minorEdges.Keys) {
     Assert-Equal $minorEdges[$case][0] @(Get-HitSummary $minorEdges[$case][1] | Where-Object { $_ -like 'DoD ID/*' }).Count "PR 69 MINORs: $case"
 }
+
+# ---- A date with a month name is a date, as a numeric date (the PAM, 2026-11-24, no-persistence plan step 1) ----
+# Any ID shape after it is an ID (4-4-2, 9+1, 5-5); a year alone keeps the PR 69 MINORs rule (above: no ID).
+$monYear = '20' + '26'
+$sig55 = $sigId.Substring(0, 5) + ' ' + $sigId.Substring(5)
+$monDates = @("20 Nov $monYear", "Nov 20, $monYear", "20 November $monYear", "$monYear-Nov-20", "20NOV$monYear", "20 nov. $monYear",
+    "Nov. 20, $monYear", "20 SEPTEMBER $monYear", "$monYear-jan-05")
+foreach ($date in $monDates) {
+    foreach ($shape in @($sig442, $sig91, $sig55)) {
+        foreach ($case in @("Signed $date $shape", "Digitally signed by $date $shape")) {
+            Assert-Equal 'DoD ID/Low/******7890' ((Get-HitSummary $case) -join ',') "Month-name date: an ID ($($case -replace '\d', '#'))"
+        }
+    }
+}
+$monNone = @("Signed 2012 $sig442", "Signed Nov $monYear $sig442", "Signed 20 Sept $monYear $sig442", "Signed 20 Nov 26 $sig442",
+    "Signed 20 Novx $monYear $sig442", "Signed Innov 20, $monYear $sig442", "Note 20 Nov $monYear $sig442")
+foreach ($case in $monNone) {
+    Assert-Equal 0 @(Get-HitSummary $case | Where-Object { $_ -like 'DoD ID/*' }).Count "Month-name date: no ID ($($case -replace '\d', '#'))"
+}
+$monPhone = @(Get-HitSummary "Signed 20 Nov $monYear $revPhone")
+Assert-Equal 'Phone' (($monPhone | ForEach-Object { $_.Split('/')[0] }) -join ',') 'Month-name date: a phone after it stays a phone'
