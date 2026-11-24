@@ -105,6 +105,20 @@ foreach ($expected in $revCases.Keys) {
     }
 }
 Assert-Equal 0 @(Get-HitSummary 'Order 4455667788 REF.NO. 5' | Where-Object { $_ -like 'DoD ID/*' }).Count 'No CAC name: digits before REF.NO.'
+# Second review of PR 60.
+$revMail = 'jane.doe.' + $sigId + '@gmail.com'
+$revCases2 = [ordered]@{
+    'Phone/Low/***-***-0142'               = @("$sigName$($Sample.Phone)", "AB.CD.$($Sample.Phone)", "signed by doe.jane.q.$($Sample.Phone)")
+    'SSN/Medium/***-**-6789'               = @("$sigName$($Sample.Ssn) 5 copies", "$sigName$($Sample.Ssn)`t5", "CN=$sigName$($Sample.Ssn) 2",
+        "Signature: ____`nMember $sigSsnBare 2 kids", "Signature`t$sigSsnBare`t1")
+    'Personal e-mail/Medium/***@gmail.com' = @("Digitally signed by $revMail")
+}
+foreach ($expected in $revCases2.Keys) {
+    foreach ($case in $revCases2[$expected]) {
+        Assert-Equal $expected ((Get-HitSummary $case) -join ',') "Not an e-signature ID (2): $($case -replace '\d', '#' -replace "`r?`n", ' / ')"
+    }
+}
+Assert-Equal 0 @(Get-HitSummary 'signed 20261120 10:15:22' | Where-Object { $_ -like 'DoD ID/*' }).Count 'No ID: a yyyymmdd date after signed'
 $timer = [System.Diagnostics.Stopwatch]::StartNew()
 $null = Find-PiiInText (("$sigName$sig3241" + "`n") * 2000)
 $timer.Stop()

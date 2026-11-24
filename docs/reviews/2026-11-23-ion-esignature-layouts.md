@@ -13,9 +13,11 @@ matrix of 1,110 texts; the source's 25 layouts then came from the tool retiremen
 - Between the name and the digits: spaces, tabs or no-break spaces, with at most one line break.
 - Between any two digits: one space, tab, no-break space or line break; after a CAC name also a dash. No other digit may
   follow on the same line.
-- The 10 digits alone after a signature word also count, but not a date (19xx or 20xx then a separator), and not a phone
-  written 3-3-4 with spaces (it stays Phone; before this rule, "Signed copy, cell" and a spaced number gave DoD ID Low).
-- Every such hit is DoD ID, Low (the PAM, 2026-11-21: e-signature DoD ID is Low, history not read).
+- The 10 digits alone on one line after a signature word also count (gaps: spaces only; no small word after them), but
+  not a date (19xx or 20xx then a separator, or yyyymmdd) and not a phone (3-3-4 with any one separator).
+- A phone shape (3-3-4) after a CAC name is no ID when white space or dashes come with it; touching the name with single
+  spaces it is a DoD ID, as on main. No ID ends at "@" (an e-mail address stays one).
+- Every such hit is DoD ID, Low (the PAM, 2026-11-21: e-signature DoD ID is Low, history not read); High with a DoD ID label.
 - An unlabelled SSN match inside such a hit is dropped. A labelled SSN and a dashed SSN stay SSNs.
 
 ## The source's 25 layouts (tests/Signature.Tests.ps1, O01-OJ; same shapes, invented name and ID)
@@ -89,6 +91,18 @@ The review found 3 MAJOR issues, all fixed and tested in tests/Signature.Tests.p
 Also: an ID with gaps after a label in a signature ("Signed, EDIPI 123 45 6789 0") was lost (no hit on main too); it is now
 DoD ID High. An ID before "REF.NO." is no ID. The 1,110-text matrix now gives 1,034 DoD ID: 6 texts with no name and a line
 break inside the ID give the same result as main.
+
+## Second fresh review of 8329c97 (2026-11-24) and the fixes
+
+4 MAJOR, all fixed and tested ("Review of PR 60" in tests/Signature.Tests.ps1); each case now gives main's result:
+- A dashed phone right after a CAC name became DoD ID: the phone guard now covers the dash form too.
+- A dashed SSN with a lone digit after it became DoD ID: a dashed SSN is never dropped now.
+- An e-mail address with a CAC-like name and 10 digits after "signed" became DoD ID: no ID ends at "@".
+- Slower than main: the any-case and the digits-alone scans run only when the text holds a signature word, and
+  Find-SsnHits and Find-DodIdHits share one result per text. Best of 3 (main / this branch): 1.2 MB prose 323 / 239 ms;
+  5,000 rows of 10 digits 264 / 199 ms; 5,000 rows of 5+5 digits 30 / 30 ms.
+Minor, fixed: "signature" is not a signature word for the older SSN rule (Test-SsnPartOfLonger, as on main); an ID alone
+after a signature word has space gaps only and no small word after it; yyyymmdd dates are no ID.
 
 ## Known gaps (not fixed here)
 
