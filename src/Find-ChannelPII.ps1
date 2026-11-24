@@ -6,7 +6,7 @@
   Scans the files of a team's or site's document libraries: every folder (in a team, one per standard channel) and
   the files at the top of each library; or every file in one drive folder and its subfolders. Two progress bars (the whole scan, and the file in work)
   and one line per folder show the counts as it goes. At the end it shows the hits per PII type on screen and
-  saves one Excel workbook: a Summary tab first, then one tab per PII type (worst first), Low confidence and
+  saves one Excel workbook: a Summary tab first, then Hits (one Excel Table, every hit) and Files, then
   Not scanned. Every value found is MASKED on screen and in the workbook.
 
   Purpose:     Help a team or site member (owner rights are not needed) find files that may hold PII, so they can

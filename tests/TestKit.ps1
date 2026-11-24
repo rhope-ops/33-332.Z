@@ -163,8 +163,14 @@ function Get-XlsxSheets {
         $names = @([regex]::Matches((& $read 'xl/workbook.xml'), '<sheet name="([^"]*)"') | ForEach-Object { [System.Net.WebUtility]::HtmlDecode($_.Groups[1].Value) })
         for ($i = 0; $i -lt $names.Count; $i++) {
             $rows = foreach ($row in [regex]::Matches((& $read ('xl/worksheets/sheet' + ($i + 1) + '.xml')), '(?s)<row[^>]*>(.*?)</row>')) {
-                , @([regex]::Matches($row.Groups[1].Value, '(?s)<c [^>]*>(?:<is><t[^>]*>(.*?)</t></is>|<v>(.*?)</v>)</c>') |
-                    ForEach-Object { [System.Net.WebUtility]::HtmlDecode($_.Groups[1].Value + $_.Groups[2].Value) })
+                # Each cell at its column (an empty cell is not written), a formula cell as its value.
+                $cells = New-Object System.Collections.Generic.List[string]
+                foreach ($c in [regex]::Matches($row.Groups[1].Value, '(?s)<c r="([A-Z]+)\d+"[^>]*>(?:<is><t[^>]*>(.*?)</t></is>|(?:<f>.*?</f>)?<v>(.*?)</v>)</c>')) {
+                    $column = 0; foreach ($ch in $c.Groups[1].Value.ToCharArray()) { $column = $column * 26 + ([int]$ch - 64) }
+                    while ($cells.Count -lt $column - 1) { $cells.Add('') }
+                    $cells.Add([System.Net.WebUtility]::HtmlDecode($c.Groups[2].Value + $c.Groups[3].Value))
+                }
+                , $cells.ToArray()
             }
             $sheets[$names[$i]] = @($rows)
         }
@@ -182,8 +188,8 @@ function Get-ResultFiles {
 function Get-WorkbookTypes {
     <#
     .SYNOPSIS
-      The PII types and note words in a workbook, sorted, one each: the type tabs, the Type column of the Low
-      confidence tab and the Status column of the Not scanned tab.
+      The PII types and note words in a workbook, sorted, one each: the Type column of the Hits tab and the Status
+      column of the Not scanned tab.
     .PARAMETER Path
       The .xlsx file.
     .OUTPUTS
@@ -192,8 +198,8 @@ function Get-WorkbookTypes {
     param([string]$Path)
     $book = Get-XlsxSheets $Path
     $types = foreach ($tab in $book.Keys) {
-        if ($tab -eq 'Low confidence' -or $tab -eq 'Not scanned') { $book[$tab] | Select-Object -Skip 1 | ForEach-Object { $_[0] } }
-        elseif ($tab -notin @('Summary', 'Method')) { $tab }
+        if ($tab -eq 'Hits') { $book[$tab] | Select-Object -Skip 1 | ForEach-Object { $_[1] } }
+        elseif ($tab -eq 'Not scanned') { $book[$tab] | Select-Object -Skip 1 | ForEach-Object { $_[0] } }
     }
     return (@($types | Sort-Object -Unique) -join ' ')
 }

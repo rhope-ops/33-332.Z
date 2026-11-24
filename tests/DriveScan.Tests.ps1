@@ -46,11 +46,12 @@ try {
     $linkRow = @((Get-XlsxSheets $book)['Not scanned'] | Where-Object { $_[3] -match '^A link to another file is not followed' })
     Assert-Equal 1 $linkRow.Count 'Drive: a file link gets a NOT SCANNED row'
     $sheets = Get-XlsxSheets $book
-    $phoneItems = @($sheets['Phone'] | Select-Object -Skip 1 | ForEach-Object { $_[2] } | Sort-Object -Unique)   # Confidence, Folder, File ...
+    $phoneRows = @($sheets['Hits'] | Select-Object -Skip 1 | Where-Object { $_[1] -eq 'Phone' })   # ID, Type, Confidence, Folder, File ... Link last
+    $phoneItems = @($phoneRows | ForEach-Object { $_[4] } | Sort-Object -Unique)
     Assert-Equal 3 $phoneItems.Count 'Drive: a file with the same content as another still gets its own rows'
     $pdfRow = @($sheets['Not scanned'] | Where-Object { $_[2] -eq 'scan.pdf' })
     Assert-Equal 1 $pdfRow.Count 'Drive: a fake PDF with the bytes of a text file is not taken as its duplicate'
-    Assert-Equal $true (@($sheets['Phone'] | Select-Object -Skip 1 | Where-Object { $_[6] -like 'file:///*' }).Count -ge 1) 'Drive: rows link to the file'
+    Assert-Equal $true (@($phoneRows | Where-Object { $_[20] -like 'file:///*' }).Count -ge 1) 'Drive: rows link to the file'
 }
 finally {
     Remove-Item -LiteralPath $driveRoot -Recurse -Force -ErrorAction SilentlyContinue
