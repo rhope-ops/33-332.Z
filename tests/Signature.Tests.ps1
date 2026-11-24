@@ -270,3 +270,8 @@ Assert-Equal 'DoD ID/Low/******7890' ((Get-HitSummary "$sigName`t$sig9`t$($sigId
 foreach ($case in @("signed by capt. Doe $sigId", "Signed by lt. col. Doe $sigId", "Signed by the dept. Head $sigId", "Signed by Doe, etc. Then $sigId")) {
     Assert-Equal 1 @(Get-HitSummary $case | Where-Object { $_ -eq 'DoD ID/Low/******7890' }).Count "No sentence end: $($case -replace '\d', '#')"
 }
+# Fourth review of PR 69: a capital "Signed." followed by a name is a stamp, not prose: the ID stays (as on main).
+foreach ($case in @("Signed. John Doe $sigId", "Signature. Capt Jane Doe $sigId", "Signed. Jane Doe`n$sigId",
+        "Signed. Jane $($sigName)$($sigId.Substring(0, 1)) $($sigId.Substring(1))")) {
+    Assert-Equal 1 @(Get-HitSummary $case | Where-Object { $_ -eq 'DoD ID/Low/******7890' }).Count "Stamp, not prose: $($case -replace "`n", ' ' -replace '\d', '#')"
+}
