@@ -19,6 +19,8 @@
                root, for one lookup of that team's site (SiteTarget.psm1). Channel posts are not read (the PAM, 2026-11-20).
   Writes:      only the workbook in -OutputFolder (default Documents\Ion); nothing in Teams or SharePoint.
   Credentials: the person's own CAC sign-in in the PnP sign-in window (a drive folder: the Windows logon); nothing is stored.
+               One sign-in per host: no sign-out between sites; one sign-out at the end of the run, also after an
+               error or Ctrl+C (the PAM, 2026-11-24).
 
   Policy:      Read-only; one site only (no network reconnaissance); file content stays in memory; values
                masked (the PAM, 2026-11-20). No script file is collected or sent: script types are not
@@ -72,8 +74,8 @@ $IonWorkerInit = @{ Paths = @($readerModules | ForEach-Object { Join-Path $PSScr
 function Invoke-SiteFiles {
     <#
     .SYNOPSIS
-      Scans one signed-in site, saves the workbook and signs out (after an error or cancel too: the results so far say
-      INCOMPLETE). Returns the workbook path; $null after no (or a cancel) at "Scan now?": nothing read or saved.
+      Scans one signed-in site and saves the workbook (after an error or cancel too: the results so far say
+      INCOMPLETE). It does not sign out: the run signs out once, at its end. Returns the workbook path; $null after no (or a cancel) at "Scan now?": nothing read or saved.
     .PARAMETER SiteUrl
       The signed-in site.
     .PARAMETER OutputFolder
@@ -114,17 +116,10 @@ function Invoke-SiteFiles {
     finally {
         if (-not $finished -and $progress.ContainsKey('Meter')) { $scanned = $progress.Meter.Read }   # stopped part way: the live count
         Add-IncompleteRow -Rows $rows -Finished $finished
-        try {
-            if ($progress.ContainsKey('Declined') -and $progress.Declined) { Write-Ui 'Not scanned: nothing was saved.' 'Accent' }   # "No" to "Scan now?"
-            else {
-                $header = Get-SiteHeader $SiteUrl $listName $folderLabel $selected $clock.Elapsed
-                $path = Publish-ScanReport -Rows $rows.ToArray() -ItemsScanned $scanned -Header $header -OutputFolder $OutputFolder -SiteUrl $SiteUrl -FolderLabel $folderLabel
-            }
-        }
-        finally {
-            # Sign out even when the results could not be saved (for example, a folder that cannot be written).
-            try { Disconnect-PnPOnline }
-            catch { Write-Verbose 'Already signed out.' }  # nothing to sign out of: not an error for the person
+        if ($progress.ContainsKey('Declined') -and $progress.Declined) { Write-Ui 'Not scanned: nothing was saved.' 'Accent' }   # "No" to "Scan now?"
+        else {
+            $header = Get-SiteHeader $SiteUrl $listName $folderLabel $selected $clock.Elapsed
+            $path = Publish-ScanReport -Rows $rows.ToArray() -ItemsScanned $scanned -Header $header -OutputFolder $OutputFolder -SiteUrl $SiteUrl -FolderLabel $folderLabel
         }
     }
     return $path
@@ -183,11 +178,11 @@ function Invoke-ScanTarget {
     .PARAMETER List
       Part of a list of several targets.
     .OUTPUTS
-      [pscustomobject] Label, Path (the workbook, or empty), Note (why there is none), Time, SignedIn.
+      [pscustomobject] Label, Path (the workbook, or empty), Note (why there is none), Time.
     #>
     param($Target, [switch]$List)
     $clock = [Diagnostics.Stopwatch]::StartNew()
-    $result = [pscustomobject]@{ Label = (Get-TargetLabel $Target); Path = ''; Note = ''; Time = ''; SignedIn = $false }
+    $result = [pscustomobject]@{ Label = (Get-TargetLabel $Target); Path = ''; Note = ''; Time = '' }
     $saving = $true   # false only during the sign-in, whose errors are already in words a person can act on
     try {
         if ($Target.DrivePath) {
@@ -195,7 +190,7 @@ function Invoke-ScanTarget {
             $result.Path = Invoke-DriveScan -Path $Target.DrivePath -OutputFolder $OutputFolder -MaxFileMB $MaxFileMB -Init $IonWorkerInit -AutoStart:$List
         }
         else {
-            $result.SignedIn = $true   # a sign-in is tried (Connect-TeamSite signs out again on every path)
+            $script:IonSignInTried = $true   # set before the sign-in, so a Ctrl+C during it still gets the run's one sign-out
             $saving = $false; $site = Connect-TeamSite $Target; $saving = $true
             $result.Label = Protect-PiiName $site
             $result.Path = Invoke-SiteFiles -SiteUrl $site -OutputFolder $OutputFolder -MaxFileMB $MaxFileMB -AutoStart:$List
@@ -242,27 +237,36 @@ Write-Ui 'Read-only. Every PII value found is masked on screen and in the result
 # What it scans and how to stop early (the PAM, 2026-11-21): a cancel still saves the results so far ('finally').
 Write-Ui ('Scans the files of Teams teams, SharePoint sites or drive folders you paste. Files over {0} MB are listed, not read.' -f $MaxFileMB) 'Muted'
 Write-Ui 'To stop early: Ctrl+C (in ISE: the red Stop button). The results so far are still saved.' 'Muted'
-$signedIn = $false   # the closing line says "nothing stays signed in" only after a site scan (a drive needs no sign-in)
+$script:IonSignInTried = $false   # true after the first site sign-in is tried: the run then signs out once, at its end
 
 # ---- Ask for one or more targets, then scan each and save its workbook; then offer more, until the person presses Enter ----
 # A wrong paste is explained and asked again (Read-ScanTarget); a site the person cannot open is reported as "no access"
 # and nothing is saved for it (Connect-TeamSite); only the targets the person pastes are touched ("No reconnaissance").
-$targets = @(Read-ScanTargetList $SiteUrl 'What to scan')
-while ($targets.Count -gt 0) {
-    $list = $targets.Count -gt 1
-    $go = $true
-    if ($list) {   # several: listed and asked once (the PAM, 2026-11-24: one workbook per site)
-        Write-Ui ('{0} to scan, one after the other (a sign-in window for each site):' -f $targets.Count) 'Label'
-        $n = 0; foreach ($t in $targets) { $n++; Write-Ui ('{0,2}. {1}' -f $n, (Get-TargetLabel $t)) 'Text' }
-        $answer = Read-Host ('Scan these {0} now? [Y/n]' -f $targets.Count)
-        $go = -not ($answer -and $answer.Trim() -match '^(n|no)$')
+# One sign-in per host (the PAM, 2026-11-24): each site connects without a sign-out between sites (probe 3, second run);
+# the run signs out once here, at its end, also after an error or Ctrl+C ('finally' runs on both).
+try {
+    $targets = @(Read-ScanTargetList $SiteUrl 'What to scan')
+    while ($targets.Count -gt 0) {
+        $list = $targets.Count -gt 1
+        $go = $true
+        if ($list) {   # several: listed and asked once (the PAM, 2026-11-24: one workbook per site)
+            Write-Ui ('{0} to scan, one after the other (sign-in windows open only when needed):' -f $targets.Count) 'Label'
+            $n = 0; foreach ($t in $targets) { $n++; Write-Ui ('{0,2}. {1}' -f $n, (Get-TargetLabel $t)) 'Text' }
+            $answer = Read-Host ('Scan these {0} now? [Y/n]' -f $targets.Count)
+            $go = -not ($answer -and $answer.Trim() -match '^(n|no)$')
+        }
+        if ($go) {
+            $results = @(foreach ($t in $targets) { Invoke-ScanTarget $t -List:$list; Write-Ui '' })
+            if ($list) { Show-ListResult $results }
+        }
+        Write-Ui ''
+        $targets = @(Read-ScanTargetList '' 'Scan more: paste it, or press Enter to exit' -NoHelp)
     }
-    if ($go) {
-        $results = @(foreach ($t in $targets) { Invoke-ScanTarget $t -List:$list; Write-Ui '' })
-        if (@($results | Where-Object { $_.SignedIn }).Count) { $signedIn = $true }
-        if ($list) { Show-ListResult $results }
-    }
-    Write-Ui ''
-    $targets = @(Read-ScanTargetList '' 'Scan more: paste it, or press Enter to exit' -NoHelp)
 }
-if ($signedIn) { Write-Ui 'Ion is done: nothing stays signed in.' 'Good' } else { Write-Ui 'Ion is done.' 'Good' }
+finally {
+    if ($script:IonSignInTried) {
+        try { Disconnect-PnPOnline }
+        catch { Write-Verbose 'Already signed out.' }  # nothing to sign out of: not an error for the person
+    }
+}
+if ($script:IonSignInTried) { Write-Ui 'Ion is done: nothing stays signed in.' 'Good' } else { Write-Ui 'Ion is done.' 'Good' }
