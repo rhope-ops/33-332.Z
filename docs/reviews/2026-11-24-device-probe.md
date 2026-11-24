@@ -27,17 +27,17 @@ The probe is a .txt file (Project rules, "Paste format"): `docs/reviews/2026-11-
    2. Press **Ctrl+C**.
    You see all the probe text selected. Go on.
 5. In the script pane **Untitled1.ps1**, press **Ctrl+V**. You see the probe text in the pane. Go on.
-6. In the window **Windows PowerShell ISE**, press **F5**. You see the question **Part A: your OneDrive folder**. Go on.
-7. On the question **Part A: your OneDrive folder**, do these actions:
+6. In the window **Windows PowerShell ISE**, press **F5**. You see the question **Question 1: your OneDrive folder**. Go on.
+7. On the question **Question 1: your OneDrive folder**, do these actions:
    1. Type the path of your OneDrive folder, for example `C:\Users\<you>\OneDrive - <organization>`.
    2. Press **Enter**.
-   You see lines that start with **A1** to **A4** and the question **Part B: a team site address**. Go on.
-8. On the question **Part B: a team site address**, do these actions:
+   You see the question **Question 2: a team site address**. Go on.
+8. On the question **Question 2: a team site address**, do these actions:
    1. Type the address of a team site that you scan, for example `https://usaf.dps.mil/teams/<team-site>`.
    2. Press **Enter**.
-   You see a CAC sign-in window. Go on.
-9. In each CAC sign-in window, sign in with your CAC. You see lines that start with **B-onedrive** and **B-team**. Wait
-   until the line **Done.** shows.
+   The screen clears. You see lines that start with **A1** to **A4**. Go on.
+9. If a CAC sign-in window opens, sign in with your CAC. A second window can open for the team site: sign in again.
+   You see lines that start with **B-onedrive** or **B-team**. Wait until the line **Done.** shows.
 10. In the ISE output pane, do these actions:
     1. Select the lines from **A1** to **Done.**.
     2. Press **Ctrl+C**.

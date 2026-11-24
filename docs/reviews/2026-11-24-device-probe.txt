@@ -9,7 +9,9 @@ function Get-Shape($url) {
     return 'other'
 }
 # ---- Part A: OneDrive folder -> web address ----
-$folder = (Read-Host 'Part A: your OneDrive folder (paste the path)').Trim().Trim('"').TrimEnd('\')
+$folder = (Read-Host 'Question 1: your OneDrive folder (paste the path)').Trim().Trim('"').TrimEnd('\')
+$team = (Read-Host 'Question 2: a team site address you scan (or press Enter to skip)').Trim()
+Clear-Host   # the answers are not on the screen when you copy the result lines
 'A1 folder opens={0}' -f [System.IO.Directory]::Exists($folder)
 $providers = @()
 try { $providers = @(Get-ChildItem -Path 'HKCU:\Software\SyncEngines\Providers\OneDrive' -ErrorAction Stop) } catch { Show-Err 'A2 sync list' $_ }
@@ -19,20 +21,23 @@ foreach ($p in $providers) {
     $names = @($p.GetValueNames())
     $mount = [string]$p.GetValue('MountPoint'); $ns = [string]$p.GetValue('UrlNamespace')
     $under = $mount -and ($folder + '\').StartsWith($mount.TrimEnd('\') + '\', [System.StringComparison]::OrdinalIgnoreCase)
-    'A3 entry: MountPoint={0} UrlNamespace={1} LibraryType={2} shape={3} folder inside={4}' -f ($names -contains 'MountPoint'),
-        ($names -contains 'UrlNamespace'), ($names -contains 'LibraryType'), (Get-Shape $ns), $under
+    if ($under) {
+        'A3 matching entry: MountPoint={0} UrlNamespace={1} LibraryType={2} shape={3}' -f ($names -contains 'MountPoint'),
+            ($names -contains 'UrlNamespace'), ($names -contains 'LibraryType'), (Get-Shape $ns)
+    }
     if ($under -and $ns -and (-not $match -or $mount.Length -gt $match.Mount.Length)) { $match = @{ Mount = $mount.TrimEnd('\'); Ns = $ns.TrimEnd('/') } }
 }
 'A4 web address found={0}' -f [bool]$match
 # ---- Part B: permission reads and one file read ----
 $sites = @()
 if ($match) {
-    $file = @(Get-ChildItem -LiteralPath $folder -File -ErrorAction SilentlyContinue | Where-Object { -not ($_.Attributes -band 0x441000) } | Select-Object -First 1)
-    $path = ([uri]$match.Ns).AbsolutePath.TrimEnd('/') + $folder.Substring($match.Mount.Length).Replace('\', '/')
+    # The smallest file on disk, at most 5 MB (not online only), so the read is quick and fits in memory.
+    $file = @(Get-ChildItem -LiteralPath $folder -File -ErrorAction SilentlyContinue | Where-Object { -not ($_.Attributes -band 0x441000) -and $_.Length -le 5MB } |
+        Sort-Object Length | Select-Object -First 1)
+    $path = [uri]::UnescapeDataString(([uri]$match.Ns).AbsolutePath).TrimEnd('/') + $folder.Substring($match.Mount.Length).Replace('\', '/')
     if ($file) { $sites += , @('B-onedrive', ($match.Ns -replace '/[^/]+$', ''), ($path + '/' + $file[0].Name), $file[0].FullName) }
     else { 'B-onedrive a file on disk found=False' }
 }
-$team = (Read-Host 'Part B: a team site address you scan (or press Enter to skip)').Trim()
 if ($team) { $sites += , @('B-team', $team.TrimEnd('/'), '', '') }
 foreach ($s in $sites) {
     $tag = $s[0]
@@ -50,8 +55,10 @@ foreach ($s in $sites) {
         try { $ra = Get-PnPProperty -ClientObject $item -Property RoleAssignments; '{0} role assignments read=True count={1}' -f $tag, @($ra).Count } catch { Show-Err "$tag role assignments" $_ }
         try {
             $info = Invoke-PnPSPRestMethod -Method Post -Url ("/_api/web/lists('{0}')/items({1})/GetSharingInformation?`$expand=sharingLinks" -f $listId, $item.Id)
-            $kinds = @($info.sharingLinks | ForEach-Object { [string]$_.linkDetails.LinkKind }) | Group-Object | ForEach-Object { '{0}x{1}' -f $_.Count, $_.Name }
-            '{0} sharing information read=True links={1} kinds={2}' -f $tag, @($info.sharingLinks).Count, ($kinds -join ',')
+            $links = @(); if ($info.PSObject.Properties['sharingLinks']) { $links = @($info.sharingLinks) } elseif ($info.PSObject.Properties['d']) { $links = @($info.d.sharingLinks.results) }
+            $links = @($links | Where-Object { $_ })
+            $kinds = @($links | ForEach-Object { [string]$_.linkDetails.LinkKind }) | Group-Object | ForEach-Object { '{0}x{1}' -f $_.Count, $_.Name }
+            '{0} sharing information read=True links={1} kinds={2}' -f $tag, $links.Count, ($kinds -join ',')
         } catch { Show-Err "$tag sharing information" $_ }
         '{0} Get-PnPFileSharingLink exists={1}' -f $tag, [bool](Get-Command Get-PnPFileSharingLink -ErrorAction SilentlyContinue)
         $clock = [System.Diagnostics.Stopwatch]::StartNew()
