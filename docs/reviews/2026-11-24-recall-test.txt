@@ -675,20 +675,24 @@ function Format-RecallScore {
 }
 
 # ==== Questions: the run starts here (the code above only defines functions) ====
-$ErrorActionPreference = 'Stop'
-Write-Host 'Ion recall test. Invented files only. It prints counts and type names only.'
-$recallMode = [string](Read-Host 'Type M to make the test files, or S to score the Ion workbook')
-if ($recallMode.Trim() -match '^[Mm]$') {
-    $recallFolder = ([string](Read-Host 'Path of the empty test folder')).Trim().Trim('"')
-    Write-Host (Invoke-RecallMake $recallFolder)
-}
-elseif ($recallMode.Trim() -match '^[Ss]$') {
-    $recallBook = ([string](Read-Host 'Path of the Ion workbook (.xlsx)')).Trim().Trim('"')
-    if (-not $recallBook -or -not (Test-Path -LiteralPath $recallBook -PathType Leaf)) { Write-Host 'Result: no workbook at that path. Press F5 to start again.' }
-    else {
-        try { foreach ($line in (Format-RecallScore (Get-RecallScore (Get-RecallPlan) (Read-RecallWorkbook $recallBook)))) { Write-Host $line } }
-        catch { Write-Host ('Result: the workbook could not be read (' + ($_.Exception.Message -replace '\d', '#') + ').') }
+# In a child scope (& { }): no setting stays in the ISE session for the next script (Ion). An error shows its kind only:
+# its message can name a path, and the output must hold none.
+& {
+    $ErrorActionPreference = 'Stop'
+    Write-Host 'Ion recall test. Invented files only. It prints counts and type names only.'
+    $mode = ([string](Read-Host 'Type M to make the test files, or S to score the Ion workbook')).Trim()
+    if ($mode -match '^[Mm]$') {
+        $folder = ([string](Read-Host 'Path of the empty test folder')).Trim().Trim('"')
+        try { Write-Host (Invoke-RecallMake $folder) }
+        catch { Write-Host ('Result: the files could not be written (' + $_.Exception.GetType().Name + '). Check the folder, then press F5 again.') }
+    }
+    elseif ($mode -match '^[Ss]$') {
+        $book = ([string](Read-Host 'Path of the Ion workbook (.xlsx)')).Trim().Trim('"')
+        if (-not $book -or -not (Test-Path -LiteralPath $book -PathType Leaf)) { Write-Host 'Result: no workbook at that path. Press F5 to start again.'; return }
+        try { $lines = Format-RecallScore (Get-RecallScore (Get-RecallPlan) (Read-RecallWorkbook $book)) }
+        catch { Write-Host ('Result: the workbook could not be read (' + $_.Exception.GetType().Name + '). Is it an Ion workbook?'); return }
+        foreach ($line in $lines) { Write-Host $line }
         Write-Host 'Done. Copy the lines from "Ion recall test" to "Done."'
     }
+    else { Write-Host 'Result: type M or S. Press F5 to start again.' }
 }
-else { Write-Host 'Result: type M or S. Press F5 to start again.' }

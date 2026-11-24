@@ -67,9 +67,9 @@ Part 2: make the test files. If you do not see **Copy as path** in a menu, close
     2. Press **Enter**.
     You see the line **Done: 12 test files with 53 planted values are in the folder**. Go on.
 
-If you see **Result: that folder is not empty**, make a new empty folder with a new name. Then do steps 9 to 12 again with that folder.
+If you see **Result: that folder is not empty**, delete all files in the folder **RecallTest**. Then press **F5** in the window **Windows PowerShell ISE**, type `M`, press **Enter**, press **Ctrl+V** and press **Enter**.
 
-Part 3: scan the test folder with Ion. If you see the question **Download and read them? [y/N]**, type `y` and press **Enter**.
+Part 3: scan the test folder with Ion. If you see the question **Download and read them? [y/N]**, type `y` and press **Enter**. Ion asks this when OneDrive keeps a test file online only.
 
 13. In the window **Windows PowerShell ISE**, do these actions:
     1. Click **File**.
@@ -101,7 +101,7 @@ Part 3: scan the test folder with Ion. If you see the question **Download and re
 Part 4: score the Ion workbook. If you do not see **Copy as path** in a menu, close the menu. Then hold **Shift** and right-click again.
 
 24. In the window **File Explorer**, do these actions:
-    1. Double-click the folder **Documents**.
+    1. In the left pane, click **Documents**.
     2. Double-click the folder **Ion**.
     3. Double-click the folder **RecallTest**.
     You see the file **Ion RecallTest** with the date and time. Go on.
@@ -155,6 +155,8 @@ Score. Ion: `src/` of origin/main 9ded821, not changed. PowerShell 7.4.6 on Linu
 | All types | 53 | 46 | 7 | 1 | 87% |
 
 Recall 87% (46 of 53). Precision 98% (46 of 47 hits). All 12 files were read (0 in the Not scanned tab). No decoy was a hit.
+
+Without the 9 values under a header row only: recall 98% (43 of 44), precision 98% (43 of 44 hits). Without the 9-digit passport too: 43 of 43, no false hit.
 
 The 7 misses and the 1 false hit:
 
