@@ -26,5 +26,5 @@ Title: 33-332.Z · <task> · <date>. Read AGENTS.md first.
 16. Plan approved 2026-11-21 (docs/DECISIONS.md, newest row): step 1 = Teams link alone (built) + 2 test snippets
     (parallel download, view counts: docs/reviews/2026-11-21-ion-round2-tests.md); step 2 = permission columns;
     step 3 = parallel downloads in a planned order, and version-history reads off the main thread (slow run 28:49).
-17. 2026-11-24 merged: PRs 58, 59, 62, 63, 69; shape test passed on the gov device (8 of 8 IDs DoD ID Low). Open: OneDrive
-    roots and a synced scan (docs/reviews/2026-11-23-onedrive-probe.md "Result"); PR 69 MINORs; CRC: false SSN.
+17. 2026-11-24 merged: PRs 58, 59, 62, 63, 69; shape test passed on the gov device (8 of 8 IDs DoD ID Low). Open: a local
+    synced-folder scan (onedrive-probe.md "Result"); PR 69 MINORs (split first); Excel false SSN (PAM samples).

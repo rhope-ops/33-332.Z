@@ -66,9 +66,12 @@ What it proves:
 - 1 file is online only. Ion asks before it downloads it.
 - 2 files are normal files (not reparse points). Ion reads them as usual.
 
-Still not verified:
+Follow-up answers (the PAM, question dialog, 2026-11-24):
 
-- `Get-OneDriveRoots` (the OneDrive environment variables and the value names under
-  `HKCU:\Software\Microsoft\OneDrive\Accounts\*\Tenants`) finds the sync folder. The probe uses the same logic, and its
-  missing first line shows the result. If that line says `False` or `0`, Ion skips every OneDrive item as a link.
-- A real Ion scan of a synced folder reads the files (files read, not "A link to another file is not followed").
+- The probe's first line showed 3 sync folders found. So the logic of `Get-OneDriveRoots` (the OneDrive environment
+  variables and the value names under `HKCU:\Software\Microsoft\OneDrive\Accounts\*\Tenants`) finds the sync folders.
+  The exact `in OneDrive=True` text was not quoted.
+- A OneDrive link pasted into Ion started file downloads. That is the web (SharePoint) path of Ion.
+
+Still not verified: an Ion scan of a local synced folder path (for example `C:\Users\<you>\OneDrive - <organization>`)
+reads the files (files read, not "A link to another file is not followed").
