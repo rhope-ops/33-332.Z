@@ -202,7 +202,7 @@ foreach ($layout in $layouts.Keys) {
 }
 
 # ---- The 5 Ion defects of the R4e benchmark (archimedes_lever docs/reviews/2026-11-23-tr-r4e-ion-benchmark.md) ----
-# 1. Street types in any case.
+# 1. Street types as written or in capitals.
 Assert-Equal 'Home address/Medium/[address masked]' ((Get-HitSummary ('42 ELM ST, SPRINGFIELD, IL ' + '62704')) -join ',') 'Address in capitals'
 Assert-Equal 'Home address/High/[address masked]' ((Get-HitSummary 'Home: 12 OAK RD') -join ',') 'Capital street type with a label'
 foreach ($case in @('the 3 Day way', '4 Games st', '10 Tips ct', '3 Big Dogs cir')) {
@@ -236,6 +236,23 @@ foreach ($case in @("Name: Jane Marie${nbsp}Doe", "Name: Jane M.${nbsp}Doe", "Na
 Assert-Equal 'M*** N***' ((Find-PiiInText 'Name: Mary Next').MaskedValue) 'A label word without ":" can be a name'
 Assert-Equal 'A*** F*** | S*** R***' ((@(Find-PiiInText "Spouse: Anna Full`nName: Sam Roe") | ForEach-Object { $_.MaskedValue }) -join ' | ') 'Full, then Name: on the next line'
 Assert-Equal 'Jane Doe' (@(Get-PiiSpan 'Name: Jane Doe I live')[0].Value) 'One capital letter then a small word: not in the name'
+# Second review of PR 61: nothing main found is lost or cut.
+$govMail = 'jdoe' + '@unit.af.' + 'mi' + 'l'
+$review2 = [ordered]@{
+    "Name: Jane Doe_$gluedMail"                = "Name:Jane Doe|Personal e-mail:$gluedMail"
+    "12 Oak St_$gluedMail"                     = "Home address:12 Oak St|Personal e-mail:$gluedMail"
+    "Name: Jane Marie`nDoe SSN: $($Sample.Ssn)" = "Name:Jane Marie`nDoe|SSN:$($Sample.Ssn)"
+    "Name: Jane Marie`nDoe Rank: E5"           = "Name:Jane Marie`nDoe"
+    'Name: Jane Poc-Smith'                     = 'Name:Jane Poc-Smith'
+    'Name: Jane Marie Member-Roe'              = 'Name:Jane Marie Member-Roe'
+    "Name: Jane`rM.`rDoe"                      = "Name:Jane`rM.`rDoe"
+    "Name: Jane`n`nDoe`n`nSmith"               = "Name:Jane`n`nDoe`n`nSmith"
+    "${govMail}_report.pdf"                    = ''
+}
+foreach ($case in $review2.Keys) {
+    $spans = (@(Get-PiiSpan $case) | ForEach-Object { $_.Detector + ':' + $_.Value }) -join '|'
+    Assert-Equal $review2[$case] $spans "Same as main or better: $($case -replace '\d', '#' -replace "`r", '\r' -replace "`n", '\n')"
+}
 # 5. A middle initial without a dot.
 Assert-Equal 'DOE, JANE M' (@(Get-PiiSpan 'Name: DOE, JANE M')[0].Value) 'Middle initial without a dot kept'
 Assert-Equal 'J*** M*** D***' ((Find-PiiInText 'Member: Jane M Doe, unit').MaskedValue) 'First name, initial without a dot, last name'

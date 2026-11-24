@@ -75,19 +75,20 @@ function Find-NameHits {
       Hit objects (New-PiiHit) for the name only, not its label.
     #>
     param([string]$Text)
-    $label = '(?:full\s+name|member\s+name|name|member|employee|spouse|dependent|next\s+of\s+kin|NOK|POC)\s*[:=-]\s*'
+    $labelWords = '(?:full\s+name|member\s+name|name|member|employee|spouse|dependent|next\s+of\s+kin|NOK|POC)'
+    $label = $labelWords + '\s*[:=-]\s*'
     # Labels of other data often follow a name on the same line; a name stops before them.
-    # A label of this detector ("Name:", "Member:") stops a name too, so a name never takes the next row's label; the same
-    # word without ":", "=" or "-" after it can be a name ("Mary Next") (the R4e benchmark and its review, 2026-11-23).
+    # A label of this detector on one line ("Name:", "POC - ") stops a name too, so a name never takes the next row's label;
+    # the same word as a name ("Mary Next", "Poc-Smith", "Full" then "Name:" on the next line) does not (R4e benchmark, reviews).
     $stopWords = '(?!(?:SSN|SSAN|DOB|DoD|EDIPI|CAC|Phone|Cell|Mobile|Home|Address|Email|E-mail|Rank|Grade|Unit|Date|Born)\b)' +
-        '(?!(?i:' + ($label -replace '\\s', '[^\S\r\n]') + '))'   # a label on one line only ("Full" then "Name:" is no label)
+        '(?!(?i:' + ($labelWords -replace '\\s', '[^\S\r\n]') + ')[^\S\r\n]*(?:[:=]|-(?![A-Za-z])))'
     # A part is a word, or one capital letter with or without a dot ("JANE M"); a letter without a dot only before another
     # word or at the end of the name ("Jane Doe I live" keeps "Jane Doe"). Gaps: spaces, tabs or no-break spaces.
     $gap = '[^\S\r\n]'
     $part = "$stopWords[A-Z](?:[A-Za-z'\-]+|\.|\b(?=$gap+[A-Z][A-Za-z'\-]|$gap*(?:[,;]|\r?\n|$)))"
-    # The second part can start on the next line (a wrapped cell), as before. A later part can too, but not when that
-    # line starts another field ("Ship to: ...": a ":" or "=" within its first 4 words), so a name stops there (R4e benchmark).
-    $wrapped = ",?$gap*\r?\n$gap*(?=(?>[A-Z][A-Za-z'\-]*)(?!(?:$gap+[A-Za-z'\-]+){0,3}$gap*[:=]))"
+    # The second part can start on a later line (a wrapped cell), as before. A later part can too, but not when that line
+    # starts another field: a word, then up to 3 small words, then ":" or "=" ("Ship to: depot") (R4e benchmark, reviews).
+    $wrapped = ",?$gap*(?:\r\n?|\n)\s*(?!(?>[A-Z][A-Za-z'\-]*)(?:$gap+[a-z][A-Za-z'\-]*){0,3}$gap*[:=])"
     $name = "[A-Z][A-Za-z'\-]+,?\s+$part(?:(?:,?$gap+|$wrapped)$part)*"
     foreach ($m in [regex]::Matches($Text, '(?i:' + $label + ')(' + $name + ')')) {
         New-PiiHit 'Name' 'Low' $m.Groups[1].Index $m.Groups[1].Value
@@ -103,23 +104,18 @@ function Get-AllHits {
     .SYNOPSIS
       Runs every detector on the text and returns all hits, overlaps included.
     .PARAMETER Text
-      The text to search (underscores already seen as spaces, Get-PiiSpan).
-    .PARAMETER RawText
-      The same text with its underscores, for the e-mail detector (same length, so positions fit both).
+      The text to search.
     .OUTPUTS
       Hit objects (New-PiiHit).
     #>
-    param([string]$Text, [string]$RawText = $Text)
+    param([string]$Text)
     Find-SsnHits $Text
     Find-DodIdHits $Text
     Find-CardHits $Text
     Find-DobHits $Text
     Find-PassportHits $Text
     Find-PhoneHits $Text
-    # With its underscores, "first_last@..." is one address (the R4e benchmark, 2026-11-23). Also read without them: when an
-    # address is glued by "_" to another hit ("CAC_<DoD ID>_jdoe@..."), that hit wins the overlap and this one still counts.
-    Find-PersonalEmailHits $RawText
-    if ($RawText -ne $Text) { Find-PersonalEmailHits $Text }
+    Find-PersonalEmailHits $Text
     Find-HomeAddressHits $Text
     Find-NameHits $Text
 }
@@ -204,6 +200,29 @@ function Test-GarbledNear {
     return (@($script:GarbledChar.Matches($around)).Count / $visible) -ge $script:GarbledShare
 }
 
+function Expand-MailOverUnderscore {
+    <#
+    .SYNOPSIS
+      An e-mail hit that starts right after an underscore takes the e-mail name before it too ("first_last@..." is one
+      address: the R4e benchmark, 2026-11-23), but never a character of another kept hit ("Name: Jane Doe_jdoe@...").
+    .PARAMETER Text
+      The text as written (with its underscores).
+    .PARAMETER Hits
+      The kept hits (e-mail hits changed in place).
+    .OUTPUTS
+      None.
+    #>
+    param([string]$Text, [object[]]$Hits)
+    foreach ($mail in @($Hits | Where-Object { $_.Detector -eq 'Personal e-mail' -and $_.Index -gt 0 -and $Text[$_.Index - 1] -eq '_' })) {
+        $start = $mail.Index
+        while ($start -gt 0 -and $Text[$start - 1] -notmatch '[\s@<>()\[\],;:"/\\]' -and
+            -not @($Hits | Where-Object { $_ -ne $mail -and $start - 1 -ge $_.Index -and $start - 1 -lt $_.Index + $_.Length })) { $start-- }
+        while ($Text[$start] -eq '_') { $start++ }
+        $mail.Length += $mail.Index - $start
+        $mail.Index = $start
+    }
+}
+
 function Get-PiiSpan {
     <#
     .SYNOPSIS
@@ -219,7 +238,8 @@ function Get-PiiSpan {
     # Underscores join words in file names ("CAC_1234..."), which defeats word-boundary checks.
     # Seen as spaces by the detectors only; the length is the same, so positions still fit the text.
     $searchText = $Text.Replace('_', ' ')
-    $kept = Remove-OverlappingHits @(Get-AllHits $searchText $Text)
+    $kept = Remove-OverlappingHits @(Get-AllHits $searchText)
+    Expand-MailOverUnderscore $Text $kept.ToArray()
     Set-NameNearIdentifierHigh $kept.ToArray()
     # A Low hit inside unreadable text (symbols, a font read wrong) is noise: it is dropped. High and Medium hits stay.
     $kept = @($kept | Where-Object { $_.Confidence -ne 'Low' -or -not (Test-GarbledNear $searchText $_.Index $_.Length) })
