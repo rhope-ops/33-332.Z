@@ -1,0 +1,88 @@
+# Ion device probe 3 (2026-11-24): read-only. Prints only True/False, counts, error kinds and times: no name, no
+# address, no path, no value from a file. It tests how Ion can sign in once for several sites, and finds the web path
+# of one OneDrive file. Questions first, then the screen is cleared, so no answer is in the lines you copy.
+$ErrorActionPreference = 'Stop'
+$folder = (Read-Host 'Question 1: your OneDrive folder (paste the path, or press Enter to skip)').Trim().Trim('"').TrimEnd('\')
+$siteA = (Read-Host 'Question 2: a team site address you scan').Trim().TrimEnd('/')
+$siteB = (Read-Host 'Question 3: a second team site address on the same host (or press Enter to skip)').Trim().TrimEnd('/')
+$teams = (Read-Host 'Question 4: a Teams link of a team you scan (or press Enter to skip)').Trim()
+Clear-Host
+function Get-Kind($err) {
+    $m = [string]$err.Exception.Message
+    $kind = 'Other'
+    if ($m -match '(?i)no connection|not connected|connect first|current connection') { $kind = 'NoConnection' }
+    elseif ($m -match '(?i)already') { $kind = 'Already' }
+    elseif ($m -match '(?i)\(404\)|not found') { $kind = 'NotFound' }
+    elseif ($m -match '(?i)\(401\)|\(403\)|forbidden|access denied|unauthori') { $kind = 'NoAccess' }
+    elseif ($m -match '(?i)cancel') { $kind = 'Cancelled' }
+    elseif ($m -match '(?i)time ?out|timed out') { $kind = 'Timeout' }
+    '{0}/{1}' -f $err.Exception.GetType().Name, $kind
+}
+function Test-Step($tag, [scriptblock]$step) {
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    try { $r = & $step; '{0} ok=True {1} ms={2}' -f $tag, $r, $clock.ElapsedMilliseconds } catch { '{0} ok=False {1} ms={2}' -f $tag, (Get-Kind $_), $clock.ElapsedMilliseconds }
+}
+function Get-SitePath($url) { ([uri]$url).AbsolutePath.TrimEnd('/') }
+# Which site the calls really reach: the web of the context, a REST call and a list read.
+function Test-Reach($tag, $url) {
+    $want = Get-SitePath $url
+    Test-Step "$tag web" { 'is target={0}' -f ((Get-PnPWeb -Includes ServerRelativeUrl).ServerRelativeUrl.TrimEnd('/') -eq $want) }
+    Test-Step "$tag rest" { $w = Invoke-PnPSPRestMethod -Method Get -Url '/_api/web?$select=ServerRelativeUrl'; 'is target={0}' -f ([string]$w.ServerRelativeUrl).TrimEnd('/').Equals($want) }
+    Test-Step "$tag list" {
+        $lib = Get-PnPList | Where-Object { $_.BaseTemplate -eq 101 -and -not $_.Hidden } | Select-Object -First 1
+        $item = @(Get-PnPListItem -List $lib -PageSize 20 -Fields 'FileRef' | Select-Object -First 20 | Where-Object { $_.FileSystemObjectType -eq 'File' })[0]
+        $ref = if ($item) { [string]$item['FileRef'] } else { '' }
+        $versions = if ($ref) { @(Get-PnPFileVersion -Url $ref).Count } else { -1 }
+        'file is target={0} versions={1}' -f ($ref -like ($want + '/*')), $versions
+    }
+}
+# ---- T1: a Teams link: sign in at the tenant root, then look up the team's site ----
+$root = ''
+if ($teams -match 'groupId=([0-9a-fA-F-]{36})') {
+    $gid = $Matches[1]; $root = ([uri]$siteA).GetLeftPart([UriPartial]::Authority)
+    Test-Step 'T1 root sign-in' { Connect-PnPOnline -Url $root -UseWebLogin -WarningAction SilentlyContinue; '' }
+    Test-Step 'T1 site lookup' { $a = Invoke-PnPSPRestMethod -Method Post -Url '/_api/GroupSiteManager/GetSiteStatus' -Content @{ groupId = $gid }; 'site found={0}' -f [bool]$a.SiteUrl }
+    Test-Step 'T1 copy to site A' { $c = [PnP.Framework.ClientContextExtensions]::Clone((Get-PnPContext), $siteA); Set-PnPContext -Context $c; '' }
+    Test-Reach 'T1 site A' $siteA
+} elseif ($teams) { 'T1 skipped: the Teams link has no groupId' }
+# ---- T2: site A with its own sign-in (the way Ion signs in today) ----
+if (-not $root) { Test-Step 'T2 site A sign-in' { Connect-PnPOnline -Url $siteA -UseWebLogin -WarningAction SilentlyContinue; '' }; Test-Reach 'T2 site A' $siteA }
+# ---- T3: site B: a copy of the signed-in session (no new window), then a new sign-in without sign-out, then after sign-out ----
+if ($siteB) {
+    Test-Step 'T3 copy to site B' { $c = [PnP.Framework.ClientContextExtensions]::Clone((Get-PnPContext), $siteB); Set-PnPContext -Context $c; '' }
+    Test-Reach 'T3 copy B' $siteB
+    Test-Step 'T3 sign-in B, no sign-out' { Connect-PnPOnline -Url $siteB -UseWebLogin -WarningAction SilentlyContinue; '' }
+    Test-Reach 'T3 new B' $siteB
+    Test-Step 'T3 sign-out' { Disconnect-PnPOnline; '' }
+    Test-Step 'T3 sign-in B after sign-out' { Connect-PnPOnline -Url $siteB -UseWebLogin -WarningAction SilentlyContinue; '' }
+}
+# ---- T4: the OneDrive file: which web path finds it ----
+if ($folder) {
+    $match = $null; $count = 0
+    foreach ($p in @(Get-ChildItem -Path 'HKCU:\Software\SyncEngines\Providers\OneDrive' -ErrorAction SilentlyContinue)) {
+        $mount = [string]$p.GetValue('MountPoint'); $ns = [string]$p.GetValue('UrlNamespace')
+        if ($mount -and $ns -and ($folder + '\').StartsWith($mount.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
+            $count++; if (-not $match -or $mount.Length -gt $match.Mount.Length) { $match = @{ Mount = $mount.TrimEnd('\'); Ns = $ns.TrimEnd('/') } }
+        }
+    }
+    'T4 matching entries={0}' -f $count
+    $file = @(Get-ChildItem -LiteralPath $folder -File -ErrorAction SilentlyContinue | Where-Object { -not ($_.Attributes -band 0x441000) -and $_.Length -le 5MB } | Sort-Object Length | Select-Object -First 1)
+    'T4 a file on disk found={0}' -f [bool]$file
+    if ($match -and $file) {
+        $nsPath = [uri]::UnescapeDataString(([uri]$match.Ns).AbsolutePath).TrimEnd('/')
+        $inner = $folder.Substring($match.Mount.Length).Replace('\', '/') + '/' + $file[0].Name
+        $site = $match.Ns -replace '/[^/]+$', ''
+        'T4 library part in the address={0}' -f ($nsPath -ne (Get-SitePath $site))
+        Test-Step 'T4 sign-in' { Connect-PnPOnline -Url $site -UseWebLogin -WarningAction SilentlyContinue; '' }
+        Test-Step 'T4 path A (address + folder)' { 'found={0}' -f [bool](Get-PnPFile -Url ($nsPath + $inner) -AsListItem) }
+        Test-Step 'T4 path B (site + Documents + folder)' { 'found={0}' -f [bool](Get-PnPFile -Url ((Get-SitePath $site) + '/Documents' + $inner) -AsListItem) }
+        Test-Step 'T4 path C (first library + folder)' {
+            $lib = Get-PnPList -Includes RootFolder | Where-Object { $_.BaseTemplate -eq 700 -or $_.BaseTemplate -eq 101 } | Select-Object -First 1
+            'found={0}' -f [bool](Get-PnPFile -Url ($lib.RootFolder.ServerRelativeUrl.TrimEnd('/') + $inner) -AsListItem)
+        }
+        Test-Step 'T4 web read' { $s = Get-PnPFile -Url ($nsPath + $inner) -AsMemoryStream; $n = $s.Length; $s.Dispose(); 'KB={0}' -f [int]($n / 1KB) }
+        Test-Step 'T4 disk read' { $b = [IO.File]::ReadAllBytes($file[0].FullName); 'KB={0}' -f [int]($b.Length / 1KB) }
+    }
+}
+try { Disconnect-PnPOnline } catch { }
+Write-Host 'Done. The lines above show True/False, counts, error kinds and times only. Copy them and paste them in the chat.'
