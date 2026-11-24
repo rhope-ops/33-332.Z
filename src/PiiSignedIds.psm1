@@ -49,8 +49,12 @@ $script:NotPhone = '(?!\d{3}(?:[ \t\u00A0.-]|\r?\n)\d{3}(?:[ \t\u00A0.-]|\r?\n)?
 $script:NotPhoneAfterName = '(?!\d{3}(?:[ \t\u00A0.-]|\r?\n)\d{3}(?:[ \t\u00A0.-]|\r?\n)\d{4}(?![\w-]))'
 # Before bare digits after a signature word: a date, a time or a page number (a year alone: $SignedYearLeadIn), then one gap, is no part of the ID
 # (the PAM, 2026-11-24, "1a"; the guard of 013ca82 blocked every digit and gap: 0 of 400 such IDs found).
+# A date with an English month name or its 3 letters (any case, a dot or not) is a date: "20 Nov yyyy", "20NOVyyyy",
+# "Nov 20, yyyy", "yyyy-Nov-20" (the PAM, 2026-11-24, no-persistence plan step 1).
+$script:MonthName = '(?i:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?'
 $script:SignedLeadIn = '(?:(?:19|20)\d\d[./-]\d{1,2}[./-]\d{1,2}|\d{1,2}[./-]\d{1,2}[./-](?:(?:19|20)\d\d|\d\d)|\d{1,2}:\d\d(?::\d\d)?|' +
-    '(?i:page)[ \t\u00A0]+\d{1,4})[ \t\u00A0]'
+    '(?i:page)[ \t\u00A0]+\d{1,4}|\d{1,2}[ \t\u00A0]?' + $script:MonthName + '[ \t\u00A0]?(?:19|20)\d\d|' +
+    '(?<![A-Za-z])' + $script:MonthName + '[ \t\u00A0]\d{1,2},[ \t\u00A0](?:19|20)\d\d|(?:19|20)\d\d-' + $script:MonthName + '-\d{1,2})[ \t\u00A0]'
 # After a year alone only 10 digits in a row or the 3-2-4-1 shape are an ID ("Signed 2012 #### #### ##": no ID; the PAM, 2026-11-24, PR 69 MINORs).
 $script:SignedYearLeadIn = '(?<![\w.-])(?:19|20)\d\d[ \t\u00A0]'
 $script:SignedYearShape = '(?=(?:\d{10}|\d{3}[ \u00A0]\d{2}[ \u00A0]\d{4}[ \u00A0]\d)(?![\w-]))'
