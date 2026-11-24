@@ -21,7 +21,7 @@
     src/PiiPatterns.psm1, sha256 f7ef8ca1789f
     src/PiiSignedIds.psm1, sha256 0b83d916e727
     src/PiiDetectors.psm1, sha256 66e3b48368e2
-    src/PiiMasking.psm1, sha256 1d3d74e20c8d
+    src/PiiMasking.psm1, sha256 9bf871e9e244
     src/OcrText.psm1, sha256 a39acab441d4
     src/OleText.psm1, sha256 2f5d0a036e97
     src/ContainerText.psm1, sha256 7378569bd7e6
@@ -43,7 +43,7 @@
     src/SiteTarget.psm1, sha256 2e693a68f413
     src/ChannelScan.psm1, sha256 0cd4894c7c7b
     src/DriveScan.psm1, sha256 8b4305c3a6fc
-    src/Find-ChannelPII.ps1, sha256 49336ca39282
+    src/Find-ChannelPII.ps1, sha256 45fd5b0f99dc
 
   Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.
   Run target: Windows PowerShell 5.1 with PnP.PowerShell 1.12.0; no admin rights, no file to unblock.
@@ -58,30 +58,30 @@
     line   504  Module PiiSignedIds.psm1
     line   822  Module PiiDetectors.psm1
     line  1002  Module PiiMasking.psm1
-    line  1242  Module OcrText.psm1
-    line  1395  Module OleText.psm1
-    line  1534  Module ContainerText.psm1
-    line  1873  Module PdfCore.psm1
-    line  2235  Module PdfObjects.psm1
-    line  2593  Module PdfFonts.psm1
-    line  2911  Module PdfShown.psm1
-    line  3162  Module PdfLayout.psm1
-    line  3302  Module PdfContent.psm1
-    line  3632  Module PdfText.psm1
-    line  3824  Module TextExtract.psm1
-    line  4242  Module ReaderPool.psm1
-    line  4567  Reader block end
-    line  4571  Module XlsxWriter.psm1
-    line  5008  Module Report.psm1
-    line  5384  Module ReportBook.psm1
-    line  5688  Module ScanMeter.psm1
-    line  6085  Module ScanQueue.psm1
-    line  6479  Module Accountability.psm1
-    line  6863  Module SiteTarget.psm1
-    line  7220  Module ChannelScan.psm1
-    line  7622  Module DriveScan.psm1
-    line  7988  Body of Find-ChannelPII.ps1
-    line  8191  Clean-up
+    line  1249  Module OcrText.psm1
+    line  1402  Module OleText.psm1
+    line  1541  Module ContainerText.psm1
+    line  1880  Module PdfCore.psm1
+    line  2242  Module PdfObjects.psm1
+    line  2600  Module PdfFonts.psm1
+    line  2918  Module PdfShown.psm1
+    line  3169  Module PdfLayout.psm1
+    line  3309  Module PdfContent.psm1
+    line  3639  Module PdfText.psm1
+    line  3831  Module TextExtract.psm1
+    line  4249  Module ReaderPool.psm1
+    line  4574  Reader block end
+    line  4578  Module XlsxWriter.psm1
+    line  5015  Module Report.psm1
+    line  5391  Module ReportBook.psm1
+    line  5695  Module ScanMeter.psm1
+    line  6092  Module ScanQueue.psm1
+    line  6486  Module Accountability.psm1
+    line  6870  Module SiteTarget.psm1
+    line  7227  Module ChannelScan.psm1
+    line  7629  Module DriveScan.psm1
+    line  7995  Body of Find-ChannelPII.ps1
+    line  8199  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -1217,12 +1217,18 @@ function Protect-PiiText {
     return ((Protect-PiiName $Text) -replace '\d', '#')
 }
 
+# An SSN shape in a name, also next to a dash ("TeamA-123-45-6789-x"): 3, 2 and 4 digits with dashes, no digit on
+# either side. Only for names (Protect-PiiName), never a finding: the detectors keep their own rules.
+$script:NameSsnShapePattern = '(?<![0-9])[0-9]{3}-[0-9]{2}-(?<last>[0-9]{4})(?![0-9])'
+
 function Protect-PiiName {
     <#
     .SYNOPSIS
       Masks a site, folder or file name the person must find again: each found value becomes its masked value and
       every e-mail name becomes '***'; other digits stay (the PAM, 2026-11-20: "FY27 Plan.docx" stays as it is, so the
-      file can be found). Example: "Roster_123-45-6789.docx" -> "Roster_***-**-6789.docx".
+      file can be found). Example: "Roster_123-45-6789.docx" -> "Roster_***-**-6789.docx". An SSN shape that the
+      detectors skip because a dash or a digit group joins it (a site name "TeamA-123-45-6789") is masked too (the
+      PAM, 2026-11-24): a name is masked more, never less.
     .PARAMETER Text
       The name or path.
     .OUTPUTS
@@ -1236,7 +1242,8 @@ function Protect-PiiName {
         $masked = Get-MaskedValue $hit.Detector $hit.Value
         $result = $result.Substring(0, $hit.Index) + $masked + $result.Substring($hit.Index + $hit.Length)
     }
-    return [regex]::Replace($result, $script:EmailLocalPartPattern, '***')
+    $result = [regex]::Replace($result, $script:EmailLocalPartPattern, '***')
+    return [regex]::Replace($result, $script:NameSsnShapePattern, '***-**-${last}')
 }
 
 # ==== Module OcrText.psm1 ====
@@ -8186,7 +8193,8 @@ finally {
         catch { Write-Verbose 'Already signed out.' }  # nothing to sign out of: not an error for the person
     }
 }
-if ($script:IonSignInTried) { Write-Ui 'Ion is done: nothing stays signed in.' 'Good' } else { Write-Ui 'Ion is done.' 'Good' }
+# The CAC sign-in of the window lasts until ISE closes (probe 3, second run): the PAM, 2026-11-24, chose this text.
+if ($script:IonSignInTried) { Write-Ui 'Ion is done: signed out. Close Windows PowerShell ISE to end the CAC session.' 'Good' } else { Write-Ui 'Ion is done.' 'Good' }
 
 # ==== Clean-up ====
 } finally {
