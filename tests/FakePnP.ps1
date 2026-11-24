@@ -112,6 +112,13 @@ function Get-FakeProgressText {
     return ($global:FakePnP.Progress -join ' | ')
 }
 
+function Get-FakeCallIndex {
+    # The position of the first (or, with -Last, the last) such fake call since the last Reset-FakePnP; -1 when none.
+    param([string]$Name, [switch]$Last)
+    if ($Last) { return $global:FakePnP.Calls.LastIndexOf($Name) }
+    return $global:FakePnP.Calls.IndexOf($Name)
+}
+
 function Get-FakeCallCount {
     # How many times the named fake call was made since the last Reset-FakePnP.
     param([string]$Name)
@@ -261,8 +268,15 @@ function global:Disconnect-PnPOnline {
 }
 
 function global:Get-PnPWeb {
-    # Fake: the web of the last site signed in to (its server-relative address), or of another site when StaleWeb is
-    # set (a failed sign-in that kept the last connection); refused (403) when NoAccess is set.
+    <#
+    .SYNOPSIS
+      Fake: the web of the last site signed in to (its server-relative address), or of another site when StaleWeb is
+      set (a failed sign-in that kept the last connection); refused (403) when NoAccess is set.
+    .PARAMETER Includes
+      The properties to load (ignored: the fake web always has Title and ServerRelativeUrl).
+    .OUTPUTS
+      [pscustomobject] Title, ServerRelativeUrl.
+    #>
     [CmdletBinding()] param($Includes)
     if ($global:FakePnP.NoAccess) { throw 'The remote server returned an error: (403) Forbidden.' }
     $last = @(Get-FakePnPConnection | Select-Object -Last 1)

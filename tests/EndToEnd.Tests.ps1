@@ -123,9 +123,8 @@ $questions = '{0} {1} {2} {3}' -f (Get-FakeCallCount 'List question'), (Get-Fake
 Assert-Equal '1 0 0 1' $questions 'Several targets: asked once; no "Scan now?" or "Open the workbook?" per site; the folder offered once'
 Assert-Equal $true ($listShown -match 'Done: 2 of 2 saved' -and $listShown -match '2 to scan, one after the other') 'Several targets: the list and the closing table'
 # One sign-in per host (the PAM, 2026-11-24): no sign-out between the sites; one sign-out, after the last site.
-$calls = @($global:FakePnP.Calls)
-$lastConnect = [array]::LastIndexOf($calls, ('Connect ' + $siteB))
-Assert-Equal '1 True' ('{0} {1}' -f (Get-FakeCallCount 'Disconnect-PnPOnline'), ($calls.IndexOf('Disconnect-PnPOnline') -gt $lastConnect)) 'Several targets: one sign-out, after the last site'
+$lastConnect = Get-FakeCallIndex ('Connect ' + $siteB) -Last
+Assert-Equal '1 True' ('{0} {1}' -f (Get-FakeCallCount 'Disconnect-PnPOnline'), ((Get-FakeCallIndex 'Disconnect-PnPOnline') -gt $lastConnect)) 'Several targets: one sign-out, after the last site'
 Reset-FakePnP @{ "$library/General/notes.txt" = $Txt }
 Set-FakeSiteAnswer -TypedSite @($Sample.Site, $siteB) -ScanAnswer 'n'
 $noFolder = Join-Path $runFolder 'list-no'
@@ -168,8 +167,7 @@ Reset-FakePnP @{ "$library/General/notes.txt" = $Txt }
 Set-FakeSiteAnswer -TypedSite @($siteB)
 $roundFolder = Join-Path $runFolder 'rounds'
 & $script -SiteUrl $Sample.Site -OutputFolder $roundFolder 6>$null
-$calls = @($global:FakePnP.Calls)
-$roundOrder = '{0}|{1}|{2}' -f ((Get-FakePnPConnection) -join ' '), (Get-FakeCallCount 'Disconnect-PnPOnline'), ($calls.IndexOf('Disconnect-PnPOnline') -gt $calls.IndexOf('Connect ' + $siteB))
+$roundOrder = '{0}|{1}|{2}' -f ((Get-FakePnPConnection) -join ' '), (Get-FakeCallCount 'Disconnect-PnPOnline'), ((Get-FakeCallIndex 'Disconnect-PnPOnline') -gt (Get-FakeCallIndex ('Connect ' + $siteB)))
 Assert-Equal ($Sample.Site + ' ' + $siteB + '|1|True') $roundOrder 'Scan more: no sign-out between rounds; one sign-out at the end'
 Assert-Equal 2 @(Get-ResultFiles $roundFolder).Count 'Scan more: one workbook per round'
 # A cancel at "Scan more" (as Ctrl+C) leaves the script with an error: the run still signs out.
