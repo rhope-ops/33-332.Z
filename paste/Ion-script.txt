@@ -40,7 +40,7 @@
     src/ScanMeter.psm1, sha256 18c82f0b37c3
     src/ScanQueue.psm1, sha256 645d963c7455
     src/Accountability.psm1, sha256 8bf31404f723
-    src/SiteTarget.psm1, sha256 93ca131834dd
+    src/SiteTarget.psm1, sha256 2e693a68f413
     src/ChannelScan.psm1, sha256 0cd4894c7c7b
     src/DriveScan.psm1, sha256 8b4305c3a6fc
     src/Find-ChannelPII.ps1, sha256 49336ca39282
@@ -7120,7 +7120,7 @@ function Assert-ConnectedSite {
     $web = Get-PnPWeb -Includes Url -ErrorAction Stop
     $actual = [uri]::UnescapeDataString([string]$web.Url).TrimEnd('/')
     if (-not [string]::Equals($actual, $want, [StringComparison]::OrdinalIgnoreCase)) {
-        throw 'The sign-in did not reach this site. Nothing was scanned. Close Windows PowerShell ISE. Then open it and run Ion again.'
+        throw 'The sign-in did not reach this site. Nothing was scanned. Close Windows PowerShell ISE. Open it again. Then run Ion again.'
     }
 }
 

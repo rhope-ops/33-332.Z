@@ -258,7 +258,7 @@ function Assert-ConnectedSite {
     $web = Get-PnPWeb -Includes Url -ErrorAction Stop
     $actual = [uri]::UnescapeDataString([string]$web.Url).TrimEnd('/')
     if (-not [string]::Equals($actual, $want, [StringComparison]::OrdinalIgnoreCase)) {
-        throw 'The sign-in did not reach this site. Nothing was scanned. Close Windows PowerShell ISE. Then open it and run Ion again.'
+        throw 'The sign-in did not reach this site. Nothing was scanned. Close Windows PowerShell ISE. Open it again. Then run Ion again.'
     }
 }
 
