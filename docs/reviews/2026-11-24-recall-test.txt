@@ -4,7 +4,8 @@
 #                one empty folder. Score mode reads Ion's results workbook of that folder and prints, per type, how
 #                many values were planted, found and missed, and how many hits were false; then recall and precision.
 #   Inputs:      Make: the path of an empty folder. Score: the path of Ion's results workbook (.xlsx).
-#   Outputs:     Make: the 12 files, and one count line. Score: count lines with type names only: no value, no path, no name.
+#   Outputs:     Make: the 12 files, and one count line. Score: count lines with type names, and for each test file in
+#                the Not scanned tab its name, group and Ion's reason in allowed words only: no value, no path, no name.
 #   How to run:  paste all of this text into Windows PowerShell ISE (File > New), press F5, answer the questions.
 #   Run target:  Windows PowerShell 5.1 (also PowerShell 7). .NET only: no module, no Excel, no network.
 #   Network:     none.
@@ -560,6 +561,60 @@ function Read-RecallSheet {
     return , $rows.ToArray()
 }
 
+# The words Score may print from Ion's reason (an allowlist: review of PR 105, MAJOR). Every other word becomes '*', so
+# a name in a path or an error message cannot show, however the path is written. The words of Ion's own reasons
+# (src/*.psm1; tests/Recall.Tests.ps1 checks that each fixed reason prints unchanged) and of .NET file and zip errors.
+$script:RecallReasonWords = @{}
+foreach ($word in (('a e again an and another answer archive author available be by can cannot check computer could damaged ' +
+        'download downloaded early encrypted encryption extension failed file files fine folder followed format gave hand ' +
+        'image images in inside ion is it its label language lead limit limits link longer mail may microsoft minutes more ' +
+        'name new no not ocr of office old on one onedrive online only open or outlook outside part password pdf protected ' +
+        'purview read readable reader reading rest result run scanned script search seconds sensitivity set still stopped ' +
+        'string style text than the this time to took type unusual use valid windows with without y larger mb empty bytes ' +
+        'web page sharepoint well formed unclosed stray operands wrong protected these that there was were has have been ' +
+        'process access because being used denied find directory path specified both too long fully qualified must less ' +
+        'characters network found cloud provider running operation unsuccessful exited unexpectedly system request supported ' +
+        'exception calling argument arguments end central record entries expected does correspond number local header ' +
+        'corrupt block length match complement invalid data while decoding entry compressed using unsupported compression ' +
+        'method index outside bounds array object reference instance null valued expression call input correct thrown timed ' +
+        'out thread aborted pipeline stream seeking range values zip zero larger startindex collection modified enumeration ' +
+        'execute item same key already added given present dictionary current state error disk full space enough memory ' +
+        'device ready sharing violation lock locked user mapped section volume medium drive share server busy ' +
+        'are as attached attachments checked conflicting content deep excel first font for headers large map message ' +
+        'nested numbers pages parts some stored them unpack uses way which library') -split ' ')) {
+    if ($word) { $script:RecallReasonWords[$word] = $true }
+}
+
+function Get-RecallSafeReason {
+    <#
+    .SYNOPSIS
+      Ion's reason text with only allowed words ($RecallReasonWords): each run of other words, of numbers with 5 or more
+      digits, and of signs that are not punctuation (\ / @ and others) becomes one '*'. An error message can name the
+      profile folder, so a person's name: no word outside the list can show. At most 160 characters.
+    .PARAMETER Reason
+      The Reason cell of the Not scanned tab.
+    .OUTPUTS
+      [string]
+    #>
+    param([string]$Reason)
+    $out = New-Object System.Text.StringBuilder
+    # A word is a run of letters of any script with their combining marks (an accented name is one word: review of
+    # PR 105); digits are 0 to 9 only. Known limit: a name that is also an allowed English word (May, Page) shows.
+    foreach ($m in [regex]::Matches($Reason, '[\p{L}\p{M}]+|[0-9]+|\s+|.')) {
+        $t = $m.Value
+        $keep = ($t -cmatch '^[A-Za-z]+$' -and $script:RecallReasonWords.ContainsKey($t.ToLowerInvariant())) -or
+            ($t -match '^[0-9]{1,4}$') -or ($t -match '^[ \t]+$') -or ($t -match '^[.,;:()?!''"\-\[\]]$')
+        if ($keep) { [void]$out.Append($t) } else { [void]$out.Append('*') }
+    }
+    # Runs of '*' with only spaces, punctuation or one allowed word between them become one '*' (a path shows as one
+    # '*', and no word count of a name shows); a quoted '*' loses its quotes.
+    $safe = $out.ToString(); $before = ''
+    while ($safe -ne $before) { $before = $safe; $safe = [regex]::Replace($safe, '\*(?:[\s.:\-'']*(?:[A-Za-z]+[\s.:\-'']*)?\*)+', '*') }
+    $safe = [regex]::Replace($safe, '([''"])\*\1', '*')
+    if ($safe.Length -gt 160) { $safe = $safe.Substring(0, 160) + '...' }
+    return $safe
+}
+
 function Read-RecallWorkbook {
     <#
     .SYNOPSIS
@@ -568,7 +623,7 @@ function Read-RecallWorkbook {
     .PARAMETER Path
       The .xlsx file.
     .OUTPUTS
-      [hashtable] Hits (each @{ Type; File; Masked }), NotScanned (file names).
+      [hashtable] Hits (each @{ Type; File; Masked }), NotScanned (file names), Causes (each @{ File; Group; Reason }).
     #>
     param([string]$Path)
     $stream = New-Object System.IO.FileStream($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
@@ -576,7 +631,8 @@ function Read-RecallWorkbook {
     try {
         $shared = @([regex]::Matches((Read-RecallZipText $zip 'xl/sharedStrings.xml'), '(?s)<si>(.*?)</si>') | ForEach-Object {
                 [System.Net.WebUtility]::HtmlDecode((-join @([regex]::Matches($_.Groups[1].Value, '(?s)<t[^>]*>(.*?)</t>') | ForEach-Object { $_.Groups[1].Value }))) })
-        $result = @{ Hits = (New-Object System.Collections.Generic.List[object]); NotScanned = (New-Object System.Collections.Generic.List[string]) }
+        $result = @{ Hits = (New-Object System.Collections.Generic.List[object]); NotScanned = (New-Object System.Collections.Generic.List[string])
+            Causes = (New-Object System.Collections.Generic.List[object]) }
         $hits = Read-RecallSheet $zip 'Hits' $shared   # one array of rows (not @(): that wraps it again)
         # An Ion workbook has a Hits tab or, with no hits, a Summary tab: anything else is the wrong file (review of PR 87).
         if ($hits.Count -eq 0 -and (Read-RecallSheet $zip 'Summary' $shared).Count -eq 0) { throw 'This is not an Ion results workbook (no Hits or Summary tab).' }
@@ -592,8 +648,13 @@ function Read-RecallWorkbook {
         }
         $skipped = Read-RecallSheet $zip 'Not scanned' $shared
         if ($skipped.Count -gt 1) {
-            $file = [array]::IndexOf(@($skipped[0]), 'File')
-            for ($i = 1; $i -lt $skipped.Count; $i++) { if ($file -ge 0) { $result.NotScanned.Add((Get-RecallLeaf (Get-RecallCell @($skipped[$i]) $file))) } }
+            $head = @($skipped[0]); $file = [array]::IndexOf($head, 'File'); $group = [array]::IndexOf($head, 'Group'); $reason = [array]::IndexOf($head, 'Reason')
+            for ($i = 1; $i -lt $skipped.Count; $i++) {
+                if ($file -lt 0) { continue }
+                $cells = @($skipped[$i]); $leaf = Get-RecallLeaf (Get-RecallCell $cells $file)
+                $result.NotScanned.Add($leaf)
+                $result.Causes.Add(@{ File = $leaf; Group = (Get-RecallCell $cells $group); Reason = (Get-RecallSafeReason (Get-RecallCell $cells $reason)) })
+            }
         }
         return $result
     }
@@ -610,7 +671,8 @@ function Get-RecallScore {
     .PARAMETER Book
       Output of Read-RecallWorkbook (or the same shape).
     .OUTPUTS
-      [hashtable] ByType and ByForm (name -> @{ Planted; Found; False }), NotScanned (test files in that tab), OutsideHits.
+      [hashtable] ByType and ByForm (name -> @{ Planted; Found; False }), NotScanned (test files in that tab), Causes
+      (one line per test file in that tab: name | group | reason), OutsideHits.
     #>
     param([System.Collections.Generic.List[object]]$Plan, [hashtable]$Book)
     $byType = [ordered]@{}; $byForm = [ordered]@{}
@@ -639,7 +701,11 @@ function Get-RecallScore {
         else { $byType[$hit.Type].False++ }
     }
     $notScanned = @($Book.NotScanned | Where-Object { $names -contains $_ } | Sort-Object -Unique).Count
-    return @{ ByType = $byType; ByForm = $byForm; NotScanned = $notScanned; OutsideHits = $outside; Files = $Plan.Count }
+    $causes = @()
+    if ($Book.ContainsKey('Causes')) {
+        $causes = @($Book.Causes | Where-Object { $names -contains $_.File } | ForEach-Object { '{0} | {1} | {2}' -f $_.File, $_.Group, $_.Reason } | Sort-Object -Unique)
+    }
+    return @{ ByType = $byType; ByForm = $byForm; NotScanned = $notScanned; Causes = $causes; OutsideHits = $outside; Files = $Plan.Count }
 }
 
 function Get-RecallPercent {
@@ -652,7 +718,8 @@ function Get-RecallPercent {
 function Format-RecallScore {
     <#
     .SYNOPSIS
-      The score as lines to copy: counts, percents and type names only (no value, no path, no name).
+      The score as lines to copy: counts, percents and type names, and the cause of each test file not scanned (its
+      name, group and reason in allowed words only: Get-RecallSafeReason). No value, no path, no name.
     .PARAMETER Score
       Output of Get-RecallScore.
     .OUTPUTS
@@ -673,6 +740,10 @@ function Format-RecallScore {
     $lines.Add(('Recall {0} ({1} of {2} planted values found). Precision {3} ({1} of {4} hits match the key).' -f (Get-RecallPercent $total.Found $total.Planted),
             $total.Found, $total.Planted, (Get-RecallPercent $total.Found ($total.Found + $total.False)), ($total.Found + $total.False)))
     $lines.Add(('Test files in the Not scanned tab: {0}. Hits in files that are not test files: {1}.' -f $Score.NotScanned, $Score.OutsideHits))
+    if ($Score.ContainsKey('Causes') -and @($Score.Causes).Count -gt 0) {
+        $lines.Add('Why (file | group | reason; * is a word that Score does not show):')
+        foreach ($cause in $Score.Causes) { $lines.Add('  ' + $cause) }
+    }
     $lines.Add('By form:')
     $forms = @($Score.ByForm.Keys) | Sort-Object { [array]::IndexOf($script:RecallTypes, ($_ -split ' / ')[0]) }, { $_ }   # in type order
     foreach ($form in $forms) { $f = $Score.ByForm[$form]; $lines.Add(($row -f $form, $f.Planted, $f.Found, ($f.Planted - $f.Found), '', (Get-RecallPercent $f.Found $f.Planted))) }
@@ -684,7 +755,7 @@ function Format-RecallScore {
 # its message can name a path, and the output must hold none.
 & {
     $ErrorActionPreference = 'Stop'
-    Write-Host 'Ion recall test. Invented files only. It prints counts and type names only.'
+    Write-Host 'Ion recall test. Invented files only. It prints counts, type names and test file names, and no path.'
     $mode = ([string](Read-Host 'Type M to make the test files, or S to score the Ion workbook')).Trim()
     if ($mode -match '^[Mm]$') {
         $folder = ([string](Read-Host 'Path of the empty test folder')).Trim().Trim('"')

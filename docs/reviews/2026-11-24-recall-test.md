@@ -12,7 +12,7 @@ values in 12 files. Ion scans the files. Then the test compares Ion's workbook w
 - Score matches each hit to the key by file and type. It uses the last 4 digits, the last 3 passport characters, or the e-mail domain.
 - Ion masks a date of birth and a home address completely. For these 2 types, Score counts the hits in each file.
 - A hit that does not match the key is a false hit. A decoy that Ion reports is a false hit.
-- Score prints counts and type names only. It prints no value, no path and no name.
+- Score prints counts, type names and test file names. For a test file in the Not scanned tab, it also prints its group and Ion's reason. In the reason, Score keeps only the words of a fixed list and shows each other word, path or long number as `*` (one `*` for a run of them, which can also hide one allowed word). It prints no value and no path. Known limit: a name that is also an allowed English word (for example May or Page) shows.
 
 | Type | Planted | Forms |
 |---|---|---|
@@ -134,6 +134,8 @@ Part 4: score the Ion workbook. If you do not see **Copy as path** in a menu, cl
 - False: the hits that match no planted value (a decoy, a wrong type, or a file that is not a test file).
 - Recall: Found divided by Planted. Precision: Found divided by all hits.
 - "By form" shows each type again, split by how the value is written (for example "labelled" or "header row only").
+- "Why" (only when a test file is in the Not scanned tab): one line per such file: its name, the group of the Not scanned
+  tab, and Ion's reason. Score keeps only the words of a fixed list in the reason; each other word, path or long number shows as `*`.
 
 ## Baseline (pwsh 7, Linux, invented files)
 
@@ -190,4 +192,32 @@ the bundle's reader block, the same code as on the gov device.
   Date of birth under a header row only (3 + 3) and the 9-digit passport (also the 1 false hit). The e-mail had no
   Build line; the result shows an Ion from before PRs 96 and 97 (assumption, high confidence). What it proves: the
   test, the readers and the detectors give the same result on the gov device (Windows PowerShell 5.1) as on Linux.
-- Run 2: Part 3 and Part 4 again with build e59f40e8 or later. Expected: `found 53 of 53, false 0`.
+- Run 2, 2026-11-24 (the PAM, by e-mail; counts only; Part 3 and Part 4 again on the files of run 1): `found 35 of 53,
+  false 0` (recall 66%, precision 100%). Test files in the Not scanned tab: 3. Build: not known (the e-mail had no Build
+  line). The 18 misses are 3 whole files, from the key: `roster.xlsx` (9: SSN, DoD ID, Date of birth under a header
+  row), `memo.docx` (5) and `travel.docx` (4). The other 9 files give 35 of 35, the same as run 1 for those files.
+
+  | Type | Planted | Found | Missed | False | Recall |
+  |---|---|---|---|---|---|
+  | SSN | 9 | 5 | 4 | 0 | 56% |
+  | DoD ID | 10 | 7 | 3 | 0 | 70% |
+  | Date of birth | 7 | 3 | 4 | 0 | 43% |
+  | Payment card | 4 | 2 | 2 | 0 | 50% |
+  | Passport | 3 | 0 | 3 | 0 | 0% |
+  | Phone | 8 | 7 | 1 | 0 | 88% |
+  | Personal e-mail | 7 | 7 | 0 | 0 | 100% |
+  | Home address | 5 | 4 | 1 | 0 | 80% |
+  | All types | 53 | 35 | 18 | 0 | 66% |
+
+  Analysis (2026-11-24, open):
+  1. Not a Windows PowerShell 5.1 error in PRs 96 and 97 (confidence high). The `ps51` workflow (Windows PowerShell
+     5.1, the bundle's reader block in runspaces) gave `RECALL found=53/53 false=0` on the merge of PR 96
+     (run 45478038105); `src/` and `paste/` on main are the same since.
+  2. No one code path explains the 3 files (confidence high). `pay.xlsx`, `memo.docx` and `travel.docx` take the same
+     path (no roster section), and `pay.xlsx` was read.
+  3. The cause is in the Reason column of the Not scanned tab. Score did not print it. Score now prints, for each test
+     file in the Not scanned tab, the file name, the group and Ion's reason with only the words of a fixed list (`Get-RecallSafeReason`; other words show as `*`).
+  4. Assumption, medium confidence: the state of the 3 files on the device changed after run 1 (opened and saved in
+     Office with a label, online only, or in use by OneDrive). The new Score line shows which.
+- Run 3: Part 4 again on the workbook of run 2 (the new Score shows why), then Parts 1 to 4 in a new folder with the
+  Build line. Expected for fresh files: `found 53 of 53, false 0`.

@@ -26,11 +26,14 @@ permissions as scope only ("No reconnaissance": no user names listed); month-nam
 - Step 1: merged (PRs 82, 85). Detectors frozen after PR 85 (the PAM, 2026-11-24), except the roster header fix.
 - Step 2: merged (PRs 80, 83). Step 3: merged (PR 81).
 - One sign-in per host: merged (PRs 90, 92): no sign-out between sites, one at the end of the run; full-address site check.
-- Step 4 (OneDrive hybrid): unblocked. Probe 4 run 1 (2026-11-24): the local-to-web mapping and path A work (9 of 9).
+  First device result (the PAM, 2026-11-24): 2 team sites in one run, 1 sign-in window, no PIN, no script error
+  (counts not copied).
+- Step 4 (OneDrive hybrid): unblocked. Probe 4 runs 1 and 2 (2026-11-24): the local-to-web mapping and path A work (9 of 9).
 - Step 5 (permission scope): waits on probe 3 (no permission read ran yet). Step 6 (parallel downloads): open.
 - Added 2026-11-24: seeded recall test (PR 87; local baseline 46/53 found, 87%); roster header fix merged
   (PR 96) and passport rule merged (PR 97): local recall 53/53, false 0. Build ID on the start screen (PR 95).
   Roster follow-ups (review of PR 96, MINOR): a csv/tsv row that starts with an empty field loses its columns; the
   1 MB cap counts characters and has no note in the report (old versions over the cap can make roster hits look new
   in the version check); README and the Method tab do not explain header labels; roster row has no cell location.
-  The PAM runs probe 4, a 2-site Ion run and the recall test.
+  Recall run 2 on the device (2026-11-24): 35/53, 3 test files not scanned (roster.xlsx, memo.docx, travel.docx); cause
+  open: not 5.1 (ps51 gives 53/53); Score now prints the reason (docs/reviews/2026-11-24-recall-test.md, Result).

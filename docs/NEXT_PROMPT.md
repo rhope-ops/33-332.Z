@@ -24,4 +24,5 @@ Title: 33-332.Z · <task> · <date>. Read AGENTS.md first.
     step 3 = parallel downloads in a planned order, and version-history reads off the main thread (slow run 28:49).
 17. 2026-11-24 merged: PRs 58-88. Excel and local OneDrive tests open.
 18. Plan approved 2026-11-24, continue it: docs/reviews/2026-11-24-no-persistence-plan.md (Status).
-19. 2026-11-24 merged: PRs 89-97 (recall 53/53 locally). The PAM runs probe 4, a 2-site run, the recall test.
+19. 2026-11-24 merged: PRs 89-97 (recall 53/53 locally). Recall run 2 on the device: 35/53, 3 files not scanned, cause
+    open (docs/reviews/2026-11-24-recall-test.md, Result). Next: recall run 3 (the PAM), then plan step 4 (OneDrive hybrid).
