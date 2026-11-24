@@ -45,6 +45,8 @@ $script:SignatureWords = '(?i:\bsigned\b|\bCN\s*=|\bDN\s*:)'
 $script:CacNamePattern = $script:CacNamePrefix + '(?<id>\d(?: ?\d){9})(?![\w-]| \d)'
 $script:CacNameEnd = $script:CacNamePrefix + '$'
 $script:CacNameChars = 120
+$script:DodIdLabels = 'DoD\s*ID|DODID|EDIPI|\bCAC\b|DoD\s*(?:ID\s*)?(?:#|no\.?|number)'
+
 
 # E-mail top-level labels that mark a government address (not reported as personal e-mail).
 $script:GovernmentMailLabels = @('gov', 'mil')
@@ -85,6 +87,12 @@ function Test-KeywordBefore {
     $start = [Math]::Max(0, $Index - $Window)
     $before = $Text.Substring($start, $Index - $start)
     return [regex]::IsMatch($before, $Pattern, 'IgnoreCase')
+}
+
+function Test-DodIdLabelBefore {
+    # True when a DoD ID label ($DodIdLabels) is just before the given place (PiiDetectors.psm1 Find-SignedIdHits).
+    param([string]$Text, [int]$Index)
+    return (Test-KeywordBefore $Text $Index $script:DodIdLabels)
 }
 
 function Test-SsnValid {
@@ -226,7 +234,7 @@ function Find-DodIdHits {
       Hit objects (New-PiiHit): High with a label; Low at the end of a CAC name (an e-signature).
     #>
     param([string]$Text)
-    $labels = 'DoD\s*ID|DODID|EDIPI|\bCAC\b|DoD\s*(?:ID\s*)?(?:#|no\.?|number)'
+    $labels = $script:DodIdLabels
     foreach ($m in [regex]::Matches($Text, '(?<!\w)\d{10}(?!\w)')) {
         if (Test-KeywordBefore $Text $m.Index $labels) { New-PiiHit 'DoD ID' 'High' $m.Index $m.Value }
     }
@@ -390,5 +398,5 @@ function Find-HomeAddressHits {
     }
 }
 
-Export-ModuleMember -Function New-PiiHit, Test-Luhn, Test-SsnValid, Find-SsnHits, Find-DodIdHits, Find-CardHits, Find-DobHits,
+Export-ModuleMember -Function New-PiiHit, Test-KeywordBefore, Test-DodIdLabelBefore, Test-Luhn, Test-SsnValid, Find-SsnHits, Find-DodIdHits, Find-CardHits, Find-DobHits,
     Find-PassportHits, Find-PhoneHits, Find-PersonalEmailHits, Find-HomeAddressHits
