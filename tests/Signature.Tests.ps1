@@ -275,3 +275,30 @@ foreach ($case in @("Signed. John Doe $sigId", "Signature. Capt Jane Doe $sigId"
         "Signed. Jane $($sigName)$($sigId.Substring(0, 1)) $($sigId.Substring(1))")) {
     Assert-Equal 1 @(Get-HitSummary $case | Where-Object { $_ -eq 'DoD ID/Low/******7890' }).Count "Stamp, not prose: $($case -replace "`n", ' ' -replace '\d', '#')"
 }
+
+# ---- PR 69 MINORs (the PAM, 2026-11-24, docs/DECISIONS.md "PR 69 MINORs") ----
+# 1. The prose guard takes only "signed" and ".": "is signature." and "signed?" or "signed!" keep the ID.
+# 2. After a year alone only 10 digits in a row or 3-2-4-1 are an ID. 3. A capital "Signed." in prose is no stamp.
+# 4. One line break is the gap of a sentence end.
+$sig442 = $sigId.Substring(0, 4) + ' ' + $sigId.Substring(4, 4) + ' ' + $sigId.Substring(8)
+$minorIds = @("The page is signature. $sigId", "The page is signature. Tracking $sigId", "The form was signed? $sigId",
+    "The form was signed? Tracking $sigId", "The form was signed! Tracking $sigId", "Digitally signed by 2026 $sig3241", "Signed 2012 $sigId")
+foreach ($case in $minorIds) {
+    Assert-Equal 'DoD ID/Low/******7890' ((Get-HitSummary $case) -join ',') "PR 69 MINORs: an ID ($($case -replace '\d', '#'))"
+}
+$minorNone = @("Signed 2012 $sig442", "Digitally signed by 2026 $sig442", "The contract was Signed. Tracking $sigId", "It was Signed. John Doe $sigId",
+    "The contract was signed.`nTracking $sigId", "The contract was signed.`r`nTracking $sigId", "The contract was Signed.`n Tracking $sigId")
+foreach ($case in $minorNone) {
+    Assert-Equal 0 @(Get-HitSummary $case | Where-Object { $_ -like 'DoD ID/*' }).Count "PR 69 MINORs: no ID ($($case -replace "`r?`n", ' / ' -replace '\d', '#'))"
+}
+# 5. The named settings keep main's values: a signature word 40 characters before the ID counts, 41 not; a form of "be"
+# in the 12 characters before "signed" makes it prose, in 13 not.
+$minorEdges = [ordered]@{
+    'word 40 characters before' = @(1, ('Signed' + (' ' * 34) + $sigId))
+    'word 41 characters before' = @(0, ('Signed' + (' ' * 35) + $sigId))
+    'be form in 12 characters'  = @(0, ('It was' + (' ' * 9) + "signed. Tracking $sigId"))
+    'be form in 13 characters'  = @(1, ('It was' + (' ' * 10) + "signed. Tracking $sigId"))
+}
+foreach ($case in $minorEdges.Keys) {
+    Assert-Equal $minorEdges[$case][0] @(Get-HitSummary $minorEdges[$case][1] | Where-Object { $_ -like 'DoD ID/*' }).Count "PR 69 MINORs: $case"
+}

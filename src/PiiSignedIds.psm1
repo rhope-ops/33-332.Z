@@ -50,10 +50,19 @@ $script:NotPhoneAfterName = '(?!\d{3}(?:[ \t\u00A0.-]|\r?\n)\d{3}(?:[ \t\u00A0.-
 # Before bare digits after a signature word: a date, a time, a year or a page number, then one gap, is no part of the ID
 # (the PAM, 2026-11-24, "1a"; the guard of 013ca82 blocked every digit and gap: 0 of 400 such IDs found).
 $script:SignedLeadIn = '(?:(?:19|20)\d\d[./-]\d{1,2}[./-]\d{1,2}|\d{1,2}[./-]\d{1,2}[./-](?:(?:19|20)\d\d|\d\d)|\d{1,2}:\d\d(?::\d\d)?|' +
-    '(?<![\w.-])(?:19|20)\d\d|(?i:page)[ \t\u00A0]+\d{1,4})[ \t\u00A0]'
-# "signed" in prose, not a stamp: small letters after a form of "be", ending a sentence ("was signed. Tracking"; PRs 57, 69).
+    '(?i:page)[ \t\u00A0]+\d{1,4})[ \t\u00A0]'
+# After a year alone only 10 digits in a row or the 3-2-4-1 shape are an ID ("Signed 2012 #### #### ##": no ID; the PAM, 2026-11-24, PR 69 MINORs).
+$script:SignedYearLeadIn = '(?<![\w.-])(?:19|20)\d\d[ \t\u00A0]'
+$script:SignedYearShape = '(?=(?:\d{10}|\d{3}[ \u00A0]\d{2}[ \u00A0]\d{4}[ \u00A0]\d)(?![\w-]))'
+# "signed" in prose, not a stamp: "signed." or "Signed." after a form of "be", ending a sentence, a line break allowed as
+# its gap ("was signed. Tracking"; PRs 57, 69; the PAM, 2026-11-24, PR 69 MINORs). Other words and "?" or "!" count.
 $script:ProseBefore = [regex]'(?i)\b(?:was|were|is|are|been|be|being)[ \t\u00A0]+$'
-$script:SentenceEnd = [regex]'^[.!?][ \t\u00A0]+[A-Z][a-z]{2}'
+$script:SentenceEnd = [regex]'^[Ss]igned\.(?:[ \t\u00A0]+(?:\r?\n[ \t\u00A0]*)?|\r?\n[ \t\u00A0]*)[A-Z][a-z]{2}'   # one line break at most
+# A signature word counts when it starts at most this many characters before a candidate (PR 60: the "Rule" section
+# of docs/reviews/2026-11-23-ion-esignature-layouts.md, "within 40 characters before").
+$script:SignatureWordChars = 40
+# The characters before "signed" read for a form of "be" ($ProseBefore) (PR 69, commit 037a675).
+$script:ProseBeforeChars = 12
 # A dashed date (y-m-d, m-d-y) then a gap, right after a CAC name: no ID; a dashed ID is no date shape (PR 57 and 69).
 $script:NotDashDate = '(?!(?:\d{4}-\d{1,2}-\d{1,2}|\d{1,2}-\d{1,2}-(?:\d{4}|\d{2}))(?:[ \t\u00A0]|\r?\n|$))'
 # Each pattern starts with a letter or digit, then looks back, so the engine skips ahead fast on long text (review of PR 60).
@@ -67,7 +76,8 @@ $script:SignedNameAnyCase = [regex]('(?i)' + $script:SignedNameText)
 $script:SignedNameAnyCaseAt = [regex]('(?i)\G(?:' + $script:SignedNameText + ')')   # \G: only at the given place
 $script:SignedWords = '(?i:(?:sign(?:ed|ature)\b|CN\s*=|DN\s*:)(?<!\w(?:sign(?:ed|ature)|CN\s*=|DN\s*:)))'   # a word start, said last (speed)
 # The 10 digits alone on one line after a signature word ("Signed_1234567890.pdf"): not a date, a phone or in a dotted name.
-$script:SignedBareText = '(?<![\w.-])(?:(?<=' + $script:SignedLeadIn + ')|(?<!\d[ \t\u00A0./]))' + $script:NotDate + $script:NotPhone + $script:SignedIdLine
+$script:SignedBareText = '(?<![\w.-])(?:(?<=' + $script:SignedLeadIn + ')|(?<=' + $script:SignedYearLeadIn + ')' + $script:SignedYearShape +
+    '|(?<!\d[ \t\u00A0./]))' + $script:NotDate + $script:NotPhone + $script:SignedIdLine
 $script:SignedBareId = [regex]$script:SignedBareText
 $script:SignedBareIdAt = [regex]('\G(?:' + $script:SignedBareText + ')')
 # The 10 digits in a row just before a CAC name in capitals (the ID above the name; not "REF.NO." and the like).
@@ -186,8 +196,8 @@ function Find-SignedIdHits {
 function Test-SignatureWordBefore {
     <#
     .SYNOPSIS
-      True when a signature word that ends at or before At starts in the 40 characters before it. With -Prose, a word in
-      prose ("was signed." ending a sentence: $ProseBefore, $SentenceEnd) does not count.
+      True when a signature word that ends at or before At starts in the $SignatureWordChars characters before it. With
+      -Prose, a word in prose ("was signed." or "was Signed." ending a sentence: $ProseBefore, $SentenceEnd) does not count.
     .PARAMETER Text
       The text searched.
     .PARAMETER Signed
@@ -204,10 +214,11 @@ function Test-SignatureWordBefore {
     if ($place -lt 0) { $place = -bnot $place }
     $place--
     while ($place -ge 0 -and $Signed.WordEnds[$place] -gt $At) { $place-- }
-    for (; $place -ge 0 -and $Signed.WordStarts[$place] -ge $At - 40; $place--) {   # the words in the window, last first
+    for (; $place -ge 0 -and $Signed.WordStarts[$place] -ge $At - $script:SignatureWordChars; $place--) {   # the words in the window, last first
         $start = $Signed.WordStarts[$place]
-        if (-not $Prose -or $Text[$start] -cne 's' -or -not $script:ProseBefore.IsMatch($Text.Substring([Math]::Max(0, $start - 12), $start - [Math]::Max(0, $start - 12))) -or
-            -not $script:SentenceEnd.IsMatch($Text.Substring($Signed.WordEnds[$place], $At - $Signed.WordEnds[$place]))) { return $true }
+        $from = [Math]::Max(0, $start - $script:ProseBeforeChars)
+        if (-not $Prose -or -not $script:SentenceEnd.IsMatch($Text.Substring($start, $At - $start)) -or
+            -not $script:ProseBefore.IsMatch($Text.Substring($from, $start - $from))) { return $true }
     }
     return $false
 }
@@ -269,6 +280,7 @@ function Add-SignedIdHits {
     }
     foreach ($k in @($giveWay | Sort-Object -Unique -Descending)) { $Kept.RemoveAt($k) }
 }
+
 function Test-GarbledNear {
     <#
     .SYNOPSIS

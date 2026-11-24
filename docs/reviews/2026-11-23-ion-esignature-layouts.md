@@ -5,7 +5,7 @@ Evidence: archimedes_lever docs/reviews/2026-11-23-tool-retirement-plan.md secti
 3 give SSN, 7 give no hit). That source gives counts only. This session first built its own 25 layouts (S01-S25) from a
 matrix of 1,110 texts; the source's 25 layouts then came from the tool retirement session (O01-OJ, below). Both sets are tests.
 
-## Rule (src/PiiDetectors.psm1 Find-SignedIdHits and Add-SignedIdHits)
+## Rule (src/PiiSignedIds.psm1 Find-SignedIdHits and Add-SignedIdHits)
 
 Since the third review: main's SSN and DoD ID detectors are unchanged. Find-SignedIdHits gives candidates; Get-PiiSpan adds
 a candidate after the overlap removal, only where no kept hit is. The one exception: SSN hits (not High, no dashes) wholly
