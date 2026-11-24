@@ -19,7 +19,8 @@ Set-StrictMode -Version 2.0
 
 # What Ion can scan, for the first question and after a wrong paste (the PAM, 2026-11-21: one short block, not one long line).
 $script:TargetHelp = "Paste one of these, or press Enter to exit:`n  - a Teams link: in Teams, ... next to the team or channel > Copy link`n" +
-    "  - a SharePoint site address: https://usaf.dps.mil/teams/<team-site> (or /sites/)`n  - a drive folder: X:\<folder> or \\<server>\<share>\<folder>"
+    "  - a SharePoint site address: https://usaf.dps.mil/teams/<team-site> (or /sites/)`n  - a drive folder: X:\<folder> or \\<server>\<share>\<folder>`n" +
+    "  Several? Paste one, press Enter, paste the next; press Enter on an empty line to start (one workbook each)."
 
 # A drive folder: X:\<folder> (a mapped drive) or \\<server>\<share>\<folder> (UNC), with or without quotes.
 $script:DrivePathPattern = '^"?(?:[A-Za-z]:\\|\\\\[^\\/\s]+\\[^\\/]+)'
@@ -47,9 +48,9 @@ $script:SyncSteps = "`nSharePoint sign-in did not work on this computer. You can
     "`n  5. If you see the question, click Open. Wait until File Explorer shows the synced folder." +
     "`n  6. In File Explorer, in the synced folder, click the address bar. You see the folder path selected." +
     "`n  7. Press Ctrl+C. The path is on the clipboard." +
-    "`n  8. In Ion, at the question 'Scan another', press Ctrl+V. You see the path." +
+    "`n  8. In Ion, at the question 'Scan more', press Ctrl+V. You see the path." +
     "`n  9. Press Enter. Ion scans the folder." +
-    "`nFor your own OneDrive files, paste the path of your OneDrive folder at the question 'Scan another'."
+    "`nFor your own OneDrive files, paste the path of your OneDrive folder at the question 'Scan more'."
 
 # The longest one SharePoint call may wait for its answer (milliseconds), set on the signed-in connection when it has
 # no limit or a longer one (the PnP 1.12.0 default is not verified here): a download, the file list, a version read.
@@ -267,7 +268,7 @@ function Connect-TeamSite {
                 $site = Read-TeamSiteAddress
             }
         }
-        Write-Ui "Signing in to $site ..." 'Muted'
+        Write-Ui ('Signing in to ' + (Protect-PiiName $site) + ' ...') 'Muted'
         Write-Ui '  A sign-in window opens (if you do not see it, press Alt+Tab). If it says you have no access, close it.' 'Muted'
         # PnP prints a warning that suggests -Interactive (and its update notice): not useful to the person, so hidden (the PAM, 2026-11-20).
         $signingIn = $true
@@ -293,4 +294,51 @@ function Connect-TeamSite {
     }
 }
 
-Export-ModuleMember -Function Test-TeamSiteUrl, Get-ScanTarget, Read-ScanTarget, ConvertTo-FriendlyError, Connect-TeamSite
+function Read-ScanTargetList {
+    <#
+    .SYNOPSIS
+      Asks for what to scan, then "Add another, or press Enter to start" until an empty line: one or more targets
+      (the PAM, 2026-11-24: several sites per run, one workbook each). Each target is checked as it is pasted
+      (Read-ScanTarget); only the targets the person pastes are touched ("No reconnaissance").
+    .PARAMETER Given
+      A target given up front (the -SiteUrl setting): the list is that one target, without asking.
+    .PARAMETER Prompt
+      The first question.
+    .PARAMETER NoHelp
+      Do not list what can be pasted first.
+    .OUTPUTS
+      [object[]] outputs of Get-ScanTarget; empty when the person pressed Enter at the first question.
+    #>
+    param([string]$Given, [string]$Prompt, [switch]$NoHelp)
+    $first = Read-ScanTarget $Given $Prompt -NoHelp:$NoHelp
+    if ($null -eq $first) { return @() }
+    $list = New-Object System.Collections.Generic.List[object]
+    $list.Add($first)
+    if ($Given) { return $list.ToArray() }
+    while ($true) {
+        $next = Read-ScanTarget '' ('Add another ({0} so far), or press Enter to start' -f $list.Count) -NoHelp
+        if ($null -eq $next) { break }
+        $list.Add($next)
+    }
+    return $list.ToArray()
+}
+
+function Get-TargetLabel {
+    <#
+    .SYNOPSIS
+      A target in a few words for the list and the closing table: the site address or the drive folder (both masked
+      like any name Ion shows) or "Teams link (team)" / "Teams link (channel)".
+    .PARAMETER Target
+      Output of Get-ScanTarget.
+    .OUTPUTS
+      [string]
+    #>
+    param($Target)
+    if ($Target.DrivePath) { return Protect-PiiName $Target.DrivePath }
+    if ($Target.SiteUrl) { return Protect-PiiName $Target.SiteUrl }
+    if ($Target.IsChannel) { return 'Teams link (channel)' }
+    return 'Teams link (team)'
+}
+
+Export-ModuleMember -Function Test-TeamSiteUrl, Get-ScanTarget, Read-ScanTarget, ConvertTo-FriendlyError, Connect-TeamSite, Read-ScanTargetList,
+    Get-TargetLabel
