@@ -43,7 +43,7 @@
     src/SiteTarget.psm1, sha256 152226baaa78
     src/ChannelScan.psm1, sha256 0cd4894c7c7b
     src/DriveScan.psm1, sha256 8b4305c3a6fc
-    src/Find-ChannelPII.ps1, sha256 d4c17e6d1a80
+    src/Find-ChannelPII.ps1, sha256 841a9b195c52
 
   Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.
   Run target: Windows PowerShell 5.1 with PnP.PowerShell 1.12.0; no admin rights, no file to unblock.
@@ -7992,7 +7992,7 @@ function Get-SiteHeader {
     #>
     param([string]$SiteUrl, [string]$ListName, [string]$FolderLabel, [string[]]$Selected, [TimeSpan]$Used)
     if (-not $ListName) { $ListName = $FolderLabel + 's' }   # stopped before the libraries were read
-    $header = [ordered]@{ Site = $SiteUrl }
+    $header = [ordered]@{ Site = (Protect-PiiName $SiteUrl) }   # masked like any name Ion shows (review of PR 80)
     $header[$ListName] = ($Selected | ForEach-Object { Protect-PiiName $_ }) -join ', '
     $header['Run'] = Get-Date -Format 'yyyy-MM-dd HH:mm'
     $header['Time used'] = Format-Duration $Used

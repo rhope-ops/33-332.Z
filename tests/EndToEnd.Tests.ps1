@@ -142,6 +142,22 @@ $maskShown = (& $script -OutputFolder (Join-Path $runFolder 'list-mask') 6>&1 | 
 Assert-Equal $false $maskShown.Contains($Sample.Ssn) 'Several targets: site labels are masked'
 Assert-Equal 0 @(Get-FakePnPConnection).Count 'Several targets: "n" to the list signs in nowhere'
 
+# Second review of PR 80: a blocked sign-in keeps its numbered steps once per site, the table shows one line each;
+# a site name with an SSN shape is masked in "Signing in to", the results header, the workbook Summary and the table.
+Reset-FakePnP @{ "$library/General/notes.txt" = $Txt }
+Set-FakePnPOption ConnectFails $true
+Set-FakeSiteAnswer -TypedSite @($Sample.Site, $siteB)
+$blockShown = (& $script -OutputFolder (Join-Path $runFolder 'list-block') 6>&1 | ForEach-Object { [string]$_ }) -join "`n"
+Assert-Equal 2 ([regex]::Matches($blockShown, '(?m)^\s+1\. In Teams, click the channel')).Count 'Blocked sign-in: the numbered steps show once per site, with their numbers'
+Assert-Equal 0 ([regex]::Matches($blockShown, '#\. In Teams')).Count 'Blocked sign-in: no step number is masked'
+Reset-FakePnP @{ "$library/General/notes.txt" = $Txt }
+Set-FakeSiteAnswer -TypedSite @($ssnSite, $siteB)
+$ssnFolder = Join-Path $runFolder 'list-ssn'
+$ssnShown = (& $script -OutputFolder $ssnFolder 6>&1 | ForEach-Object { [string]$_ }) -join ' '
+$ssnBooks = @(Get-ResultFiles $ssnFolder)
+$ssnCells = (@($ssnBooks | ForEach-Object { (Get-XlsxSheets $_.FullName)['Summary'] | ForEach-Object { $_ -join ' ' } })) -join ' '
+Assert-Equal '2 False False' ('{0} {1} {2}' -f $ssnBooks.Count, $ssnShown.Contains($Sample.Ssn), $ssnCells.Contains($Sample.Ssn)) 'SSN-shaped site name: masked on screen and in the workbooks'
+
 # ---- A report that cannot be saved: the script still signs out ----
 Reset-FakePnP @{}
 $blocker = Join-Path $runFolder 'not-a-folder.txt'

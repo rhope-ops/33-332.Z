@@ -149,7 +149,7 @@ function Get-SiteHeader {
     #>
     param([string]$SiteUrl, [string]$ListName, [string]$FolderLabel, [string[]]$Selected, [TimeSpan]$Used)
     if (-not $ListName) { $ListName = $FolderLabel + 's' }   # stopped before the libraries were read
-    $header = [ordered]@{ Site = $SiteUrl }
+    $header = [ordered]@{ Site = (Protect-PiiName $SiteUrl) }   # masked like any name Ion shows (review of PR 80)
     $header[$ListName] = ($Selected | ForEach-Object { Protect-PiiName $_ }) -join ', '
     $header['Run'] = Get-Date -Format 'yyyy-MM-dd HH:mm'
     $header['Time used'] = Format-Duration $Used
