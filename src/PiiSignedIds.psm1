@@ -47,7 +47,7 @@ $script:NotDate = '(?!(?:19|20)\d\d(?:[ \t\u00A0./-]|\r?\n|(?:0[1-9]|1[0-2])(?:0
 $script:NotPhone = '(?!\d{3}(?:[ \t\u00A0.-]|\r?\n)\d{3}(?:[ \t\u00A0.-]|\r?\n)?\d{4}(?![\w-]))'   # 3-3-4 or 3-7: a phone
 # After a CAC name only a 3-3-4 phone is no ID: a 3-7 split there is an ID (the PAM, 2026-11-24, "1a": narrow the guard).
 $script:NotPhoneAfterName = '(?!\d{3}(?:[ \t\u00A0.-]|\r?\n)\d{3}(?:[ \t\u00A0.-]|\r?\n)\d{4}(?![\w-]))'
-# Before bare digits after a signature word: a date, a time, a year or a page number, then one gap, is no part of the ID
+# Before bare digits after a signature word: a date, a time or a page number (a year alone: $SignedYearLeadIn), then one gap, is no part of the ID
 # (the PAM, 2026-11-24, "1a"; the guard of 013ca82 blocked every digit and gap: 0 of 400 such IDs found).
 $script:SignedLeadIn = '(?:(?:19|20)\d\d[./-]\d{1,2}[./-]\d{1,2}|\d{1,2}[./-]\d{1,2}[./-](?:(?:19|20)\d\d|\d\d)|\d{1,2}:\d\d(?::\d\d)?|' +
     '(?i:page)[ \t\u00A0]+\d{1,4})[ \t\u00A0]'

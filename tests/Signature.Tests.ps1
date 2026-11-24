@@ -286,7 +286,7 @@ $minorIds = @("The page is signature. $sigId", "The page is signature. Tracking 
 foreach ($case in $minorIds) {
     Assert-Equal 'DoD ID/Low/******7890' ((Get-HitSummary $case) -join ',') "PR 69 MINORs: an ID ($($case -replace '\d', '#'))"
 }
-$minorNone = @("Signed 2012 $sig442", "Digitally signed by 2026 $sig442", "The contract was Signed. Tracking $sigId", "It was Signed. John Doe $sigId",
+$minorNone = @("Signed 2012 $sig442", "Digitally signed by 2026 $sig442", "The contract was Signed. Tracking $sigId", "It was Signed. John Doe $sigId", "It was signed. John Doe $sigId",
     "The contract was signed.`nTracking $sigId", "The contract was signed.`r`nTracking $sigId", "The contract was Signed.`n Tracking $sigId")
 foreach ($case in $minorNone) {
     Assert-Equal 0 @(Get-HitSummary $case | Where-Object { $_ -like 'DoD ID/*' }).Count "PR 69 MINORs: no ID ($($case -replace "`r?`n", ' / ' -replace '\d', '#'))"
