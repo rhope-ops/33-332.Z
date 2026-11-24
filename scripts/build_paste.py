@@ -143,17 +143,19 @@ def check_names(parts):
 
 
 def build_id(sources):
-    """Return the build ID: the first 8 hex characters of the SHA-256 of the sources' digests, in order.
+    """Return the build ID: the first 8 hex characters of the SHA-256 of the sources' digests, in order, and of this
+    build script (its fixed text is in the bundle too).
 
-    The same sources give the same ID on every build (so --check can compare), and any change to a source gives a new
-    one. A commit hash cannot be used: the bundle is part of the commit it would name.
+    The same sources give the same ID on every build (so --check can compare), and any change to a source or to this
+    script gives a new one. A commit hash cannot be used: the bundle is part of the commit it would name.
 
     Args:
         sources: (path, sha256) pairs of the source files.
     Returns:
         The build ID, for example '3f9c0a1b'.
     """
-    return sha256(''.join('%s %s\n' % pair for pair in sources))[:8]
+    pairs = list(sources) + [('scripts/build_paste.py', sha256(read('scripts/build_paste.py')))]
+    return sha256(''.join('%s %s\n' % pair for pair in pairs))[:8]
 
 
 def header(sources, contents):
