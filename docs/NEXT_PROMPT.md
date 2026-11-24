@@ -8,9 +8,7 @@ Title: 33-332.Z · <task> · <date>. Read AGENTS.md first.
 1. Done 2026-11-20/21: PRs #2-#20 (detail: git log and PR bodies). GitHub Pages on; denylist secret added.
 10. The PAM to test on the gov device: ISE paste of paste/Ion-script.txt; a drive folder scan (runspaces in ISE, FIPS
    SHA-256); Windows OCR on an image; SharePoint version history ("PII first saved by"); colours; Excel opening.
-11. Speed items 3 and 4 not built (measured 2026-11-21): a one-lookup token test gave no gain (11.2 s either way on
-   long.pdf: PowerShell's cost per statement, not the comparisons); the xref table would save only the 0.11 s header
-   scan of a 2.1 s object read (old object versions must still be read). Workers gave 1.5x on 4 cores (GC bound?).
+11. Speed items 3 and 4 not built: measured no gain (2026-11-21; git log of PR 20).
 12. Tracked minors (PR bodies of #14, #19, #20): short spaced line under a heading of another size; OCR time outside
    the PDF limit; a PDF with text and scans not OCR'd; meter misses
    file-name hits; no time limit per worker; old versions not size-capped; masked dates/addresses compare equal.
@@ -28,3 +26,5 @@ Title: 33-332.Z · <task> · <date>. Read AGENTS.md first.
 16. Plan approved 2026-11-21 (docs/DECISIONS.md, newest row): step 1 = Teams link alone (built) + 2 test snippets
     (parallel download, view counts: docs/reviews/2026-11-21-ion-round2-tests.md); step 2 = permission columns;
     step 3 = parallel downloads in a planned order, and version-history reads off the main thread (slow run 28:49).
+17. 2026-11-24 merged: PRs 58, 59, 62, 63, 69. Open: the PAM's device tests (docs/reviews/2026-11-23-esignature-shape-test.md,
+    -onedrive-probe.md); PR 69 MINORs; src/PiiDetectors.psm1 at its 450-line cap.
