@@ -58,8 +58,8 @@ $script:SignedId = '(?<id>\d(?:(?:[ \t\u00A0]|\r?\n)?\d){9})(?![\w-])(?![ \t\u00
 $script:SignedIdLine = '(?<id>\d(?:[ \u00A0]?\d){9})(?![\w-])(?![ \t\u00A0]\d)(?![ \t\u00A0]+[a-z])'
 $script:SignedIdDash = '(?<id>\d(?:[ \t\u00A0-]?\d){9})(?![\w-])(?![ \t\u00A0]\d)'
 $script:DigitRun = [regex]'\d(?:(?:[ \t\u00A0-]|\r?\n)?\d){9}'   # 10 digits with gaps: where a window can find an ID
-$script:NotDate = '(?!(?:19|20)\d\d(?:[ \t\u00A0./-]|\r?\n|(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])))'   # a date: no ID (review of PR 60)
-$script:NotPhone = '(?!\d{3}(?:[ \t\u00A0.-]|\r?\n)\d{3}(?:[ \t\u00A0.-]|\r?\n)\d{4}(?![\w-]))'
+$script:NotDate = '(?!(?:19|20)\d\d(?:[ \t\u00A0./-]|\r?\n|(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01]))|\d{1,2}[ \t./-]\d{1,2}[ \t./-](?:19|20)\d\d)'
+$script:NotPhone = '(?!\d{3}(?:[ \t\u00A0.-]|\r?\n)\d{3}(?:[ \t\u00A0.-]|\r?\n)?\d{4}(?![\w-]))'   # 3-3-4 or 3-7: a phone
 # Each pattern starts with a letter or digit, then looks back, so the engine skips ahead fast on long text (review of PR 60).
 $script:SignedNameText = ("(?<name>[A-Z](?<=(?:^|[^\w.])[A-Z])(?:[A-Z'-]{1,39}(?:\r?\n[A-Z'-]{1,40})?|\r?\n[A-Z'-]{1,40})\." +
     '(?<!(?:^|[^\w.])(?:NO|NR|NUM|REF|ACCT|ACC|TEL|PH|FAX|ID|DOC|REV|VER)\.)' +
@@ -71,7 +71,7 @@ $script:SignedNameAnyCase = [regex]('(?i)' + $script:SignedNameText)
 $script:SignedNameAnyCaseAt = [regex]('(?i)\G(?:' + $script:SignedNameText + ')')   # \G: only at the given place
 $script:SignedWords = '(?i:(?:sign(?:ed|ature)\b|CN\s*=|DN\s*:)(?<!\w(?:sign(?:ed|ature)|CN\s*=|DN\s*:)))'   # a word start, said last (speed)
 # The 10 digits alone on one line after a signature word ("Signed_1234567890.pdf"): not a date, a phone or in a dotted name.
-$script:SignedBareText = '(?<![\w.-])' + $script:NotDate + $script:NotPhone + $script:SignedIdLine
+$script:SignedBareText = '(?<![\w.-])(?<!\d[ \t\u00A0./])' + $script:NotDate + $script:NotPhone + $script:SignedIdLine
 $script:SignedBareId = [regex]$script:SignedBareText
 $script:SignedBareIdAt = [regex]('\G(?:' + $script:SignedBareText + ')')
 # The 10 digits in a row just before a CAC name in capitals (the ID above the name; not "REF.NO." and the like).
@@ -182,21 +182,38 @@ function Find-SignedIdHits {
       before a CAC name in capitals ($SignedIdThenName). Get-PiiSpan adds a candidate only where no other hit is.
     .PARAMETER Text
       The text to search.
+    .PARAMETER Starts
+      The kept hits' starts, sorted (Add-SignedIdHits), with Order (their places in Kept): a digit run a kept hit other
+      than an SSN holds needs no reading.
+    .PARAMETER Order
+      See Starts.
+    .PARAMETER Kept
+      The kept hits.
     .OUTPUTS
-      The candidates in rule order, each a pair: the regex match (its group "id" holds the digits) and $true when it counts
-      only after a signature word. Add-SignedIdHits checks the words and labels, only for candidates no other hit holds.
+      Found: the candidates in rule order, each a pair: the regex match (group "id": the digits) and $true when it counts
+      only after a signature word. WordStarts, WordEnds: the signature words, in text order. Add-SignedIdHits checks the
+      words and labels, only for candidates no other hit holds.
     #>
-    param([string]$Text)
-    if ($Text.IndexOfAny([char[]]'0123456789') -lt 0) { return , @() }   # every rule needs the digits (speed)
+    param([string]$Text, [int[]]$Starts = @(), [int[]]$Order = @(), $Kept = @())
     $found = New-Object System.Collections.Generic.List[object]   # (match, needs a signature word)
+    $result = [pscustomobject]@{ Found = $found; WordStarts = [int[]]@(); WordEnds = [int[]]@() }
+    # Every rule needs 10 digits: one fast scan first; none, then nothing else is read (speed on prose: review of PR 60).
+    $runs = [int[]]@(foreach ($r in $script:DigitRun.Matches($Text)) {
+        $p = [Array]::BinarySearch($Starts, $r.Index)
+        if ($p -lt 0) { $p = (-bnot $p) - 1 }
+        if ($p -ge 0 -and $Kept[$Order[$p]].Index + $Kept[$Order[$p]].Length -gt $r.Index -and $Kept[$Order[$p]].Detector -ne 'SSN') { continue }
+        $r.Index   # a run no other hit holds (signature text that the CAC-name rule already found: nothing to read)
+    })
+    if ($runs.Length -eq 0) { return $result }
+    $words = @([regex]::Matches($Text, $script:SignedWords))   # on the whole text, so no cut makes "assigned" a word
+    $result.WordStarts = [int[]]@(foreach ($w in $words) { $w.Index })
+    $result.WordEnds = [int[]]@(foreach ($w in $words) { $w.Index + $w.Length })
     foreach ($m in $script:SignedName.Matches($Text)) { $found.Add(@($m, $false)) }
     foreach ($m in $script:SignedIdThenName.Matches($Text)) { $found.Add(@($m, $false)) }
     # The any-case name and the digits alone: only in the 400 characters from each signature word, each match then checked
     # on the whole text (review of PR 60: one word must not make long text slow).
     $ranges = New-Object System.Collections.Generic.List[int[]]   # the windows, overlapping ones joined (each part read once)
-    # Only windows with 10 digits in them (one fast scan of the text; speed on prose: review of PR 60).
-    $runs = [int[]]@(foreach ($r in $script:DigitRun.Matches($Text)) { $r.Index })
-    foreach ($w in [regex]::Matches($Text, $script:SignedWords)) {
+    foreach ($w in $words) {   # only windows with 10 digits in them
         $next = [Array]::BinarySearch($runs, $w.Index)
         if ($next -lt 0) { $next = -bnot $next }
         if ($next -ge $runs.Length -or $runs[$next] -ge $w.Index + 400) { continue }
@@ -209,16 +226,14 @@ function Find-SignedIdHits {
             foreach ($m in $pair[0].Matches($window)) { $full = $pair[1].Match($Text, $range[0] + $m.Index); if ($full.Success) { $found.Add(@($full, $true)) } }
         }
     }
-    return , $found   # the list as one object (no unrolling)
+    return $result
 }
 
 function Add-SignedIdHits {
     <#
     .SYNOPSIS
-      Adds the e-signature DoD IDs of Find-SignedIdHits that the other detectors did not see (the e-signature fix,
-      2026-11-23). A candidate is added only where no kept hit is, so no other hit is lost or changed. One exception: SSN
-      hits (not High, no dashes) wholly inside a sure candidate (a signature word before it, or digits touching the name) give way (the PAM,
-      2026-11-21: e-signature DoD IDs were shown as SSNs). Added after the overlap removal, so it never outranks a hit.
+      Adds Find-SignedIdHits' e-signature DoD IDs only where no kept hit is (after the overlap removal), except over SSNs
+      (not High, no dashes) wholly inside, with a signature word before or digits touching the name (the PAM, 2026-11-21, -24).
     .PARAMETER Text
       The text searched (as the detectors saw it).
     .PARAMETER Kept
@@ -227,41 +242,50 @@ function Add-SignedIdHits {
       None.
     #>
     param([string]$Text, [System.Collections.Generic.List[object]]$Kept)
-    $found = Find-SignedIdHits $Text
-    if ($null -eq $found -or $found.Count -eq 0) { return }
-    $owner = New-Object 'int[]' ($Text.Length + 1)   # which kept hit holds each character: its place + 1 (0: none)
-    for ($k = 0; $k -lt $Kept.Count; $k++) { for ($i = $Kept[$k].Index; $i -lt $Kept[$k].Index + $Kept[$k].Length; $i++) { $owner[$i] = $k + 1 } }
+    # The kept hits by start (they never overlap): binary searches, not a mark per character (speed: review of PR 60).
+    $starts = New-Object 'int[]' $Kept.Count
+    $order = New-Object 'int[]' $Kept.Count
+    for ($k = 0; $k -lt $Kept.Count; $k++) { $starts[$k] = $Kept[$k].Index; $order[$k] = $k }
+    [Array]::Sort($starts, $order)
+    $signed = Find-SignedIdHits $Text $starts $order $Kept
+    if ($signed.Found.Count -eq 0) { return }
+    $added = New-Object 'bool[]' ($Text.Length + 1)   # the characters of the IDs added here
     $giveWay = New-Object System.Collections.Generic.List[int]
     $garbledText = $script:GarbledChar.IsMatch($Text)   # the unreadable-text check only when the text has such a character
     $seen = @{}
-    foreach ($item in $found) {
+    foreach ($item in $signed.Found) {
         $digits = $item[0].Groups['id']
-        if ($seen.ContainsKey($digits.Index)) { continue }
-        # First the cheap test: digits that start inside a hit other than an SSN are never added (speed: review of PR 60).
-        if ($owner[$digits.Index] -gt 0 -and $Kept[$owner[$digits.Index] - 1].Detector -ne 'SSN') { $seen[$digits.Index] = $true; continue }
-        $word = Test-KeywordBefore $Text $item[0].Index $script:SignedWords
-        if ($item[1] -and -not $word) { continue }
+        $end = $digits.Index + $digits.Length
+        if ($seen.ContainsKey($digits.Index) -or $added[$digits.Index] -or $added[$end - 1]) { continue }
         $seen[$digits.Index] = $true
-        $candidate = [pscustomobject]@{ Index = $digits.Index; Length = $digits.Length; Value = $digits.Value
-            Confidence = $(if (Test-DodIdLabelBefore $Text $digits.Index) { 'High' } else { 'Low' })
-            Sure = ($word -or ($digits.Index -gt 0 -and $Text[$digits.Index - 1] -eq '.')) }
-        $end = $candidate.Index + $candidate.Length
-        $held = @{}
-        for ($i = $candidate.Index; $i -lt $end; $i++) { if ($owner[$i] -gt 0) { $held[$owner[$i] - 1] = $true } }
+        # The kept hits over the digits: from the last one that starts at or before them, in text order.
+        $p = [Array]::BinarySearch($starts, $digits.Index)
+        if ($p -lt 0) { $p = [Math]::Max(0, (-bnot $p) - 1) }
+        $held = New-Object System.Collections.Generic.List[int]
+        for ($q = $p; $q -lt $starts.Length -and $starts[$q] -lt $end; $q++) {
+            if ($Kept[$order[$q]].Index + $Kept[$order[$q]].Length -gt $digits.Index) { $held.Add($order[$q]) }
+        }
+        if (@(foreach ($k in $held) { if ($Kept[$k].Detector -ne 'SSN') { $k } }).Count) { continue }   # cheap test first
+        # A signature word wholly in the 40 characters before: the first word that starts there ends first (binary search).
+        $at = $item[0].Index
+        $place = [Array]::BinarySearch($signed.WordStarts, $at - 40)
+        if ($place -lt 0) { $place = -bnot $place }
+        $word = $place -lt $signed.WordStarts.Length -and $signed.WordEnds[$place] -le $at
+        if ($item[1] -and -not $word) { continue }
+        $confidence = if (Test-DodIdLabelBefore $Text $digits.Index) { 'High' } else { 'Low' }; $sure = $word -or ($digits.Index -gt 0 -and $Text[$digits.Index - 1] -eq '.')
         $free = $true
-        foreach ($k in $held.Keys) {
+        foreach ($k in $held) {
             $hit = $Kept[$k]
-            $isSignedSsn = $candidate.Sure -and $hit.Detector -eq 'SSN' -and $hit.Confidence -ne 'High' -and
-                $hit.Value -notmatch '-' -and $hit.Index -ge $candidate.Index -and $hit.Index + $hit.Length -le $end
-            if (-not $isSignedSsn) { $free = $false }
+            if (-not ($sure -and $hit.Confidence -ne 'High' -and $hit.Value -notmatch '-' -and $hit.Index -ge $digits.Index -and
+                $hit.Index + $hit.Length -le $end)) { $free = $false }
         }
         # Not where the unreadable-text filter would drop it (a Low hit), or a swapped SSN would be lost (review of PR 60).
-        if (-not $free -or ($garbledText -and $candidate.Confidence -eq 'Low' -and (Test-GarbledNear $Text $candidate.Index $candidate.Length))) { continue }
-        foreach ($k in $held.Keys) { $giveWay.Add($k) }
+        if (-not $free -or ($garbledText -and $confidence -eq 'Low' -and (Test-GarbledNear $Text $digits.Index $digits.Length))) { continue }
+        foreach ($k in $held) { $giveWay.Add($k) }
         # Signed: never raises a name (Set-NameNearIdentifierHigh).
-        $Kept.Add([pscustomobject]@{ Detector = 'DoD ID'; Confidence = $candidate.Confidence; Index = $candidate.Index
-            Length = $candidate.Length; Value = $candidate.Value; Signed = $true })
-        for ($i = $candidate.Index; $i -lt $end; $i++) { $owner[$i] = $Kept.Count }
+        $Kept.Add([pscustomobject]@{ Detector = 'DoD ID'; Confidence = $confidence; Index = $digits.Index; Length = $digits.Length
+            Value = $digits.Value; Signed = $true })
+        for ($i = $digits.Index; $i -lt $end; $i++) { $added[$i] = $true }
     }
     foreach ($k in @($giveWay | Sort-Object -Unique -Descending)) { $Kept.RemoveAt($k) }
 }

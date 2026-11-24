@@ -183,3 +183,9 @@ Assert-Equal 1 @(Get-HitSummary "${sigNoise}signed by doe.jane.q. $sigSsnBare`n0
 foreach ($case in @("$sigName 2026 11 20 10:15", "DOE.JANE.`t20261120 10")) {
     Assert-Equal 0 @(Get-HitSummary $case | Where-Object { $_ -like 'DoD ID/*' }).Count "No ID: a date after a CAC name ($($case -replace "`t", ' '))"
 }
+
+# Sixth review of PR 60: a signature word cut at the window edge is no word; mid dates and 3-7 phones are no ID.
+$cutWord = 'Signed form. ' + ('k' * 80) + ' assigned' + (' k' * 16) + '  1 ' + ($sigSsnBare -replace ' ', '')
+Assert-Equal 1 @(Get-HitSummary $cutWord | Where-Object { $_ -like 'SSN/*' }).Count '"assigned" at the window edge is no signature word: SSN kept'
+Assert-Equal 0 @(Get-HitSummary "Digitally signed by $sigName`n11 20 2026 0930" | Where-Object { $_ -like 'DoD ID/*' }).Count 'No ID: a month-day-year date'
+Assert-Equal 0 @(Get-HitSummary ('Signed. Phone 312 555' + '0123') | Where-Object { $_ -like 'DoD ID/*' }).Count 'No ID: a 3-7 phone after signed'
