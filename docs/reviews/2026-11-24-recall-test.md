@@ -185,4 +185,9 @@ the bundle's reader block, the same code as on the gov device.
 
 ## Result (gov device)
 
-Not run yet.
+- Run 1, 2026-11-24 (the PAM, by e-mail; counts only): `found 46 of 53, false 1` (recall 87%, precision 98%). Test files
+  in the Not scanned tab: 0. Every type and form is the same as the local baseline above: the 7 misses are DoD ID and
+  Date of birth under a header row only (3 + 3) and the 9-digit passport (also the 1 false hit). The e-mail had no
+  Build line; the result shows an Ion from before PRs 96 and 97 (assumption, high confidence). What it proves: the
+  test, the readers and the detectors give the same result on the gov device (Windows PowerShell 5.1) as on Linux.
+- Run 2: Part 3 and Part 4 again with build e59f40e8 or later. Expected: `found 53 of 53, false 0`.
