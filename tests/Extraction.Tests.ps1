@@ -121,7 +121,8 @@ $skipped = Get-RosterXlsxText @(@('A1=Person', 'B1=DoD ID'), @('A2=Person A', "B
 Assert-Equal 'DoD ID/High/******7890' (Get-HitSummary $skipped) 'Roster: the labels end at a missing (empty) row'
 # MINOR 3: a quoted csv field over two lines ends the labels for the rest of the file.
 $multi = "Person,DoD ID,Note`nA,$($Sample.DodId),x`nC,`"line one`nline two, $otherTen`",z`n"
-Assert-Equal 'DoD ID/High/******7890' (Get-HitSummary (Get-TextFromBytes -Bytes ([System.Text.Encoding]::UTF8.GetBytes($multi)) -FileName 'm.csv').Text) 'Roster csv: no label in a quoted field over lines'
+$multiText = (Get-TextFromBytes -Bytes ([System.Text.Encoding]::UTF8.GetBytes($multi)) -FileName 'm.csv').Text
+Assert-Equal 'DoD ID/High/******7890' (Get-HitSummary $multiText) 'Roster csv: no label in a quoted field over lines'
 
 # ---- Word field codes are not read (a TOC bookmark number is no SSN) ----
 $fieldXml = "<w:document><w:p><w:r><w:instrText xml:space=`"preserve`"> PAGEREF _Toc$($Sample.SsnBare) \h </w:instrText></w:r><w:r><w:t>Chapter 1</w:t></w:r></w:p></w:document>"
