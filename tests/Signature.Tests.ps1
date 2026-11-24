@@ -228,8 +228,8 @@ $pr57Ids = [ordered]@{
     'capitals, no dots, 3-2-4-1'      = "$sigCaps $sig3241"
     'Signature:, comma name, 9+1'     = "Signature: DOE, JANE Q. $sig9 $($sigId.Substring(9))"
     'dotted name, a space, 9+1'       = "$sigName $sig9 $($sigId.Substring(9))"
-    'lower-case dotted name'          = "$($sigName.ToLower())$sigId"
-    'lower-case dotted name, a space' = "$($sigName.ToLower()) $sigId"
+    'lower-case name after signed'    = "Digitally signed by $($sigName.ToLower())$sigId"
+    'lower-case name, a space'        = "Digitally signed by $($sigName.ToLower()) $sigId"
 }
 foreach ($case in $pr57Ids.Keys) {
     Assert-Equal 'DoD ID/Low/******7890' ((Get-HitSummary $pr57Ids[$case]) -join ',') "Review of PR 57: DoD ID ($case)"
@@ -242,9 +242,17 @@ $pr57None = [ordered]@{
     'capitals heading, plain digits' = "THE UNIT A $sigId"
     'capitals roster, next row'      = "1 $sigCaps $sig9`n2 DOE JOHN"
     'small words, no dots'           = "assigned to bob a $sig9 $($sigId.Substring(9))"
+    'dotted small words, no signed'  = "report.final.v.$sigId"
+    'capitals heading, other groups' = "BLDG NO $($sigId.Substring(0, 4)) $($sigId.Substring(4))"
+    'name, 1+9 after a gap'          = "$sigName $($sigId.Substring(0, 1)) $($sigId.Substring(1))"
 }
 foreach ($case in $pr57None.Keys) {
     Assert-Equal 0 @(Get-HitSummary $pr57None[$case] | Where-Object { $_ -like 'DoD ID/*' }).Count "Review of PR 57: no DoD ID ($case)"
 }
 Assert-Equal 'DoD ID/Low/******7890' ((Get-HitSummary "$($sigName)$($sigId.Substring(0, 3))-$($sigId.Substring(3, 2))-$($sigId.Substring(5, 4))-$($sigId.Substring(9))") -join ',') `
     'Review of PR 57: a dashed ID after a name is no date'
+# Review of PR 69: a title before the name is no sentence end; a dashed 4-2-4 ID after a name is no date.
+foreach ($case in @("Digitally signed by Lt. Col. Doe $sigId", "Signature: Mr. Doe $sigId")) {
+    Assert-Equal 1 @(Get-HitSummary $case | Where-Object { $_ -eq 'DoD ID/Low/******7890' }).Count "A title is no sentence end ($($case -replace '\d', '#'))"
+}
+Assert-Equal 'DoD ID/Low/******7890' ((Get-HitSummary "$($sigName)$($sigId.Substring(0, 4))-$($sigId.Substring(4, 2))-$($sigId.Substring(6))") -join ',') 'A dashed 4-2-4 ID after a name'
