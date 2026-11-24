@@ -3,8 +3,6 @@
 Title: 33-332.Z · <task> · <date>. Read AGENTS.md first.
 
 00. Resume first: docs/reviews/2026-11-24-ion-detector-handoff.md (PRs 60, 61).
-0. Fleet v2 3B: PRs 51, 53, 54 merged; kit 11.0.1 sync (branch claude/fleet-v2-kit-11) waits on the PAM's .check row;
-   PR 55 waits on that sync. Evidence: docs/reviews/2026-11-23-fleet-v2-stage3b.md.
 10. The PAM to test on the gov device: ISE paste of paste/Ion-script.txt; a drive folder scan (runspaces in ISE, FIPS
    SHA-256); Windows OCR on an image; SharePoint version history ("PII first saved by"); colours; Excel opening.
 12. Tracked minors (PR bodies of #14, #19, #20): short spaced line under a heading of another size; OCR time outside
