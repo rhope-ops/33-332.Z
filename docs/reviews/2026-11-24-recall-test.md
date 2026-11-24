@@ -12,7 +12,7 @@ values in 12 files. Ion scans the files. Then the test compares Ion's workbook w
 - Score matches each hit to the key by file and type. It uses the last 4 digits, the last 3 passport characters, or the e-mail domain.
 - Ion masks a date of birth and a home address completely. For these 2 types, Score counts the hits in each file.
 - A hit that does not match the key is a false hit. A decoy that Ion reports is a false hit.
-- Score prints counts, type names and test file names. For a test file in the Not scanned tab, it also prints its group and Ion's reason. In the reason, Score keeps only the words of a fixed list and shows each other word, path or long number as `*`. It prints no value and no path.
+- Score prints counts, type names and test file names. For a test file in the Not scanned tab, it also prints its group and Ion's reason. In the reason, Score keeps only the words of a fixed list and shows each other word, path or long number as `*` (one `*` for a run of them, which can also hide one allowed word). It prints no value and no path.
 
 | Type | Planted | Forms |
 |---|---|---|

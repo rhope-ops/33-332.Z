@@ -579,7 +579,9 @@ foreach ($word in (('a e again an and another answer archive author available be
         'method index outside bounds array object reference instance null valued expression call input correct thrown timed ' +
         'out thread aborted pipeline stream seeking range values zip zero larger startindex collection modified enumeration ' +
         'execute item same key already added given present dictionary current state error disk full space enough memory ' +
-        'device ready sharing violation lock locked user mapped section volume medium drive share server busy') -split ' ')) {
+        'device ready sharing violation lock locked user mapped section volume medium drive share server busy ' +
+        'are as attached attachments checked conflicting content deep excel first font for headers large map message ' +
+        'nested numbers pages parts some stored them unpack uses way which') -split ' ')) {
     if ($word) { $script:RecallReasonWords[$word] = $true }
 }
 
@@ -596,10 +598,11 @@ function Get-RecallSafeReason {
     #>
     param([string]$Reason)
     $out = New-Object System.Text.StringBuilder
-    foreach ($m in [regex]::Matches($Reason, '[A-Za-z]+|\d+|\s+|.')) {
+    # A word is a run of letters of any script (an accented name is one word: review of PR 105); digits are 0 to 9 only.
+    foreach ($m in [regex]::Matches($Reason, '\p{L}+|[0-9]+|\s+|.')) {
         $t = $m.Value
-        $keep = ($t -match '^[A-Za-z]+$' -and ($script:RecallReasonWords.ContainsKey($t.ToLowerInvariant()) -or $t -cmatch '^[A-Z][A-Za-z]*Exception$')) -or
-            ($t -match '^\d{1,4}$') -or ($t -match '^\s+$') -or ($t -match '^[.,;:()?!''"\-\[\]]$')
+        $keep = ($t -cmatch '^[A-Za-z]+$' -and $script:RecallReasonWords.ContainsKey($t.ToLowerInvariant())) -or
+            ($t -match '^[0-9]{1,4}$') -or ($t -match '^[ \t]+$') -or ($t -match '^[.,;:()?!''"\-\[\]]$')
         if ($keep) { [void]$out.Append($t) } else { [void]$out.Append('*') }
     }
     # Runs of '*' with only spaces, punctuation or one allowed word between them become one '*' (a path shows as one

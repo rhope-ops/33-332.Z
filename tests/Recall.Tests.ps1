@@ -117,10 +117,17 @@ try {
     Assert-Equal $true ((Invoke-RecallMake 'relative-folder') -match 'full folder path') 'Recall Make: a relative path is refused'
 
     # The reason Score prints: allowed words only (review of PR 105). Each fixed reason of Ion prints unchanged.
+    # The fixed reasons of Ion: each string in src/ (PowerShell parser) with 'check by hand' or a reason start; a variable
+    # inside a string reads as 9.
+    $reasonStart = '^(Could not read the file|The reader failed|Scanned PDF|Download failed|Download gave|Empty file|Larger than|Encrypted[ (]|Sensitivity label)'
     $fixedReasons = @(Get-ChildItem (Join-Path $recallRoot 'src') -Filter '*.ps*1' | ForEach-Object {
-            [regex]::Matches([System.IO.File]::ReadAllText($_.FullName), "(?m)(?:Reason = |Reason\w* = )'([^'$]{10,})'") | ForEach-Object { $_.Groups[1].Value } } |
-        Sort-Object -Unique)
-    Assert-Equal $true ($fixedReasons.Count -ge 15) 'Recall Score: the fixed reasons of Ion are found in src'
+            $ast = [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$null, [ref]$null)
+            $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.StringConstantExpressionAst] -or
+                    $n -is [System.Management.Automation.Language.ExpandableStringExpressionAst] }, $true) | ForEach-Object {
+                $text = [regex]::Replace([string]$_.Value, '\$\{?[\w:]+\}?', '9')
+                if ($text -match 'check by hand' -or $text -match $reasonStart) { $text }
+            } } | Sort-Object -Unique)
+    Assert-Equal $true ($fixedReasons.Count -ge 40) 'Recall Score: the fixed reasons of Ion are found in src'
     Assert-Equal '' (@($fixedReasons | Where-Object { (Get-RecallSafeReason $_) -cne $_ }) -join ' || ') 'Recall Score: each fixed reason of Ion prints unchanged'
     # Invented paths and names in every form the reviews found (quoted, unquoted, relative, forward slash, nested quote).
     $leaky = @(
@@ -131,8 +138,9 @@ try {
         "Access to the path '..\Users\Sample Person' is denied.", 'The reader failed: (/Users/Sample Person/x.docx)',
         'The reader failed: path=/Users/Sample Person/x.docx', 'Could not find "/Users/Sample Person/x.docx',
         'Could not find Users/Sample Person/x.docx', 'Could not find ./Sample Person/x.docx',
-        "Access to the path 'Sample O'Neil\x.docx' is denied.", 'The file is locked for editing by Sample Person.')
-    $leaked = @($leaky | ForEach-Object { Get-RecallSafeReason $_ } | Where-Object { $_ -match 'Sample|Person|Neil|Arcy|host|Test Org|example|\d{5}' })
+        "Access to the path 'Sample O'Neil\x.docx' is denied.", 'The file is locked for editing by Sample Person.',
+        'Locked by Samplé.', 'Locked by Samplée Persön.', 'Locked by SampleException.')
+    $leaked = @($leaky | ForEach-Object { Get-RecallSafeReason $_ } | Where-Object { $_ -match 'Samp|Pers|Neil|Arcy|host|Test Org|example|\d{5}' })
     Assert-Equal '' ($leaked -join ' || ') 'Recall Score: no word of a path or name shows'
     $inUse = 'Could not read the file (in use, damaged or protected?): The process cannot access the file '
     $inUseEnd = ' because it is being used by another process.'
