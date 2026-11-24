@@ -128,6 +128,20 @@ $noFolder = Join-Path $runFolder 'list-no'
 & $script -OutputFolder $noFolder 6>$null
 Assert-Equal 0 @(Get-ResultFiles $noFolder).Count 'Several targets: "n" to the list scans nothing'
 
+# Review of PR 80: a site that fails does not stop the list; site labels are masked; "n" signs in nowhere.
+Reset-FakePnP @{ "$library/General/notes.txt" = $Txt }
+Set-FakePnPOption NoAccess $true
+Set-FakeSiteAnswer -TypedSite @($Sample.Site, $siteB)
+$failFolder2 = Join-Path $runFolder 'list-fail'
+$failShown = (& $script -OutputFolder $failFolder2 6>&1 | ForEach-Object { [string]$_ }) -join ' '
+Assert-Equal $true ($failShown -match 'Done: 0 of 2 saved' -and @(Get-FakePnPConnection).Count -eq 2) 'Several targets: a site with no access does not stop the next one'
+Reset-FakePnP @{ "$library/General/notes.txt" = $Txt }
+$ssnSite = $Sample.Site + '_' + $Sample.Ssn
+Set-FakeSiteAnswer -TypedSite @($ssnSite, $siteB) -ScanAnswer 'n'
+$maskShown = (& $script -OutputFolder (Join-Path $runFolder 'list-mask') 6>&1 | ForEach-Object { [string]$_ }) -join ' '
+Assert-Equal $false $maskShown.Contains($Sample.Ssn) 'Several targets: site labels are masked'
+Assert-Equal 0 @(Get-FakePnPConnection).Count 'Several targets: "n" to the list signs in nowhere'
+
 # ---- A report that cannot be saved: the script still signs out ----
 Reset-FakePnP @{}
 $blocker = Join-Path $runFolder 'not-a-folder.txt'

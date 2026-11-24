@@ -48,9 +48,9 @@ $script:SyncSteps = "`nSharePoint sign-in did not work on this computer. You can
     "`n  5. If you see the question, click Open. Wait until File Explorer shows the synced folder." +
     "`n  6. In File Explorer, in the synced folder, click the address bar. You see the folder path selected." +
     "`n  7. Press Ctrl+C. The path is on the clipboard." +
-    "`n  8. In Ion, at the question 'Scan another', press Ctrl+V. You see the path." +
+    "`n  8. In Ion, at the question 'Scan more', press Ctrl+V. You see the path." +
     "`n  9. Press Enter. Ion scans the folder." +
-    "`nFor your own OneDrive files, paste the path of your OneDrive folder at the question 'Scan another'."
+    "`nFor your own OneDrive files, paste the path of your OneDrive folder at the question 'Scan more'."
 
 # The longest one SharePoint call may wait for its answer (milliseconds), set on the signed-in connection when it has
 # no limit or a longer one (the PnP 1.12.0 default is not verified here): a download, the file list, a version read.
@@ -268,7 +268,7 @@ function Connect-TeamSite {
                 $site = Read-TeamSiteAddress
             }
         }
-        Write-Ui "Signing in to $site ..." 'Muted'
+        Write-Ui ('Signing in to ' + (Protect-PiiName $site) + ' ...') 'Muted'
         Write-Ui '  A sign-in window opens (if you do not see it, press Alt+Tab). If it says you have no access, close it.' 'Muted'
         # PnP prints a warning that suggests -Interactive (and its update notice): not useful to the person, so hidden (the PAM, 2026-11-20).
         $signingIn = $true
@@ -326,8 +326,8 @@ function Read-ScanTargetList {
 function Get-TargetLabel {
     <#
     .SYNOPSIS
-      A target in a few words for the list and the closing table: the site address, the drive folder (masked like
-      any name Ion shows) or "Teams link (team)" / "Teams link (channel)".
+      A target in a few words for the list and the closing table: the site address or the drive folder (both masked
+      like any name Ion shows) or "Teams link (team)" / "Teams link (channel)".
     .PARAMETER Target
       Output of Get-ScanTarget.
     .OUTPUTS
@@ -335,7 +335,7 @@ function Get-TargetLabel {
     #>
     param($Target)
     if ($Target.DrivePath) { return Protect-PiiName $Target.DrivePath }
-    if ($Target.SiteUrl) { return $Target.SiteUrl }
+    if ($Target.SiteUrl) { return Protect-PiiName $Target.SiteUrl }
     if ($Target.IsChannel) { return 'Teams link (channel)' }
     return 'Teams link (team)'
 }

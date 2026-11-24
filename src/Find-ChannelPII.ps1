@@ -197,16 +197,19 @@ function Invoke-ScanTarget {
         else {
             $result.SignedIn = $true   # a sign-in is tried (Connect-TeamSite signs out again on every path)
             $saving = $false; $site = Connect-TeamSite $Target; $saving = $true
-            $result.Label = $site
+            $result.Label = Protect-PiiName $site
             $result.Path = Invoke-SiteFiles -SiteUrl $site -OutputFolder $OutputFolder -MaxFileMB $MaxFileMB -AutoStart:$List
         }
         if (-not $result.Path) { $result.Note = 'Not scanned: nothing was saved.' }
     }
     catch {
         # A site that cannot be opened, or results that cannot be saved: reported; the next target still runs.
-        $result.Note = Protect-PiiText $_.Exception.Message
-        if ($saving) { $result.Note = 'The results could not be saved: ' + $result.Note }
-        Write-Ui $result.Note 'Alert'
+        # A sign-in error is already in words a person can act on, and masked (Connect-TeamSite): shown as it is, so its
+        # numbered steps keep their numbers. Any other error is masked here. The closing table shows the first line.
+        $shown = $_.Exception.Message
+        if ($saving) { $shown = 'The results could not be saved: ' + (Protect-PiiText $shown) }
+        Write-Ui $shown 'Alert'
+        $result.Note = @($shown -split "`n" | Where-Object { $_.Trim() })[0]
     }
     $result.Time = Format-Duration $clock.Elapsed
     if (-not $List) { Open-ScanResult $result.Path }

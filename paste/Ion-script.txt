@@ -40,10 +40,10 @@
     src/ScanMeter.psm1, sha256 18c82f0b37c3
     src/ScanQueue.psm1, sha256 645d963c7455
     src/Accountability.psm1, sha256 8bf31404f723
-    src/SiteTarget.psm1, sha256 fce9d367eee4
+    src/SiteTarget.psm1, sha256 152226baaa78
     src/ChannelScan.psm1, sha256 0cd4894c7c7b
     src/DriveScan.psm1, sha256 8b4305c3a6fc
-    src/Find-ChannelPII.ps1, sha256 482e37005f37
+    src/Find-ChannelPII.ps1, sha256 d4c17e6d1a80
 
   Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.
   Run target: Windows PowerShell 5.1 with PnP.PowerShell 1.12.0; no admin rights, no file to unblock.
@@ -81,7 +81,7 @@
     line  7133  Module ChannelScan.psm1
     line  7535  Module DriveScan.psm1
     line  7901  Body of Find-ChannelPII.ps1
-    line  8099  Clean-up
+    line  8102  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -6838,9 +6838,9 @@ $script:SyncSteps = "`nSharePoint sign-in did not work on this computer. You can
     "`n  5. If you see the question, click Open. Wait until File Explorer shows the synced folder." +
     "`n  6. In File Explorer, in the synced folder, click the address bar. You see the folder path selected." +
     "`n  7. Press Ctrl+C. The path is on the clipboard." +
-    "`n  8. In Ion, at the question 'Scan another', press Ctrl+V. You see the path." +
+    "`n  8. In Ion, at the question 'Scan more', press Ctrl+V. You see the path." +
     "`n  9. Press Enter. Ion scans the folder." +
-    "`nFor your own OneDrive files, paste the path of your OneDrive folder at the question 'Scan another'."
+    "`nFor your own OneDrive files, paste the path of your OneDrive folder at the question 'Scan more'."
 
 # The longest one SharePoint call may wait for its answer (milliseconds), set on the signed-in connection when it has
 # no limit or a longer one (the PnP 1.12.0 default is not verified here): a download, the file list, a version read.
@@ -7058,7 +7058,7 @@ function Connect-TeamSite {
                 $site = Read-TeamSiteAddress
             }
         }
-        Write-Ui "Signing in to $site ..." 'Muted'
+        Write-Ui ('Signing in to ' + (Protect-PiiName $site) + ' ...') 'Muted'
         Write-Ui '  A sign-in window opens (if you do not see it, press Alt+Tab). If it says you have no access, close it.' 'Muted'
         # PnP prints a warning that suggests -Interactive (and its update notice): not useful to the person, so hidden (the PAM, 2026-11-20).
         $signingIn = $true
@@ -7116,8 +7116,8 @@ function Read-ScanTargetList {
 function Get-TargetLabel {
     <#
     .SYNOPSIS
-      A target in a few words for the list and the closing table: the site address, the drive folder (masked like
-      any name Ion shows) or "Teams link (team)" / "Teams link (channel)".
+      A target in a few words for the list and the closing table: the site address or the drive folder (both masked
+      like any name Ion shows) or "Teams link (team)" / "Teams link (channel)".
     .PARAMETER Target
       Output of Get-ScanTarget.
     .OUTPUTS
@@ -7125,7 +7125,7 @@ function Get-TargetLabel {
     #>
     param($Target)
     if ($Target.DrivePath) { return Protect-PiiName $Target.DrivePath }
-    if ($Target.SiteUrl) { return $Target.SiteUrl }
+    if ($Target.SiteUrl) { return Protect-PiiName $Target.SiteUrl }
     if ($Target.IsChannel) { return 'Teams link (channel)' }
     return 'Teams link (team)'
 }
@@ -8029,16 +8029,19 @@ function Invoke-ScanTarget {
         else {
             $result.SignedIn = $true   # a sign-in is tried (Connect-TeamSite signs out again on every path)
             $saving = $false; $site = Connect-TeamSite $Target; $saving = $true
-            $result.Label = $site
+            $result.Label = Protect-PiiName $site
             $result.Path = Invoke-SiteFiles -SiteUrl $site -OutputFolder $OutputFolder -MaxFileMB $MaxFileMB -AutoStart:$List
         }
         if (-not $result.Path) { $result.Note = 'Not scanned: nothing was saved.' }
     }
     catch {
         # A site that cannot be opened, or results that cannot be saved: reported; the next target still runs.
-        $result.Note = Protect-PiiText $_.Exception.Message
-        if ($saving) { $result.Note = 'The results could not be saved: ' + $result.Note }
-        Write-Ui $result.Note 'Alert'
+        # A sign-in error is already in words a person can act on, and masked (Connect-TeamSite): shown as it is, so its
+        # numbered steps keep their numbers. Any other error is masked here. The closing table shows the first line.
+        $shown = $_.Exception.Message
+        if ($saving) { $shown = 'The results could not be saved: ' + (Protect-PiiText $shown) }
+        Write-Ui $shown 'Alert'
+        $result.Note = @($shown -split "`n" | Where-Object { $_.Trim() })[0]
     }
     $result.Time = Format-Duration $clock.Elapsed
     if (-not $List) { Open-ScanResult $result.Path }
