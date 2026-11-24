@@ -325,10 +325,12 @@ function Confirm-ScanStart {
       { param($File) } that gives @(name, size in bytes) of one file.
     .PARAMETER MaxFileMB
       The size limit.
+    .PARAMETER NoAsk
+      Show the counts but do not ask: the person already said yes to the whole list (several targets in one run).
     .OUTPUTS
       [bool] true to scan.
     #>
-    param([object[]]$Groups, [scriptblock]$Facts, [int]$MaxFileMB)
+    param([object[]]$Groups, [scriptblock]$Facts, [int]$MaxFileMB, [switch]$NoAsk)
     $count = 0; $bytes = 0L; $skipped = 0
     foreach ($group in $Groups) {
         foreach ($file in $group.Files) {
@@ -342,6 +344,7 @@ function Confirm-ScanStart {
     $plural = { param($n, $noun) if ($n -eq 1) { "1 $noun" } else { '{0:N0} {1}s' -f $n, $noun } }
     Write-Ui ('Found {0} ({1:N1} MB) in {2}; {3:N0} will be listed but not read (file type, or over {4} MB).' -f
         (& $plural $count 'file'), ($bytes / 1MB), (& $plural $Groups.Count 'folder'), $skipped, $MaxFileMB) 'Text'
+    if ($NoAsk) { return $true }
     $answer = Read-Host 'Scan now? [Y/n]'
     return -not ($answer -and $answer.Trim() -match '^(n|no)$')
 }
@@ -364,6 +367,7 @@ function Invoke-ScanRun {
       { param($Group, $File) } that gives the file's masked path for the progress bar.
     .PARAMETER Run
       Receives Meter, Reading ([TimeSpan]) and Workers; Declined = $true when the person answered no to "Scan now?".
+      AutoStart = $true (set by the caller): the counts show, but "Scan now?" is not asked.
     .PARAMETER Facts
       { param($File) } that gives @(name, size in bytes) of one file, for the question before the scan.
     .PARAMETER MaxFileMB
@@ -375,7 +379,7 @@ function Invoke-ScanRun {
     foreach ($group in $Groups) { $total += $group.Files.Count }
     $Run.Meter = New-ScanMeter 0; $Run.Reading = [TimeSpan]::Zero; $Run.Workers = 0; $Run.Declined = $false
     # Declined until a yes: a cancel (Ctrl+C) at the question saves nothing either, as nothing was read (review of PR 37).
-    if ($Facts) { $Run.Declined = $true; if (-not (Confirm-ScanStart $Groups $Facts $MaxFileMB)) { return }; $Run.Declined = $false }
+    if ($Facts) { $Run.Declined = $true; if (-not (Confirm-ScanStart $Groups $Facts $MaxFileMB -NoAsk:($Run.ContainsKey('AutoStart') -and $Run.AutoStart))) { return }; $Run.Declined = $false }
     Write-Banner ('Scanning {0} files in {1} folders' -f $total, $Groups.Count)
     $meter = New-ScanMeter $total
     $meter.NameWidth = Get-NameWidth @($Groups | ForEach-Object { Protect-PiiName $_.Name })

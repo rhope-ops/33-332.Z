@@ -21,4 +21,5 @@ permissions as scope only ("No reconnaissance": no user names listed); month-nam
 
 ## Status
 
-- Step 0: probe built (docs/reviews/2026-11-24-device-probe.md); waits on the PAM's run. Step 1: open. Step 2: open. Step 3: open. Step 4: open. Step 5: open. Step 6: open.
+- Step 0: probe merged (PR 79, docs/reviews/2026-11-24-device-probe.md); waits on the PAM's run. Step 1: merged (PR 82).
+  Step 2: merged (PR 80). Step 3: in review (PR 81). Step 4: open. Step 5: open. Step 6: open.
