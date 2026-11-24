@@ -122,6 +122,10 @@ Assert-Equal ($Sample.Site + '|' + $siteB) ((Get-FakePnPConnection) -join '|') '
 $questions = '{0} {1} {2} {3}' -f (Get-FakeCallCount 'List question'), (Get-FakeCallCount 'Scan question'), (Get-FakeCallCount 'Open question'), (Get-FakeCallCount 'Folder question')
 Assert-Equal '1 0 0 1' $questions 'Several targets: asked once; no "Scan now?" or "Open the workbook?" per site; the folder offered once'
 Assert-Equal $true ($listShown -match 'Done: 2 of 2 saved' -and $listShown -match '2 to scan, one after the other') 'Several targets: the list and the closing table'
+# One sign-in per host (the PAM, 2026-11-24): no sign-out between the sites; one sign-out, after the last site.
+$calls = @($global:FakePnP.Calls)
+$lastConnect = [array]::LastIndexOf($calls, ('Connect ' + $siteB))
+Assert-Equal '1 True' ('{0} {1}' -f (Get-FakeCallCount 'Disconnect-PnPOnline'), ($calls.IndexOf('Disconnect-PnPOnline') -gt $lastConnect)) 'Several targets: one sign-out, after the last site'
 Reset-FakePnP @{ "$library/General/notes.txt" = $Txt }
 Set-FakeSiteAnswer -TypedSite @($Sample.Site, $siteB) -ScanAnswer 'n'
 $noFolder = Join-Path $runFolder 'list-no'
@@ -135,6 +139,7 @@ Set-FakeSiteAnswer -TypedSite @($Sample.Site, $siteB)
 $failFolder2 = Join-Path $runFolder 'list-fail'
 $failShown = (& $script -OutputFolder $failFolder2 6>&1 | ForEach-Object { [string]$_ }) -join ' '
 Assert-Equal $true ($failShown -match 'Done: 0 of 2 saved' -and @(Get-FakePnPConnection).Count -eq 2) 'Several targets: a site with no access does not stop the next one'
+Assert-Equal 1 (Get-FakeCallCount 'Disconnect-PnPOnline') 'Several targets, no access: one sign-out, at the end of the run'
 Reset-FakePnP @{ "$library/General/notes.txt" = $Txt }
 $ssnSite = $Sample.Site + '_' + $Sample.Ssn
 Set-FakeSiteAnswer -TypedSite @($ssnSite, $siteB) -ScanAnswer 'n'
@@ -157,6 +162,26 @@ $ssnShown = (& $script -OutputFolder $ssnFolder 6>&1 | ForEach-Object { [string]
 $ssnBooks = @(Get-ResultFiles $ssnFolder)
 $ssnCells = (@($ssnBooks | ForEach-Object { (Get-XlsxSheets $_.FullName)['Summary'] | ForEach-Object { $_ -join ' ' } })) -join ' '
 Assert-Equal '2 False False' ('{0} {1} {2}' -f $ssnBooks.Count, $ssnShown.Contains($Sample.Ssn), $ssnCells.Contains($Sample.Ssn)) 'SSN-shaped site name: masked on screen and in the workbooks'
+
+# ---- One sign-in per host across "Scan more" rounds, and the sign-out at a cancel (the PAM, 2026-11-24) ----
+Reset-FakePnP @{ "$library/General/notes.txt" = $Txt }
+Set-FakeSiteAnswer -TypedSite @($siteB)
+$roundFolder = Join-Path $runFolder 'rounds'
+& $script -SiteUrl $Sample.Site -OutputFolder $roundFolder 6>$null
+$calls = @($global:FakePnP.Calls)
+$roundOrder = '{0}|{1}|{2}' -f ((Get-FakePnPConnection) -join ' '), (Get-FakeCallCount 'Disconnect-PnPOnline'), ($calls.IndexOf('Disconnect-PnPOnline') -gt $calls.IndexOf('Connect ' + $siteB))
+Assert-Equal ($Sample.Site + ' ' + $siteB + '|1|True') $roundOrder 'Scan more: no sign-out between rounds; one sign-out at the end'
+Assert-Equal 2 @(Get-ResultFiles $roundFolder).Count 'Scan more: one workbook per round'
+# A cancel at "Scan more" (as Ctrl+C) leaves the script with an error: the run still signs out.
+Reset-FakePnP @{ "$library/General/notes.txt" = $Txt }
+Set-FakeSiteAnswer -TypedSite @('cancel')
+$cancelError = ''
+try { & $script -SiteUrl $Sample.Site -OutputFolder (Join-Path $runFolder 'cancel-more') 6>$null } catch { $cancelError = $_.Exception.Message }  # expected
+Assert-Equal $true ($cancelError -match 'prompt cancelled' -and (Get-FakeCallCount 'Disconnect-PnPOnline') -eq 1) 'Cancel after a site scan: the run still signs out, one time'
+# A drive folder only (a mapped-drive form; it need not exist here): no sign-in, so no sign-out.
+Reset-FakePnP @{}
+& $script -SiteUrl 'X:\Unit\Shared' -OutputFolder (Join-Path $runFolder 'drive-out') 6>$null
+Assert-Equal '0 0' ('{0} {1}' -f @(Get-FakePnPConnection).Count, (Get-FakeCallCount 'Disconnect-PnPOnline')) 'Drive folder only: no sign-in and no sign-out'
 
 # ---- A report that cannot be saved: the script still signs out ----
 Reset-FakePnP @{}

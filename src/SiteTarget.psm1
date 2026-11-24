@@ -12,7 +12,9 @@ SiteTarget.psm1 - what the person gives Ion to scan, and the sign-in to that one
   Network:     the tenant root (one group-site lookup for a Teams link) and the one site; nothing lists other
                sites, teams or users ("No reconnaissance").
   Writes:      none.
-  Credentials: the person's own CAC sign-in (PnP web login). Nothing is stored.
+  Credentials: the person's own CAC sign-in (PnP web login). Nothing is stored. One sign-in per host: each next site
+               connects without a sign-out between sites; Find-ChannelPII.ps1 signs out once, at the end of the run
+               (the PAM, 2026-11-24; probe 3, second run: docs/reviews/2026-11-24-device-probe-3.md).
 #>
 
 Set-StrictMode -Version 2.0
@@ -123,8 +125,8 @@ function Get-ScanTarget {
 function Assert-SiteGroup {
     <#
     .SYNOPSIS
-      Checks that the connected site belongs to the team in the Teams link; throws when not (Connect-TeamSite
-      then signs out), so nothing of another site is read.
+      Checks that the connected site belongs to the team in the Teams link; throws when not, so nothing of another
+      site is read (Connect-TeamSite returns no site; the run signs out at its end).
     .PARAMETER GroupId
       The group ID from the Teams link.
     #>
@@ -215,7 +217,7 @@ function Find-TeamSiteByGroup {
     #>
     param([guid]$GroupId)
     Write-Ui "Teams link: looking up this team's site ..." 'Muted'
-    Write-Ui '  A sign-in window opens now, and a second one for the team site after it (if you do not see one, press Alt+Tab).' 'Muted'
+    Write-Ui '  If a sign-in window opens, sign in with your CAC. If you do not see the window, press Alt+Tab.' 'Muted'
     try {
         Connect-PnPOnline -Url $script:TenantRoot -UseWebLogin -WarningAction SilentlyContinue
         Set-SharePointTimeout
@@ -241,13 +243,33 @@ function Set-SharePointTimeout {
     if ($context.RequestTimeout -le 0 -or $context.RequestTimeout -gt $script:SharePointCallMs) { $context.RequestTimeout = $script:SharePointCallMs }
 }
 
+function Assert-ConnectedSite {
+    <#
+    .SYNOPSIS
+      Checks that the signed-in connection reaches the given site: its web's server-relative address equals the
+      site's path. A sign-in without a sign-out keeps the last site's connection when it fails; this check makes sure
+      that no read goes to that other site. Throws when the web is another site, or cannot be read (no access).
+    .PARAMETER Site
+      The site address that was signed in to.
+    #>
+    param([string]$Site)
+    $want = [uri]::UnescapeDataString(([uri]$Site).AbsolutePath).TrimEnd('/')
+    $web = Get-PnPWeb -Includes ServerRelativeUrl -ErrorAction Stop
+    $actual = ([string]$web.ServerRelativeUrl).TrimEnd('/')
+    if (-not [string]::Equals($actual, $want, [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'The sign-in did not reach this site. Nothing was scanned. Close Windows PowerShell ISE, open it again, and run Ion again.'
+    }
+}
+
 function Connect-TeamSite {
     <#
     .SYNOPSIS
       Signs in (own CAC, PnP web login) to the site and returns its address. For a Teams link (a team's or a
       channel's) it looks the site up at the tenant root (Find-TeamSiteByGroup), and asks for the site address only
-      when that fails; it then checks that the site belongs to the team in the link. It then checks that the person can open the site. On any error or cancel it signs out
-      and throws a message a person can act on (ConvertTo-FriendlyError).
+      when that fails; it then checks that the site belongs to the team in the link. It then checks that the connection
+      reaches that site (Assert-ConnectedSite) and that the person can open it. On any error it throws a message a
+      person can act on (ConvertTo-FriendlyError). It does not sign out: the next site connects without a sign-out,
+      and Find-ChannelPII.ps1 signs out once at the end of the run, after an error or Ctrl+C too (the PAM, 2026-11-24).
     .PARAMETER Target
       Output of Get-ScanTarget.
     .OUTPUTS
@@ -255,7 +277,6 @@ function Connect-TeamSite {
     #>
     param($Target)
     $site = $Target.SiteUrl
-    $ok = $false   # set only at the end: a cancel (Ctrl+C, Cancel on a prompt) skips 'catch' but not 'finally'
     $signingIn = $false   # true only while the sign-in itself runs: only its errors get the sync steps (review of PR 59)
     try {
         if ($null -ne $Target.GroupId) {
@@ -269,15 +290,14 @@ function Connect-TeamSite {
             }
         }
         Write-Ui ('Signing in to ' + (Protect-PiiName $site) + ' ...') 'Muted'
-        Write-Ui '  A sign-in window opens (if you do not see it, press Alt+Tab). If it says you have no access, close it.' 'Muted'
+        Write-Ui '  If a sign-in window opens, sign in with your CAC. If you do not see the window, press Alt+Tab. If it says that you have no access, close it.' 'Muted'
         # PnP prints a warning that suggests -Interactive (and its update notice): not useful to the person, so hidden (the PAM, 2026-11-20).
         $signingIn = $true
         Connect-PnPOnline -Url $site -UseWebLogin -WarningAction SilentlyContinue
         $signingIn = $false
         Set-SharePointTimeout
-        $null = Get-PnPWeb -ErrorAction Stop   # can this person open the site? A refusal here is "no access", before any scan
+        Assert-ConnectedSite $site   # also: can this person open the site? A refusal here is "no access", before any scan
         if ($null -ne $Target.GroupId) { Assert-SiteGroup $Target.GroupId }
-        $ok = $true
         return $site
     }
     catch {
@@ -285,12 +305,6 @@ function Connect-TeamSite {
         # Not "no access", "not found" or "sign-in not finished": the sign-in itself does not work here (blocked, missing).
         if ($signingIn -and $friendly -eq (Protect-PiiText $_.Exception.Message)) { $friendly += $script:SyncSteps }
         throw $friendly
-    }
-    finally {
-        # No scan starts after an error or a cancel here: sign out, so no connection stays open in the ISE session.
-        if (-not $ok) {
-            try { Disconnect-PnPOnline } catch { Write-Verbose 'Already signed out.' }  # nothing to sign out of: not an error
-        }
     }
 }
 

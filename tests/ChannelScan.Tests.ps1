@@ -76,7 +76,8 @@ Set-FakeSiteAnswer -TypedSite 'https://tenant.example.com/teams/TeamB' -SiteGrou
 $refused = $false
 try { Connect-TeamSite (Get-ScanTarget $teamLink) 6>$null | Out-Null } catch { $refused = $true }  # expected: another team's site
 Assert-Equal $true $refused 'Site of another team refused'
-Assert-Equal $true (Test-FakePnPCall 'Disconnect-PnPOnline') 'Signed out of the other team site'
+# One sign-in per host (the PAM, 2026-11-24): Connect-TeamSite does not sign out; the run signs out once at its end.
+Assert-Equal $false (Test-FakePnPCall 'Disconnect-PnPOnline') 'Site of another team: no sign-out here (the run signs out at its end)'
 Reset-FakePnP @{}
 Set-FakeSiteAnswer -TypedSite 'not an address'
 $refused = $false
@@ -94,7 +95,7 @@ Reset-FakePnP @{}
 Set-FakeSiteAnswer -TypedSite 'cancel'
 $refused = $false
 try { Connect-TeamSite (Get-ScanTarget $teamLink) 6>$null | Out-Null } catch { $refused = ($_.Exception.Message -match 'did not finish') }  # expected
-Assert-Equal $true ($refused -and (Test-FakePnPCall 'Read-Host') -and (Test-FakePnPCall 'Disconnect-PnPOnline')) 'Failed address prompt: signed out'
+Assert-Equal $true ($refused -and (Test-FakePnPCall 'Read-Host') -and -not (Test-FakePnPCall 'Disconnect-PnPOnline')) 'Failed address prompt: refused, no sign-out here (the run signs out at its end)'
 $twoLinks = 'https://teams.example.com/l/team/A see also https://teams.example.com/l/team/B?groupId=' + $groupId
 $refused = $false
 try { Get-ScanTarget $twoLinks | Out-Null } catch { $refused = $true }  # expected: the first link has no groupId
@@ -111,6 +112,12 @@ Assert-Equal $Sample.Site (Connect-TeamSite (Get-ScanTarget $Sample.Site) 6>$nul
 Assert-Equal $false (Test-FakePnPCall 'Read-Host') 'Site address: no address prompt'
 Assert-Equal $false (Test-FakePnPCall 'Disconnect-PnPOnline') 'Site address: still signed in after success'
 Assert-Equal $Sample.Site ((Get-FakePnPConnection) -join ' ') 'Site address: one sign-in, to that site'
+# A sign-in without a sign-out keeps the last connection when it fails: a web of another site is refused, nothing read.
+Reset-FakePnP @{}
+Set-FakePnPOption StaleWeb $true
+$staleError = ''
+try { Connect-TeamSite (Get-ScanTarget $Sample.Site) 6>$null | Out-Null } catch { $staleError = $_.Exception.Message }  # expected: another site's web
+Assert-Equal $true ($staleError -match 'did not reach this site') 'Connection reaches another site: refused before any read'
 $meter = @{ Total = 40; Done = 10; Read = 8; Skipped = 2; Hits = 3; HitItems = 2; Clock = [pscustomobject]@{ Elapsed = [TimeSpan]::FromSeconds(30) } }
 $expected = '10 of 40 files (25%) | read 8 | not scanned 2 | possible PII 3 in 2 files | 00:30 elapsed, about 01:30 left'
 Assert-Equal $expected (Get-ScanMeterText $meter 'file') 'Meter text (the scan bar middle line): done of total with percent, counts, time elapsed and left'
