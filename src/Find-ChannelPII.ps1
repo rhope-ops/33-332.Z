@@ -80,17 +80,17 @@ function Invoke-SiteFiles {
       The base folder for the results.
     .PARAMETER MaxFileMB
       Files larger than this are reported as NOT SCANNED.
+    .PARAMETER AutoStart
+      Do not ask "Scan now?": the person said yes to the whole list of targets.
     .OUTPUTS
       [string] the workbook path.
     #>
-    param([string]$SiteUrl, [string]$OutputFolder, [int]$MaxFileMB)
-    $path = $null
-    $clock = [Diagnostics.Stopwatch]::StartNew()
-    $rows = New-Object System.Collections.Generic.List[object]
+    param([string]$SiteUrl, [string]$OutputFolder, [int]$MaxFileMB, [switch]$AutoStart)
+    $path = $null; $clock = [Diagnostics.Stopwatch]::StartNew(); $rows = New-Object System.Collections.Generic.List[object]
     $scanned = 0; $selected = @()
     $folderLabel = 'Folder'   # 'Channel' when the site belongs to a team (the PAM, 2026-11-20)
     $listName = ''            # what the header lists: 'Channels', 'Folders' or 'Libraries'
-    $progress = @{}      # Invoke-FileScan puts its live meter here
+    $progress = @{ AutoStart = [bool]$AutoStart }   # Invoke-FileScan puts its live meter here
     $finished = $false   # set only after the last step; a cancelled run (Ctrl+C) skips 'catch' but not 'finally'
     try {
         # Only the column name depends on it: if the site's group cannot be read, the scan goes on with 'Folder'.
@@ -173,36 +173,93 @@ function Open-ScanResult {
     catch { Write-Ui ('The workbook could not be opened: ' + (Protect-PiiText $_.Exception.Message) + '. Open it from the folder above.') 'Accent' }
 }
 
+function Invoke-ScanTarget {
+    <#
+    .SYNOPSIS
+      Scans one target (a drive folder, or a site after its sign-in) and saves its workbook. With List: no "Scan now?"
+      and no "Open the workbook now?" (asked once for the whole list). Never throws: a failure is the result's Note.
+    .PARAMETER Target
+      Output of Get-ScanTarget.
+    .PARAMETER List
+      Part of a list of several targets.
+    .OUTPUTS
+      [pscustomobject] Label, Path (the workbook, or empty), Note (why there is none), Time, SignedIn.
+    #>
+    param($Target, [switch]$List)
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    $result = [pscustomobject]@{ Label = (Get-TargetLabel $Target); Path = ''; Note = ''; Time = ''; SignedIn = $false }
+    $saving = $true   # false only during the sign-in, whose errors are already in words a person can act on
+    try {
+        if ($Target.DrivePath) {
+            # A drive or network folder: no sign-in (the Windows logon); read-only; nothing above the folder.
+            $result.Path = Invoke-DriveScan -Path $Target.DrivePath -OutputFolder $OutputFolder -MaxFileMB $MaxFileMB -Init $IonWorkerInit -AutoStart:$List
+        }
+        else {
+            $result.SignedIn = $true   # a sign-in is tried (Connect-TeamSite signs out again on every path)
+            $saving = $false; $site = Connect-TeamSite $Target; $saving = $true
+            $result.Label = $site
+            $result.Path = Invoke-SiteFiles -SiteUrl $site -OutputFolder $OutputFolder -MaxFileMB $MaxFileMB -AutoStart:$List
+        }
+        if (-not $result.Path) { $result.Note = 'Not scanned: nothing was saved.' }
+    }
+    catch {
+        # A site that cannot be opened, or results that cannot be saved: reported; the next target still runs.
+        $result.Note = Protect-PiiText $_.Exception.Message
+        if ($saving) { $result.Note = 'The results could not be saved: ' + $result.Note }
+        Write-Ui $result.Note 'Alert'
+    }
+    $result.Time = Format-Duration $clock.Elapsed
+    if (-not $List) { Open-ScanResult $result.Path }
+    return $result
+}
+
+function Show-ListResult {
+    <#
+    .SYNOPSIS
+      After a list of targets: one line per target (its workbook, or why there is none, and the time), then offers to
+      open the results folder (Enter = yes). Only the local folder is opened; nothing is sent.
+    .PARAMETER Results
+      Outputs of Invoke-ScanTarget, in the order scanned.
+    #>
+    param([object[]]$Results)
+    Write-Banner ('Done: {0} of {1} saved' -f @($Results | Where-Object { $_.Path }).Count, $Results.Count)
+    $n = 0
+    foreach ($r in $Results) {
+        $n++
+        if ($r.Path) { Write-Ui ('{0,2}. {1} ({2}): {3}' -f $n, $r.Label, $r.Time, (Split-Path $r.Path -Leaf)) 'Good' }
+        else { Write-Ui ('{0,2}. {1} ({2}): {3}' -f $n, $r.Label, $r.Time, $r.Note) 'Alert' }
+    }
+    $answer = Read-Host 'Open the results folder now? [Y/n]'
+    if ($answer -and $answer.Trim() -match '^(n|no)$') { return }
+    try { Invoke-Item -LiteralPath $OutputFolder } catch { Write-Ui ('The folder could not be opened: ' + (Protect-PiiText $_.Exception.Message)) 'Accent' }
+}
+
 Write-Banner 'Ion - DoD365 PII Reporter' -Mark
 Write-Ui 'Read-only. Every PII value found is masked on screen and in the results.' 'Muted'
 # What it scans and how to stop early (the PAM, 2026-11-21): a cancel still saves the results so far ('finally').
-Write-Ui ('Scans the files of one Teams team, SharePoint site or drive folder. Files over {0} MB are listed, not read.' -f $MaxFileMB) 'Muted'
+Write-Ui ('Scans the files of Teams teams, SharePoint sites or drive folders you paste. Files over {0} MB are listed, not read.' -f $MaxFileMB) 'Muted'
 Write-Ui 'To stop early: Ctrl+C (in ISE: the red Stop button). The results so far are still saved.' 'Muted'
 $signedIn = $false   # the closing line says "nothing stays signed in" only after a site scan (a drive needs no sign-in)
 
-# ---- Ask for a site, sign in, scan, save; then offer another site, until the person presses Enter ----
-# A wrong paste is explained and asked again (Read-ScanTarget); a site the person cannot open is reported as
-# "no access" and nothing is saved for it (Connect-TeamSite); only the one site given is touched each time.
-$target = Read-ScanTarget $SiteUrl 'What to scan'
-while ($null -ne $target) {
-    $site = $null
-    if ($target.DrivePath) {
-        # A drive or network folder: no sign-in (the Windows logon); read-only; nothing above the folder.
-        try { Open-ScanResult (Invoke-DriveScan -Path $target.DrivePath -OutputFolder $OutputFolder -MaxFileMB $MaxFileMB -Init $IonWorkerInit) }
-        catch { Write-Ui ('The results could not be saved: ' + (Protect-PiiText $_.Exception.Message)) 'Alert' }
-        Write-Ui ''
-        $target = Read-ScanTarget '' 'Scan another: paste it, or press Enter to exit' -NoHelp
-        continue
+# ---- Ask for one or more targets, then scan each and save its workbook; then offer more, until the person presses Enter ----
+# A wrong paste is explained and asked again (Read-ScanTarget); a site the person cannot open is reported as "no access"
+# and nothing is saved for it (Connect-TeamSite); only the targets the person pastes are touched ("No reconnaissance").
+$targets = @(Read-ScanTargetList $SiteUrl 'What to scan')
+while ($targets.Count -gt 0) {
+    $list = $targets.Count -gt 1
+    $go = $true
+    if ($list) {   # several: listed and asked once (the PAM, 2026-11-24: one workbook per site)
+        Write-Ui ('{0} to scan, one after the other (a sign-in window for each site):' -f $targets.Count) 'Label'
+        $n = 0; foreach ($t in $targets) { $n++; Write-Ui ('{0,2}. {1}' -f $n, (Get-TargetLabel $t)) 'Text' }
+        $answer = Read-Host ('Scan these {0} now? [Y/n]' -f $targets.Count)
+        $go = -not ($answer -and $answer.Trim() -match '^(n|no)$')
     }
-    $signedIn = $true   # a sign-in is tried (Connect-TeamSite signs out again on every path)
-    try { $site = Connect-TeamSite $target }
-    catch { Write-Ui $_.Exception.Message 'Alert' }
-    if ($site) {
-        # A results file that cannot be saved (a folder that cannot be written) is reported; the next site is still offered.
-        try { Open-ScanResult (Invoke-SiteFiles -SiteUrl $site -OutputFolder $OutputFolder -MaxFileMB $MaxFileMB) }
-        catch { Write-Ui ('The results could not be saved: ' + (Protect-PiiText $_.Exception.Message)) 'Alert' }
+    if ($go) {
+        $results = @(foreach ($t in $targets) { Invoke-ScanTarget $t -List:$list; Write-Ui '' })
+        if (@($results | Where-Object { $_.SignedIn }).Count) { $signedIn = $true }
+        if ($list) { Show-ListResult $results }
     }
     Write-Ui ''
-    $target = Read-ScanTarget '' 'Scan another: paste it, or press Enter to exit' -NoHelp
+    $targets = @(Read-ScanTargetList '' 'Scan more: paste it, or press Enter to exit' -NoHelp)
 }
 if ($signedIn) { Write-Ui 'Ion is done: nothing stays signed in.' 'Good' } else { Write-Ui 'Ion is done.' 'Good' }
