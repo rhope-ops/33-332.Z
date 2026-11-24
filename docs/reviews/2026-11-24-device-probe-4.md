@@ -13,21 +13,26 @@ passes here.
 - It prints only True or False, counts, error kinds and times. It prints no name, no address, no path and no value
   from a file.
 - It touches only the folder you give and the site of its OneDrive address: it reads the list of that site's
-  libraries, and at most 5000 items of the one library whose root is the address. It reads at most 1 file of at
+  libraries, at most 5000 items of the one library whose root is the address, and looks up at most 20 of its files
+  by their web address. It reads at most 1 file of at
   most 5 MB from the web, into memory only. It reads that file from the disk only when it is on the disk (an
   online-only file is not read, so OneDrive downloads nothing).
 
 | Line | It shows |
 |---|---|
+| P4 folder found=False | the path in Question 1 is not a folder: the probe stops |
+| P4 no OneDrive entry holds this folder | the folder is not synced by OneDrive: the probe stops |
 | P4 matching entries | how many OneDrive sync entries hold the folder |
 | P4 entries with the chosen folder | of these, how many have the chosen folder, and how many different web addresses they have |
 | P4 entry is the OneDrive home folder | True: your own OneDrive; False: a synced library or a shortcut |
 | P4 local files | the files on the disk (online-only files too) |
+| P4 sign-in | the sign-in to the site of the OneDrive address |
 | P4 library with this root | a web library whose root is the mapped address |
-| P4 web listing | the files of the same folder on the web |
+| P4 web listing | the items listed, the item kinds (FSObjType 0 = file, 1 = folder), and the files of the same folder on the web |
+| P4 no web listing | the listing failed: the probe prints no counts after it |
 | P4 names | the file names on both sides, on the web only, on the disk only |
 | P4 web files checked | of at most 20 web files: how many are at the mapped local path, with the same size, found by their web path, and errors |
-| P4 web read, P4 disk read | the smallest web file, read from the web and from the disk: the same size as on the web (the disk read is skipped for an online-only file) |
+| P4 web read, P4 disk read | the smallest web file, read from the web and from the disk: the same size as on the web (a "P4 disk read skipped" line shows when the file is not at the mapped local path, or is online only) |
 | P4 stopped | an error stopped the probe: its kind |
 
 ## How to run it
@@ -58,12 +63,14 @@ The probe is a .txt file (Project rules, "Paste format"): `docs/reviews/2026-11-
     1. Press **Ctrl+V**.
     2. Press **Enter**.
     You see that the screen clears. Go on.
-13. If a sign-in window opens, sign in with your CAC. Write down the number of sign-in windows and PIN prompts. Wait until the line **Done.** shows. Do not copy before then.
-14. In the ISE output pane, do these actions:
+13. If a sign-in window asks "continue running scripts", click **Yes**. You see the CAC sign-in. Go on.
+14. If a sign-in window opens, sign in with your CAC. The window closes. Write down the number of sign-in windows and PIN prompts.
+15. In the ISE output pane, wait until the line **Done.** shows. Do not copy before then.
+16. In the ISE output pane, do these actions:
     1. Select the lines from the first line to **Done.**.
     2. Press **Ctrl+C**.
     You see the lines selected. Go on.
-15. In an e-mail to yourself, do these actions:
+17. In an e-mail to yourself, do these actions:
     1. Press **Ctrl+V**.
     2. Type the number of sign-in windows and the number of PIN prompts that you wrote down.
     3. Send the message.
