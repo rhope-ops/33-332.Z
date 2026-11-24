@@ -1,6 +1,6 @@
 # Ion detector fixes: handoff (2026-11-24)
 
-Paused at the PAM's request. Nothing merged or released. Approvals by the PAM in chat, 2026-11-24 (the plan below):
+Paused at the PAM's request. Step 1 (PR 60) merged; steps 2-5 open. Approvals by the PAM in chat, 2026-11-24 (the plan below):
 merge PR 60 and PR 61 after a fresh review with no MAJOR; e-signature DoD IDs Low; an SSN swaps to a DoD ID only after a
 signature word or when the digits touch the CAC name (S23, S24, E stay SSN); passport over SSN; split the 2 name defects
 into their own PR; speed budget: +15% on prose and form rows, 2x on signature-heavy text, extra time accepted where new
@@ -8,10 +8,12 @@ IDs are found; workbook changes, all 4 groups (below). Record these in docs/DECI
 
 ## Open, in order
 
-1. PR 60 (claude/ion-esig-dodid, head 013ca82): fresh review of the last commit (the sixth review's fixes: word cut, prose
-   speed, dates, binary-search add-pass). Design: main's detectors unchanged; src/PiiDetectors.psm1 Find-SignedIdHits
-   lists candidates, Add-SignedIdHits adds them after the overlap removal only where no kept hit is. Evidence:
-   docs/reviews/2026-11-23-ion-esignature-layouts.md on that branch. Then add the DECISIONS rows and merge.
+1. Done 2026-11-23 22:32 CST: PR 60 merged (8d1e03e). Seventh review: 2 MAJOR (an ID one gap after a hit; the seen
+   mark), fixed in 006919f; eighth review: no MAJOR. Open, the PAM's DEC 2026-11-24: a follow-up PR narrows the 013ca82
+   guards ("digit, one gap, then the ID" after a signature word; 3-7 after a CAC name): docs/reviews/2026-11-23-ion-
+   esignature-layouts.md, Known gaps. Open with the PAM: PR 57 (another session, same feature) now conflicts with main.
+   Method addition: a gate oracle (a speed filter off must give the same output); never Regex.Match(text, start) in a
+   loop on long text (2.4 ms a call in pwsh 7).
 2. PR 61 (claude/ion-five-defects, head fd64a8e): fix the seventh review's MAJOR: the passport skip in Find-SsnHits
    must apply only to ASCII digits (`$m.Value -match '^[0-9 ]+$'`), with a test (full-width digits after "Passport:");
    optional MINOR: e-mail grow crosses Unicode spaces not in $MailNameEnd. Then a fresh review, merge main into the
