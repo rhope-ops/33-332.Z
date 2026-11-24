@@ -4,6 +4,8 @@
 $ErrorActionPreference = 'Stop'
 $folder = (Read-Host 'Question 1: a OneDrive folder that has files (paste the path)').Trim().Trim('"').TrimEnd('\')
 Clear-Host
+$signedIn = $false
+try {
 function Get-Kind($err) {
     $m = [string]$err.Exception.Message
     $kind = 'Other'
@@ -18,17 +20,20 @@ function Test-Step($tag, [scriptblock]$step) {
     $clock = [Diagnostics.Stopwatch]::StartNew()
     try { $r = & $step; '{0} ok=True {1} ms={2}' -f $tag, $r, $clock.ElapsedMilliseconds } catch { '{0} ok=False {1} ms={2}' -f $tag, (Get-Kind $_), $clock.ElapsedMilliseconds }
 }
-if (-not $folder -or -not (Test-Path -LiteralPath $folder -PathType Container)) { 'P4 folder found=False'; return }
+if (-not $folder -or -not (Test-Path -LiteralPath $folder -PathType Container)) { 'P4 folder found=False'; return }   # 'finally' prints Done.
 # The OneDrive app's own list (read-only): the synced folder that holds this folder, and its web address. The longest one wins.
-$match = $null; $count = 0
+$match = $null; $count = 0; $all = @()
 foreach ($p in @(Get-ChildItem -Path 'HKCU:\Software\SyncEngines\Providers\OneDrive' -ErrorAction SilentlyContinue)) {
     $mount = [string]$p.GetValue('MountPoint'); $ns = [string]$p.GetValue('UrlNamespace')
     if ($mount -and $ns -and ($folder + '\').StartsWith($mount.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
-        $count++; if (-not $match -or $mount.Length -gt $match.Mount.Length) { $match = @{ Mount = $mount.TrimEnd('\'); Ns = $ns.TrimEnd('/') } }
+        $count++; $all += @{ Mount = $mount.TrimEnd('\'); Ns = $ns.TrimEnd('/') }; if (-not $match -or $mount.Length -gt $match.Mount.Length) { $match = @{ Mount = $mount.TrimEnd('\'); Ns = $ns.TrimEnd('/') } }
     }
 }
 'P4 matching entries={0}' -f $count
-if (-not $match) { 'Done. No OneDrive entry holds this folder.'; return }
+if (-not $match) { 'P4 no OneDrive entry holds this folder'; return }
+# Probe 3 found 2 entries: do they have the same folder and the same web address?
+$same = @($all | Where-Object { $_.Mount -eq $match.Mount })
+'P4 entries with the chosen folder={0} different web addresses among them={1}' -f $same.Count, @($same | ForEach-Object { $_.Ns } | Sort-Object -Unique).Count
 $homes = @(foreach ($n in @('OneDrive', 'OneDriveCommercial')) { [Environment]::GetEnvironmentVariable($n) }) | Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\') }
 'P4 entry is the OneDrive home folder={0}' -f [bool]($homes -contains $match.Mount)
 # Local files: not hidden or system. Online-only files count too (they are on the web).
@@ -40,9 +45,9 @@ $sitePath = if ($nsPath -match '^/(personal|sites|teams)/[^/]+') { $Matches[0] }
 $site = ([uri]$match.Ns).GetLeftPart([UriPartial]::Authority) + $sitePath
 $webFolder = $nsPath + $folder.Substring($match.Mount.Length).Replace('\', '/')
 $clock = [Diagnostics.Stopwatch]::StartNew()
+$signedIn = $true   # before the sign-in: a stop during it still signs out
 try { Connect-PnPOnline -Url $site -UseWebLogin -WarningAction SilentlyContinue; 'P4 sign-in ok=True ms={0}' -f $clock.ElapsedMilliseconds }
-catch { 'P4 sign-in ok=False {0} ms={1}' -f (Get-Kind $_), $clock.ElapsedMilliseconds; 'Done.'; return }
-try {
+catch { 'P4 sign-in ok=False {0} ms={1}' -f (Get-Kind $_), $clock.ElapsedMilliseconds; return }
     $script:lib = $null; $script:web = @()
     Test-Step 'P4 library with this root' {
         $libs = @(Get-PnPList -Includes RootFolder | Where-Object { $_.BaseTemplate -eq 700 -or $_.BaseTemplate -eq 101 })
@@ -51,8 +56,8 @@ try {
     }
     if ($script:lib) {
         Test-Step 'P4 web listing' {
-            $items = @(Get-PnPListItem -List $script:lib -PageSize 500 -Fields 'FileRef', 'FileDirRef', 'FileLeafRef', 'File_x0020_Size' | Select-Object -First 5000)
-            $script:web = @($items | Where-Object { $_.FileSystemObjectType -eq 'File' -and ([string]$_['FileDirRef']).TrimEnd('/') -eq $webFolder })
+            $items = @(Get-PnPListItem -List $script:lib -PageSize 500 -Fields 'FileRef', 'FileDirRef', 'FileLeafRef', 'File_x0020_Size', 'FSObjType' | Select-Object -First 5000)
+            $script:web = @($items | Where-Object { [string]$_['FSObjType'] -eq '0' -and ([string]$_['FileDirRef']).TrimEnd('/') -eq $webFolder })
             $folderThere = @($items | Where-Object { ([string]$_['FileRef']).TrimEnd('/') -eq $webFolder }).Count -gt 0
             'listed={0} stopped at 5000={1} web folder found={2} web files in it={3}' -f $items.Count, ($items.Count -ge 5000), ($folderThere -or $webFolder -eq $nsPath), $script:web.Count
         }
@@ -61,24 +66,31 @@ try {
         $both = @($localNames | Where-Object { $webNames -contains $_ }).Count
         'P4 names: on both={0} web only={1} local only={2}' -f $both, ($webNames.Count - $both), ($localNames.Count - $both)
         # Each web file (at most 20): is it at the mapped local path, with the same size? Does path A find it?
-        $atLocal = 0; $sameSize = 0; $foundA = 0; $checked = 0
+        $atLocal = 0; $sameSize = 0; $foundA = 0; $checked = 0; $errors = 0
         foreach ($w in @($script:web | Select-Object -First 20)) {
             $checked++
             $ref = [string]$w['FileRef']
             $mapped = $match.Mount + $ref.Substring($nsPath.Length).Replace('/', '\')
             $f = Get-Item -LiteralPath $mapped -Force -ErrorAction SilentlyContinue
             if ($f) { $atLocal++; if ([long]$f.Length -eq [long]$w['File_x0020_Size']) { $sameSize++ } }
-            try { if (Get-PnPFile -Url $ref -AsListItem) { $foundA++ } } catch { Write-Verbose 'not found' }
+            try { if (Get-PnPFile -Url $ref -AsListItem) { $foundA++ } } catch { $errors++ }   # a missing file returns nothing; an error is another kind
         }
-        'P4 web files checked={0} at the mapped local path={1} same size={2} found by their web path={3}' -f $checked, $atLocal, $sameSize, $foundA
+        'P4 web files checked={0} at the mapped local path={1} same size={2} found by their web path={3} errors={4}' -f $checked, $atLocal, $sameSize, $foundA, $errors
         # The smallest web file of at most 5 MB: read it from the web (into memory only) and from the disk.
         $small = @($script:web | Where-Object { [long]$_['File_x0020_Size'] -gt 0 -and [long]$_['File_x0020_Size'] -le 5MB } | Sort-Object { [long]$_['File_x0020_Size'] } | Select-Object -First 1)
         if ($small) {
             $ref = [string]$small[0]['FileRef']
             Test-Step 'P4 web read' { $s = Get-PnPFile -Url $ref -AsMemoryStream; $n = $s.Length; $s.Dispose(); 'bytes equal web size={0}' -f ($n -eq [long]$small[0]['File_x0020_Size']) }
-            Test-Step 'P4 disk read' { $b = [IO.File]::ReadAllBytes($match.Mount + $ref.Substring($nsPath.Length).Replace('/', '\')); 'bytes equal web size={0}' -f ($b.Length -eq [long]$small[0]['File_x0020_Size']) }
+            # Read from the disk only a file that is on the disk: an online-only file would be downloaded (a write).
+            $f = Get-Item -LiteralPath ($match.Mount + $ref.Substring($nsPath.Length).Replace('/', '\')) -Force -ErrorAction SilentlyContinue
+            if (-not $f) { 'P4 disk read skipped: not at the mapped local path' }
+            elseif ($f.Attributes -band 0x441000) { 'P4 disk read skipped: online only' }
+            else { Test-Step 'P4 disk read' { $b = [IO.File]::ReadAllBytes($f.FullName); 'bytes equal web size={0}' -f ($b.Length -eq [long]$small[0]['File_x0020_Size']) } }
         }
     }
 }
-finally { try { Disconnect-PnPOnline } catch { Write-Verbose 'Already signed out.' } }
-Write-Host 'Done. The lines above show True/False, counts, error kinds and times only. Copy them into an e-mail to yourself.'
+catch { 'P4 stopped ok=False {0}' -f (Get-Kind $_) }
+finally {
+    if ($signedIn) { try { Disconnect-PnPOnline } catch { Write-Verbose 'Already signed out.' } }
+    Write-Host 'Done. The lines above show True/False, counts, error kinds and times only. Copy them into an e-mail to yourself.'
+}
