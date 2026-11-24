@@ -143,7 +143,27 @@ Speed, second call in its own process, median of 5, main / branch (budget: the P
 5,000 tab rows 11.1 / 11.6 s (1.05x). 1,000 blocks where the branch finds 2 IDs that main misses: 330 / 1,565 ms; this
 extra time is the new hits (the budget does not name this case: open with the PAM).
 
+## Sixth review fixes (013ca82) and the seventh fresh review (2026-11-24)
+
+013ca82 (not reviewed when the last session stopped): signature words found once on the whole text; a 40-character test
+for "a word wholly before"; a month-day-year date and a 3-7 grouping are no ID; binary searches over the kept hits.
+The seventh review (on 6127481, main merged in) found 2 MAJOR, both IDs that 78487d1 found and 013ca82 lost (main finds
+none of them): (1) a digit run that starts in a phone, ZIP or other hit hid the ID one gap after it; (2) a candidate
+that needs a signature word was marked "seen" before its word test and blocked a sure one at the same digits. Fixed: the
+digit scan looks again just after such a hit (Get-FreeDigitRun; a short substring, because Regex.Match with a start
+index reads far on long text: 14 s on 1.2 MB in pwsh 7); the mark is set after the word test. 8 tests (the review's shapes).
+Evidence (generated texts, seed 20261124, 7,260 texts, scratchpad only): the digit-scan filter on and off give the same
+output on every text; main's hits are kept except the approved SSN-to-DoD-ID swaps (310); against 78487d1 only these
+classes differ: 3-7 groupings (an intended phone rule), spaced digits that run into a trailing number, and the class below.
+Speed, fastest of 10 calls, 3 processes, main / branch: 2,000 signature blocks main finds 327 / 338 ms (1.03x; 2x);
+1.2 MB prose with a signature word every 1,400 characters 834 / 955 ms (1.15x; +15%); 5,000 rows of a bare 10-digit
+number 97 / 134 ms (1.38x; +15%), but 130-144 / 144-158 ms (about 1.1x) in a second pair of processes: noisy; open.
+
 ## Known gaps (not fixed here)
+- Open with the PAM (2026-11-24), from 013ca82: after a signature word, bare digits just after another digit and one
+  space, tab, dot or slash are no ID ("signed", a date, a time, a year or a page number, then the ID: 0 of 400 found;
+  78487d1 found 399; main finds none). Also the 3-7 guard applies after a CAC name and white space, not only to bare
+  digits (seventh review, MINOR). Both guards are wider than their purpose; tests pin 2 cases "as on main".
 
 - A labelled DoD ID with gaps ("EDIPI 123 45 6789 0") is still an SSN Medium: the label rule takes 10 digits in a row only.
 - A title-case or lower-case CAC name with no signature word is not a signature (precision: "backup.config.").

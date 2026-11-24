@@ -19,7 +19,7 @@
 
   Built from these files; to change it, change them and rebuild with: python3 scripts/build_paste.py
     src/PiiPatterns.psm1, sha256 fa404253fe78
-    src/PiiDetectors.psm1, sha256 6569dc694450
+    src/PiiDetectors.psm1, sha256 199a79911424
     src/PiiMasking.psm1, sha256 752c251a94b2
     src/OcrText.psm1, sha256 a39acab441d4
     src/OleText.psm1, sha256 2f5d0a036e97
@@ -55,31 +55,31 @@
     line    96  Reader block
     line   102  Module PiiPatterns.psm1
     line   502  Module PiiDetectors.psm1
-    line   863  Module PiiMasking.psm1
-    line  1063  Module OcrText.psm1
-    line  1216  Module OleText.psm1
-    line  1355  Module ContainerText.psm1
-    line  1694  Module PdfCore.psm1
-    line  2056  Module PdfObjects.psm1
-    line  2414  Module PdfFonts.psm1
-    line  2732  Module PdfShown.psm1
-    line  2983  Module PdfLayout.psm1
-    line  3123  Module PdfContent.psm1
-    line  3453  Module PdfText.psm1
-    line  3645  Module TextExtract.psm1
-    line  4063  Module ReaderPool.psm1
-    line  4388  Reader block end
-    line  4392  Module XlsxWriter.psm1
-    line  4699  Module Report.psm1
-    line  5075  Module ReportBook.psm1
-    line  5287  Module ScanMeter.psm1
-    line  5684  Module ScanQueue.psm1
-    line  6074  Module Accountability.psm1
-    line  6458  Module SiteTarget.psm1
-    line  6753  Module ChannelScan.psm1
-    line  7155  Module DriveScan.psm1
-    line  7520  Body of Find-ChannelPII.ps1
-    line  7661  Clean-up
+    line   896  Module PiiMasking.psm1
+    line  1096  Module OcrText.psm1
+    line  1249  Module OleText.psm1
+    line  1388  Module ContainerText.psm1
+    line  1727  Module PdfCore.psm1
+    line  2089  Module PdfObjects.psm1
+    line  2447  Module PdfFonts.psm1
+    line  2765  Module PdfShown.psm1
+    line  3016  Module PdfLayout.psm1
+    line  3156  Module PdfContent.psm1
+    line  3486  Module PdfText.psm1
+    line  3678  Module TextExtract.psm1
+    line  4096  Module ReaderPool.psm1
+    line  4421  Reader block end
+    line  4425  Module XlsxWriter.psm1
+    line  4732  Module Report.psm1
+    line  5108  Module ReportBook.psm1
+    line  5320  Module ScanMeter.psm1
+    line  5717  Module ScanQueue.psm1
+    line  6107  Module Accountability.psm1
+    line  6491  Module SiteTarget.psm1
+    line  6786  Module ChannelScan.psm1
+    line  7188  Module DriveScan.psm1
+    line  7553  Body of Find-ChannelPII.ps1
+    line  7694  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -675,6 +675,44 @@ function Remove-OverlappingHits {
     return , $kept
 }
 
+function Get-FreeDigitRun {
+    <#
+    .SYNOPSIS
+      The starts of the 10-digit runs (with gaps) that no kept hit other than an SSN holds, sorted: the places where
+      Find-SignedIdHits can find an ID (CAC-name text that main found gives none, so it reads nothing more: speed).
+    .PARAMETER Text
+      The text to search.
+    .PARAMETER Starts
+      The kept hits' starts, sorted, with Order (their places in Kept).
+    .PARAMETER Order
+      See Starts.
+    .PARAMETER Kept
+      The kept hits.
+    .OUTPUTS
+      The run starts, as int[].
+    #>
+    param([string]$Text, [int[]]$Starts, [int[]]$Order, $Kept)
+    if ($Starts.Length -eq 0) { return , [int[]]@(foreach ($r in $script:DigitRun.Matches($Text)) { $r.Index }) }   # no hit: all (speed)
+    $list = New-Object System.Collections.Generic.List[int]
+    foreach ($r in $script:DigitRun.Matches($Text)) {
+        $at = $r.Index; $stop = $r.Index + $r.Length
+        while ($true) {
+            $p = [Array]::BinarySearch($Starts, $at)
+            if ($p -lt 0) { $p = (-bnot $p) - 1 }
+            $hold = if ($p -ge 0) { $Kept[$Order[$p]] } else { $null }
+            if ($null -eq $hold -or $hold.Detector -eq 'SSN' -or $hold.Index + $hold.Length -le $at) { $list.Add($at); break }
+            # The run starts in a hit: look again just after the hit, so an ID one gap after a phone or ZIP keeps its run
+            # (seventh review of PR 60). Only a short part of the text: Regex.Match with a start reads far on long text.
+            $from = $hold.Index + $hold.Length
+            if ($from -ge $stop) { break }   # the next run of Matches starts at or after $stop
+            $tail = $script:DigitRun.Match($Text.Substring($from, [Math]::Min($Text.Length, $stop + 40) - $from))
+            if (-not $tail.Success -or $from + $tail.Index -ge $stop) { break }
+            $at = $from + $tail.Index
+        }
+    }
+    return , $list.ToArray()
+}
+
 function Find-SignedIdHits {
     <#
     .SYNOPSIS
@@ -699,12 +737,7 @@ function Find-SignedIdHits {
     $found = New-Object System.Collections.Generic.List[object]   # (match, needs a signature word)
     $result = [pscustomobject]@{ Found = $found; WordStarts = [int[]]@(); WordEnds = [int[]]@() }
     # Every rule needs 10 digits: one fast scan first; none, then nothing else is read (speed on prose: review of PR 60).
-    $runs = [int[]]@(foreach ($r in $script:DigitRun.Matches($Text)) {
-        $p = [Array]::BinarySearch($Starts, $r.Index)
-        if ($p -lt 0) { $p = (-bnot $p) - 1 }
-        if ($p -ge 0 -and $Kept[$Order[$p]].Index + $Kept[$Order[$p]].Length -gt $r.Index -and $Kept[$Order[$p]].Detector -ne 'SSN') { continue }
-        $r.Index   # a run no other hit holds (signature text that the CAC-name rule already found: nothing to read)
-    })
+    $runs = Get-FreeDigitRun $Text $Starts $Order $Kept
     if ($runs.Length -eq 0) { return $result }
     $words = @([regex]::Matches($Text, $script:SignedWords))   # on the whole text, so no cut makes "assigned" a word
     $result.WordStarts = [int[]]@(foreach ($w in $words) { $w.Index })
@@ -758,7 +791,6 @@ function Add-SignedIdHits {
         $digits = $item[0].Groups['id']
         $end = $digits.Index + $digits.Length
         if ($seen.ContainsKey($digits.Index) -or $added[$digits.Index] -or $added[$end - 1]) { continue }
-        $seen[$digits.Index] = $true
         # The kept hits over the digits: from the last one that starts at or before them, in text order.
         $p = [Array]::BinarySearch($starts, $digits.Index)
         if ($p -lt 0) { $p = [Math]::Max(0, (-bnot $p) - 1) }
@@ -773,6 +805,7 @@ function Add-SignedIdHits {
         if ($place -lt 0) { $place = -bnot $place }
         $word = $place -lt $signed.WordStarts.Length -and $signed.WordEnds[$place] -le $at
         if ($item[1] -and -not $word) { continue }
+        $seen[$digits.Index] = $true   # only after the word test: a candidate that needs a word must not block a sure one
         $confidence = if (Test-DodIdLabelBefore $Text $digits.Index) { 'High' } else { 'Low' }; $sure = $word -or ($digits.Index -gt 0 -and $Text[$digits.Index - 1] -eq '.')
         $free = $true
         foreach ($k in $held) {

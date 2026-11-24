@@ -174,6 +174,44 @@ function Remove-OverlappingHits {
     return , $kept
 }
 
+function Get-FreeDigitRun {
+    <#
+    .SYNOPSIS
+      The starts of the 10-digit runs (with gaps) that no kept hit other than an SSN holds, sorted: the places where
+      Find-SignedIdHits can find an ID (CAC-name text that main found gives none, so it reads nothing more: speed).
+    .PARAMETER Text
+      The text to search.
+    .PARAMETER Starts
+      The kept hits' starts, sorted, with Order (their places in Kept).
+    .PARAMETER Order
+      See Starts.
+    .PARAMETER Kept
+      The kept hits.
+    .OUTPUTS
+      The run starts, as int[].
+    #>
+    param([string]$Text, [int[]]$Starts, [int[]]$Order, $Kept)
+    if ($Starts.Length -eq 0) { return , [int[]]@(foreach ($r in $script:DigitRun.Matches($Text)) { $r.Index }) }   # no hit: all (speed)
+    $list = New-Object System.Collections.Generic.List[int]
+    foreach ($r in $script:DigitRun.Matches($Text)) {
+        $at = $r.Index; $stop = $r.Index + $r.Length
+        while ($true) {
+            $p = [Array]::BinarySearch($Starts, $at)
+            if ($p -lt 0) { $p = (-bnot $p) - 1 }
+            $hold = if ($p -ge 0) { $Kept[$Order[$p]] } else { $null }
+            if ($null -eq $hold -or $hold.Detector -eq 'SSN' -or $hold.Index + $hold.Length -le $at) { $list.Add($at); break }
+            # The run starts in a hit: look again just after the hit, so an ID one gap after a phone or ZIP keeps its run
+            # (seventh review of PR 60). Only a short part of the text: Regex.Match with a start reads far on long text.
+            $from = $hold.Index + $hold.Length
+            if ($from -ge $stop) { break }   # the next run of Matches starts at or after $stop
+            $tail = $script:DigitRun.Match($Text.Substring($from, [Math]::Min($Text.Length, $stop + 40) - $from))
+            if (-not $tail.Success -or $from + $tail.Index -ge $stop) { break }
+            $at = $from + $tail.Index
+        }
+    }
+    return , $list.ToArray()
+}
+
 function Find-SignedIdHits {
     <#
     .SYNOPSIS
@@ -198,12 +236,7 @@ function Find-SignedIdHits {
     $found = New-Object System.Collections.Generic.List[object]   # (match, needs a signature word)
     $result = [pscustomobject]@{ Found = $found; WordStarts = [int[]]@(); WordEnds = [int[]]@() }
     # Every rule needs 10 digits: one fast scan first; none, then nothing else is read (speed on prose: review of PR 60).
-    $runs = [int[]]@(foreach ($r in $script:DigitRun.Matches($Text)) {
-        $p = [Array]::BinarySearch($Starts, $r.Index)
-        if ($p -lt 0) { $p = (-bnot $p) - 1 }
-        if ($p -ge 0 -and $Kept[$Order[$p]].Index + $Kept[$Order[$p]].Length -gt $r.Index -and $Kept[$Order[$p]].Detector -ne 'SSN') { continue }
-        $r.Index   # a run no other hit holds (signature text that the CAC-name rule already found: nothing to read)
-    })
+    $runs = Get-FreeDigitRun $Text $Starts $Order $Kept
     if ($runs.Length -eq 0) { return $result }
     $words = @([regex]::Matches($Text, $script:SignedWords))   # on the whole text, so no cut makes "assigned" a word
     $result.WordStarts = [int[]]@(foreach ($w in $words) { $w.Index })
@@ -257,7 +290,6 @@ function Add-SignedIdHits {
         $digits = $item[0].Groups['id']
         $end = $digits.Index + $digits.Length
         if ($seen.ContainsKey($digits.Index) -or $added[$digits.Index] -or $added[$end - 1]) { continue }
-        $seen[$digits.Index] = $true
         # The kept hits over the digits: from the last one that starts at or before them, in text order.
         $p = [Array]::BinarySearch($starts, $digits.Index)
         if ($p -lt 0) { $p = [Math]::Max(0, (-bnot $p) - 1) }
@@ -272,6 +304,7 @@ function Add-SignedIdHits {
         if ($place -lt 0) { $place = -bnot $place }
         $word = $place -lt $signed.WordStarts.Length -and $signed.WordEnds[$place] -le $at
         if ($item[1] -and -not $word) { continue }
+        $seen[$digits.Index] = $true   # only after the word test: a candidate that needs a word must not block a sure one
         $confidence = if (Test-DodIdLabelBefore $Text $digits.Index) { 'High' } else { 'Low' }; $sure = $word -or ($digits.Index -gt 0 -and $Text[$digits.Index - 1] -eq '.')
         $free = $true
         foreach ($k in $held) {

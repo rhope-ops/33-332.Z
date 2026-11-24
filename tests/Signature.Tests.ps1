@@ -189,3 +189,26 @@ $cutWord = 'Signed form. ' + ('k' * 80) + ' assigned' + (' k' * 16) + '  1 ' + (
 Assert-Equal 1 @(Get-HitSummary $cutWord | Where-Object { $_ -like 'SSN/*' }).Count '"assigned" at the window edge is no signature word: SSN kept'
 Assert-Equal 0 @(Get-HitSummary "Digitally signed by $sigName`n11 20 2026 0930" | Where-Object { $_ -like 'DoD ID/*' }).Count 'No ID: a month-day-year date'
 Assert-Equal 0 @(Get-HitSummary ('Signed. Phone 312 555' + '0123') | Where-Object { $_ -like 'DoD ID/*' }).Count 'No ID: a 3-7 phone after signed'
+
+# Seventh review of PR 60: a hit just before the ID must not hide it (the digit scan starts again at the hit's end), and a
+# candidate that needs a signature word must not block a sure one at the same digits.
+$sigPhone1 = '+1 ' + $Sample.Phone
+$sigAddress = '4 Oak' + ' Ln, Springfield, IL ' + '627' + '01'
+$sigProse = 'The form is filed for review by the office. ' * 3
+$sigAfterHit = [ordered]@{
+    'phone, ID, name'         = "Contact $sigPhone1`n$sigId`n$sigName"
+    'signed, phone, ID'       = "Digitally signed by`n$sigPhone1`n$sigId"
+    'address, ID, name'       = "$sigAddress`n$sigId`n$sigName"
+    'signed, address, ID'     = "Signed. $sigAddress`n$sigId"
+    'Thank you., Signed., ID' = "Signed form. $sigProse Thank you.`nSigned.`n$sigId"
+    'Approved., Signed., ID'  = "Signed form. $sigProse Approved.`nSigned.`n$sigId"
+    'Approved., Signed. only' = "Approved.`nSigned.`n$sigId"
+    'Reviewed., signature'    = "Signature page. $sigProse Reviewed.`nDigital signature.`n$sigId"
+}
+foreach ($case in $sigAfterHit.Keys) {
+    Assert-Equal 1 @(Get-HitSummary $sigAfterHit[$case] | Where-Object { $_ -eq 'DoD ID/Low/******7890' }).Count "E-signature ID after a hit or a second word ($case)"
+}
+# As on main (no ID), by the sixth review's guard: a number and one gap just before bare digits (open with the PAM, 2026-11-24).
+foreach ($case in @("Digitally signed by`n2026.11.20 $sigId", "Digitally signed by`nPage 3 $sig3241")) {
+    Assert-Equal 0 @(Get-HitSummary $case | Where-Object { $_ -like 'DoD ID/*' }).Count "As on main: no ID just after a number ($($case -replace "`n", ' '))"
+}
