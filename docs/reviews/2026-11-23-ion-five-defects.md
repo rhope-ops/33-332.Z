@@ -9,7 +9,7 @@ their own pull request, built so that main's name match is kept and only narrow 
 
 | Defect | Before (main b278ab0) | After | Code |
 |---|---|---|---|
-| Street type in capitals ("42 ELM ST") | no hit | Home address | src/PiiPatterns.psm1 Find-HomeAddressHits: street type as written or in capitals (not in small letters: "4 Games st") |
+| Street type in capitals ("42 ELM ST") | no hit | Home address | src/PiiPatterns.psm1 Find-HomeAddressHits: main's pattern first; then street types in capitals, only where main found nothing (not in small letters: "4 Games st") |
 | 9-digit passport after "passport" | SSN Low | Passport Medium | Find-SsnHits: no SSN for 9 digits in a row with "passport" in the 30 characters before and no SSN label |
 | "_" in an e-mail name ("first_last@...") | hit starts after the "_" | the whole address | src/PiiDetectors.psm1 Expand-MailOverUnderscore: after the unreadable-text filter, an e-mail hit right after a "_" grows left over the e-mail name, at most to the end of the hit before it |
 
@@ -24,14 +24,17 @@ their own pull request, built so that main's name match is kept and only narrow 
 | Name matrix (6,240 cases): names lost or gained | - | 0 and 0 (names unchanged) |
 
 Speed, the second Get-PiiSpan call in its own process, median of 5 (budget: +15%, the PAM, 2026-11-24): 1.2 MB prose
-584 / 585 ms; 5,000 form rows 11.6 / 12.2 s (1.05x); 2,000 e-mails with "_" 466 / 493 ms (1.06x).
+441 / 455 ms (1.03x); 5,000 form rows 12.0 / 11.8 s (0.98x); 2,000 e-mails with "_" 491 / 542 ms (1.10x).
 
 ## Review rounds
 
 - First to fourth fresh reviews: name-rule losses (moved out, above); reading the e-mail on the raw text took a glued
   name or address (now the e-mail grows only up to the hit before it); the grow was quadratic (now one sorted pass);
   a grown e-mail could be dropped by the unreadable-text filter (now the grow runs after the filter).
-- Known, not fixed: street types in capitals add Low false positives on capital text ("REPLACE 2 HARD DRIVE").
+- Fifth review: "CT" in capitals (a street type and a state) cut "12 Oak St Dunmore CT" + ZIP short; now main's address
+  pattern runs first and the capital types only add where it found nothing.
+- Known, not fixed: street types in capitals add Low false positives on capital text ("REPLACE 2 HARD DRIVE"); on 1.3 MB
+  of such text that is 40,000 Low hits and about 8x main's time (linear; the same cost as main on the same text in title case).
 
 ## Decisions
 

@@ -209,6 +209,12 @@ Assert-Equal 'Home address/High/[address masked]' ((Get-HitSummary 'Home: 12 OAK
 foreach ($case in @('the 3 Day way', '4 Games st', '10 Tips ct', '3 Big Dogs cir')) {
     Assert-Equal 0 @(Get-HitSummary $case | Where-Object { $_ -like 'Home address/*' }).Count "No address: street type in small letters ($case)"
 }
+# Fifth review of PR 61: "CT" (a state, and a street type in capitals) never cuts an address main finds.
+$ctZip = '06' + '999'
+foreach ($case in @("12 Oak St Dunmore CT $ctZip", "12 Oak St New Dunmore CT $ctZip")) {
+    Assert-Equal 'Home address/Medium/[address masked]' ((Get-HitSummary $case) -join ',') "Address with CT kept whole: $($case -replace '\d', '#')"
+}
+Assert-Equal 1 @(Get-PiiSpan "Home address: 12 Oak Ave Dunmore CT $ctZip" | Where-Object { $_.Value -like "*$ctZip" }).Count 'Labelled address with CT: ZIP inside the hit'
 # 2. A 9-digit passport number is a passport, not an SSN; an SSN label still wins; a dashed SSN stays an SSN.
 $passport9 = '1234' + '56789'
 foreach ($case in @("Passport: $passport9", "PASSPORT NO`n$passport9", "her passport number is $passport9")) {

@@ -18,7 +18,7 @@
   the files at each library's top), or the drive folder and all its subfolders. Channel posts are not read.
 
   Built from these files; to change it, change them and rebuild with: python3 scripts/build_paste.py
-    src/PiiPatterns.psm1, sha256 46f47ab4b781
+    src/PiiPatterns.psm1, sha256 e4c2efe87ecb
     src/PiiDetectors.psm1, sha256 365ed1b31dd8
     src/PiiMasking.psm1, sha256 752c251a94b2
     src/OcrText.psm1, sha256 a39acab441d4
@@ -54,32 +54,32 @@
     line    85  Settings
     line    96  Reader block
     line   102  Module PiiPatterns.psm1
-    line   499  Module PiiDetectors.psm1
-    line   743  Module PiiMasking.psm1
-    line   943  Module OcrText.psm1
-    line  1096  Module OleText.psm1
-    line  1235  Module ContainerText.psm1
-    line  1574  Module PdfCore.psm1
-    line  1936  Module PdfObjects.psm1
-    line  2294  Module PdfFonts.psm1
-    line  2612  Module PdfShown.psm1
-    line  2863  Module PdfLayout.psm1
-    line  3003  Module PdfContent.psm1
-    line  3333  Module PdfText.psm1
-    line  3525  Module TextExtract.psm1
-    line  3943  Module ReaderPool.psm1
-    line  4268  Reader block end
-    line  4272  Module XlsxWriter.psm1
-    line  4579  Module Report.psm1
-    line  4955  Module ReportBook.psm1
-    line  5167  Module ScanMeter.psm1
-    line  5564  Module ScanQueue.psm1
-    line  5954  Module Accountability.psm1
-    line  6337  Module SiteTarget.psm1
-    line  6608  Module ChannelScan.psm1
-    line  7010  Module DriveScan.psm1
-    line  7242  Body of Find-ChannelPII.ps1
-    line  7383  Clean-up
+    line   507  Module PiiDetectors.psm1
+    line   751  Module PiiMasking.psm1
+    line   951  Module OcrText.psm1
+    line  1104  Module OleText.psm1
+    line  1243  Module ContainerText.psm1
+    line  1582  Module PdfCore.psm1
+    line  1944  Module PdfObjects.psm1
+    line  2302  Module PdfFonts.psm1
+    line  2620  Module PdfShown.psm1
+    line  2871  Module PdfLayout.psm1
+    line  3011  Module PdfContent.psm1
+    line  3341  Module PdfText.psm1
+    line  3533  Module TextExtract.psm1
+    line  3951  Module ReaderPool.psm1
+    line  4276  Reader block end
+    line  4280  Module XlsxWriter.psm1
+    line  4587  Module Report.psm1
+    line  4963  Module ReportBook.psm1
+    line  5175  Module ScanMeter.psm1
+    line  5572  Module ScanQueue.psm1
+    line  5962  Module Accountability.psm1
+    line  6345  Module SiteTarget.psm1
+    line  6616  Module ChannelScan.psm1
+    line  7018  Module DriveScan.psm1
+    line  7250  Body of Find-ChannelPII.ps1
+    line  7391  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -482,13 +482,21 @@ function Find-HomeAddressHits {
     param([string]$Text)
     $streetTypes = 'Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Lane|Ln|Court|Ct|Boulevard|Blvd|Way|Circle|Cir|' +
                    'Place|Pl|Terrace|Ter|Parkway|Pkwy|Highway|Hwy|Trail|Trl'
-    # The street type as written or in capitals ("ST"): the R4e benchmark, 2026-11-23, missed all-capital addresses. Not in
-    # small letters ("4 Games st" is no address; review, 2026-11-23).
-    $street = '\b\d{1,6}\s+(?:[NSEW]\.?\s+)?(?:[A-Z][A-Za-z]+\s+){1,4}(?:' + $streetTypes + '|' + $streetTypes.ToUpper() + ')\b\.?'
+    $start = '\b\d{1,6}\s+(?:[NSEW]\.?\s+)?(?:[A-Z][A-Za-z]+\s+){1,4}(?:'
     $unit = '(?:(?:Apt|Unit|#)\s*\w+,?\s*)?'
     $cityStateZip = '(?:,?\s*' + $unit + '[A-Z][A-Za-z]+(?:\s[A-Z][A-Za-z]+)?,?\s+[A-Z]{2}\s+\d{5}(?:-\d{4})?)?'
     $labels = 'home\s*address|residence|residential|mailing\s*address|lives\s+at|\bhome\b'
-    foreach ($m in [regex]::Matches($Text, $street + $cityStateZip)) {
+    # The street type as written (as on main), then in capitals ("42 ELM ST": the R4e benchmark, 2026-11-23) only where the
+    # first found nothing, so no address main finds is cut ("CT" is also a state: review of PR 61). Not in small letters.
+    $first = @([regex]::Matches($Text, $start + $streetTypes + ')\b\.?' + $cityStateZip))
+    $capitals = @([regex]::Matches($Text, $start + $streetTypes.ToUpperInvariant() + ')\b\.?' + $cityStateZip))
+    $j = 0   # both lists are in text order: one walk finds the first-pass match a capital one overlaps (linear time)
+    $keep = @($first) + @(foreach ($m in $capitals) {
+        while ($j -lt $first.Count -and $first[$j].Index + $first[$j].Length -le $m.Index) { $j++ }
+        if ($j -lt $first.Count -and $first[$j].Index -lt $m.Index + $m.Length) { continue }
+        $m
+    })
+    foreach ($m in $keep) {
         $confidence = 'Low'
         if ($m.Value -match '\b[A-Z]{2}\s+\d{5}') { $confidence = 'Medium' }
         if (Test-KeywordBefore $Text $m.Index $labels) { $confidence = 'High' }

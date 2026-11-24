@@ -381,13 +381,21 @@ function Find-HomeAddressHits {
     param([string]$Text)
     $streetTypes = 'Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Lane|Ln|Court|Ct|Boulevard|Blvd|Way|Circle|Cir|' +
                    'Place|Pl|Terrace|Ter|Parkway|Pkwy|Highway|Hwy|Trail|Trl'
-    # The street type as written or in capitals ("ST"): the R4e benchmark, 2026-11-23, missed all-capital addresses. Not in
-    # small letters ("4 Games st" is no address; review, 2026-11-23).
-    $street = '\b\d{1,6}\s+(?:[NSEW]\.?\s+)?(?:[A-Z][A-Za-z]+\s+){1,4}(?:' + $streetTypes + '|' + $streetTypes.ToUpper() + ')\b\.?'
+    $start = '\b\d{1,6}\s+(?:[NSEW]\.?\s+)?(?:[A-Z][A-Za-z]+\s+){1,4}(?:'
     $unit = '(?:(?:Apt|Unit|#)\s*\w+,?\s*)?'
     $cityStateZip = '(?:,?\s*' + $unit + '[A-Z][A-Za-z]+(?:\s[A-Z][A-Za-z]+)?,?\s+[A-Z]{2}\s+\d{5}(?:-\d{4})?)?'
     $labels = 'home\s*address|residence|residential|mailing\s*address|lives\s+at|\bhome\b'
-    foreach ($m in [regex]::Matches($Text, $street + $cityStateZip)) {
+    # The street type as written (as on main), then in capitals ("42 ELM ST": the R4e benchmark, 2026-11-23) only where the
+    # first found nothing, so no address main finds is cut ("CT" is also a state: review of PR 61). Not in small letters.
+    $first = @([regex]::Matches($Text, $start + $streetTypes + ')\b\.?' + $cityStateZip))
+    $capitals = @([regex]::Matches($Text, $start + $streetTypes.ToUpperInvariant() + ')\b\.?' + $cityStateZip))
+    $j = 0   # both lists are in text order: one walk finds the first-pass match a capital one overlaps (linear time)
+    $keep = @($first) + @(foreach ($m in $capitals) {
+        while ($j -lt $first.Count -and $first[$j].Index + $first[$j].Length -le $m.Index) { $j++ }
+        if ($j -lt $first.Count -and $first[$j].Index -lt $m.Index + $m.Length) { continue }
+        $m
+    })
+    foreach ($m in $keep) {
         $confidence = 'Low'
         if ($m.Value -match '\b[A-Z]{2}\s+\d{5}') { $confidence = 'Medium' }
         if (Test-KeywordBefore $Text $m.Index $labels) { $confidence = 'High' }
