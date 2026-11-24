@@ -7,7 +7,7 @@ PiiPatterns.psm1 - the patterns and the one-type detectors that PiiDetectors.psm
   Inputs:      plain text (from TextExtract.psm1).
   Outputs:     hit objects WITH the raw value. Only PiiMasking.psm1 reads them; it masks every value
                before anything is shown or saved (the PAM, 2026-11-20: all values masked).
-  Depends on:  nothing (PiiDetectors.psm1 imports it next and runs these detectors).
+  Depends on:  nothing (PiiSignedIds.psm1 and PiiDetectors.psm1 import it next; PiiDetectors runs these detectors).
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7).
   Network:     none.
@@ -90,7 +90,7 @@ function Test-KeywordBefore {
 }
 
 function Test-DodIdLabelBefore {
-    # True when a DoD ID label ($DodIdLabels) is just before the given place (PiiDetectors.psm1 Find-SignedIdHits).
+    # True when a DoD ID label ($DodIdLabels) is just before the given place (PiiSignedIds.psm1 Find-SignedIdHits).
     param([string]$Text, [int]$Index)
     return (Test-KeywordBefore $Text $Index $script:DodIdLabels)
 }
