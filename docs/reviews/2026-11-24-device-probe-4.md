@@ -107,3 +107,9 @@ The probe is a .txt file (Project rules, "Paste format"): `docs/reviews/2026-11-
     web only for the who/when history.
   - Probe 3's 215-byte file was not in the library. With probe 4's result the cause is that file (not synced, or in
     another folder), not the path rule (assumption, high confidence).
+
+- Run 2, 2026-11-24 (the PAM, by e-mail; counts only): the same result as run 1. Only these lines differ: sign-in ok,
+  11043 ms; web listing listed=4278, FSObjType 0=3624 1=654 other=0 (files were added to the library between the runs).
+  Entries 2 (1 web address), home folder True, local 9 / online only 0, libraries=4 (found), web folder found with 9
+  web files, names on both 9, checked 9 (at the mapped path 9, same size 8, found by web path 9, errors 0), web and disk
+  read sizes equal. What it proves: run 1 repeats; the mapping and path A are stable.

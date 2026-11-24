@@ -85,18 +85,29 @@ try {
     $head = '<?xml version="1.0" encoding="UTF-8"?>'
     $rel = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
     $excelParts = [ordered]@{
-        'xl/workbook.xml' = $head + '<workbook xmlns:r="' + $rel + '"><sheets><sheet name="Hits" sheetId="1" r:id="rId7"/></sheets></workbook>'
-        'xl/_rels/workbook.xml.rels' = $head + '<Relationships><Relationship Id="rId7" Type="' + $rel + '/worksheet" Target="/xl/worksheets/sheet9.xml"/></Relationships>'
+        'xl/workbook.xml' = $head + '<workbook xmlns:r="' + $rel + '"><sheets><sheet name="Hits" sheetId="1" r:id="rId7"/><sheet name="Not scanned" sheetId="2" r:id="rId8"/></sheets></workbook>'
+        'xl/_rels/workbook.xml.rels' = $head + '<Relationships><Relationship Id="rId7" Type="' + $rel + '/worksheet" Target="/xl/worksheets/sheet9.xml"/>' +
+            '<Relationship Id="rId8" Type="' + $rel + '/worksheet" Target="worksheets/sheet2.xml"/></Relationships>'
         'xl/sharedStrings.xml' = $head + '<sst><si><t>Type</t></si><si><t>File</t></si><si><t>Masked value</t></si><si><r><t>Pass</t></r><r><t>port</t></r></si>' +
             '<si><t>memo.docx</t></si><si><t>***-**-0000</t></si></sst>'
         'xl/worksheets/sheet9.xml' = $head + '<worksheet><sheetData><row r="1"><c r="B1" t="s"><v>0</v></c><c r="E1" t="s"><v>1</v></c><c r="F1" t="s"><v>2</v></c></row>' +
             '<row r="2"><c r="B2" t="s"><v>3</v></c><c r="E2" t="s"><v>4</v></c><c r="F2" t="s"><v>5</v></c></row></sheetData></worksheet>'
+        # Invented path: a name-shaped profile folder with an apostrophe and spaces (the reason must print none of it).
+        'xl/worksheets/sheet2.xml' = $head + '<worksheet><sheetData><row r="1"><c r="C1" t="inlineStr"><is><t>File</t></is></c><c r="D1" t="inlineStr"><is><t>Reason</t></is></c>' +
+            '<c r="E1" t="inlineStr"><is><t>Group</t></is></c></row><row r="2"><c r="C2" t="inlineStr"><is><t>RecallTest/roster.xlsx</t></is></c><c r="D2" t="inlineStr"><is><t>' +
+            'Could not read the file (in use, damaged or protected?): Access to the path ''C:\Users\Sample.D''Arcy.Q\OneDrive - Test Org\RecallTest\roster.xlsx'' is denied.' +
+            '</t></is></c><c r="E2" t="inlineStr"><is><t>Could not read (in use, damaged or protected)</t></is></c></row></sheetData></worksheet>'
     }
     $excelBook = Join-Path $recallDir 'saved.xlsx'
     [System.IO.File]::WriteAllBytes($excelBook, [byte[]](New-RecallZip $excelParts))
     $excelRead = Read-RecallWorkbook $excelBook
     $excelHit = $excelRead.Hits[0]
     Assert-Equal 'Passport|memo.docx|***-**-0000' ('{0}|{1}|{2}' -f $excelHit.Type, $excelHit.File, $excelHit.Masked) 'Recall Score: shared strings and a rich text cell are read'
+    $excelCause = $excelRead.Causes[0]   # no @() around a list property: it fails in PowerShell
+    Assert-Equal 'roster.xlsx|Could not read (in use, damaged or protected)|Could not read the file (in use, damaged or protected?): Access to the path <path> is denied.' `
+        ('{0}|{1}|{2}' -f $excelCause.File, $excelCause.Group, $excelCause.Reason) 'Recall Score: the Not scanned tab gives file, group and a reason with no path'
+    $causeLines = Format-RecallScore (Get-RecallScore $recallPlan $excelRead)
+    Assert-Equal 1 @($causeLines | Where-Object { $_ -like '  roster.xlsx | Could not read*<path> is denied.' }).Count 'Recall Score: the cause line of a test file not scanned is printed'
     Remove-Item -LiteralPath $excelBook -Force
     $notIon = Join-Path $recallDir 'other.xlsx'
     [System.IO.File]::WriteAllBytes($notIon, [byte[]](New-RecallZip ([ordered]@{ 'xl/workbook.xml' = $head + '<workbook><sheets><sheet name="Roster" sheetId="1" r:id="rId1"/></sheets></workbook>' })))
@@ -104,6 +115,18 @@ try {
     Assert-Equal $true $refused 'Recall Score: a workbook that is not Ion''s is refused, not scored as 0%'
     Remove-Item -LiteralPath $notIon -Force
     Assert-Equal $true ((Invoke-RecallMake 'relative-folder') -match 'full folder path') 'Recall Make: a relative path is refused'
+
+    # Reasons with no path, address or long number (an error message can name the profile folder: a person's name).
+    $safeCases = [ordered]@{
+        'Online only (OneDrive), not downloaded: check by hand, or run Ion again and answer y to download' =
+            'Online only (OneDrive), not downloaded: check by hand, or run Ion again and answer y to download'
+        'The reader failed: Exception calling "ReadAllBytes": "Could not find file "C:\Users\Sample Person\x.docx"."' =
+            'The reader failed: Exception calling "ReadAllBytes": "Could not find file <path>."'
+        'Could not read the file (damaged or protected?): The network path \\host-one\Sample.Person\a b.docx was not found' = 'Could not read the file (damaged or protected?): The network path <path>'
+        'The reader failed: at Sample\Person line 4 for sample.person@example.test and 1234567890' = 'The reader failed: at <path> line 4 for <address> and #'
+    }
+    foreach ($case in $safeCases.Keys) { Assert-Equal $safeCases[$case] (Get-RecallSafeReason $case) ('Recall Score: a safe reason (' + $case.Substring(0, 18) + ')') }
+    Assert-Equal 163 (Get-RecallSafeReason ('x' * 300)).Length 'Recall Score: a reason is cut at 160 characters'
 
 
     # The local baseline: Ion scans the made folder as on the gov device (the bundle's reader block in the workers).
