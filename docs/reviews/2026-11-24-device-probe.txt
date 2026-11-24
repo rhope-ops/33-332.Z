@@ -46,7 +46,9 @@ foreach ($s in $sites) {
         if ($s[2]) { $item = Get-PnPFile -Url $s[2] -AsListItem }
         else {
             $lib = Get-PnPList | Where-Object { $_.BaseTemplate -eq 101 -and -not $_.Hidden } | Select-Object -First 1
-            $item = @(Get-PnPListItem -List $lib -PageSize 50 | Where-Object { $_.FileSystemObjectType -eq 'File' } | Select-Object -First 1)[0]
+            # The smallest file of the first 200, at most 5 MB, so the read is quick and fits in memory.
+            $item = @(Get-PnPListItem -List $lib -PageSize 200 -Fields 'FileRef', 'File_x0020_Size' | Select-Object -First 200 |
+                Where-Object { $_.FileSystemObjectType -eq 'File' -and [long]$_['File_x0020_Size'] -le 5MB } | Sort-Object { [long]$_['File_x0020_Size'] } | Select-Object -First 1)[0]
         }
         '{0} a file found={1}' -f $tag, [bool]$item
         if (-not $item) { continue }
@@ -56,7 +58,7 @@ foreach ($s in $sites) {
         try {
             $info = Invoke-PnPSPRestMethod -Method Post -Url ("/_api/web/lists('{0}')/items({1})/GetSharingInformation?`$expand=sharingLinks" -f $listId, $item.Id)
             $links = @(); if ($info.PSObject.Properties['sharingLinks']) { $links = @($info.sharingLinks) } elseif ($info.PSObject.Properties['d']) { $links = @($info.d.sharingLinks.results) }
-            $links = @($links | Where-Object { $_ })
+            $links = @($links | Where-Object { $_ -and $_.linkDetails -and $_.linkDetails.Url })   # only links that exist
             $kinds = @($links | ForEach-Object { [string]$_.linkDetails.LinkKind }) | Group-Object | ForEach-Object { '{0}x{1}' -f $_.Count, $_.Name }
             '{0} sharing information read=True links={1} kinds={2}' -f $tag, $links.Count, ($kinds -join ',')
         } catch { Show-Err "$tag sharing information" $_ }
@@ -68,4 +70,4 @@ foreach ($s in $sites) {
     } catch { Show-Err "$tag read" $_ }
     finally { try { Disconnect-PnPOnline } catch { } }
 }
-Write-Host 'Done. The lines above show True/False, counts and times only. Copy them and paste them in the chat.'
+Write-Host 'Done. The lines above show True/False, counts, kinds and times only. Copy them and paste them in the chat.'

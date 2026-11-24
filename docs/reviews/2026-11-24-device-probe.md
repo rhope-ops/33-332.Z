@@ -9,7 +9,7 @@ Step 0 of the plan of 2026-11-24 (docs/reviews/2026-11-24-no-persistence-plan.md
   folder has a web address there. Ion needs that address to read online-only files and the file history through PnP.
 - Part B (one CAC sign-in per site): on one file of your OneDrive and, if you give one, one file of a team site, it
   checks which permission reads work for you without admin, and it times one read from the web and one from the disk.
-- It prints only True or False, counts, error type names and times. It prints no name, no address, no path and no value
+- It prints only True or False, counts, link and address kinds, error type names and times. It prints no name, no address, no path and no value
   from a file.
 
 ## How to run it
@@ -33,11 +33,12 @@ The probe is a .txt file (Project rules, "Paste format"): `docs/reviews/2026-11-
    2. Press **Enter**.
    You see the question **Question 2: a team site address**. Go on.
 8. On the question **Question 2: a team site address**, do these actions:
-   1. Type the address of a team site that you scan, for example `https://usaf.dps.mil/teams/<team-site>`.
+   1. Type the address of a team site that you scan, for example `https://usaf.dps.mil/teams/<team-site>`. To skip
+      the team site, type nothing.
    2. Press **Enter**.
    The screen clears. You see lines that start with **A1** to **A4**. Go on.
 9. If a CAC sign-in window opens, sign in with your CAC. A second window can open for the team site: sign in again.
-   You see lines that start with **B-onedrive** or **B-team**. Wait until the line **Done.** shows.
+   Wait until the line **Done.** shows. Do not copy before then.
 10. In the ISE output pane, do these actions:
     1. Select the lines from **A1** to **Done.**.
     2. Press **Ctrl+C**.
