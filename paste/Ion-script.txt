@@ -21,7 +21,7 @@
     src/PiiPatterns.psm1, sha256 f7ef8ca1789f
     src/PiiSignedIds.psm1, sha256 29fc4d31c181
     src/PiiDetectors.psm1, sha256 66e3b48368e2
-    src/PiiMasking.psm1, sha256 fe974847ba97
+    src/PiiMasking.psm1, sha256 96c6e29f5e09
     src/OcrText.psm1, sha256 a39acab441d4
     src/OleText.psm1, sha256 2f5d0a036e97
     src/ContainerText.psm1, sha256 7378569bd7e6
@@ -34,9 +34,9 @@
     src/PdfText.psm1, sha256 dffef7dc6f8b
     src/TextExtract.psm1, sha256 5e02d07ddf10
     src/ReaderPool.psm1, sha256 32b2e4cfb2ae
-    src/XlsxWriter.psm1, sha256 2c4e448e230a
+    src/XlsxWriter.psm1, sha256 56c1ec673d09
     src/Report.psm1, sha256 ef3a24aa8a55
-    src/ReportBook.psm1, sha256 8ed0479de31d
+    src/ReportBook.psm1, sha256 b22d7f258d37
     src/ScanMeter.psm1, sha256 18c82f0b37c3
     src/ScanQueue.psm1, sha256 ae11c97d5b8b
     src/Accountability.psm1, sha256 8bf31404f723
@@ -74,14 +74,14 @@
     line  4533  Module XlsxWriter.psm1
     line  4970  Module Report.psm1
     line  5346  Module ReportBook.psm1
-    line  5647  Module ScanMeter.psm1
-    line  6044  Module ScanQueue.psm1
-    line  6434  Module Accountability.psm1
-    line  6818  Module SiteTarget.psm1
-    line  7113  Module ChannelScan.psm1
-    line  7515  Module DriveScan.psm1
-    line  7880  Body of Find-ChannelPII.ps1
-    line  8021  Clean-up
+    line  5648  Module ScanMeter.psm1
+    line  6045  Module ScanQueue.psm1
+    line  6435  Module Accountability.psm1
+    line  6819  Module SiteTarget.psm1
+    line  7114  Module ChannelScan.psm1
+    line  7516  Module DriveScan.psm1
+    line  7881  Body of Find-ChannelPII.ps1
+    line  8022  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -1032,11 +1032,11 @@ $script:KeepLastPassportChars = 3
 # once, not once per character.
 $script:EmailLocalPartPattern = '(?<=^|[\s@<>()\[\],;:"/\\])[^\s@<>()\[\],;:"/\\]+(?=@[^\s@<>()\[\],;:"/\\.]+\.)'
 
-# A CAC name in an e-signature ("DOE.JANE.Q."): two or three dotted parts, the first two of two letters or more, each
+# A CAC name in an e-signature ("DOE.JANE.Q."): two to four dotted parts, the first two of two letters or more, each
 # ending in a dot; it starts only after a character that cannot be part of a name (no slow restarts on long text). In
 # the Context column only the first letter of each part stays (approved 2026-11-21: "mask the CAC name in Context"); a
 # dotted host or file name that looks the same is masked too, which hides nothing needed.
-$script:MaskedCacName = "(?<![\w.'-])[A-Za-z][A-Za-z'-]+\.[A-Za-z][A-Za-z'-]+\.(?:[A-Za-z][A-Za-z'-]*\.)?"
+$script:MaskedCacName = "(?<![A-Za-z0-9.'-])[A-Za-z][A-Za-z'-]+\.[A-Za-z][A-Za-z'-]+\.(?:[A-Za-z][A-Za-z'-]*\.){0,2}"
 
 # =====================================================================================
 # Masking one value
@@ -1104,7 +1104,7 @@ function Get-MaskedText {
     param([string]$Text, [object[]]$Hits)
     $sameLengthStars = [System.Text.RegularExpressions.MatchEvaluator] { param($m) '*' * $m.Length }
     $masked = [regex]::Replace($Text, $script:EmailLocalPartPattern, $sameLengthStars) -replace '\d', '#'
-    $initials = [System.Text.RegularExpressions.MatchEvaluator] { param($m) [regex]::Replace($m.Value, "(?<=[A-Za-z])[A-Za-z'-]", '*') }
+    $initials = [System.Text.RegularExpressions.MatchEvaluator] { param($m) [regex]::Replace($m.Value, '(?<=(?:^|\.)[A-Za-z][^.]*)[A-Za-z]', '*') }
     $masked = [regex]::Replace($masked, $script:MaskedCacName, $initials)
     $chars = $masked.ToCharArray()
     foreach ($hit in $Hits) {
@@ -4863,8 +4863,8 @@ function ConvertTo-ChoicesXml {
     if ((-not $Sheet.Choices -or $Sheet.Choices.Count -eq 0) -and $checks.Count -eq 0) { return '' }
     $xml = '<dataValidations count="' + ($Sheet.Choices.Count + $checks.Count) + '">'
     foreach ($column in $checks) {   # 36525 = 1999-12-31 as an Excel date number: 2000-01-01 and later
-        $xml += ('<dataValidation type="date" operator="greaterThan" allowBlank="1" showErrorMessage="1" errorTitle="Not a date" ' +
-            'error="Type a date, for example 2026-11-24." sqref="{0}2:{0}{1}"><formula1>36525</formula1></dataValidation>') -f (Get-ColumnLetter ($column + 1)), $LastRow
+        $xml += ('<dataValidation type="date" operator="greaterThan" allowBlank="1" showErrorMessage="1" errorTitle="Review date" ' +
+            'error="Type a date of 2000-01-01 or later, for example 2026-11-24." sqref="{0}2:{0}{1}"><formula1>36525</formula1></dataValidation>') -f (Get-ColumnLetter ($column + 1)), $LastRow
     }
     foreach ($column in @($Sheet.Choices.Keys | Sort-Object)) {
         $letter = Get-ColumnLetter ([int]$column + 1)
@@ -5384,15 +5384,16 @@ $script:ReviewColumns = [ordered]@{ 'Is it PII?' = @('Yes', 'No', 'Not sure')
 $script:BreachAdvice = 'PII where it should not be is a potential or actual breach; report it to your servicing Privacy ' +
                        'Manager/Monitor without delay (AFI 33-332 para 3.1.2, as changed by AFI33-332_DAFGM2026-01 (7 July 2026), ' +
                        'page 1, second paragraph).'
-# "Start here" on the Summary tab: 7 steps for the reviewer (approved 2026-11-21; STE: one action a step, checked by hand,
-# as scripts/check_instructions.py cannot read text in code).
-$script:StartHere = @(@('Start here: 1', 'Open the tab Hits. You see one row for each possible PII value.'),
-    @('Start here: 2', 'In the column Confidence, filter to High. You see only the High rows.'),
-    @('Start here: 3', 'In a row, click the file name. The file opens.'),
-    @('Start here: 4', 'In the file, find the value that ends with the last digits of the Masked value cell.'),
-    @('Start here: 5', 'In the row, select an answer in Is it PII?, Action taken and Reported to Privacy Manager.'),
-    @('Start here: 6', 'In the same row, type your name in Reviewed by and the date in Review date.'),
-    @('Start here: 7', 'If it is PII where it should not be, report it to your servicing Privacy Manager/Monitor without delay.'))
+# "Start here" on the Summary tab: 4 steps (the approved workbook list of 2026-11-21, item 4 of
+# docs/reviews/2026-11-24-ion-detector-handoff.md). STE: each step is one screen, its actions numbered, then what the
+# person sees; checked by hand, as scripts/check_instructions.py cannot read text in code. Reporting a breach is the
+# "If you find PII" row (one home).
+$script:StartHere = @(
+    @('Start here: 1', 'On the tab Hits, do these actions: (1) Click the filter button of the column Confidence. (2) Select only High. You see only the High rows.'),
+    @('Start here: 2', 'In a row, click the name in the column File. The file opens.'),
+    @('Start here: 3', 'In the file, find the text that the cell Context shows. You see the full value. Go back to the tab Hits.'),
+    @('Start here: 4', ('In the same row, do these actions: (1) Select Is it PII?. (2) Select Action taken. (3) Select Reported to ' +
+        'Privacy Manager. (4) Type your name in Reviewed by. (5) Type the date in Review date. The row is complete.')))
 # Shown as two lines, the advice and its rule source (the PAM, 2026-11-21); one line if no "(AFI ...)." part is found.
 $script:BreachLines = @($script:BreachAdvice)
 if ($script:BreachAdvice -match '^(.*) \((AFI .*)\)\.$') { $script:BreachLines = @(($Matches[1] + '.'), ('Source: ' + $Matches[2] + '.')) }

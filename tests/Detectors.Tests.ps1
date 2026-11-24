@@ -141,6 +141,8 @@ $cacId = '1234' + '567890'
 $cacHits = @(Find-PiiInText ('Digitally signed by ' + 'DOE.' + 'JANE.Q.' + $cacId + ' e.g. on the form'))
 $cacOk = $cacHits.Count -eq 1 -and $cacHits[0].Context -match 'D\*\*\.J\*\*\*\.Q\.' -and $cacHits[0].Context -notmatch 'DOE|JANE'
 Assert-Equal $true ($cacOk -and $cacHits[0].Context -match 'e\.g\.') 'Snippet: a CAC name keeps only its initials'
+$oddName = & (Get-Module PiiMasking) { param($t) Get-MaskedText $t @() } ("O'" + "NEIL.MARY-" + "ANN.B. and _DOE." + "JANE.Q. and DOE." + "JANE.QUINN.SMITH.")
+Assert-Equal "O'****.M***-***.B. and _D**.J***.Q. and D**.J***.Q****.S****." $oddName 'Snippet: apostrophes, hyphens, an underscore before and four parts are masked'
 
 # ---- Detection in names: underscores and accented e-mail names ----
 Assert-Equal 'DoD ID/High/******7890' (Get-HitSummary "CAC_$($Sample.DodId).docx") 'DoD ID after an underscore'

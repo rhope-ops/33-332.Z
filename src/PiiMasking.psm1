@@ -38,11 +38,11 @@ $script:KeepLastPassportChars = 3
 # once, not once per character.
 $script:EmailLocalPartPattern = '(?<=^|[\s@<>()\[\],;:"/\\])[^\s@<>()\[\],;:"/\\]+(?=@[^\s@<>()\[\],;:"/\\.]+\.)'
 
-# A CAC name in an e-signature ("DOE.JANE.Q."): two or three dotted parts, the first two of two letters or more, each
+# A CAC name in an e-signature ("DOE.JANE.Q."): two to four dotted parts, the first two of two letters or more, each
 # ending in a dot; it starts only after a character that cannot be part of a name (no slow restarts on long text). In
 # the Context column only the first letter of each part stays (approved 2026-11-21: "mask the CAC name in Context"); a
 # dotted host or file name that looks the same is masked too, which hides nothing needed.
-$script:MaskedCacName = "(?<![\w.'-])[A-Za-z][A-Za-z'-]+\.[A-Za-z][A-Za-z'-]+\.(?:[A-Za-z][A-Za-z'-]*\.)?"
+$script:MaskedCacName = "(?<![A-Za-z0-9.'-])[A-Za-z][A-Za-z'-]+\.[A-Za-z][A-Za-z'-]+\.(?:[A-Za-z][A-Za-z'-]*\.){0,2}"
 
 # =====================================================================================
 # Masking one value
@@ -110,7 +110,7 @@ function Get-MaskedText {
     param([string]$Text, [object[]]$Hits)
     $sameLengthStars = [System.Text.RegularExpressions.MatchEvaluator] { param($m) '*' * $m.Length }
     $masked = [regex]::Replace($Text, $script:EmailLocalPartPattern, $sameLengthStars) -replace '\d', '#'
-    $initials = [System.Text.RegularExpressions.MatchEvaluator] { param($m) [regex]::Replace($m.Value, "(?<=[A-Za-z])[A-Za-z'-]", '*') }
+    $initials = [System.Text.RegularExpressions.MatchEvaluator] { param($m) [regex]::Replace($m.Value, '(?<=(?:^|\.)[A-Za-z][^.]*)[A-Za-z]', '*') }
     $masked = [regex]::Replace($masked, $script:MaskedCacName, $initials)
     $chars = $masked.ToCharArray()
     foreach ($hit in $Hits) {
