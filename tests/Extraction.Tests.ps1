@@ -55,6 +55,50 @@ $realSsn = "<worksheet><sheetData><row><c t=`"inlineStr`"><is><t>SSN</t></is></c
 Assert-Equal 1 @(Find-PiiInText (Get-TextFromBytes -Bytes (New-ZipBytes @{ 'xl/worksheets/sheet1.xml' = $realSsn }) -FileName 'a.xlsx').Text |
     Where-Object { $_.Detector -eq 'SSN' }).Count 'Excel: a real SSN in a number cell is still found'
 
+# ---- Roster columns: a PII label only in a column header labels the values below it (the PAM, 2026-11-24) ----
+function Get-RosterXlsxText {
+    # The text of a one-sheet workbook; each row a list of 'B2=text' cells (digits only: a number cell, else an inline string).
+    param([object[]]$Rows)
+    $xml = foreach ($row in $Rows) {
+        '<row>' + (-join @(foreach ($cell in $row) { $ref, $text = $cell -split '=', 2
+            if ($text -match '^\d+$') { "<c r=`"$ref`"><v>$text</v></c>" } else { "<c r=`"$ref`" t=`"inlineStr`"><is><t>$text</t></is></c>" } })) + '</row>'
+    }
+    return (Get-TextFromBytes -Bytes (New-ZipBytes @{ 'xl/worksheets/sheet1.xml' = '<worksheet><sheetData>' + (-join $xml) + '</sheetData></worksheet>' }) -FileName 'r.xlsx').Text
+}
+$otherTen = '98765' + '43210'   # a 10-digit order number, no DoD ID
+$roster = Get-RosterXlsxText @(@('A1=Person', 'B1=SSN', 'C1=DoD ID', 'D1=Date of birth'), @('A2=Person A', "B2=$($Sample.Ssn)", "C2=$($Sample.DodId)", 'D2=03/14/1985'))
+$expected = "Person | SSN | DoD ID | Date of birth`nPerson A | SSN: $($Sample.Ssn) | DoD ID: $($Sample.DodId) | Date of birth: 03/14/1985"
+Assert-Equal $expected $roster 'Roster: each value below a header cell gets its label'
+Assert-Equal 'SSN/High/***-**-6789 DoD ID/High/******7890 Date of birth/High/[date masked]' ((Get-HitSummary $roster) -join ' ') 'Roster: SSN, DoD ID and DOB found by their header'
+$gap = Get-RosterXlsxText @(@('A1=Person', 'B1=SSN', 'C1=DoD ID'), @('A2=Person B', "C2=$($Sample.DodId)"))
+Assert-Equal "Person B | DoD ID: $($Sample.DodId)" ($gap -split "`n")[1] 'Roster: the column comes from the cell reference, not the place (B2 is empty)'
+$variants = Get-RosterXlsxText @(@('A1=ssan:', 'B1=EDIPI #', 'C1=DOB.', 'D1=Passport No.'), @("A2=$($Sample.SsnBare)", "B2=$($Sample.DodId)", 'C2=1985-03-14', "D2=$($Sample.Passport)"))
+$expected = "SSN: $($Sample.SsnBare) | DoD ID: $($Sample.DodId) | Date of birth: 1985-03-14 | Passport: $($Sample.Passport)"
+Assert-Equal $expected ($variants -split "`n")[1] 'Roster: header cells in other forms (case, :, #, .)'
+$numbered = Get-RosterXlsxText @(@('A1=No.', 'B1=SSN'), @('A2=1', "B2=$($Sample.Ssn)"), @('A3=2', "B3=$($Sample.Ssn)"))
+Assert-Equal "No. | SSN`n1 | SSN: $($Sample.Ssn)`n2 | SSN: $($Sample.Ssn)" $numbered 'Roster: a row number is not moved (no spaces added)'
+# A label never reaches a value in the next cell or the next row (the detectors read 40 characters before a value).
+$reach = Get-RosterXlsxText @(@('A1=Ref', 'B1=DoD ID', 'C1=Order'), @('A2=(a note row, so that the header text is out of reach)'),
+    @("A3=$otherTen", "B3=$($Sample.DodId)", "C3=$otherTen"), @("A4=$otherTen"))
+Assert-Equal 'DoD ID/High/******7890' (Get-HitSummary $reach) 'Roster: the DoD ID label does not label the order numbers in the next cell and the next row'
+$own = Get-RosterXlsxText @(@('A1=DoD ID', 'B1=Kind', 'C1=Value'), @("A2=$($Sample.DodId)", 'B2=SSN', "C2=$($Sample.SsnBare)"))
+Assert-Equal 'DoD ID/High/******7890 SSN/High/***-**-6789' ((Get-HitSummary $own) -join ' ') 'Roster: a label of its own in a cell stays next to its value'
+# Regression (an earlier attempt): "SSN | pending" is a header row, but only cells with a digit get a label, and no gap moves a label.
+$perRow = Get-RosterXlsxText @(@('A1=SSN', 'B1=pending'), @('A2=DoD ID', "B2=$($Sample.DodId)"))
+Assert-Equal "SSN | pending`nDoD ID | $($Sample.DodId)" $perRow 'Roster: a per-row label layout under "SSN | pending" keeps its text'
+Assert-Equal 'DoD ID/High/******7890' (Get-HitSummary $perRow) 'Roster: the per-row DoD ID under "SSN | pending" is still found'
+$late = Get-RosterXlsxText @(@('A1=Person'), @('A2=a'), @('A3=b'), @('A4=c'), @('A5=d'), @('A6=DoD ID'), @("A7=$($Sample.DodId)"))
+Assert-Equal $false $late.Contains('DoD ID: ') 'Roster: a header below the first 5 rows is not taken'
+# .csv and .tsv: fields by position, quotes and line ends kept; a file without a header row is not changed.
+$csv = "Person,SSN,DoD ID,DOB`r`nPerson A,`"$($Sample.Ssn)`",$($Sample.DodId),1985-03-14`r`n"
+$csvText = (Get-TextFromBytes -Bytes ([System.Text.Encoding]::UTF8.GetBytes($csv)) -FileName 'r.csv').Text
+Assert-Equal "Person,SSN,DoD ID,DOB`r`nPerson A,SSN: `"$($Sample.Ssn)`",DoD ID: $($Sample.DodId),Date of birth: 1985-03-14`r`n" $csvText 'Roster csv: labels written in; quotes and line ends kept'
+Assert-Equal 'SSN/High/***-**-6789 DoD ID/High/******7890 Date of birth/High/[date masked]' ((Get-HitSummary $csvText) -join ' ') 'Roster csv: values found by their header'
+$tsv = "Name`tPassport`nPerson A`t$($Sample.Passport)"
+Assert-Equal "Name`tPassport`nPerson A`tPassport: $($Sample.Passport)" (Get-TextFromBytes -Bytes ([System.Text.Encoding]::UTF8.GetBytes($tsv)) -FileName 'r.tsv').Text 'Roster tsv: tab fields'
+$plainCsv = "Person,Code,Number`r`nPerson A,`"$($Sample.Ssn)`",$otherTen`r`n"
+Assert-Equal $plainCsv (Get-TextFromBytes -Bytes ([System.Text.Encoding]::UTF8.GetBytes($plainCsv)) -FileName 'p.csv').Text 'Roster csv: no header row, text not changed'
+
 # ---- Word field codes are not read (a TOC bookmark number is no SSN) ----
 $fieldXml = "<w:document><w:p><w:r><w:instrText xml:space=`"preserve`"> PAGEREF _Toc$($Sample.SsnBare) \h </w:instrText></w:r><w:r><w:t>Chapter 1</w:t></w:r></w:p></w:document>"
 $fieldText = (Get-TextFromBytes -Bytes (New-ZipBytes @{ 'word/document.xml' = $fieldXml }) -FileName 'Plan.docx').Text

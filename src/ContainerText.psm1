@@ -5,8 +5,11 @@ ContainerText.psm1 - unpacks files that hold other files: zip archives and e-mai
                so TextExtract.psm1 reads each part with its own reader and the report names it as
                "archive.zip/inner/file" (the PAM, 2026-11-20: round 3 readers). Limits on the number of files and
                the unpacked size guard against zip bombs; a part over a limit gets a reason instead of its bytes.
-  Inputs:      the file bytes.
-  Outputs:     parts: Name, and Bytes (a file to read), Text (text already read) or Reason (not read, and why).
+               It also labels roster columns: a PII label only in a column header of a worksheet or .csv/.tsv file is
+               written before each value below it, so the detectors read it (the PAM, 2026-11-24).
+  Inputs:      the file bytes; for roster columns, the rows of a worksheet or the text of a .csv/.tsv file.
+  Outputs:     parts: Name, and Bytes (a file to read), Text (text already read) or Reason (not read, and why);
+               roster columns: the text with the labels written in.
   How to run:  imported by Find-ChannelPII.ps1 (used by TextExtract.psm1); not run on its own.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7); .NET System.IO.Compression only.
   Network:     none.
@@ -337,4 +340,109 @@ function Get-EmailParts {
     Get-MimeParts $text 0
 }
 
-Export-ModuleMember -Function Get-ArchiveParts, Get-EmailParts, Read-LimitedStream
+# ---- Roster columns: a PII label only in a column header (the PAM, 2026-11-24) ----
+# A header cell: the whole cell is one label of this list (case ignored; quotes, and a trailing ':', '#' or '.', allowed).
+$script:RosterHeaderPattern = '^\s*"?\s*(?:(?<ssn>SSN|SSAN)|(?<dod>DoD\s*ID|DODID|EDIPI)|(?<dob>DOB|Date\s+of\s+birth)|(?<pp>Passport(?:\s+No)?))\s*[:#.]*\s*"?\s*$'
+$script:RosterLabelText = @{ ssn = 'SSN'; dod = 'DoD ID'; dob = 'Date of birth'; pp = 'Passport' }
+$script:RosterWords = New-Object regex ('SSN|SSAN|DoD|EDIPI|DOB|birth|Passport', 'IgnoreCase')   # none in the first rows: no header (speed)
+$script:RosterHeaderRows = 5   # the header row is looked for in this many first rows (the author's choice, 2026-11-24)
+# A label reaches a value that starts at most 40 characters after it ($KeywordWindowChars, PiiPatterns.psm1); a value
+# of another cell with at least $RosterMinDigits digits (a date such as 1/2/90; not a row number) is moved out of reach.
+$script:RosterReachChars = 41
+$script:RosterMinDigits = 4
+
+function Find-RosterHeader {
+    <#
+    .SYNOPSIS
+      The header row of a roster: the first row of the first $RosterHeaderRows with at least one label cell
+      ($RosterHeaderPattern) and no cell that holds a digit; $null when there is none.
+    .PARAMETER Lines
+      The text lines, one per row.
+    .PARAMETER Cells
+      For each row (the first rows at least), its cells as [int[]] (column, start in the line, length).
+    .OUTPUTS
+      [hashtable] Row (its index), Labels (column -> label text); or $null.
+    #>
+    param([string[]]$Lines, [System.Collections.Generic.List[object]]$Cells)
+    for ($r = 0; $r -lt [Math]::Min($script:RosterHeaderRows, $Cells.Count); $r++) {
+        $labels = @{}; $digit = $false
+        foreach ($c in $Cells[$r]) {
+            $text = $Lines[$r].Substring($c[1], $c[2])
+            if ($text -match '\d') { $digit = $true; break }
+            $m = [regex]::Match($text, $script:RosterHeaderPattern, 'IgnoreCase')
+            if ($m.Success) { foreach ($k in $script:RosterLabelText.Keys) { if ($m.Groups[$k].Success) { $labels[$c[0]] = $script:RosterLabelText[$k] } } }
+        }
+        if (-not $digit -and $labels.Count -gt 0) { return @{ Row = $r; Labels = $labels } }
+    }
+    return $null
+}
+
+function Get-RosterCells {
+    # Row R's cells as [int[]] (column, start, length): the fields of a .csv line (Field), or a sheet row's texts and columns.
+    param([string[]]$Lines, [int]$R, $Rows, [int]$BreakLength, [regex]$Field)
+    $one = [System.Collections.Generic.List[object]]::new(); $at = 0   # ::new: New-Object per row is slow
+    if ($Field) { foreach ($m in $Field.Matches($Lines[$R])) { $at++; $one.Add([int[]]@($at, $m.Groups[1].Index, $m.Groups[1].Length)) } }
+    else { for ($i = 0; $i -lt $Rows[$R][0].Count; $i++) { $one.Add([int[]]@($Rows[$R][1][$i], $at, $Rows[$R][0][$i].Length)); $at += $Rows[$R][0][$i].Length + $BreakLength } }
+    return , $one
+}
+
+function Join-RosterText {
+    <#
+    .SYNOPSIS
+      The lines as one text, with "<Label>: " before each cell below a header row (Find-RosterHeader) that is in a
+      header column and holds a digit; Plain when there is no header row. A later cell (this row or the next) in reach
+      of a label is moved out of it by spaces after the labelled cell, so a label never labels another cell's value;
+      a cell between them (a label of its own) stays next to its value.
+    .PARAMETER Lines
+      The text lines, one per row.
+    .PARAMETER Plain
+      The text without labels.
+    .PARAMETER Rows
+      A sheet's rows, per row @(texts, column numbers) (Get-RosterCells); $null for a .csv file.
+    .PARAMETER BreakLength
+      The length of the text between two cells of a sheet.
+    .PARAMETER Field
+      The field pattern of a .csv file (group 1: one field); $null for a sheet.
+    #>
+    param([string[]]$Lines, [string]$Plain, $Rows, [int]$BreakLength, [regex]$Field)
+    if ($Lines.Count -eq 0 -or -not $script:RosterWords.IsMatch(($Lines[0..([Math]::Min($script:RosterHeaderRows, $Lines.Count) - 1)] -join "`n"))) { return $Plain }
+    $cells = New-Object System.Collections.Generic.List[object]
+    for ($r = 0; $r -lt $Lines.Count; $r++) {   # the cells of later rows only when a header row is found
+        if ($r -eq $script:RosterHeaderRows -and $null -eq (Find-RosterHeader $Lines $cells)) { return $Plain }
+        $cells.Add((Get-RosterCells $Lines $r $Rows $BreakLength $Field))
+    }
+    $header = Find-RosterHeader $Lines $cells
+    if ($null -eq $header) { return $Plain }
+    $pieces = New-Object System.Collections.Generic.List[string]; $length = 0; $reach = -1; $padPiece = -1
+    for ($r = 0; $r -lt $Lines.Count; $r++) {
+        $line = $Lines[$r]; $at = 0
+        if ($r -gt 0) { $pieces.Add("`n"); $length++ }
+        foreach ($c in $cells[$r]) {
+            $gap = $line.Substring($at, $c[1] - $at); $pieces.Add($gap); $length += $gap.Length
+            $text = $line.Substring($c[1], $c[2]); $at = $c[1] + $c[2]
+            $labelled = $r -gt $header.Row -and $header.Labels.ContainsKey($c[0]) -and $text -match '\d'
+            if ($labelled) { $reach = $length + $script:RosterReachChars; $text = $header.Labels[$c[0]] + ': ' + $text }
+            elseif ($length -lt $reach -and ($text -replace '\D', '').Length -ge $script:RosterMinDigits) { $pieces[$padPiece] += ' ' * ($reach - $length); $length = $reach }
+            $pieces.Add($text); $length += $text.Length
+            if ($labelled) { $padPiece = $pieces.Count - 1 }
+        }
+        $rest = $line.Substring($at); $pieces.Add($rest); $length += $rest.Length
+    }
+    return ($pieces -join '')
+}
+
+function ConvertTo-SheetText {
+    # A worksheet as text, one line per row, cells joined by Break (Rows: per row @(texts, column numbers)), with roster labels.
+    param([System.Collections.Generic.List[object]]$Rows, [string]$Break)
+    $lines = [string[]]@(foreach ($row in $Rows) { $row[0] -join $Break })
+    return (Join-RosterText $lines ($lines -join "`n") $Rows $Break.Length $null)
+}
+
+function Add-CsvRosterLabels {
+    # A .csv or .tsv text with roster labels; a field is quoted ("...", quotes kept) or runs to the next Delimiter.
+    param([string]$Text, [string]$Delimiter)
+    $d = [regex]::Escape($Delimiter)
+    return (Join-RosterText $Text.Split("`n") $Text $null 0 (New-Object regex ('(?:^|' + $d + ')("(?:[^"]|"")*"|[^"\r' + $d + ']*)')))
+}
+
+Export-ModuleMember -Function Get-ArchiveParts, Get-EmailParts, Read-LimitedStream, ConvertTo-SheetText, Add-CsvRosterLabels

@@ -167,6 +167,11 @@ The 7 misses and the 1 false hit:
 
 These are measurements only: the detectors are not changed in this work.
 
+After the roster fix (2026-11-24, branch `claude/roster-labels`; the detectors are not changed): `RECALL found=52/53 false=1`.
+SSN 9 of 9, DoD ID 10 of 10, Date of birth 7 of 7, Passport 2 of 3; the other types as above. Recall 98% (52 of 53),
+precision 98% (52 of 53 hits). A PII label only in a column header (worksheet, .csv, .tsv) is now written before each value
+below it (`src/ContainerText.psm1`). The 1 miss and the 1 false hit are the 9-digit passport (see above).
+
 Method note: with `-Init $null` (the reader modules loaded one by one in the workers), the PDFs were NOT SCANNED,
 because `$script:PdfTokenPattern` was not set in the worker. The bundle's reader block reads them. The baseline uses
 the bundle's reader block, the same code as on the gov device.
