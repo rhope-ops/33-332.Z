@@ -26,5 +26,5 @@ Title: 33-332.Z · <task> · <date>. Read AGENTS.md first.
 16. Plan approved 2026-11-21 (docs/DECISIONS.md, newest row): step 1 = Teams link alone (built) + 2 test snippets
     (parallel download, view counts: docs/reviews/2026-11-21-ion-round2-tests.md); step 2 = permission columns;
     step 3 = parallel downloads in a planned order, and version-history reads off the main thread (slow run 28:49).
-17. 2026-11-24 merged: PRs 58, 59, 62, 63, 69. Open: the PAM's device tests (docs/reviews/2026-11-23-esignature-shape-test.md,
-    -onedrive-probe.md); PR 69 MINORs; src/PiiDetectors.psm1 at its 450-line cap.
+17. 2026-11-24 merged: PRs 58, 59, 62, 63, 69; shape test passed on the gov device (8 of 8 IDs DoD ID Low). Open: the
+    OneDrive probe (docs/reviews/2026-11-23-onedrive-probe.md); PR 69 MINORs; src/PiiDetectors.psm1 at its 450-line cap.
