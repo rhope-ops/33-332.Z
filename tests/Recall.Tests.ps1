@@ -23,7 +23,14 @@ Assert-Equal $true ($recallCut -gt 0) 'Recall: the paste text has its questions 
 
 # The key: the same on every run (a number from every value, so Windows PowerShell 5.1 in the ps51 workflow proves it too).
 function Get-RecallFingerprint {
-    # A number from every file's lines, cells and planted values (a failure shows it, never a value).
+    <#
+    .SYNOPSIS
+      A number from every file's lines, cells and planted values (a failure shows it, never a value).
+    .PARAMETER Plan
+      Output of Get-RecallPlan.
+    .OUTPUTS
+      [long] from 0 to 1000002.
+    #>
     param([System.Collections.Generic.List[object]]$Plan)
     $print = 0L
     foreach ($file in $Plan) {
