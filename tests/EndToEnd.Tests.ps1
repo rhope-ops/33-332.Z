@@ -167,7 +167,8 @@ Reset-FakePnP @{ "$library/General/notes.txt" = $Txt }
 Set-FakeSiteAnswer -TypedSite @($siteB)
 $roundFolder = Join-Path $runFolder 'rounds'
 & $script -SiteUrl $Sample.Site -OutputFolder $roundFolder 6>$null
-$roundOrder = '{0}|{1}|{2}' -f ((Get-FakePnPConnection) -join ' '), (Get-FakeCallCount 'Disconnect-PnPOnline'), ((Get-FakeCallIndex 'Disconnect-PnPOnline') -gt (Get-FakeCallIndex ('Connect ' + $siteB)))
+$signOutLast = (Get-FakeCallIndex 'Disconnect-PnPOnline') -gt (Get-FakeCallIndex ('Connect ' + $siteB))
+$roundOrder = '{0}|{1}|{2}' -f ((Get-FakePnPConnection) -join ' '), (Get-FakeCallCount 'Disconnect-PnPOnline'), $signOutLast
 Assert-Equal ($Sample.Site + ' ' + $siteB + '|1|True') $roundOrder 'Scan more: no sign-out between rounds; one sign-out at the end'
 Assert-Equal 2 @(Get-ResultFiles $roundFolder).Count 'Scan more: one workbook per round'
 # A cancel at "Scan more" (as Ctrl+C) leaves the script with an error: the run still signs out.
