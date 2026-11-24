@@ -269,4 +269,5 @@ finally {
         catch { Write-Verbose 'Already signed out.' }  # nothing to sign out of: not an error for the person
     }
 }
-if ($script:IonSignInTried) { Write-Ui 'Ion is done: nothing stays signed in.' 'Good' } else { Write-Ui 'Ion is done.' 'Good' }
+# The CAC sign-in of the window lasts until ISE closes (probe 3, second run): the PAM, 2026-11-24, chose this text.
+if ($script:IonSignInTried) { Write-Ui 'Ion is done: signed out. Close Windows PowerShell ISE to end the CAC session.' 'Good' } else { Write-Ui 'Ion is done.' 'Good' }

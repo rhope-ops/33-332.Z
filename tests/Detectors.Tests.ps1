@@ -200,6 +200,9 @@ Assert-Equal 'Folder/***@example.com.docx' (Protect-PiiText "Folder/$($Sample.Em
 Assert-Equal 'FY27 Roster v2.docx' (Protect-PiiName 'FY27 Roster v2.docx') 'Name: digits that are not PII kept'
 Assert-Equal 'Roster ***-**-6789.docx' (Protect-PiiName "Roster $($Sample.Ssn).docx") 'Name: SSN masked like a found value'
 Assert-Equal 'Folder/***@example.com.docx' (Protect-PiiName "Folder/$($Sample.Email).docx") 'Name: e-mail name hidden'
+$dashName = Protect-PiiName "TeamA-$($Sample.Ssn)-x"
+Assert-Equal 'TeamA-***-**-6789-x' $dashName 'Name: an SSN shape between dashes is masked too (the PAM, 2026-11-24)'
+Assert-Equal 'Plan 2026-11-24 v1-12-123.docx' (Protect-PiiName 'Plan 2026-11-24 v1-12-123.docx') 'Name: dates and other digit groups kept'
 Assert-Equal $false (Protect-PiiName "CAC_$($Sample.DodId).docx").Contains($Sample.DodId) 'Name: DoD ID never shown in full'
 
 # ---- Validators ----
