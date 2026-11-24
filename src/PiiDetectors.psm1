@@ -66,9 +66,9 @@ $script:NotPhoneAfterName = '(?!\d{3}(?:[ \t\u00A0.-]|\r?\n)\d{3}(?:[ \t\u00A0.-
 # (the PAM, 2026-11-24, "1a"; the guard of 013ca82 blocked every digit and gap: 0 of 400 such IDs found).
 $script:SignedLeadIn = '(?:(?:19|20)\d\d[./-]\d{1,2}[./-]\d{1,2}|\d{1,2}[./-]\d{1,2}[./-](?:(?:19|20)\d\d|\d\d)|\d{1,2}:\d\d(?::\d\d)?|' +
     '(?<![\w.-])(?:19|20)\d\d|(?i:page)[ \t\u00A0]+\d{1,4})[ \t\u00A0]'
-# A sentence ends between a signature word and the digits: a word in small letters only, its full stop, then a capital word
-# ("signed. Tracking"; not a title or an abbreviation such as "Lt. Col.", "Capt. Doe", "Dept. Head" or "U.S.": review of PR 69).
-$script:SentenceEnd = [regex]'(?<![A-Za-z])[a-z]{3,}[.!?][ \t\u00A0]+[A-Z][a-z]{2}'
+# The signature word ends a sentence: its full stop, a space, then a capital word ("was signed. Tracking ##########"). Only
+# this: a stop later on can be a title or an abbreviation ("capt. Doe", "etc."), so it does not count (reviews of PR 69).
+$script:SentenceEnd = [regex]'^[.!?][ \t\u00A0]+[A-Z][a-z]{2}'
 # A dashed date then a gap, right after a CAC name (y-m-d or m-d-y, 1 or 2 digits for month and day): no ID. A dashed ID
 # ("###-##-####-#", "####-##-####") is no date shape (the PAM's review of PR 57, 2026-11-24; review of PR 69).
 $script:NotDashDate = '(?!(?:\d{4}-\d{1,2}-\d{1,2}|\d{1,2}-\d{1,2}-(?:\d{4}|\d{2}))(?:[ \t\u00A0]|\r?\n|$))'
@@ -296,8 +296,8 @@ function Find-SignedIdHits {
 function Test-SignatureWordBefore {
     <#
     .SYNOPSIS
-      True when the last signature word that ends at or before At starts in the 40 characters before it, with no sentence
-      end after it ("The contract was signed. Tracking ##########": review of PR 57; "Signed." on its own line counts).
+      True when the last signature word that ends at or before At starts in the 40 characters before it, and does not end
+      a sentence ("The contract was signed. Tracking ##########": review of PR 57; "Signed." on its own line counts).
     .PARAMETER Text
       The text searched.
     .PARAMETER Signed
@@ -313,7 +313,7 @@ function Test-SignatureWordBefore {
     $place--
     while ($place -ge 0 -and $Signed.WordEnds[$place] -gt $At) { $place-- }
     if ($place -lt 0 -or $Signed.WordStarts[$place] -lt $At - 40) { return $false }
-    return -not $script:SentenceEnd.IsMatch($Text.Substring($Signed.WordStarts[$place], $At - $Signed.WordStarts[$place]))   # with the word
+    return -not $script:SentenceEnd.IsMatch($Text.Substring($Signed.WordEnds[$place], $At - $Signed.WordEnds[$place]))   # just after the word
 }
 
 function Add-SignedIdHits {

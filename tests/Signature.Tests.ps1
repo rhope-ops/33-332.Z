@@ -262,6 +262,11 @@ foreach ($case in @("Digitally signed by Capt. Doe $sigId", "Signature: Prof. Do
 }
 $longName = 'x.' + ('A' * 36) + ' ' + ('B' * 40)
 foreach ($case in @("$longName   $sig9 $($sigId.Substring(9))", "ACCT NO $sig9 $($sigId.Substring(9))", "REF NO $sig3241", "TEL NR $sig9 $($sigId.Substring(9))")) {
-    Assert-Equal 0 @(Get-HitSummary $case | Where-Object { $_ -like 'DoD ID/*' }).Count "No name: the SSN stays ($($case.Substring(0, [Math]::Min(12, $case.Length))))"
+    $kinds = @(Get-HitSummary $case | ForEach-Object { ($_ -split '/')[0] })
+    Assert-Equal 'True False' ('{0} {1}' -f ($kinds -contains 'SSN'), ($kinds -contains 'DoD ID')) "No name: the SSN stays ($($case.Substring(0, [Math]::Min(12, $case.Length))))"
 }
 Assert-Equal 'DoD ID/Low/******7890' ((Get-HitSummary "$sigName`t$sig9`t$($sigId.Substring(9))") -join ',') 'CAC name, tab gaps, 9+1: an ID'
+# Third review of PR 69: a title or abbreviation in small letters after the word is no sentence end (as on main).
+foreach ($case in @("signed by capt. Doe $sigId", "Signed by lt. col. Doe $sigId", "Signed by the dept. Head $sigId", "Signed by Doe, etc. Then $sigId")) {
+    Assert-Equal 1 @(Get-HitSummary $case | Where-Object { $_ -eq 'DoD ID/Low/******7890' }).Count "No sentence end: $($case -replace '\d', '#')"
+}
