@@ -20,7 +20,7 @@
   Built from these files; to change it, change them and rebuild with: python3 scripts/build_paste.py
     src/PiiPatterns.psm1, sha256 f7ef8ca1789f
     src/PiiSignedIds.psm1, sha256 0b83d916e727
-    src/PiiDetectors.psm1, sha256 66e3b48368e2
+    src/PiiDetectors.psm1, sha256 78cd47865039
     src/PiiMasking.psm1, sha256 9bf871e9e244
     src/OcrText.psm1, sha256 a39acab441d4
     src/OleText.psm1, sha256 2f5d0a036e97
@@ -57,31 +57,31 @@
     line   104  Module PiiPatterns.psm1
     line   504  Module PiiSignedIds.psm1
     line   822  Module PiiDetectors.psm1
-    line  1002  Module PiiMasking.psm1
-    line  1249  Module OcrText.psm1
-    line  1402  Module OleText.psm1
-    line  1541  Module ContainerText.psm1
-    line  1880  Module PdfCore.psm1
-    line  2242  Module PdfObjects.psm1
-    line  2600  Module PdfFonts.psm1
-    line  2918  Module PdfShown.psm1
-    line  3169  Module PdfLayout.psm1
-    line  3309  Module PdfContent.psm1
-    line  3639  Module PdfText.psm1
-    line  3831  Module TextExtract.psm1
-    line  4249  Module ReaderPool.psm1
-    line  4574  Reader block end
-    line  4578  Module XlsxWriter.psm1
-    line  5015  Module Report.psm1
-    line  5391  Module ReportBook.psm1
-    line  5695  Module ScanMeter.psm1
-    line  6092  Module ScanQueue.psm1
-    line  6486  Module Accountability.psm1
-    line  6870  Module SiteTarget.psm1
-    line  7227  Module ChannelScan.psm1
-    line  7629  Module DriveScan.psm1
-    line  7995  Body of Find-ChannelPII.ps1
-    line  8199  Clean-up
+    line  1026  Module PiiMasking.psm1
+    line  1273  Module OcrText.psm1
+    line  1426  Module OleText.psm1
+    line  1565  Module ContainerText.psm1
+    line  1904  Module PdfCore.psm1
+    line  2266  Module PdfObjects.psm1
+    line  2624  Module PdfFonts.psm1
+    line  2942  Module PdfShown.psm1
+    line  3193  Module PdfLayout.psm1
+    line  3333  Module PdfContent.psm1
+    line  3663  Module PdfText.psm1
+    line  3855  Module TextExtract.psm1
+    line  4273  Module ReaderPool.psm1
+    line  4598  Reader block end
+    line  4602  Module XlsxWriter.psm1
+    line  5039  Module Report.psm1
+    line  5415  Module ReportBook.psm1
+    line  5719  Module ScanMeter.psm1
+    line  6116  Module ScanQueue.psm1
+    line  6510  Module Accountability.psm1
+    line  6894  Module SiteTarget.psm1
+    line  7251  Module ChannelScan.psm1
+    line  7653  Module DriveScan.psm1
+    line  8019  Body of Find-ChannelPII.ps1
+    line  8223  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -848,7 +848,7 @@ PiiDetectors.psm1 - finds text that looks like PII and returns where it is.
 $script:NameToIdentifierChars = 80
 
 # Overlap priority: when two hits cover the same characters, the type earlier in this list wins.
-# Specific identifiers first, broad patterns (phone, address, name) last.
+# Specific identifiers first, broad patterns (phone, address, name) last. One exception: Remove-SsnUnderPassport.
 $script:DetectorOrder = @('SSN', 'DoD ID', 'Payment card', 'Date of birth', 'Passport', 'Phone',
     'Personal e-mail', 'Home address', 'Name')
 
@@ -954,6 +954,30 @@ function Remove-OverlappingHits {
     return , $kept
 }
 
+function Remove-SsnUnderPassport {
+    <#
+    .SYNOPSIS
+      Drops an SSN Low hit (9 bare digits, no SSN label) that covers the same characters as a Passport hit, so the
+      Passport hit is kept (the PAM, 2026-11-24: a 9-digit value right after a Passport label is a Passport).
+    .DESCRIPTION
+      The one exception to $DetectorOrder. A Passport hit exists only with a Passport label in the label window
+      (Find-PassportHits). An SSN with an SSN label (High) or with dashes or spaces (Medium) stays an SSN.
+    .PARAMETER Hits
+      All hits from Get-AllHits.
+    .OUTPUTS
+      The hits without those SSN hits.
+    #>
+    param([object[]]$Hits)
+    $passportPlaces = @{}
+    foreach ($hit in $Hits) {
+        if ($hit -and $hit.Detector -eq 'Passport') { $passportPlaces['{0}+{1}' -f $hit.Index, $hit.Length] = $true }
+    }
+    if ($passportPlaces.Count -eq 0) { return $Hits }
+    return @($Hits | Where-Object {
+        -not ($_ -and $_.Detector -eq 'SSN' -and $_.Confidence -eq 'Low' -and $passportPlaces.ContainsKey(('{0}+{1}' -f $_.Index, $_.Length)))
+    })
+}
+
 function Set-NameNearIdentifierHigh {
     <#
     .SYNOPSIS
@@ -990,7 +1014,7 @@ function Get-PiiSpan {
     # Underscores join words in file names ("CAC_1234..."), which defeats word-boundary checks.
     # Seen as spaces by the detectors only; the length is the same, so positions still fit the text.
     $searchText = $Text.Replace('_', ' ')
-    $kept = Remove-OverlappingHits @(Get-AllHits $searchText)
+    $kept = Remove-OverlappingHits @(Remove-SsnUnderPassport @(Get-AllHits $searchText))
     Add-SignedIdHits $searchText $kept
     Set-NameNearIdentifierHigh $kept.ToArray()
     # A Low hit inside unreadable text (symbols, a font read wrong) is noise: it is dropped. High and Medium hits stay.

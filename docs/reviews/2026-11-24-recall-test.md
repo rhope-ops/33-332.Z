@@ -156,6 +156,8 @@ Score. Ion: `src/` of origin/main 9ded821, not changed. PowerShell 7.4.6 on Linu
 
 Recall 87% (46 of 53). Precision 98% (46 of 47 hits). All 12 files were read (0 in the Not scanned tab). No decoy was a hit.
 
+2026-11-24, branch claude/passport-label (9 digits after a Passport label are a Passport, approved by the PAM): the test prints `RECALL found=47/53 false=0`.
+
 Without the 9 values under a header row only: recall 98% (43 of 44), precision 98% (43 of 44 hits). Without the 9-digit passport too: 43 of 43, no false hit.
 
 The 7 misses and the 1 false hit:

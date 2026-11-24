@@ -87,6 +87,18 @@ Assert-Equal 0 (Get-HitSummary 'Suspense 03/14/2027').Count 'Date without birth 
 
 # ---- Passport, phone, e-mail ----
 Assert-Equal 'Passport/Medium/*****567' (Get-HitSummary "Passport no. $($Sample.Passport)") 'Passport with label'
+# 9 digits right after a Passport label are a Passport, not an SSN (the PAM, 2026-11-24); every other 9-digit value stays as before.
+foreach ($label in @('Passport: ', 'Passport No. ', 'passport no.: ', 'Passport # ')) {
+    Assert-Equal 'Passport/Medium/******789' ((Get-HitSummary ($label + $Sample.SsnBare + ' end')) -join ',') "9 digits after a Passport label: Passport ($label)"
+}
+Assert-Equal 'SSN/Low/***-**-6789' ((Get-HitSummary "value $($Sample.SsnBare) end") -join ',') '9 digits with no label: still SSN'
+Assert-Equal 'SSN/High/***-**-6789' ((Get-HitSummary "SSN: $($Sample.SsnBare)") -join ',') '9 digits after an SSN label: still SSN'
+Assert-Equal 'SSN/High/***-**-6789' ((Get-HitSummary "Passport and SSN: $($Sample.SsnBare)") -join ',') 'Passport and SSN labels: still SSN'
+Assert-Equal 'SSN/Low/***-**-6789' ((Get-HitSummary "Phone: $($Sample.SsnBare)") -join ',') '9 digits after a label of another type: still SSN'
+$farLabel = 'Passport' + (' and other words here' * 3) + ' ' + $Sample.SsnBare
+Assert-Equal 'SSN/Low/***-**-6789' ((Get-HitSummary $farLabel) -join ',') 'A Passport label out of the window: still SSN'
+Assert-Equal 'SSN/Medium/***-**-6789' ((Get-HitSummary "Passport: $($Sample.Ssn)") -join ',') 'A dashed SSN after a Passport label: still SSN'
+Assert-Equal 'Passport/Medium/*****567' ((Get-HitSummary "Passport: $($Sample.Passport)") -join ',') 'A letter and 8 digits after a Passport label: unchanged'
 Assert-Equal 'Phone/Medium/***-***-0142' (Get-HitSummary "my cell $($Sample.Phone)") 'Phone with personal label'
 Assert-Equal 'Phone/Low/***-***-0142' (Get-HitSummary "office $($Sample.PhoneParen)") 'Phone without label'
 Assert-Equal 'Personal e-mail/Low/***@example.com' (Get-HitSummary "write to $($Sample.Email)") 'Personal e-mail'

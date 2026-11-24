@@ -27,7 +27,7 @@ Set-StrictMode -Version 2.0
 $script:NameToIdentifierChars = 80
 
 # Overlap priority: when two hits cover the same characters, the type earlier in this list wins.
-# Specific identifiers first, broad patterns (phone, address, name) last.
+# Specific identifiers first, broad patterns (phone, address, name) last. One exception: Remove-SsnUnderPassport.
 $script:DetectorOrder = @('SSN', 'DoD ID', 'Payment card', 'Date of birth', 'Passport', 'Phone',
     'Personal e-mail', 'Home address', 'Name')
 
@@ -133,6 +133,30 @@ function Remove-OverlappingHits {
     return , $kept
 }
 
+function Remove-SsnUnderPassport {
+    <#
+    .SYNOPSIS
+      Drops an SSN Low hit (9 bare digits, no SSN label) that covers the same characters as a Passport hit, so the
+      Passport hit is kept (the PAM, 2026-11-24: a 9-digit value right after a Passport label is a Passport).
+    .DESCRIPTION
+      The one exception to $DetectorOrder. A Passport hit exists only with a Passport label in the label window
+      (Find-PassportHits). An SSN with an SSN label (High) or with dashes or spaces (Medium) stays an SSN.
+    .PARAMETER Hits
+      All hits from Get-AllHits.
+    .OUTPUTS
+      The hits without those SSN hits.
+    #>
+    param([object[]]$Hits)
+    $passportPlaces = @{}
+    foreach ($hit in $Hits) {
+        if ($hit -and $hit.Detector -eq 'Passport') { $passportPlaces['{0}+{1}' -f $hit.Index, $hit.Length] = $true }
+    }
+    if ($passportPlaces.Count -eq 0) { return $Hits }
+    return @($Hits | Where-Object {
+        -not ($_ -and $_.Detector -eq 'SSN' -and $_.Confidence -eq 'Low' -and $passportPlaces.ContainsKey(('{0}+{1}' -f $_.Index, $_.Length)))
+    })
+}
+
 function Set-NameNearIdentifierHigh {
     <#
     .SYNOPSIS
@@ -169,7 +193,7 @@ function Get-PiiSpan {
     # Underscores join words in file names ("CAC_1234..."), which defeats word-boundary checks.
     # Seen as spaces by the detectors only; the length is the same, so positions still fit the text.
     $searchText = $Text.Replace('_', ' ')
-    $kept = Remove-OverlappingHits @(Get-AllHits $searchText)
+    $kept = Remove-OverlappingHits @(Remove-SsnUnderPassport @(Get-AllHits $searchText))
     Add-SignedIdHits $searchText $kept
     Set-NameNearIdentifierHigh $kept.ToArray()
     # A Low hit inside unreadable text (symbols, a font read wrong) is noise: it is dropped. High and Medium hits stay.
