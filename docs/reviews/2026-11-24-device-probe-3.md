@@ -13,6 +13,38 @@ reaches, and which web path finds a OneDrive file. Ion's next sign-in change use
   It prints no name, no address, no path and no value from a file.
 - It touches only the folder and the sites you give.
 
+## Before you run it: get 2 site addresses and 1 Teams link
+
+Use 2 teams that you scan. Keep the results in Notepad.
+
+1. On the gov device, open Notepad. You see an empty Notepad window. Go on.
+2. In Teams, in the channel **General** of the first team, click **Files**. You see the files of the channel. Go on.
+3. Click **Open in SharePoint**. You see the files in your web browser. Go on.
+4. In the web browser, do these actions:
+   1. Click the address bar.
+   2. Press **Ctrl+C**.
+   You see the address selected. Go on.
+5. In Notepad, do these actions:
+   1. Press **Ctrl+V**.
+   2. Press **Enter**.
+   You see address 1. Go on.
+6. In Teams, in the channel **General** of the second team, click **Files**. You see the files of the channel. Go on.
+7. Click **Open in SharePoint**. You see the files in your web browser. Go on.
+8. In the web browser, do these actions:
+   1. Click the address bar.
+   2. Press **Ctrl+C**.
+   You see the address selected. Go on.
+9. In Notepad, do these actions:
+   1. Press **Ctrl+V**.
+   2. Press **Enter**.
+   You see address 2. Go on.
+10. In Teams, in the list of teams, do these actions:
+    1. Click **...** next to the name of the first team.
+    2. Click **Get link to team** (new Teams: **Copy link**).
+    3. Click **Copy**.
+    You see that the link is copied. Go on.
+11. In Notepad, press **Ctrl+V**. You see the Teams link. The task is complete.
+
 ## How to run it
 
 The probe is a .txt file (Project rules, "Paste format"): `docs/reviews/2026-11-24-device-probe-3.txt`.
@@ -35,15 +67,15 @@ The probe is a .txt file (Project rules, "Paste format"): `docs/reviews/2026-11-
     2. Press **Enter**.
     You see **Question 2**. Go on.
 9. On the question **Question 2**, do these actions:
-    1. Type the address of a team site that you scan.
+    1. Paste address 1 from Notepad.
     2. Press **Enter**.
     You see **Question 3**. Go on.
 10. On the question **Question 3**, do these actions:
-    1. Type the address of a second team site on the same host.
+    1. Paste address 2 from Notepad.
     2. Press **Enter**.
     You see **Question 4**. Go on.
 11. On the question **Question 4**, do these actions:
-    1. Type a Teams link of a team that you scan.
+    1. Paste the Teams link from Notepad.
     2. Press **Enter**.
     You see that the screen clears. Go on.
 12. In each CAC sign-in window, sign in with your CAC. Write down the number of sign-in windows and PIN prompts. Wait
@@ -58,8 +90,14 @@ The probe is a .txt file (Project rules, "Paste format"): `docs/reviews/2026-11-
     3. Send the message.
     You see the message in your sent mail. The task is complete.
 
-To skip a question, press **Enter** without an answer. To get a Teams link: in Teams, click **...** next to the team name, then click **Copy link**.
+To skip a question, press **Enter** without an answer.
 
 ## Result
 
-Not run yet.
+- First run, 2026-11-24 (the PAM, by e-mail; kinds and counts only): Questions 2-4 were not used (the probe accepted
+  only a bare site address, and the Teams link had no groupId), so T1-T3 did not run. T4: 2 matching entries; sign-in
+  ok; paths A, B and C found=False; web read failed (PSInvalidOperationException); disk read "0 KB" (rounded: under
+  512 bytes). The cause of found=False is not known yet (assumption, not proven: the file is not on the web, or the
+  path is built wrong). Fixed: any address inside a site works; empty, hidden and system files are skipped; a new line
+  "T4 name in library" shows if the file is on the web, and if a match is at the path built from the address; the size is in bytes.
+- Second run: not run yet.
