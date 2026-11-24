@@ -60,12 +60,16 @@ $script:SignedIdDash = '(?<id>\d(?:[ \t\u00A0-]?\d){9})(?![\w-])(?![ \t\u00A0]\d
 $script:DigitRun = [regex]'\d(?:(?:[ \t\u00A0-]|\r?\n)?\d){9}'   # 10 digits with gaps: where a window can find an ID
 $script:NotDate = '(?!(?:19|20)\d\d(?:[ \t\u00A0./-]|\r?\n|(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01]))|\d{1,2}[ \t./-]\d{1,2}[ \t./-](?:19|20)\d\d)'
 $script:NotPhone = '(?!\d{3}(?:[ \t\u00A0.-]|\r?\n)\d{3}(?:[ \t\u00A0.-]|\r?\n)?\d{4}(?![\w-]))'   # 3-3-4 or 3-7: a phone
+# A dashed date then a gap, right after a CAC name (y-m-d or m-d-y, 1 or 2 digits for month and day): no ID. A dashed ID
+# ("###-##-####-#") has a dash, not a gap, after its third group (the PAM's review of PR 57, 2026-11-24).
+$script:SentenceEnd = [regex]'[.!?][ \t\u00A0]+[A-Z][a-z]'   # a sentence ends between a signature word and the digits
+$script:NotDashDate = '(?!\d{1,4}-\d{1,2}-\d{1,4}(?:[ \t\u00A0]|\r?\n|$))'
 # Each pattern starts with a letter or digit, then looks back, so the engine skips ahead fast on long text (review of PR 60).
 $script:SignedNameText = ("(?<name>[A-Z](?<=(?:^|[^\w.])[A-Z])(?:[A-Z'-]{1,39}(?:\r?\n[A-Z'-]{1,40})?|\r?\n[A-Z'-]{1,40})\." +
     '(?<!(?:^|[^\w.])(?:NO|NR|NUM|REF|ACCT|ACC|TEL|PH|FAX|ID|DOC|REV|VER)\.)' +
     "(?:\r?\n)?(?!(?:NO|NR|NUM|REF|ACCT|TEL|PH|FAX|ID)\.)" +
     "$script:SignedPart(?: $script:SignedPart){0,2}\.(?:(?:\r?\n)?$script:SignedPart(?: $script:SignedPart){0,2}\.){0,2})" +
-    "(?:$script:SignedIdDash|$script:SignedId|(?:[ \t\u00A0]+(?:\r?\n[ \t\u00A0]*)?|\r?\n[ \t\u00A0]*)$script:NotDate$script:NotPhone$script:SignedId)")
+    "$script:NotDashDate(?:$script:SignedIdDash|$script:SignedId|(?:[ \t\u00A0]+(?:\r?\n[ \t\u00A0]*)?|\r?\n[ \t\u00A0]*)$script:NotDate$script:NotPhone$script:SignedId)")
 $script:SignedName = [regex]$script:SignedNameText
 $script:SignedNameAnyCase = [regex]('(?i)' + $script:SignedNameText)
 $script:SignedNameAnyCaseAt = [regex]('(?i)\G(?:' + $script:SignedNameText + ')')   # \G: only at the given place
@@ -77,6 +81,14 @@ $script:SignedBareIdAt = [regex]('\G(?:' + $script:SignedBareText + ')')
 # The 10 digits in a row just before a CAC name in capitals (the ID above the name; not "REF.NO." and the like).
 $script:SignedIdThenName = [regex]('(?<id>\d(?<=(?:^|[^\w.-])\d)\d{9})(?![\w-])[ \t\u00A0]*(?:\r?\n[ \t\u00A0]*)?' +
     "(?!(?:NO|NR|NUM|REF|ACCT|ACC|TEL|PH|FAX|ID|DOC|REV|VER)\.)(?=[A-Z][A-Z'-]+\.[A-Z][A-Z'-]*\.)")
+# The PAM, 2026-11-24 (review of PR 57): a CAC name in small letters with a one-letter initial and its dot
+# ("doe.jane.q."; "backup.config." and "e.g." are none; Title Case stays a decoy without a signature word), and a name in capitals without dots on one line ("DOE JANE Q",
+# "DOE, JANE Q."), then the digits. Without dots, the digits need a space in them (Add-SignedIdHits): a heading such as
+# "THE UNIT A" then a plain number is no name. Both count without a signature word, like a CAC name in capitals.
+$script:SignedNameLower = [regex]("(?<name>[a-z](?<=(?:^|[^\w.])[a-z])[a-z'\u2019-]{1,39}(?:\.[a-z][a-z'\u2019-]{0,39}){1,2}\.[a-z]\.)" +
+    "(?:[ \t\u00A0]{1,3}|\r?\n[ \t\u00A0]*)?$script:NotDashDate$script:NotDate$script:NotPhone$script:SignedId")
+$script:SignedNameSpaced = [regex]("(?<name>[A-Z](?<=(?:^|[^\w.,])[A-Z])[A-Z'\u2019-]{1,39},?(?: [A-Z][A-Z'\u2019-]{0,39}){1,3}\.?)" +
+    "[ \t\u00A0]{1,3}$script:NotDate$script:NotPhone$script:SignedIdLine")
 
 # =====================================================================================
 # Small helper and the labelled-name detector (it calls Get-PiiSpan, so it stays here)
@@ -241,8 +253,11 @@ function Find-SignedIdHits {
     $words = @([regex]::Matches($Text, $script:SignedWords))   # on the whole text, so no cut makes "assigned" a word
     $result.WordStarts = [int[]]@(foreach ($w in $words) { $w.Index })
     $result.WordEnds = [int[]]@(foreach ($w in $words) { $w.Index + $w.Length })
-    foreach ($m in $script:SignedName.Matches($Text)) { $found.Add(@($m, $false)) }
-    foreach ($m in $script:SignedIdThenName.Matches($Text)) { $found.Add(@($m, $false)) }
+    # Each candidate: (match, needs a signature word, follows a CAC name: an SSN in it gives way, the PAM's gap rule 2026-11-24).
+    foreach ($m in $script:SignedName.Matches($Text)) { $found.Add(@($m, $false, $true)) }
+    foreach ($m in $script:SignedIdThenName.Matches($Text)) { $found.Add(@($m, $false, $true)) }
+    foreach ($m in $script:SignedNameLower.Matches($Text)) { $found.Add(@($m, $false, $true)) }
+    foreach ($m in $script:SignedNameSpaced.Matches($Text)) { if ($m.Groups['id'].Value.Contains(' ')) { $found.Add(@($m, $false, $true)) } }
     # The any-case name and the digits alone: only in the 400 characters from each signature word, each match then checked
     # on the whole text (review of PR 60: one word must not make long text slow).
     $ranges = New-Object System.Collections.Generic.List[int[]]   # the windows, overlapping ones joined (each part read once)
@@ -255,11 +270,34 @@ function Find-SignedIdHits {
     }
     foreach ($range in $ranges) {
         $window = $Text.Substring($range[0], $range[1] - $range[0])
-        foreach ($pair in @(($script:SignedNameAnyCase, $script:SignedNameAnyCaseAt), ($script:SignedBareId, $script:SignedBareIdAt))) {
-            foreach ($m in $pair[0].Matches($window)) { $full = $pair[1].Match($Text, $range[0] + $m.Index); if ($full.Success) { $found.Add(@($full, $true)) } }
+        foreach ($pair in @(($script:SignedNameAnyCase, $script:SignedNameAnyCaseAt, $true), ($script:SignedBareId, $script:SignedBareIdAt, $false))) {
+            foreach ($m in $pair[0].Matches($window)) { $full = $pair[1].Match($Text, $range[0] + $m.Index); if ($full.Success) { $found.Add(@($full, $true, $pair[2])) } }
         }
     }
     return $result
+}
+
+function Test-SignatureWordBefore {
+    <#
+    .SYNOPSIS
+      True when the last signature word that ends at or before At starts in the 40 characters before it, with no sentence
+      end after it ("The contract was signed. Tracking ##########": review of PR 57; "Signed." on its own line counts).
+    .PARAMETER Text
+      The text searched.
+    .PARAMETER Signed
+      Output of Find-SignedIdHits (WordStarts and WordEnds, in text order).
+    .PARAMETER At
+      Where the candidate starts.
+    .OUTPUTS
+      [bool]
+    #>
+    param([string]$Text, $Signed, [int]$At)
+    $place = [Array]::BinarySearch($Signed.WordStarts, $At)
+    if ($place -lt 0) { $place = -bnot $place }
+    $place--
+    while ($place -ge 0 -and $Signed.WordEnds[$place] -gt $At) { $place-- }
+    if ($place -lt 0 -or $Signed.WordStarts[$place] -lt $At - 40) { return $false }
+    return -not $script:SentenceEnd.IsMatch($Text.Substring($Signed.WordEnds[$place], $At - $Signed.WordEnds[$place]))
 }
 
 function Add-SignedIdHits {
@@ -298,14 +336,10 @@ function Add-SignedIdHits {
             if ($Kept[$order[$q]].Index + $Kept[$order[$q]].Length -gt $digits.Index) { $held.Add($order[$q]) }
         }
         if (@(foreach ($k in $held) { if ($Kept[$k].Detector -ne 'SSN') { $k } }).Count) { continue }   # cheap test first
-        # A signature word wholly in the 40 characters before: the first word that starts there ends first (binary search).
-        $at = $item[0].Index
-        $place = [Array]::BinarySearch($signed.WordStarts, $at - 40)
-        if ($place -lt 0) { $place = -bnot $place }
-        $word = $place -lt $signed.WordStarts.Length -and $signed.WordEnds[$place] -le $at
+        $word = Test-SignatureWordBefore $Text $signed $item[0].Index
         if ($item[1] -and -not $word) { continue }
         $seen[$digits.Index] = $true   # only after the word test: a candidate that needs a word must not block a sure one
-        $confidence = if (Test-DodIdLabelBefore $Text $digits.Index) { 'High' } else { 'Low' }; $sure = $word -or ($digits.Index -gt 0 -and $Text[$digits.Index - 1] -eq '.')
+        $confidence = if (Test-DodIdLabelBefore $Text $digits.Index) { 'High' } else { 'Low' }; $sure = $word -or $item[2] -or ($digits.Index -gt 0 -and $Text[$digits.Index - 1] -eq '.')
         $free = $true
         foreach ($k in $held) {
             $hit = $Kept[$k]

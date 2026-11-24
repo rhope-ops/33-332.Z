@@ -2,7 +2,7 @@
 Signature.Tests.ps1 - tests of the e-signature DoD ID (PiiDetectors.psm1 Find-SignedIdHits, Add-SignedIdHits): 25 layouts, decoys, masking, speed.
 
   Purpose:     Each layout of docs/reviews/2026-11-23-ion-esignature-layouts.md (this session's 25 and the source's 25) gives
-               exactly one hit, a DoD ID (Low), and no SSN, except 2 source layouts by design; decoys give no DoD ID;
+               exactly one hit, a DoD ID (Low), and no SSN, except source layout OF by design; decoys give no DoD ID;
                values with gaps and line breaks stay masked; no regex stalls.
   Inputs:      $Sample (TestKit.ps1).
   Outputs:     passes and failures counted by Assert-Equal.
@@ -46,9 +46,9 @@ $SignatureLayouts = [ordered]@{
     'S24 CRLF, then 3-2-4-1'      = "$sigName`r`n$sig3241"
     'S25 one digit, then nine'    = "$sigName$($sigId.Substring(0, 1)) $($sigId.Substring(1))"
 }
-# A CAC name, white space, then an SSN shape and one more digit, with no signature word: also a roster row (third review of
-# PR 60), so it stays an SSN, as on main, until the PAM decides (asked 2026-11-24).
-$sigAsSsn = @{ 'S23 space, then 3-2-4-1' = 'SSN/Medium/***-**-6789'; 'S24 CRLF, then 3-2-4-1' = 'SSN/Medium/***-**-6789'; 'OE' = 'SSN/Low/***-**-6789' }
+# A CAC name, a gap, then 9+1 digits (S23, S24, OE) is a DoD ID Low (the PAM's gap rule, 2026-11-24, question dialog):
+# no layout stays an SSN. A roster row without a name, and a count after an SSN, stay SSNs (tests below and Detectors.Tests.ps1).
+$sigAsSsn = @{}
 foreach ($layout in $SignatureLayouts.Keys) {
     $expected = if ($sigAsSsn.ContainsKey($layout)) { $sigAsSsn[$layout] } else { 'DoD ID/Low/******7890' }
     Assert-Equal $expected ((Get-HitSummary $SignatureLayouts[$layout]) -join ',') "E-signature layout $layout"
@@ -73,7 +73,7 @@ foreach ($layout in $SourceLayouts.Keys) {
     Assert-Equal $expected ((Get-HitSummary $SourceLayouts[$layout]) -join ',') "E-signature source layout $layout"
 }
 # By design: no dotted name and no signature word. A stays an SSN (still reported); F, 10 spaced digits alone, is not reported.
-Assert-Equal 'SSN/Medium/***-**-6789' ((Get-HitSummary "DOE JOHN A $sig3241") -join ',') 'E-signature source layout OA: SSN, by design'
+Assert-Equal 'DoD ID/Low/******7890' ((Get-HitSummary "DOE JOHN A $sig3241") -join ',') 'E-signature source layout OA: DoD ID (the PAM, 2026-11-24)'
 Assert-Equal 0 (Get-HitSummary (($sigId.ToCharArray()) -join ' ')).Count 'E-signature source layout OF: no hit, by design'
 
 # ---- Decoys: no DoD ID where there is no signature ID; an SSN with a label or dashes stays an SSN ----
@@ -212,3 +212,31 @@ foreach ($case in $sigAfterHit.Keys) {
 foreach ($case in @("Digitally signed by`n2026.11.20 $sigId", "Digitally signed by`nPage 3 $sig3241")) {
     Assert-Equal 0 @(Get-HitSummary $case | Where-Object { $_ -like 'DoD ID/*' }).Count "As on main: no ID just after a number ($($case -replace "`n", ' '))"
 }
+
+# ---- Review of PR 57 (the PAM, 2026-11-24: close PR 57, fix its cases on main) ----
+$sig9 = $sigId.Substring(0, 9)
+$sigCaps = 'DOE' + ' JANE Q'
+$pr57Ids = [ordered]@{
+    'capitals, no dots, 3-2-4-1'      = "$sigCaps $sig3241"
+    'Signature:, comma name, 9+1'     = "Signature: DOE, JANE Q. $sig9 $($sigId.Substring(9))"
+    'dotted name, a space, 9+1'       = "$sigName $sig9 $($sigId.Substring(9))"
+    'lower-case dotted name'          = "$($sigName.ToLower())$sigId"
+    'lower-case dotted name, a space' = "$($sigName.ToLower()) $sigId"
+}
+foreach ($case in $pr57Ids.Keys) {
+    Assert-Equal 'DoD ID/Low/******7890' ((Get-HitSummary $pr57Ids[$case]) -join ',') "Review of PR 57: DoD ID ($case)"
+}
+$pr57None = [ordered]@{
+    'signed. in a sentence'          = "The contract was signed. Tracking $sigId"
+    'date m-d-yy after a name'       = "$($sigName)11-23-26 1015"
+    'date m-d-yyyy after a name'     = "$($sigName)1-5-2026 1015"
+    'date yyyy-m-d after a name'     = "$($sigName)2026-1-5 1015"
+    'capitals heading, plain digits' = "THE UNIT A $sigId"
+    'capitals roster, next row'      = "1 $sigCaps $sig9`n2 DOE JOHN"
+    'small words, no dots'           = "assigned to bob a $sig9 $($sigId.Substring(9))"
+}
+foreach ($case in $pr57None.Keys) {
+    Assert-Equal 0 @(Get-HitSummary $pr57None[$case] | Where-Object { $_ -like 'DoD ID/*' }).Count "Review of PR 57: no DoD ID ($case)"
+}
+Assert-Equal 'DoD ID/Low/******7890' ((Get-HitSummary "$($sigName)$($sigId.Substring(0, 3))-$($sigId.Substring(3, 2))-$($sigId.Substring(5, 4))-$($sigId.Substring(9))") -join ',') `
+    'Review of PR 57: a dashed ID after a name is no date'
