@@ -66,8 +66,10 @@ Assert-Equal 'https://tenant.example.com/teams/TeamA' (Connect-TeamSite (Get-Sca
 Reset-FakePnP @{}; Set-FakeLookupSite 'https://tenant.example.com/teams/TeamB'
 Set-FakeSiteAnswer -SiteGroupId '99999999-2222-3333-4444-555555555555'
 $refused = $false
-try { Connect-TeamSite (Get-ScanTarget $teamLink) 6>$null | Out-Null } catch { $refused = $true }  # expected: another team's site
+$wrongTeam = ''
+try { Connect-TeamSite (Get-ScanTarget $teamLink) 6>$null | Out-Null } catch { $refused = $true; $wrongTeam = $_.Exception.Message }  # expected: another team's site
 Assert-Equal $true $refused 'Looked-up site of another team refused'
+Assert-Equal $false $wrongTeam.Contains('Click Sync') 'Another team: no sync steps (the sign-in worked)'
 & $siteTargetModule { $script:TenantRoot = 'https://usaf.dps.mil' }
 Reset-FakePnP @{}
 Set-FakeSiteAnswer -TypedSite 'https://tenant.example.com/teams/TeamB' -SiteGroupId '99999999-2222-3333-4444-555555555555'
@@ -276,6 +278,15 @@ Assert-Equal $true ((ConvertTo-FriendlyError 'The remote server returned an erro
 $closed = 'The underlying connection was closed: An unexpected error occurred on a send.'
 Assert-Equal $closed (ConvertTo-FriendlyError $closed) 'A closed connection is not called a closed sign-in window'
 Assert-Equal 'File Not Found.' (ConvertTo-FriendlyError 'File Not Found.') 'A missing file is not called a missing site'
+# Sign-in blocked on this computer (the PAM, 2026-11-23: Connect-PnPOnline blocked outside the US): no stop, but the steps
+# to scan a synced copy as a folder; "no access" keeps its own words only.
+Set-FakeSiteAnswer
+Set-FakePnPOption ConnectFails $true
+$signIn = ''
+try { Connect-TeamSite (Get-ScanTarget 'https://tenant.example.com/teams/TeamA') 6>$null | Out-Null } catch { $signIn = $_.Exception.Message }
+Assert-Equal 'True True' ('{0} {1}' -f $signIn.StartsWith('FAKE: sign-in refused'), $signIn.Contains('Click Sync')) `
+    ('Sign-in blocked: the steps to scan a synced folder follow the error: ' + $signIn.Split([char]10)[0])
+Set-FakePnPOption ConnectFails $false
 
 # ---- Live counts line and the timing ----
 Reset-FakePnP @{}
