@@ -39,11 +39,14 @@ $script:KeepLastPassportChars = 3
 $script:EmailLocalPartPattern = '(?<=^|[\s@<>()\[\],;:"/\\])[^\s@<>()\[\],;:"/\\]+(?=@[^\s@<>()\[\],;:"/\\.]+\.)'
 
 # A CAC name in an e-signature ("DOE.JANE.Q."): in the Context column each part keeps only its first letter (approved
-# 2026-11-21: "mask the CAC name in Context"). $CacCandidate finds only two or more dotted parts in a row (and the part
-# after them), each part read once (atomic groups) and never from inside a run of name characters, so long text stays
-# fast and a plain word never reaches Protect-CacName (fifth review of PR 81). A name starts at a part of two letters
-# or more, so "e.g." and "i.e." stay readable; a dotted host or file name that looks the same is masked too.
-$script:CacCandidate = [regex]"(?<![\p{L}\p{M}\p{Cs}_'-])(?>[\p{L}\p{M}\p{Cs}_'-]+\.){2,}(?>[\p{L}\p{M}\p{Cs}_'-]*)"
+# 2026-11-21: "mask the CAC name in Context"). $CacCandidate finds two or more dotted parts in a row (and the part
+# after them) that hold a part of two letters; a plain word, "e.g." or "U.S." never reaches Protect-CacName. A run
+# starts only after a character that is not a name character or a dot, or after one leading dot, and a part has at
+# most 40 characters (a longer one is no name), so every scan is bounded: linear on any text (reviews of PR 81: speed).
+# A dotted host or file name that looks the same is masked too, which hides nothing needed.
+$script:CacCandidate = [regex]("(?:(?<![\p{L}\p{M}\p{Cs}_'#.-])|(?<=(?<![\p{L}\p{M}\p{Cs}_'#-])\.))" +
+    "(?=(?:[\p{L}\p{M}\p{Cs}_'#-]{0,40}\.)*?[\p{L}\p{M}\p{Cs}_'#-]{0,40}?[\p{L}\p{Cs}][\p{L}\p{M}\p{Cs}_'#-]{0,40}?[\p{L}\p{Cs}])" +
+    "(?:[\p{L}\p{M}\p{Cs}_'#-]{1,40}\.){2,}[\p{L}\p{M}\p{Cs}_'#-]{0,40}")
 $script:NameLetter = [regex]'[\p{L}\p{M}\p{Cs}]'   # a letter, a mark, or half of a letter outside the BMP
 # The first part of two letters or more (where a name starts), and the first letter of each part (it stays).
 $script:NameStart = [regex]'(?:^|(?<=\.))(?=[^.\p{L}\p{Cs}]*[\p{L}\p{Cs}][^.\p{L}\p{Cs}]*[\p{L}\p{Cs}])'
