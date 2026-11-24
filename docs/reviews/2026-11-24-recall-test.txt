@@ -477,7 +477,10 @@ function Invoke-RecallMake {
       [string] one result line (counts only, no path).
     #>
     param([string]$Folder)
-    if (-not $Folder -or -not (Test-Path -LiteralPath $Folder -PathType Container)) { return 'Result: that folder does not exist. Make it, then press F5 again.' }
+    # A full path only (C:\... or \\server\...), resolved once: the check and the writes then use the same folder (review of PR 87).
+    if (-not $Folder -or -not [System.IO.Path]::IsPathRooted($Folder)) { return 'Result: give the full folder path (for example C:\Users\<you>\OneDrive - <organization>\Ion recall test), then press F5 again.' }
+    if (-not (Test-Path -LiteralPath $Folder -PathType Container)) { return 'Result: that folder does not exist. Make it, then press F5 again.' }
+    $Folder = (Resolve-Path -LiteralPath $Folder).ProviderPath
     if (@(Get-ChildItem -LiteralPath $Folder -Force).Count -gt 0) { return 'Result: that folder is not empty. Give an empty folder, then press F5 again.' }
     $plan = Get-RecallPlan
     foreach ($file in $plan) {
@@ -575,6 +578,8 @@ function Read-RecallWorkbook {
                 [System.Net.WebUtility]::HtmlDecode((-join @([regex]::Matches($_.Groups[1].Value, '(?s)<t[^>]*>(.*?)</t>') | ForEach-Object { $_.Groups[1].Value }))) })
         $result = @{ Hits = (New-Object System.Collections.Generic.List[object]); NotScanned = (New-Object System.Collections.Generic.List[string]) }
         $hits = Read-RecallSheet $zip 'Hits' $shared   # one array of rows (not @(): that wraps it again)
+        # An Ion workbook has a Hits tab or, with no hits, a Summary tab: anything else is the wrong file (review of PR 87).
+        if ($hits.Count -eq 0 -and (Read-RecallSheet $zip 'Summary' $shared).Count -eq 0) { throw 'This is not an Ion results workbook (no Hits or Summary tab).' }
         if ($hits.Count -gt 1) {
             $header = @($hits[0])
             $type = [array]::IndexOf($header, 'Type'); $file = [array]::IndexOf($header, 'File'); $masked = [array]::IndexOf($header, 'Masked value')

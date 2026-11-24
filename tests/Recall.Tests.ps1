@@ -98,6 +98,13 @@ try {
     $excelHit = $excelRead.Hits[0]
     Assert-Equal 'Passport|memo.docx|***-**-0000' ('{0}|{1}|{2}' -f $excelHit.Type, $excelHit.File, $excelHit.Masked) 'Recall Score: shared strings and a rich text cell are read'
     Remove-Item -LiteralPath $excelBook -Force
+    $notIon = Join-Path $recallDir 'other.xlsx'
+    [System.IO.File]::WriteAllBytes($notIon, [byte[]](New-RecallZip ([ordered]@{ 'xl/workbook.xml' = $head + '<workbook><sheets><sheet name="Roster" sheetId="1" r:id="rId1"/></sheets></workbook>' })))
+    $refused = $false; try { $null = Read-RecallWorkbook $notIon } catch { $refused = $_.Exception.Message -match 'not an Ion results workbook' }
+    Assert-Equal $true $refused 'Recall Score: a workbook that is not Ion''s is refused, not scored as 0%'
+    Remove-Item -LiteralPath $notIon -Force
+    Assert-Equal $true ((Invoke-RecallMake 'relative-folder') -match 'full folder path') 'Recall Make: a relative path is refused'
+
 
     # The local baseline: Ion scans the made folder as on the gov device (the bundle's reader block in the workers).
     $ionText = [System.IO.File]::ReadAllText((Join-Path (Join-Path $recallRoot 'paste') 'Ion-script.txt'))
