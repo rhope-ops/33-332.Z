@@ -133,7 +133,7 @@ Each file starts with a header: purpose, inputs, outputs, how to run, run target
 | `src/OcrText.psm1` | Text in images and in a scanned PDF's JPEG pages, with Windows' built-in OCR |
 | `src/OleText.psm1` | Text from old .doc, .xls and .ppt files and Outlook .msg messages |
 | `src/ContainerText.psm1` | Opens .zip archives and .eml e-mails in memory, so each file inside is read |
-| `src/PiiPatterns.psm1`, `src/PiiDetectors.psm1` | One detector per PII type; finds positions and raw values |
+| `src/PiiPatterns.psm1`, `src/PiiSignedIds.psm1`, `src/PiiDetectors.psm1` | One detector per PII type, the e-signature DoD ID; finds positions and raw values |
 | `src/PiiMasking.psm1` | Masks every value and snippet; the only way results leave the detectors |
 | `src/Report.psm1`, `src/ReportBook.psm1` | Screen summary and the severity order; the workbook tabs and where the workbook is saved |
 | `src/XlsxWriter.psm1` | Writes the .xlsx workbook with .NET only (no Excel, no module) |

@@ -57,7 +57,7 @@ $ErrorActionPreference = 'Stop'
 
 # Modules, in dependency order (each module's header names what it needs).
 # The readers (the reader workers load the same files: ReaderPool.psm1), then the scan and report modules.
-$readerModules = @('PiiPatterns.psm1', 'PiiDetectors.psm1', 'PiiMasking.psm1', 'OcrText.psm1', 'OleText.psm1', 'ContainerText.psm1',
+$readerModules = @('PiiPatterns.psm1', 'PiiSignedIds.psm1', 'PiiDetectors.psm1', 'PiiMasking.psm1', 'OcrText.psm1', 'OleText.psm1', 'ContainerText.psm1',
     'PdfCore.psm1', 'PdfObjects.psm1', 'PdfFonts.psm1', 'PdfShown.psm1', 'PdfLayout.psm1', 'PdfContent.psm1', 'PdfText.psm1', 'TextExtract.psm1', 'ReaderPool.psm1')
 $otherModules = @('XlsxWriter.psm1', 'Report.psm1', 'ReportBook.psm1',
     'ScanMeter.psm1', 'ScanQueue.psm1', 'Accountability.psm1', 'SiteTarget.psm1', 'ChannelScan.psm1', 'DriveScan.psm1')

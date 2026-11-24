@@ -37,7 +37,7 @@ $compiled = 'Add-Type\s+(?!-AssemblyName\b)|-TypeDefinition|-MemberDefinition|As
 Assert-Equal 0 ([regex]::Matches($filled, $compiled, 'IgnoreCase').Count) 'Bundle compiles and loads no binary code'
 
 # Unload the modules the earlier test files imported, so the bundle can only use its own copies of the functions.
-Get-Module PiiPatterns, PiiDetectors, PiiMasking, TextExtract, XlsxWriter, Report, ReportBook, ScanMeter, ChannelScan | Remove-Module -Force
+Get-Module PiiPatterns, PiiSignedIds, PiiDetectors, PiiMasking, TextExtract, XlsxWriter, Report, ReportBook, ScanMeter, ChannelScan | Remove-Module -Force
 Assert-Equal $false ([bool](Get-Command Find-PiiInText -ErrorAction SilentlyContinue)) 'Modules unloaded before the bundle runs'
 
 $runCopy = Join-Path $bundleFolder 'pasted.ps1'

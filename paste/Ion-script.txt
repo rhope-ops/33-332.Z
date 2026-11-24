@@ -18,8 +18,9 @@
   the files at each library's top), or the drive folder and all its subfolders. Channel posts are not read.
 
   Built from these files; to change it, change them and rebuild with: python3 scripts/build_paste.py
-    src/PiiPatterns.psm1, sha256 fa404253fe78
-    src/PiiDetectors.psm1, sha256 7afb73f991d9
+    src/PiiPatterns.psm1, sha256 f7ef8ca1789f
+    src/PiiSignedIds.psm1, sha256 0b4317d6fb47
+    src/PiiDetectors.psm1, sha256 2aace0960fb0
     src/PiiMasking.psm1, sha256 752c251a94b2
     src/OcrText.psm1, sha256 a39acab441d4
     src/OleText.psm1, sha256 2f5d0a036e97
@@ -32,7 +33,7 @@
     src/PdfContent.psm1, sha256 85ee6cfeaf8f
     src/PdfText.psm1, sha256 dffef7dc6f8b
     src/TextExtract.psm1, sha256 5e02d07ddf10
-    src/ReaderPool.psm1, sha256 d459889e74b7
+    src/ReaderPool.psm1, sha256 32b2e4cfb2ae
     src/XlsxWriter.psm1, sha256 0d8b1a3e1de1
     src/Report.psm1, sha256 a3d308b542e7
     src/ReportBook.psm1, sha256 63fb7318eda3
@@ -42,7 +43,7 @@
     src/SiteTarget.psm1, sha256 3f6ba813d84e
     src/ChannelScan.psm1, sha256 0cd4894c7c7b
     src/DriveScan.psm1, sha256 ed91cca7d7e5
-    src/Find-ChannelPII.ps1, sha256 bee2123e2ec3
+    src/Find-ChannelPII.ps1, sha256 1c1d186f75ef
 
   Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.
   Run target: Windows PowerShell 5.1 with PnP.PowerShell 1.12.0; no admin rights, no file to unblock.
@@ -51,35 +52,36 @@
   Credentials: your own CAC sign-in in the PnP sign-in window (a drive folder: your Windows logon); nothing is stored.
 
   Contents (line numbers of this file):
-    line    85  Settings
-    line    96  Reader block
-    line   102  Module PiiPatterns.psm1
-    line   502  Module PiiDetectors.psm1
-    line   950  Module PiiMasking.psm1
-    line  1150  Module OcrText.psm1
-    line  1303  Module OleText.psm1
-    line  1442  Module ContainerText.psm1
-    line  1781  Module PdfCore.psm1
-    line  2143  Module PdfObjects.psm1
-    line  2501  Module PdfFonts.psm1
-    line  2819  Module PdfShown.psm1
-    line  3070  Module PdfLayout.psm1
-    line  3210  Module PdfContent.psm1
-    line  3540  Module PdfText.psm1
-    line  3732  Module TextExtract.psm1
-    line  4150  Module ReaderPool.psm1
-    line  4475  Reader block end
-    line  4479  Module XlsxWriter.psm1
-    line  4786  Module Report.psm1
-    line  5162  Module ReportBook.psm1
-    line  5374  Module ScanMeter.psm1
-    line  5771  Module ScanQueue.psm1
-    line  6161  Module Accountability.psm1
-    line  6545  Module SiteTarget.psm1
-    line  6840  Module ChannelScan.psm1
-    line  7242  Module DriveScan.psm1
-    line  7607  Body of Find-ChannelPII.ps1
-    line  7748  Clean-up
+    line    87  Settings
+    line    98  Reader block
+    line   104  Module PiiPatterns.psm1
+    line   504  Module PiiSignedIds.psm1
+    line   799  Module PiiDetectors.psm1
+    line   979  Module PiiMasking.psm1
+    line  1179  Module OcrText.psm1
+    line  1332  Module OleText.psm1
+    line  1471  Module ContainerText.psm1
+    line  1810  Module PdfCore.psm1
+    line  2172  Module PdfObjects.psm1
+    line  2530  Module PdfFonts.psm1
+    line  2848  Module PdfShown.psm1
+    line  3099  Module PdfLayout.psm1
+    line  3239  Module PdfContent.psm1
+    line  3569  Module PdfText.psm1
+    line  3761  Module TextExtract.psm1
+    line  4179  Module ReaderPool.psm1
+    line  4504  Reader block end
+    line  4508  Module XlsxWriter.psm1
+    line  4815  Module Report.psm1
+    line  5191  Module ReportBook.psm1
+    line  5403  Module ScanMeter.psm1
+    line  5800  Module ScanQueue.psm1
+    line  6190  Module Accountability.psm1
+    line  6574  Module SiteTarget.psm1
+    line  6869  Module ChannelScan.psm1
+    line  7271  Module DriveScan.psm1
+    line  7636  Body of Find-ChannelPII.ps1
+    line  7777  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -109,7 +111,7 @@ PiiPatterns.psm1 - the patterns and the one-type detectors that PiiDetectors.psm
   Inputs:      plain text (from TextExtract.psm1).
   Outputs:     hit objects WITH the raw value. Only PiiMasking.psm1 reads them; it masks every value
                before anything is shown or saved (the PAM, 2026-11-20: all values masked).
-  Depends on:  nothing (PiiDetectors.psm1 imports it next and runs these detectors).
+  Depends on:  nothing (PiiSignedIds.psm1 and PiiDetectors.psm1 import it next; PiiDetectors runs these detectors).
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7).
   Network:     none.
@@ -191,7 +193,7 @@ function Test-KeywordBefore {
 }
 
 function Test-DodIdLabelBefore {
-    # True when a DoD ID label ($DodIdLabels) is just before the given place (PiiDetectors.psm1 Find-SignedIdHits).
+    # True when a DoD ID label ($DodIdLabels) is just before the given place (PiiSignedIds.psm1 Find-SignedIdHits).
     param([string]$Text, [int]$Index)
     return (Test-KeywordBefore $Text $Index $script:DodIdLabels)
 }
@@ -499,17 +501,18 @@ function Find-HomeAddressHits {
     }
 }
 
-# ==== Module PiiDetectors.psm1 ====
+# ==== Module PiiSignedIds.psm1 ====
 <#
-PiiDetectors.psm1 - finds text that looks like PII and returns where it is.
+PiiSignedIds.psm1 - e-signature DoD IDs, and the unreadable-text test.
 
-  Purpose:     Get-PiiSpan runs every detector (PiiPatterns.psm1, and the labelled-name detector here), removes
-               overlaps, raises a name near an identifier, drops Low hits in unreadable text, and returns each hit
-               with its position and raw value.
-  Inputs:      plain text (from TextExtract.psm1).
-  Outputs:     hit objects WITH the raw value. Only PiiMasking.psm1 reads them; it masks every value
-               before anything is shown or saved (the PAM, 2026-11-20: all values masked).
-  Depends on:  PiiPatterns.psm1 (the one-type detectors, New-PiiHit, Test-KeywordBefore, Test-DodIdLabelBefore), imported first.
+  Purpose:     Add-SignedIdHits adds the e-signature DoD IDs that PiiPatterns.psm1 Find-DodIdHits misses (Low, the PAM,
+               2026-11-21 and -24), only where no other hit is. Test-GarbledNear tells when a hit sits in unreadable text.
+               Split from PiiDetectors.psm1 (fleet v2 DEC 6, 2026-11-23: 450 lines for hand-written code; the PAM,
+               2026-11-24: split first, then the PR 69 MINORs).
+  Inputs:      plain text and the kept hits of PiiDetectors.psm1 (Remove-OverlappingHits).
+  Outputs:     hit objects WITH the raw value, added to the kept hits. Only PiiMasking.psm1 reads them; it masks
+               every value before anything is shown or saved (the PAM, 2026-11-20: all values masked).
+  Depends on:  PiiPatterns.psm1 (Test-DodIdLabelBefore), imported first.
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7).
   Network:     none.
@@ -522,10 +525,6 @@ PiiDetectors.psm1 - finds text that looks like PII and returns where it is.
 # Settings (named values; each says where it comes from)
 # =====================================================================================
 
-# A labelled name within this many characters of an identifier is raised to High. DoD privacy
-# guidance treats a name together with an identifier (SSN, DoD ID, date of birth) as sensitive PII.
-$script:NameToIdentifierChars = 80
-
 # Unreadable text around a Low hit (Test-GarbledNear): the characters looked at on each side of the hit, the fewest
 # visible ones needed to judge, and the share of unreadable ones that drops the hit. 30% and 20 characters: the
 # author's choice, 2026-11-21 (normal prose has almost none; a run of symbol-font characters is nearly all).
@@ -537,18 +536,6 @@ $script:VisibleChar = [regex]'\S'
 # and the Latin-1 signs a symbol font read as text gives (not the degree sign or the middle dot). Symbols that normal
 # text uses (|, the cell break of a sheet; box drawing; maths; currency) are not counted (review of PR 31).
 $script:GarbledChar = [regex]'[\p{Co}\uFFFD\x01-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F\u00A4-\u00A6\u00A8-\u00AF\u00B1-\u00B6\u00B8-\u00BF]'
-
-
-# Overlap priority: when two hits cover the same characters, the type earlier in this list wins.
-# Specific identifiers first, broad patterns (phone, address, name) last.
-$script:DetectorOrder = @('SSN', 'DoD ID', 'Payment card', 'Date of birth', 'Passport', 'Phone',
-    'Personal e-mail', 'Home address', 'Name')
-
-# Types that make a nearby name sensitive (see $NameToIdentifierChars).
-$script:IdentifierTypes = @('SSN', 'DoD ID', 'Date of birth', 'Passport', 'Payment card')
-
-# Confidence labels as numbers, for sorting (High first).
-$script:ConfidenceRank = @{ 'High' = 3; 'Medium' = 2; 'Low' = 1 }
 
 # E-signature DoD IDs that PiiPatterns.psm1 Find-DodIdHits misses (docs/reviews/2026-11-23-ion-esignature-layouts.md). $SignedName: a CAC name (line
 # breaks in or after parts, up to 3 words a later part, 40 letters a part: linear time), then 10 digits with one space, tab,
@@ -597,100 +584,8 @@ $script:SignedNameSpaced = [regex]("(?<name>[A-Z](?<=(?:^|[^\w.,])[A-Z])[A-Z'\u2
     "[ \t\u00A0]{1,3}(?<id>(?:\d{3} \d{2} \d{4}|\d{9}) \d)$")
 
 # =====================================================================================
-# Small helper and the labelled-name detector (it calls Get-PiiSpan, so it stays here)
+# The e-signature DoD ID and the unreadable-text test
 # =====================================================================================
-
-function Get-ConfidenceRank {
-    # Returns 3, 2 or 1 for High, Medium or Low (0 for anything else), for sorting.
-    param([string]$Confidence)
-    if ($script:ConfidenceRank.ContainsKey($Confidence)) { return $script:ConfidenceRank[$Confidence] }
-    return 0
-}
-
-function Find-NameHits {
-    <#
-    .SYNOPSIS
-      Names after a label (Name:, Full name:, Member:, Employee:, Spouse:, Dependent:, NOK:,
-      Next of kin:, POC:). Added at the PAM's request, 2026-11-20.
-    .DESCRIPTION
-      Low by itself: a name alone is PII but rarely sensitive. Get-PiiSpan raises it to High when an
-      identifier is near ($NameToIdentifierChars). A name without a label is not found: that would
-      need a list of real names. Military "LAST, FIRST MI" form is found.
-    .PARAMETER Text
-      The text to search.
-    .OUTPUTS
-      Hit objects (New-PiiHit) for the name only, not its label.
-    #>
-    param([string]$Text)
-    $label = '(?:full\s+name|member\s+name|name|member|employee|spouse|dependent|next\s+of\s+kin|NOK|POC)\s*[:=-]\s*'
-    # Labels of other data often follow a name on the same line; a name stops before them.
-    $stopWords = '(?!(?:SSN|SSAN|DOB|DoD|EDIPI|CAC|Phone|Cell|Mobile|Home|Address|Email|E-mail|Rank|Grade|Unit|Date|Born)\b)'
-    $name = "[A-Z][A-Za-z'\-]+(?:,?\s+$stopWords[A-Z](?:[A-Za-z'\-]+|\.))+"
-    foreach ($m in [regex]::Matches($Text, '(?i:' + $label + ')(' + $name + ')')) {
-        New-PiiHit 'Name' 'Low' $m.Groups[1].Index $m.Groups[1].Value
-    }
-}
-
-# =====================================================================================
-# All detectors together
-# =====================================================================================
-
-function Get-AllHits {
-    <#
-    .SYNOPSIS
-      Runs every detector on the text and returns all hits, overlaps included.
-    .PARAMETER Text
-      The text to search.
-    .OUTPUTS
-      Hit objects (New-PiiHit).
-    #>
-    param([string]$Text)
-    Find-SsnHits $Text
-    Find-DodIdHits $Text
-    Find-CardHits $Text
-    Find-DobHits $Text
-    Find-PassportHits $Text
-    Find-PhoneHits $Text
-    Find-PersonalEmailHits $Text
-    Find-HomeAddressHits $Text
-    Find-NameHits $Text
-}
-
-function Remove-OverlappingHits {
-    <#
-    .SYNOPSIS
-      Keeps one hit per stretch of text: the type earlier in $DetectorOrder wins, then the higher
-      confidence. Example: the 9 digits inside a 16-digit card number are not also an SSN.
-    .DESCRIPTION
-      The kept hits never overlap, so kept in order of their start they also end in order. A new hit overlaps a
-      kept one only if it overlaps the kept hit that starts last before the new hit ends: one binary search per
-      hit instead of a check against every kept hit. (Each kept hit is inserted in place, a fast memory move.)
-    .PARAMETER Hits
-      All hits from Get-AllHits.
-    .OUTPUTS
-      The kept hits (a list, in priority order).
-    #>
-    param([object[]]$Hits)
-    $sorted = $Hits | Where-Object { $_ } | Sort-Object `
-        @{ Expression = { [array]::IndexOf($script:DetectorOrder, $_.Detector) } },
-        @{ Expression = { Get-ConfidenceRank $_.Confidence }; Descending = $true },
-        Index
-    $kept = New-Object System.Collections.Generic.List[object]
-    $starts = New-Object System.Collections.Generic.List[int]   # starts of the kept hits, ascending
-    $ends = New-Object System.Collections.Generic.List[int]     # their ends, in the same order (also ascending)
-    foreach ($hit in $sorted) {
-        $end = $hit.Index + $hit.Length
-        # The first kept hit that starts at or after this hit's end (BinarySearch gives its place as ~n if absent).
-        $after = $starts.BinarySearch($end)
-        if ($after -lt 0) { $after = -bnot $after }
-        while ($after -gt 0 -and $starts[$after - 1] -ge $end) { $after-- }
-        if ($after -gt 0 -and $ends[$after - 1] -gt $hit.Index) { continue }   # overlaps the kept hit before it
-        $starts.Insert($after, $hit.Index)
-        $ends.Insert($after, $end)
-        $kept.Add($hit)
-    }
-    return , $kept
-}
 
 function Get-FreeDigitRun {
     <#
@@ -877,28 +772,6 @@ function Add-SignedIdHits {
     }
     foreach ($k in @($giveWay | Sort-Object -Unique -Descending)) { $Kept.RemoveAt($k) }
 }
-
-function Set-NameNearIdentifierHigh {
-    <#
-    .SYNOPSIS
-      Raises a labelled name to High when an identifier hit is within $NameToIdentifierChars.
-    .PARAMETER Hits
-      The kept hits (changed in place).
-    .OUTPUTS
-      None.
-    #>
-    param([object[]]$Hits)
-    foreach ($nameHit in @($Hits | Where-Object { $_.Detector -eq 'Name' })) {
-        foreach ($other in $Hits) {
-            $near = [Math]::Abs($other.Index - $nameHit.Index) -le $script:NameToIdentifierChars
-            # An e-signature DoD ID (Low, or added by Add-SignedIdHits) does not raise a name: the name would be surer than the
-            # ID (reviews of PR 50 and PR 60).
-            $signatureId = $other.Detector -eq 'DoD ID' -and ($other.Confidence -eq 'Low' -or $other.PSObject.Properties['Signed'])
-            if ($near -and -not $signatureId -and $script:IdentifierTypes -contains $other.Detector) { $nameHit.Confidence = 'High'; break }
-        }
-    }
-}
-
 function Test-GarbledNear {
     <#
     .SYNOPSIS
@@ -921,6 +794,162 @@ function Test-GarbledNear {
     $visible = @($script:VisibleChar.Matches($around)).Count
     if ($visible -lt $script:GarbledMinChars) { return $false }
     return (@($script:GarbledChar.Matches($around)).Count / $visible) -ge $script:GarbledShare
+}
+
+# ==== Module PiiDetectors.psm1 ====
+<#
+PiiDetectors.psm1 - finds text that looks like PII and returns where it is.
+
+  Purpose:     Get-PiiSpan runs every detector (PiiPatterns.psm1, and the labelled-name detector here), removes
+               overlaps, raises a name near an identifier, drops Low hits in unreadable text, and returns each hit
+               with its position and raw value.
+  Inputs:      plain text (from TextExtract.psm1).
+  Outputs:     hit objects WITH the raw value. Only PiiMasking.psm1 reads them; it masks every value
+               before anything is shown or saved (the PAM, 2026-11-20: all values masked).
+  Depends on:  PiiPatterns.psm1 (the one-type detectors, New-PiiHit, Test-KeywordBefore, Test-DodIdLabelBefore) and
+               PiiSignedIds.psm1 (Add-SignedIdHits, Test-GarbledNear), imported first.
+  How to run:  imported by Find-ChannelPII.ps1; not run on its own.
+  Run target:  Windows PowerShell 5.1 (also PowerShell 7).
+  Network:     none.
+  Writes:      none (pure functions on strings).
+  Credentials: none.
+#>
+
+
+# =====================================================================================
+# Settings (named values; each says where it comes from)
+# =====================================================================================
+
+# A labelled name within this many characters of an identifier is raised to High. DoD privacy
+# guidance treats a name together with an identifier (SSN, DoD ID, date of birth) as sensitive PII.
+$script:NameToIdentifierChars = 80
+
+# Overlap priority: when two hits cover the same characters, the type earlier in this list wins.
+# Specific identifiers first, broad patterns (phone, address, name) last.
+$script:DetectorOrder = @('SSN', 'DoD ID', 'Payment card', 'Date of birth', 'Passport', 'Phone',
+    'Personal e-mail', 'Home address', 'Name')
+
+# Types that make a nearby name sensitive (see $NameToIdentifierChars).
+$script:IdentifierTypes = @('SSN', 'DoD ID', 'Date of birth', 'Passport', 'Payment card')
+
+# Confidence labels as numbers, for sorting (High first).
+$script:ConfidenceRank = @{ 'High' = 3; 'Medium' = 2; 'Low' = 1 }
+
+# =====================================================================================
+# Small helper and the labelled-name detector (it calls Get-PiiSpan, so it stays here)
+# =====================================================================================
+
+function Get-ConfidenceRank {
+    # Returns 3, 2 or 1 for High, Medium or Low (0 for anything else), for sorting.
+    param([string]$Confidence)
+    if ($script:ConfidenceRank.ContainsKey($Confidence)) { return $script:ConfidenceRank[$Confidence] }
+    return 0
+}
+
+function Find-NameHits {
+    <#
+    .SYNOPSIS
+      Names after a label (Name:, Full name:, Member:, Employee:, Spouse:, Dependent:, NOK:,
+      Next of kin:, POC:). Added at the PAM's request, 2026-11-20.
+    .DESCRIPTION
+      Low by itself: a name alone is PII but rarely sensitive. Get-PiiSpan raises it to High when an
+      identifier is near ($NameToIdentifierChars). A name without a label is not found: that would
+      need a list of real names. Military "LAST, FIRST MI" form is found.
+    .PARAMETER Text
+      The text to search.
+    .OUTPUTS
+      Hit objects (New-PiiHit) for the name only, not its label.
+    #>
+    param([string]$Text)
+    $label = '(?:full\s+name|member\s+name|name|member|employee|spouse|dependent|next\s+of\s+kin|NOK|POC)\s*[:=-]\s*'
+    # Labels of other data often follow a name on the same line; a name stops before them.
+    $stopWords = '(?!(?:SSN|SSAN|DOB|DoD|EDIPI|CAC|Phone|Cell|Mobile|Home|Address|Email|E-mail|Rank|Grade|Unit|Date|Born)\b)'
+    $name = "[A-Z][A-Za-z'\-]+(?:,?\s+$stopWords[A-Z](?:[A-Za-z'\-]+|\.))+"
+    foreach ($m in [regex]::Matches($Text, '(?i:' + $label + ')(' + $name + ')')) {
+        New-PiiHit 'Name' 'Low' $m.Groups[1].Index $m.Groups[1].Value
+    }
+}
+
+# =====================================================================================
+# All detectors together
+# =====================================================================================
+
+function Get-AllHits {
+    <#
+    .SYNOPSIS
+      Runs every detector on the text and returns all hits, overlaps included.
+    .PARAMETER Text
+      The text to search.
+    .OUTPUTS
+      Hit objects (New-PiiHit).
+    #>
+    param([string]$Text)
+    Find-SsnHits $Text
+    Find-DodIdHits $Text
+    Find-CardHits $Text
+    Find-DobHits $Text
+    Find-PassportHits $Text
+    Find-PhoneHits $Text
+    Find-PersonalEmailHits $Text
+    Find-HomeAddressHits $Text
+    Find-NameHits $Text
+}
+
+function Remove-OverlappingHits {
+    <#
+    .SYNOPSIS
+      Keeps one hit per stretch of text: the type earlier in $DetectorOrder wins, then the higher
+      confidence. Example: the 9 digits inside a 16-digit card number are not also an SSN.
+    .DESCRIPTION
+      The kept hits never overlap, so kept in order of their start they also end in order. A new hit overlaps a
+      kept one only if it overlaps the kept hit that starts last before the new hit ends: one binary search per
+      hit instead of a check against every kept hit. (Each kept hit is inserted in place, a fast memory move.)
+    .PARAMETER Hits
+      All hits from Get-AllHits.
+    .OUTPUTS
+      The kept hits (a list, in priority order).
+    #>
+    param([object[]]$Hits)
+    $sorted = $Hits | Where-Object { $_ } | Sort-Object `
+        @{ Expression = { [array]::IndexOf($script:DetectorOrder, $_.Detector) } },
+        @{ Expression = { Get-ConfidenceRank $_.Confidence }; Descending = $true },
+        Index
+    $kept = New-Object System.Collections.Generic.List[object]
+    $starts = New-Object System.Collections.Generic.List[int]   # starts of the kept hits, ascending
+    $ends = New-Object System.Collections.Generic.List[int]     # their ends, in the same order (also ascending)
+    foreach ($hit in $sorted) {
+        $end = $hit.Index + $hit.Length
+        # The first kept hit that starts at or after this hit's end (BinarySearch gives its place as ~n if absent).
+        $after = $starts.BinarySearch($end)
+        if ($after -lt 0) { $after = -bnot $after }
+        while ($after -gt 0 -and $starts[$after - 1] -ge $end) { $after-- }
+        if ($after -gt 0 -and $ends[$after - 1] -gt $hit.Index) { continue }   # overlaps the kept hit before it
+        $starts.Insert($after, $hit.Index)
+        $ends.Insert($after, $end)
+        $kept.Add($hit)
+    }
+    return , $kept
+}
+
+function Set-NameNearIdentifierHigh {
+    <#
+    .SYNOPSIS
+      Raises a labelled name to High when an identifier hit is within $NameToIdentifierChars.
+    .PARAMETER Hits
+      The kept hits (changed in place).
+    .OUTPUTS
+      None.
+    #>
+    param([object[]]$Hits)
+    foreach ($nameHit in @($Hits | Where-Object { $_.Detector -eq 'Name' })) {
+        foreach ($other in $Hits) {
+            $near = [Math]::Abs($other.Index - $nameHit.Index) -le $script:NameToIdentifierChars
+            # An e-signature DoD ID (Low, or added by Add-SignedIdHits) does not raise a name: the name would be surer than the
+            # ID (reviews of PR 50 and PR 60).
+            $signatureId = $other.Detector -eq 'DoD ID' -and ($other.Confidence -eq 'Low' -or $other.PSObject.Properties['Signed'])
+            if ($near -and -not $signatureId -and $script:IdentifierTypes -contains $other.Detector) { $nameHit.Confidence = 'High'; break }
+        }
+    }
 }
 
 function Get-PiiSpan {
@@ -4189,7 +4218,7 @@ $script:WaitSliceMs = 250
 $script:LongPathAt = 240
 
 # The reader modules, in load order, for a development run (the bundle gives the reader block's text instead).
-$script:ReaderModules = @('PiiPatterns', 'PiiDetectors', 'PiiMasking', 'OcrText', 'OleText', 'ContainerText', 'PdfCore', 'PdfObjects', 'PdfFonts',
+$script:ReaderModules = @('PiiPatterns', 'PiiSignedIds', 'PiiDetectors', 'PiiMasking', 'OcrText', 'OleText', 'ContainerText', 'PdfCore', 'PdfObjects', 'PdfFonts',
     'PdfShown', 'PdfLayout', 'PdfContent', 'PdfText', 'TextExtract', 'ReaderPool')
 
 # The scripts each runspace runs (a worker per file; Invoke-LimitedRead per old version): load the reader code, then read.

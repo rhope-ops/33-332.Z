@@ -1,5 +1,5 @@
 <#
-Signature.Tests.ps1 - tests of the e-signature DoD ID (PiiDetectors.psm1 Find-SignedIdHits, Add-SignedIdHits): 25 layouts, decoys, masking, speed.
+Signature.Tests.ps1 - tests of the e-signature DoD ID (PiiSignedIds.psm1 Find-SignedIdHits, Add-SignedIdHits): 25 layouts, decoys, masking, speed.
 
   Purpose:     Each layout of docs/reviews/2026-11-23-ion-esignature-layouts.md (this session's 25 and the source's 25) gives
                exactly one hit, a DoD ID (Low), and no SSN, except source layout OF by design; decoys give no DoD ID;
