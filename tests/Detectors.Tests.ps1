@@ -201,7 +201,8 @@ foreach ($layout in $layouts.Keys) {
     Assert-Equal 'Phone/Low' ((Get-HitSummary $layouts[$layout]) -replace '/[^/]*$', '') ('Garbled: ' + $layout + ' keeps its Low hit')
 }
 
-# ---- The 5 Ion defects of the R4e benchmark (archimedes_lever docs/reviews/2026-11-23-tr-r4e-ion-benchmark.md) ----
+# ---- 3 Ion defects of the R4e benchmark (archimedes_lever docs/reviews/2026-11-23-tr-r4e-ion-benchmark.md); the name defects
+# (4 and 5) are in their own pull request (the PAM, 2026-11-24) ----
 # 1. Street types as written or in capitals.
 Assert-Equal 'Home address/Medium/[address masked]' ((Get-HitSummary ('42 ELM ST, SPRINGFIELD, IL ' + '62704')) -join ',') 'Address in capitals'
 Assert-Equal 'Home address/High/[address masked]' ((Get-HitSummary 'Home: 12 OAK RD') -join ',') 'Capital street type with a label'
@@ -215,57 +216,27 @@ foreach ($case in @("Passport: $passport9", "PASSPORT NO`n$passport9", "her pass
 }
 Assert-Equal 'SSN/High/***-**-6789' ((Get-HitSummary "Passport and SSN: $passport9") -join ',') 'SSN label near a passport word: SSN'
 Assert-Equal 1 @(Get-HitSummary "Passport photo; ref $($Sample.Ssn)" | Where-Object { $_ -like 'SSN/*' }).Count 'Dashed SSN after a passport word: SSN'
-# 3. An underscore in an e-mail name: the whole address is the hit, so no part of the name stays visible.
+# 3. An underscore in an e-mail name: the whole address is the hit, but never another hit's characters (reviews of PR 61).
 $underscoreMail = 'first_last' + '@gmail.com'
-$mailSpan = @(Get-PiiSpan "Write to $underscoreMail today")[0]
-Assert-Equal $underscoreMail $mailSpan.Value 'E-mail with an underscore: whole address found'
+Assert-Equal $underscoreMail (@(Get-PiiSpan "Write to $underscoreMail today")[0].Value) 'E-mail with an underscore: whole address found'
 Assert-Equal $false ((Protect-PiiText "Write to $underscoreMail") -match 'first') 'E-mail with an underscore: name hidden'
 $gluedMail = 'jdoe' + '@gmail.com'
-foreach ($glued in @("$($Sample.SsnBare)_$gluedMail", "CAC_$($Sample.DodId)_$gluedMail")) {
-    Assert-Equal 1 @(Get-HitSummary $glued | Where-Object { $_ -like 'Personal e-mail/*' }).Count "E-mail glued by _ to another hit still found: $($glued -replace '\d', '#')"
-}
-# 4. A name stops at a line break and never takes the next label.
-Assert-Equal 'Kenji D. Abernathy' (@(Get-PiiSpan "Name: Kenji D. Abernathy`nShip to: depot")[0].Value) 'Name stops at a line break'
-Assert-Equal 'P*** L*** | S*** R***' ((@(Find-PiiInText "Name: Pat Lee`nName: Sam Roe") | ForEach-Object { $_.MaskedValue }) -join ' | ') 'Two name rows: both names found'
-Assert-Equal 'Jane Doe' (@(Get-PiiSpan "Name: Jane`nDoe")[0].Value -replace '\s+', ' ') 'A name wrapped after the first word is still found'
-# Review of PR 61: no-break spaces, a wrap after the second word, label words used as names, stray words.
-$nbsp = [string][char]0xA0
-foreach ($case in @("Name: Jane Marie${nbsp}Doe", "Name: Jane M.${nbsp}Doe", "Name: Jane Marie`nDoe", "Name: Jane M.`nDoe", "Name: Jane Marie`nDoe and more")) {
-    Assert-Equal 'J*** M*** D***' ((Find-PiiInText $case).MaskedValue) "Whole name found: $($case -replace "`n", ' ')"
-}
-Assert-Equal 'M*** N***' ((Find-PiiInText 'Name: Mary Next').MaskedValue) 'A label word without ":" can be a name'
-Assert-Equal 'A*** F*** | S*** R***' ((@(Find-PiiInText "Spouse: Anna Full`nName: Sam Roe") | ForEach-Object { $_.MaskedValue }) -join ' | ') 'Full, then Name: on the next line'
-Assert-Equal 'Jane Doe' (@(Get-PiiSpan 'Name: Jane Doe I live')[0].Value) 'One capital letter then a small word: not in the name'
-# Second review of PR 61: nothing main found is lost or cut.
 $govMail = 'jdoe' + '@unit.af.' + 'mi' + 'l'
-$review2 = [ordered]@{
-    "Name: Jane Doe_$gluedMail"                = "Name:Jane Doe|Personal e-mail:$gluedMail"
-    "12 Oak St_$gluedMail"                     = "Home address:12 Oak St|Personal e-mail:$gluedMail"
-    "Name: Jane Marie`nDoe SSN: $($Sample.Ssn)" = "Name:Jane Marie`nDoe|SSN:$($Sample.Ssn)"
-    "Name: Jane Marie`nDoe Rank: E5"           = "Name:Jane Marie`nDoe"
-    'Name: Jane Poc-Smith'                     = 'Name:Jane Poc-Smith'
-    'Name: Jane Marie Member-Roe'              = 'Name:Jane Marie Member-Roe'
-    "Name: Jane`rM.`rDoe"                      = "Name:Jane`rM.`rDoe"
-    "Name: Jane`n`nDoe`n`nSmith"               = "Name:Jane`n`nDoe`n`nSmith"
-    "${govMail}_report.pdf"                    = ''
+$mailCases = [ordered]@{
+    "$($Sample.SsnBare)_$gluedMail" = "SSN:$($Sample.SsnBare)|Personal e-mail:$gluedMail"
+    "CAC_$($Sample.DodId)_$gluedMail" = "DoD ID:$($Sample.DodId)|Personal e-mail:$gluedMail"
+    "Name: Jane Doe_$gluedMail" = "Name:Jane Doe|Personal e-mail:$gluedMail"
+    "12 Oak St_$gluedMail" = "Home address:12 Oak St|Personal e-mail:$gluedMail"
+    "${govMail}_report.pdf" = ''
 }
-# Third review of PR 61: one-word names before the next label, hyphen at a line end, no quadratic e-mail grow.
-$review3 = [ordered]@{
-    "Name: Jane`nName: Sam Roe" = 'J*** | S*** R***'; 'Member: Jane POC: Sam Roe' = 'J*** | S*** R***'
-    "Name: Jane Poc-`nSmith" = 'J*** P*** S***'; 'Name: Jane Poc - Smith' = 'J*** P***'; "Spouse: Pat Lee Name-`nSmith" = 'P*** L*** N*** S***'
+foreach ($case in $mailCases.Keys) {
+    $spans = (@(Get-PiiSpan $case) | ForEach-Object { $_.Detector + ':' + $_.Value }) -join '|'
+    Assert-Equal $mailCases[$case] $spans "E-mail and underscore, same hits as main or better: $($case -replace '\d', '#')"
 }
-foreach ($case in $review3.Keys) {
-    Assert-Equal $review3[$case] ((@(Find-PiiInText $case) | ForEach-Object { $_.MaskedValue }) -join ' | ') "Same as main or better (3): $($case -replace "`n", ' / ')"
-}
+$noisyMail = 'Intro ' + ([string][char]0xA4 * 30) + ' monthlyreportfinalversion2026_jdoe' + '@example.com is the contact for the team and more text here.'
+Assert-Equal 1 @(Get-HitSummary $noisyMail | Where-Object { $_ -like 'Personal e-mail/*' }).Count 'A grown e-mail is not dropped by the unreadable-text filter'
 $manyMails = (1..1000 | ForEach-Object { "pat_lee$_$('@')gmail.com" }) -join '; '
 $timer = [System.Diagnostics.Stopwatch]::StartNew()
 $null = Get-PiiSpan $manyMails
 $timer.Stop()
 Assert-Equal $true ($timer.Elapsed.TotalSeconds -lt 4) "1,000 e-mails with underscores in under 4 s (took $([int]$timer.Elapsed.TotalMilliseconds) ms)"
-foreach ($case in $review2.Keys) {
-    $spans = (@(Get-PiiSpan $case) | ForEach-Object { $_.Detector + ':' + $_.Value }) -join '|'
-    Assert-Equal $review2[$case] $spans "Same as main or better: $($case -replace '\d', '#' -replace "`r", '\r' -replace "`n", '\n')"
-}
-# 5. A middle initial without a dot.
-Assert-Equal 'DOE, JANE M' (@(Get-PiiSpan 'Name: DOE, JANE M')[0].Value) 'Middle initial without a dot kept'
-Assert-Equal 'J*** M*** D***' ((Find-PiiInText 'Member: Jane M Doe, unit').MaskedValue) 'First name, initial without a dot, last name'

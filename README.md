@@ -56,7 +56,7 @@ The steps to run it are at the top of the script.
 | Phone | A US 10-digit number written with separators (dashes, dots, spaces or brackets); 10 digits in a row are not found | `***-***-0142` |
 | Personal e-mail | Any address not ending in .gov or .mil (Gmail, Yahoo and the like rank higher) | `***@domain` |
 | Home address | Number, street name and street type (St or ST, Ave or AVE ...) | `[address masked]` |
-| Name | After "Name:", "Full name:", "Member:", "Spouse:", "Dependent:", "NOK:" or "POC:"; the name stops at a line that starts another field | Initials |
+| Name | After "Name:", "Full name:", "Member:", "Spouse:", "Dependent:", "NOK:" or "POC:" | Initials |
 | PII in a file or folder name | Any of the above in the path | As above |
 <!-- /site:looks-for -->
 

@@ -352,8 +352,7 @@ function Get-MethodRows {
         '"my number" or "my phone" just before it.'))
     , @('Personal e-mail', 'Low: an address that does not end in .gov or .mil. Medium: a personal mail service (Gmail, Yahoo and the like).')
     , @('Home address', 'Low: number, street name and street type (as written or in capitals). Medium: it ends with a state and ZIP code. High: "home address" or similar before it.')
-    , @('Name', ('Low: a name after "Name:", "Member:", "Spouse:" and the like; it stops at a line that starts another field. ' +
-        'High: the same, with an SSN, DoD ID, date of birth, passport or card number close by.'))
+    , @('Name', 'Low: a name after "Name:", "Member:", "Spouse:" and the like. High: the same, with an SSN, DoD ID, date of birth, passport or card number close by.')
     , @('Noise', ('A Low match is dropped when, of the visible characters within 40 on each side (at least 20 of them), 30% or more are ' +
         'unreadable signs (symbols, a font read wrong). High and Medium matches are always kept.'))
     , @('')

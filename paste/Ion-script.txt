@@ -19,7 +19,7 @@
 
   Built from these files; to change it, change them and rebuild with: python3 scripts/build_paste.py
     src/PiiPatterns.psm1, sha256 46f47ab4b781
-    src/PiiDetectors.psm1, sha256 a31558e1e8c1
+    src/PiiDetectors.psm1, sha256 365ed1b31dd8
     src/PiiMasking.psm1, sha256 752c251a94b2
     src/OcrText.psm1, sha256 a39acab441d4
     src/OleText.psm1, sha256 2f5d0a036e97
@@ -38,7 +38,7 @@
     src/ReportBook.psm1, sha256 63fb7318eda3
     src/ScanMeter.psm1, sha256 18c82f0b37c3
     src/ScanQueue.psm1, sha256 ae11c97d5b8b
-    src/Accountability.psm1, sha256 cb925289524b
+    src/Accountability.psm1, sha256 831111a6663a
     src/SiteTarget.psm1, sha256 3ffe3086e86b
     src/ChannelScan.psm1, sha256 0cd4894c7c7b
     src/DriveScan.psm1, sha256 f307e810f8f5
@@ -55,31 +55,31 @@
     line    96  Reader block
     line   102  Module PiiPatterns.psm1
     line   499  Module PiiDetectors.psm1
-    line   758  Module PiiMasking.psm1
-    line   958  Module OcrText.psm1
-    line  1111  Module OleText.psm1
-    line  1250  Module ContainerText.psm1
-    line  1589  Module PdfCore.psm1
-    line  1951  Module PdfObjects.psm1
-    line  2309  Module PdfFonts.psm1
-    line  2627  Module PdfShown.psm1
-    line  2878  Module PdfLayout.psm1
-    line  3018  Module PdfContent.psm1
-    line  3348  Module PdfText.psm1
-    line  3540  Module TextExtract.psm1
-    line  3958  Module ReaderPool.psm1
-    line  4283  Reader block end
-    line  4287  Module XlsxWriter.psm1
-    line  4594  Module Report.psm1
-    line  4970  Module ReportBook.psm1
-    line  5182  Module ScanMeter.psm1
-    line  5579  Module ScanQueue.psm1
-    line  5969  Module Accountability.psm1
-    line  6353  Module SiteTarget.psm1
-    line  6624  Module ChannelScan.psm1
-    line  7026  Module DriveScan.psm1
-    line  7258  Body of Find-ChannelPII.ps1
-    line  7399  Clean-up
+    line   743  Module PiiMasking.psm1
+    line   943  Module OcrText.psm1
+    line  1096  Module OleText.psm1
+    line  1235  Module ContainerText.psm1
+    line  1574  Module PdfCore.psm1
+    line  1936  Module PdfObjects.psm1
+    line  2294  Module PdfFonts.psm1
+    line  2612  Module PdfShown.psm1
+    line  2863  Module PdfLayout.psm1
+    line  3003  Module PdfContent.psm1
+    line  3333  Module PdfText.psm1
+    line  3525  Module TextExtract.psm1
+    line  3943  Module ReaderPool.psm1
+    line  4268  Reader block end
+    line  4272  Module XlsxWriter.psm1
+    line  4579  Module Report.psm1
+    line  4955  Module ReportBook.psm1
+    line  5167  Module ScanMeter.psm1
+    line  5564  Module ScanQueue.psm1
+    line  5954  Module Accountability.psm1
+    line  6337  Module SiteTarget.psm1
+    line  6608  Module ChannelScan.psm1
+    line  7010  Module DriveScan.psm1
+    line  7242  Body of Find-ChannelPII.ps1
+    line  7383  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -573,30 +573,12 @@ function Find-NameHits {
       Hit objects (New-PiiHit) for the name only, not its label.
     #>
     param([string]$Text)
-    $labelWords = '(?:full\s+name|member\s+name|name|member|employee|spouse|dependent|next\s+of\s+kin|NOK|POC)'
-    $label = $labelWords + '\s*[:=-]\s*'
+    $label = '(?:full\s+name|member\s+name|name|member|employee|spouse|dependent|next\s+of\s+kin|NOK|POC)\s*[:=-]\s*'
     # Labels of other data often follow a name on the same line; a name stops before them.
-    # A label of this detector with ":" or "=" on one line ("Name:") stops a name too, so a name never takes the next row's
-    # label; the same word as a name ("Mary Next", "Poc-Smith", "Full" then "Name:" on the next line) does not (R4e, reviews).
-    $nextLabel = '(?i:' + ($labelWords -replace '\\s', '[^\S\r\n]') + ')[^\S\r\n]*[:=]'
-    $stopWords = '(?!(?:SSN|SSAN|DOB|DoD|EDIPI|CAC|Phone|Cell|Mobile|Home|Address|Email|E-mail|Rank|Grade|Unit|Date|Born)\b)' +
-        "(?!$nextLabel)"
-    # A part is a word, or one capital letter with or without a dot ("JANE M"); a letter without a dot only before another
-    # word or at the end of the name ("Jane Doe I live" keeps "Jane Doe"). Gaps: spaces, tabs or no-break spaces.
-    $gap = '[^\S\r\n]'
-    $part = "$stopWords[A-Z](?:[A-Za-z'\-]+|\.|\b(?=$gap+[A-Z][A-Za-z'\-]|$gap*(?:[,;]|\r?\n|$)))"
-    # The second part can start on a later line (a wrapped cell), as before. A later part can too, but not when that line
-    # starts another field: a word, then up to 3 small words, then ":" or "=" ("Ship to: depot") (R4e benchmark, reviews).
-    $wrapped = ",?$gap*(?:\r\n?|\n)\s*(?!(?>[A-Z][A-Za-z'\-]*)(?:$gap+[a-z][A-Za-z'\-]*){0,3}$gap*[:=])"
-    $name = "[A-Z][A-Za-z'\-]+,?\s+$part(?:(?:,?$gap+|$wrapped)$part)*"
-    $found = @{}
+    $stopWords = '(?!(?:SSN|SSAN|DOB|DoD|EDIPI|CAC|Phone|Cell|Mobile|Home|Address|Email|E-mail|Rank|Grade|Unit|Date|Born)\b)'
+    $name = "[A-Z][A-Za-z'\-]+(?:,?\s+$stopWords[A-Z](?:[A-Za-z'\-]+|\.))+"
     foreach ($m in [regex]::Matches($Text, '(?i:' + $label + ')(' + $name + ')')) {
-        $found[$m.Groups[1].Index] = $true
         New-PiiHit 'Name' 'Low' $m.Groups[1].Index $m.Groups[1].Value
-    }
-    # One word, then the next label ("Name: Jane" then "Name: Sam Roe"): that word is the name (review of PR 61).
-    foreach ($m in [regex]::Matches($Text, '(?i:' + $label + ")([A-Z][A-Za-z'\-]+)(?=,?\s+$nextLabel)")) {
-        if (-not $found.ContainsKey($m.Groups[1].Index)) { New-PiiHit 'Name' 'Low' $m.Groups[1].Index $m.Groups[1].Value }
     }
 }
 
@@ -718,13 +700,16 @@ function Expand-MailOverUnderscore {
       None.
     #>
     param([string]$Text, [object[]]$Hits)
-    $mails = @($Hits | Where-Object { $_.Detector -eq 'Personal e-mail' -and $_.Index -gt 0 -and $Text[$_.Index - 1] -eq '_' })
-    if ($mails.Count -eq 0) { return }
-    $taken = New-Object 'bool[]' ($Text.Length + 1)   # characters held by a hit (linear time: review of PR 61)
-    foreach ($hit in $Hits) { for ($i = $hit.Index; $i -lt $hit.Index + $hit.Length; $i++) { $taken[$i] = $true } }
-    foreach ($mail in $mails) {
+    # Hits in text order: an e-mail grows left at most to the end of the hit before it (linear time: reviews of PR 61).
+    if (-not @($Hits | Where-Object { $_.Detector -eq 'Personal e-mail' -and $_.Index -gt 0 -and $Text[$_.Index - 1] -eq '_' })) { return }
+    $sorted = @($Hits | Sort-Object Index)
+    for ($k = 0; $k -lt $sorted.Count; $k++) {
+        $mail = $sorted[$k]
+        if ($mail.Detector -ne 'Personal e-mail' -or $mail.Index -eq 0 -or $Text[$mail.Index - 1] -ne '_') { continue }
+        $limit = 0
+        if ($k -gt 0) { $limit = $sorted[$k - 1].Index + $sorted[$k - 1].Length }
         $start = $mail.Index
-        while ($start -gt 0 -and -not $taken[$start - 1] -and $Text[$start - 1] -notmatch '[\s@<>()\[\],;:"/\\]') { $start-- }
+        while ($start -gt $limit -and -not [char]::IsWhiteSpace($Text[$start - 1]) -and '@<>()[],;:"/\'.IndexOf($Text[$start - 1]) -lt 0) { $start-- }
         while ($Text[$start] -eq '_') { $start++ }
         $mail.Length += $mail.Index - $start
         $mail.Index = $start
@@ -747,10 +732,10 @@ function Get-PiiSpan {
     # Seen as spaces by the detectors only; the length is the same, so positions still fit the text.
     $searchText = $Text.Replace('_', ' ')
     $kept = Remove-OverlappingHits @(Get-AllHits $searchText)
-    Expand-MailOverUnderscore $Text $kept.ToArray()
     Set-NameNearIdentifierHigh $kept.ToArray()
     # A Low hit inside unreadable text (symbols, a font read wrong) is noise: it is dropped. High and Medium hits stay.
     $kept = @($kept | Where-Object { $_.Confidence -ne 'Low' -or -not (Test-GarbledNear $searchText $_.Index $_.Length) })
+    Expand-MailOverUnderscore $Text $kept   # after the unreadable-text filter, so a grown e-mail is never dropped (review of PR 61)
     foreach ($hit in $kept) { $hit.Value = $Text.Substring($hit.Index, $hit.Length) }  # the value as written
     return @($kept | Sort-Object Index)
 }
@@ -6320,8 +6305,7 @@ function Get-MethodRows {
         '"my number" or "my phone" just before it.'))
     , @('Personal e-mail', 'Low: an address that does not end in .gov or .mil. Medium: a personal mail service (Gmail, Yahoo and the like).')
     , @('Home address', 'Low: number, street name and street type (as written or in capitals). Medium: it ends with a state and ZIP code. High: "home address" or similar before it.')
-    , @('Name', ('Low: a name after "Name:", "Member:", "Spouse:" and the like; it stops at a line that starts another field. ' +
-        'High: the same, with an SSN, DoD ID, date of birth, passport or card number close by.'))
+    , @('Name', 'Low: a name after "Name:", "Member:", "Spouse:" and the like. High: the same, with an SSN, DoD ID, date of birth, passport or card number close by.')
     , @('Noise', ('A Low match is dropped when, of the visible characters within 40 on each side (at least 20 of them), 30% or more are ' +
         'unreadable signs (symbols, a font read wrong). High and Medium matches are always kept.'))
     , @('')

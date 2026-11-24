@@ -75,30 +75,12 @@ function Find-NameHits {
       Hit objects (New-PiiHit) for the name only, not its label.
     #>
     param([string]$Text)
-    $labelWords = '(?:full\s+name|member\s+name|name|member|employee|spouse|dependent|next\s+of\s+kin|NOK|POC)'
-    $label = $labelWords + '\s*[:=-]\s*'
+    $label = '(?:full\s+name|member\s+name|name|member|employee|spouse|dependent|next\s+of\s+kin|NOK|POC)\s*[:=-]\s*'
     # Labels of other data often follow a name on the same line; a name stops before them.
-    # A label of this detector with ":" or "=" on one line ("Name:") stops a name too, so a name never takes the next row's
-    # label; the same word as a name ("Mary Next", "Poc-Smith", "Full" then "Name:" on the next line) does not (R4e, reviews).
-    $nextLabel = '(?i:' + ($labelWords -replace '\\s', '[^\S\r\n]') + ')[^\S\r\n]*[:=]'
-    $stopWords = '(?!(?:SSN|SSAN|DOB|DoD|EDIPI|CAC|Phone|Cell|Mobile|Home|Address|Email|E-mail|Rank|Grade|Unit|Date|Born)\b)' +
-        "(?!$nextLabel)"
-    # A part is a word, or one capital letter with or without a dot ("JANE M"); a letter without a dot only before another
-    # word or at the end of the name ("Jane Doe I live" keeps "Jane Doe"). Gaps: spaces, tabs or no-break spaces.
-    $gap = '[^\S\r\n]'
-    $part = "$stopWords[A-Z](?:[A-Za-z'\-]+|\.|\b(?=$gap+[A-Z][A-Za-z'\-]|$gap*(?:[,;]|\r?\n|$)))"
-    # The second part can start on a later line (a wrapped cell), as before. A later part can too, but not when that line
-    # starts another field: a word, then up to 3 small words, then ":" or "=" ("Ship to: depot") (R4e benchmark, reviews).
-    $wrapped = ",?$gap*(?:\r\n?|\n)\s*(?!(?>[A-Z][A-Za-z'\-]*)(?:$gap+[a-z][A-Za-z'\-]*){0,3}$gap*[:=])"
-    $name = "[A-Z][A-Za-z'\-]+,?\s+$part(?:(?:,?$gap+|$wrapped)$part)*"
-    $found = @{}
+    $stopWords = '(?!(?:SSN|SSAN|DOB|DoD|EDIPI|CAC|Phone|Cell|Mobile|Home|Address|Email|E-mail|Rank|Grade|Unit|Date|Born)\b)'
+    $name = "[A-Z][A-Za-z'\-]+(?:,?\s+$stopWords[A-Z](?:[A-Za-z'\-]+|\.))+"
     foreach ($m in [regex]::Matches($Text, '(?i:' + $label + ')(' + $name + ')')) {
-        $found[$m.Groups[1].Index] = $true
         New-PiiHit 'Name' 'Low' $m.Groups[1].Index $m.Groups[1].Value
-    }
-    # One word, then the next label ("Name: Jane" then "Name: Sam Roe"): that word is the name (review of PR 61).
-    foreach ($m in [regex]::Matches($Text, '(?i:' + $label + ")([A-Z][A-Za-z'\-]+)(?=,?\s+$nextLabel)")) {
-        if (-not $found.ContainsKey($m.Groups[1].Index)) { New-PiiHit 'Name' 'Low' $m.Groups[1].Index $m.Groups[1].Value }
     }
 }
 
@@ -220,13 +202,16 @@ function Expand-MailOverUnderscore {
       None.
     #>
     param([string]$Text, [object[]]$Hits)
-    $mails = @($Hits | Where-Object { $_.Detector -eq 'Personal e-mail' -and $_.Index -gt 0 -and $Text[$_.Index - 1] -eq '_' })
-    if ($mails.Count -eq 0) { return }
-    $taken = New-Object 'bool[]' ($Text.Length + 1)   # characters held by a hit (linear time: review of PR 61)
-    foreach ($hit in $Hits) { for ($i = $hit.Index; $i -lt $hit.Index + $hit.Length; $i++) { $taken[$i] = $true } }
-    foreach ($mail in $mails) {
+    # Hits in text order: an e-mail grows left at most to the end of the hit before it (linear time: reviews of PR 61).
+    if (-not @($Hits | Where-Object { $_.Detector -eq 'Personal e-mail' -and $_.Index -gt 0 -and $Text[$_.Index - 1] -eq '_' })) { return }
+    $sorted = @($Hits | Sort-Object Index)
+    for ($k = 0; $k -lt $sorted.Count; $k++) {
+        $mail = $sorted[$k]
+        if ($mail.Detector -ne 'Personal e-mail' -or $mail.Index -eq 0 -or $Text[$mail.Index - 1] -ne '_') { continue }
+        $limit = 0
+        if ($k -gt 0) { $limit = $sorted[$k - 1].Index + $sorted[$k - 1].Length }
         $start = $mail.Index
-        while ($start -gt 0 -and -not $taken[$start - 1] -and $Text[$start - 1] -notmatch '[\s@<>()\[\],;:"/\\]') { $start-- }
+        while ($start -gt $limit -and -not [char]::IsWhiteSpace($Text[$start - 1]) -and '@<>()[],;:"/\'.IndexOf($Text[$start - 1]) -lt 0) { $start-- }
         while ($Text[$start] -eq '_') { $start++ }
         $mail.Length += $mail.Index - $start
         $mail.Index = $start
@@ -249,10 +234,10 @@ function Get-PiiSpan {
     # Seen as spaces by the detectors only; the length is the same, so positions still fit the text.
     $searchText = $Text.Replace('_', ' ')
     $kept = Remove-OverlappingHits @(Get-AllHits $searchText)
-    Expand-MailOverUnderscore $Text $kept.ToArray()
     Set-NameNearIdentifierHigh $kept.ToArray()
     # A Low hit inside unreadable text (symbols, a font read wrong) is noise: it is dropped. High and Medium hits stay.
     $kept = @($kept | Where-Object { $_.Confidence -ne 'Low' -or -not (Test-GarbledNear $searchText $_.Index $_.Length) })
+    Expand-MailOverUnderscore $Text $kept   # after the unreadable-text filter, so a grown e-mail is never dropped (review of PR 61)
     foreach ($hit in $kept) { $hit.Value = $Text.Substring($hit.Index, $hit.Length) }  # the value as written
     return @($kept | Sort-Object Index)
 }
