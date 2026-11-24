@@ -139,7 +139,7 @@ try {
         'The reader failed: path=/Users/Sample Person/x.docx', 'Could not find "/Users/Sample Person/x.docx',
         'Could not find Users/Sample Person/x.docx', 'Could not find ./Sample Person/x.docx',
         "Access to the path 'Sample O'Neil\x.docx' is denied.", 'The file is locked for editing by Sample Person.',
-        'Locked by Samplé.', 'Locked by Samplée Persön.', 'Locked by SampleException.')
+        ('Locked by Sampl' + [char]0x00E9 + '.'), ('Locked by Sampl' + [char]0x00E9 + 'e Pers' + [char]0x00F6 + 'n.'), 'Locked by SampleException.')   # accents at run time: ASCII file
     $leaked = @($leaky | ForEach-Object { Get-RecallSafeReason $_ } | Where-Object { $_ -match 'Samp|Pers|Neil|Arcy|host|Test Org|example|\d{5}' })
     Assert-Equal '' ($leaked -join ' || ') 'Recall Score: no word of a path or name shows'
     $inUse = 'Could not read the file (in use, damaged or protected?): The process cannot access the file '
