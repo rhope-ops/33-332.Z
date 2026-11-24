@@ -78,10 +78,11 @@ function Find-NameHits {
     $labelWords = '(?:full\s+name|member\s+name|name|member|employee|spouse|dependent|next\s+of\s+kin|NOK|POC)'
     $label = $labelWords + '\s*[:=-]\s*'
     # Labels of other data often follow a name on the same line; a name stops before them.
-    # A label of this detector on one line ("Name:", "POC - ") stops a name too, so a name never takes the next row's label;
-    # the same word as a name ("Mary Next", "Poc-Smith", "Full" then "Name:" on the next line) does not (R4e benchmark, reviews).
+    # A label of this detector with ":" or "=" on one line ("Name:") stops a name too, so a name never takes the next row's
+    # label; the same word as a name ("Mary Next", "Poc-Smith", "Full" then "Name:" on the next line) does not (R4e, reviews).
+    $nextLabel = '(?i:' + ($labelWords -replace '\\s', '[^\S\r\n]') + ')[^\S\r\n]*[:=]'
     $stopWords = '(?!(?:SSN|SSAN|DOB|DoD|EDIPI|CAC|Phone|Cell|Mobile|Home|Address|Email|E-mail|Rank|Grade|Unit|Date|Born)\b)' +
-        '(?!(?i:' + ($labelWords -replace '\\s', '[^\S\r\n]') + ')[^\S\r\n]*(?:[:=]|-(?![A-Za-z])))'
+        "(?!$nextLabel)"
     # A part is a word, or one capital letter with or without a dot ("JANE M"); a letter without a dot only before another
     # word or at the end of the name ("Jane Doe I live" keeps "Jane Doe"). Gaps: spaces, tabs or no-break spaces.
     $gap = '[^\S\r\n]'
@@ -90,8 +91,14 @@ function Find-NameHits {
     # starts another field: a word, then up to 3 small words, then ":" or "=" ("Ship to: depot") (R4e benchmark, reviews).
     $wrapped = ",?$gap*(?:\r\n?|\n)\s*(?!(?>[A-Z][A-Za-z'\-]*)(?:$gap+[a-z][A-Za-z'\-]*){0,3}$gap*[:=])"
     $name = "[A-Z][A-Za-z'\-]+,?\s+$part(?:(?:,?$gap+|$wrapped)$part)*"
+    $found = @{}
     foreach ($m in [regex]::Matches($Text, '(?i:' + $label + ')(' + $name + ')')) {
+        $found[$m.Groups[1].Index] = $true
         New-PiiHit 'Name' 'Low' $m.Groups[1].Index $m.Groups[1].Value
+    }
+    # One word, then the next label ("Name: Jane" then "Name: Sam Roe"): that word is the name (review of PR 61).
+    foreach ($m in [regex]::Matches($Text, '(?i:' + $label + ")([A-Z][A-Za-z'\-]+)(?=,?\s+$nextLabel)")) {
+        if (-not $found.ContainsKey($m.Groups[1].Index)) { New-PiiHit 'Name' 'Low' $m.Groups[1].Index $m.Groups[1].Value }
     }
 }
 
@@ -213,10 +220,13 @@ function Expand-MailOverUnderscore {
       None.
     #>
     param([string]$Text, [object[]]$Hits)
-    foreach ($mail in @($Hits | Where-Object { $_.Detector -eq 'Personal e-mail' -and $_.Index -gt 0 -and $Text[$_.Index - 1] -eq '_' })) {
+    $mails = @($Hits | Where-Object { $_.Detector -eq 'Personal e-mail' -and $_.Index -gt 0 -and $Text[$_.Index - 1] -eq '_' })
+    if ($mails.Count -eq 0) { return }
+    $taken = New-Object 'bool[]' ($Text.Length + 1)   # characters held by a hit (linear time: review of PR 61)
+    foreach ($hit in $Hits) { for ($i = $hit.Index; $i -lt $hit.Index + $hit.Length; $i++) { $taken[$i] = $true } }
+    foreach ($mail in $mails) {
         $start = $mail.Index
-        while ($start -gt 0 -and $Text[$start - 1] -notmatch '[\s@<>()\[\],;:"/\\]' -and
-            -not @($Hits | Where-Object { $_ -ne $mail -and $start - 1 -ge $_.Index -and $start - 1 -lt $_.Index + $_.Length })) { $start-- }
+        while ($start -gt 0 -and -not $taken[$start - 1] -and $Text[$start - 1] -notmatch '[\s@<>()\[\],;:"/\\]') { $start-- }
         while ($Text[$start] -eq '_') { $start++ }
         $mail.Length += $mail.Index - $start
         $mail.Index = $start

@@ -38,8 +38,15 @@ Also as on main again: "\r" alone and blank lines between parts, and a governmen
 Wider name matrix (6,240 cases: 16 name forms, 8 separators, 13 following texts): whole name on main 5,100, now 5,778; 0 lost.
 Benchmark corpus: unchanged from the table above.
 
-## Decisions to confirm
+## Third fresh review (2026-11-24)
 
-- Passport over SSN changes which type wins for a bare 9-digit number after "passport" (the overlap order in
-  PiiDetectors.psm1 $DetectorOrder is unchanged). This is the agent's recommendation, not a PAM decision yet.
-- A one-word name on a line of its own, then a label on the next line, is still not found (a name needs 2 parts).
+3 issues, fixed and tested ("Third review of PR 61"): the e-mail grow was quadratic (1,000 addresses: 16.9 s; now about
+0.3 s, main 0.2 s); a one-word name before the next label ("Name: Jane" then "Name: Sam Roe") lost its mask, so it is now a
+Name hit; a label word with a dash stopped a name ("Poc-" at a line end), so only a label with ":" or "=" stops a name now.
+Known, not fixed: street types in capitals add Low false positives on capital text ("REPLACE 2 HARD DRIVE").
+
+## Decisions
+
+- Passport over SSN: a bare 9-digit number after "passport" with no SSN label is a Passport (the PAM approved it in chat,
+  2026-11-24: "approve all"; docs/DECISIONS.md). The overlap order in PiiDetectors.psm1 $DetectorOrder is unchanged.
+- A one-word name is found only before the next label; elsewhere a name needs 2 parts, as on main.

@@ -249,6 +249,19 @@ $review2 = [ordered]@{
     "Name: Jane`n`nDoe`n`nSmith"               = "Name:Jane`n`nDoe`n`nSmith"
     "${govMail}_report.pdf"                    = ''
 }
+# Third review of PR 61: one-word names before the next label, hyphen at a line end, no quadratic e-mail grow.
+$review3 = [ordered]@{
+    "Name: Jane`nName: Sam Roe" = 'J*** | S*** R***'; 'Member: Jane POC: Sam Roe' = 'J*** | S*** R***'
+    "Name: Jane Poc-`nSmith" = 'J*** P*** S***'; 'Name: Jane Poc - Smith' = 'J*** P***'; "Spouse: Pat Lee Name-`nSmith" = 'P*** L*** N*** S***'
+}
+foreach ($case in $review3.Keys) {
+    Assert-Equal $review3[$case] ((@(Find-PiiInText $case) | ForEach-Object { $_.MaskedValue }) -join ' | ') "Same as main or better (3): $($case -replace "`n", ' / ')"
+}
+$manyMails = (1..1000 | ForEach-Object { "pat_lee$_$('@')gmail.com" }) -join '; '
+$timer = [System.Diagnostics.Stopwatch]::StartNew()
+$null = Get-PiiSpan $manyMails
+$timer.Stop()
+Assert-Equal $true ($timer.Elapsed.TotalSeconds -lt 4) "1,000 e-mails with underscores in under 4 s (took $([int]$timer.Elapsed.TotalMilliseconds) ms)"
 foreach ($case in $review2.Keys) {
     $spans = (@(Get-PiiSpan $case) | ForEach-Object { $_.Detector + ':' + $_.Value }) -join '|'
     Assert-Equal $review2[$case] $spans "Same as main or better: $($case -replace '\d', '#' -replace "`r", '\r' -replace "`n", '\n')"
