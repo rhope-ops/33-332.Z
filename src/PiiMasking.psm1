@@ -38,11 +38,12 @@ $script:KeepLastPassportChars = 3
 # once, not once per character.
 $script:EmailLocalPartPattern = '(?<=^|[\s@<>()\[\],;:"/\\])[^\s@<>()\[\],;:"/\\]+(?=@[^\s@<>()\[\],;:"/\\.]+\.)'
 
-# A CAC name in an e-signature ("DOE.JANE.Q."): two to four dotted parts, the first two of two letters or more, each
-# ending in a dot; it starts only after a character that cannot be part of a name (no slow restarts on long text). In
-# the Context column only the first letter of each part stays (approved 2026-11-21: "mask the CAC name in Context"); a
-# dotted host or file name that looks the same is masked too, which hides nothing needed.
-$script:MaskedCacName = "(?<![\p{L}0-9.'-])\p{L}[\p{L}'-]+\.\p{L}[\p{L}'-]+\.(?:\p{L}[\p{L}'-]*\.){0,2}"
+# A CAC name in an e-signature ("DOE.JANE.Q."): in the Context column each dotted part keeps only its first letter
+# (approved 2026-11-21: "mask the CAC name in Context"). Read as runs of name characters ($NameRun: one pass, no
+# restarts, so long text stays fast); in a run, every part that ends in a dot is masked from the first two such parts
+# of two letters or more on (Protect-CacName). A dotted host or file name that looks the same is masked too, which
+# hides nothing needed; "e.g." and "U.S." (one-letter parts) stay readable.
+$script:NameRun = [regex]"[\p{L}\p{M}\p{Nd}_'.-]+"
 
 # =====================================================================================
 # Masking one value
@@ -93,11 +94,50 @@ function Get-MaskedValue {
 # Masking a whole text, then cutting snippets from it
 # =====================================================================================
 
+function Protect-CacName {
+    <#
+    .SYNOPSIS
+      One run of name characters ($NameRun) with its CAC-name parts masked: from the first two parts in a row that end
+      in a dot and hold two letters or more each, every following part that ends in a dot keeps only its first letter.
+      Linear in the run's length. The length stays the same.
+    .PARAMETER Run
+      The run, for example "DOE.JANE.Q." or "v#.DOE.JANE.Q.".
+    .OUTPUTS
+      [string]
+    #>
+    param([string]$Run)
+    if ($Run.IndexOf('.') -lt 0) { return $Run }
+    $c = $Run.ToCharArray()
+    $parts = New-Object System.Collections.Generic.List[int[]]   # (start, end, letters, only name characters) of each dotted part
+    $start = 0
+    for ($i = 0; $i -lt $c.Length; $i++) {
+        if ($c[$i] -ne '.') { continue }
+        $letters = 0; $name = $true
+        for ($j = $start; $j -lt $i; $j++) {
+            if ([char]::IsLetter($c[$j])) { $letters++ } elseif ([char]::IsDigit($c[$j]) -or $c[$j] -eq '#') { $name = $false }
+        }
+        $parts.Add(@($start, $i, $letters, [int]$name)); $start = $i + 1
+    }
+    $on = $false
+    for ($k = 0; $k -lt $parts.Count; $k++) {
+        $p = $parts[$k]
+        if (-not $p[3] -or $p[2] -eq 0) { $on = $false; continue }   # a part with digits, or no letters, ends a name
+        if (-not $on) { $on = $p[2] -ge 2 -and $k + 1 -lt $parts.Count -and $parts[$k + 1][3] -and $parts[$k + 1][2] -ge 2 }
+        if (-not $on) { continue }
+        $first = $true
+        for ($j = $p[0]; $j -lt $p[1]; $j++) {
+            $isLetter = [char]::IsLetter($c[$j]) -or [char]::GetUnicodeCategory($c[$j]) -eq 'NonSpacingMark'
+            if ($isLetter -and $first -and [char]::IsLetter($c[$j])) { $first = $false } elseif ($isLetter) { $c[$j] = '*' }
+        }
+    }
+    return New-Object string (, $c)
+}
+
 function Get-MaskedText {
     <#
     .SYNOPSIS
       Masks a whole text and keeps its length: every digit becomes '#', every e-mail local part
-      becomes '*', a CAC name keeps only the first letter of each part ($MaskedCacName), and every hit (names
+      becomes '*', a CAC name keeps only the first letter of each part (Protect-CacName), and every hit (names
       and addresses included) becomes '*'. Because the length
       stays the same, hit positions from the raw text still point to the right place.
     .PARAMETER Text
@@ -111,13 +151,7 @@ function Get-MaskedText {
     $sameLengthStars = [System.Text.RegularExpressions.MatchEvaluator] { param($m) '*' * $m.Length }
     $masked = [regex]::Replace($Text, $script:EmailLocalPartPattern, $sameLengthStars) -replace '\d', '#'
     # One pass over the name: the first letter of each part stays, every other letter becomes '*' (linear: review of PR 81).
-    $initials = [System.Text.RegularExpressions.MatchEvaluator] {
-        param($m)
-        $c = $m.Value.ToCharArray()
-        for ($i = 1; $i -lt $c.Length; $i++) { if ($c[$i - 1] -ne '.' -and [char]::IsLetter($c[$i])) { $c[$i] = '*' } }
-        New-Object string (, $c)
-    }
-    $masked = [regex]::Replace($masked, $script:MaskedCacName, $initials)
+    $masked = $script:NameRun.Replace($masked, [System.Text.RegularExpressions.MatchEvaluator] { param($m) Protect-CacName $m.Value })
     $chars = $masked.ToCharArray()
     foreach ($hit in $Hits) {
         for ($i = $hit.Index; $i -lt $hit.Index + $hit.Length; $i++) {

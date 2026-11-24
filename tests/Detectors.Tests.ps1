@@ -148,6 +148,8 @@ $clock = [Diagnostics.Stopwatch]::StartNew(); $null = & (Get-Module PiiMasking) 
 Assert-Equal $true ($clock.ElapsedMilliseconds -lt 3000) 'Snippet: a 160,000-letter name part masks fast (linear)'
 $umlaut = & (Get-Module PiiMasking) { param($t) Get-MaskedText $t @() } ('M' + [char]0xDC + 'LLER.JANE.Q.')
 Assert-Equal 'M*****.J***.Q.' $umlaut 'Snippet: a name with non-ASCII letters is masked'
+$after = & (Get-Module PiiMasking) { param($t) Get-MaskedText $t @() } ("by 'DOE." + "JANE.Q.' and -DOE." + "JANE.Q. and a.DOE." + "JANE.Q. and AAA.BBB.CCC.DOE." + "JANE.Q.")
+Assert-Equal "by 'D**.J***.Q.' and -D**.J***.Q. and a.D**.J***.Q. and A**.B**.C**.D**.J***.Q." $after 'Snippet: a CAC name after a quote, a dash, a short part or other parts is masked'
 
 # ---- Detection in names: underscores and accented e-mail names ----
 Assert-Equal 'DoD ID/High/******7890' (Get-HitSummary "CAC_$($Sample.DodId).docx") 'DoD ID after an underscore'
