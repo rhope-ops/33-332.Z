@@ -38,7 +38,7 @@
     src/ReportBook.psm1, sha256 63fb7318eda3
     src/ScanMeter.psm1, sha256 18c82f0b37c3
     src/ScanQueue.psm1, sha256 ae11c97d5b8b
-    src/Accountability.psm1, sha256 2294a075b734
+    src/Accountability.psm1, sha256 0bd2664946ac
     src/SiteTarget.psm1, sha256 3ffe3086e86b
     src/ChannelScan.psm1, sha256 0cd4894c7c7b
     src/DriveScan.psm1, sha256 f307e810f8f5
@@ -75,11 +75,11 @@
     line  5190  Module ScanMeter.psm1
     line  5587  Module ScanQueue.psm1
     line  5977  Module Accountability.psm1
-    line  6360  Module SiteTarget.psm1
-    line  6631  Module ChannelScan.psm1
-    line  7033  Module DriveScan.psm1
-    line  7265  Body of Find-ChannelPII.ps1
-    line  7406  Clean-up
+    line  6361  Module SiteTarget.psm1
+    line  6632  Module ChannelScan.psm1
+    line  7034  Module DriveScan.psm1
+    line  7266  Body of Find-ChannelPII.ps1
+    line  7407  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -6327,7 +6327,8 @@ function Get-MethodRows {
         'are not found; a +1 in front is allowed. Low: no label (office numbers are common). Medium: "cell", "mobile", "home", "personal", ' +
         '"my number" or "my phone" just before it.'))
     , @('Personal e-mail', 'Low: an address that does not end in .gov or .mil. Medium: a personal mail service (Gmail, Yahoo and the like).')
-    , @('Home address', 'Low: number, street name and street type (in capitals only: Low, or Medium with ", state ZIP"). Medium: it ends with a state and ZIP code. High: "home address" or similar before it.')
+    , @('Home address', ('Low: number, street name and street type (in capitals only: Low, or Medium with ", state ZIP"). ' +
+        'Medium: it ends with a state and ZIP code. High: "home address" or similar before it.'))
     , @('Name', 'Low: a name after "Name:", "Member:", "Spouse:" and the like. High: the same, with an SSN, DoD ID, date of birth, passport or card number close by.')
     , @('Noise', ('A Low match is dropped when, of the visible characters within 40 on each side (at least 20 of them), 30% or more are ' +
         'unreadable signs (symbols, a font read wrong). High and Medium matches are always kept.'))
