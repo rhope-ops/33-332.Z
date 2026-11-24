@@ -1,5 +1,5 @@
 {
- "commit": "b20292a882685692d5639f9648d74cdf5dfbb1f7",
+ "commit": "41705ae1b1a448b5d1edaea6acfabecd910248fb",
  "files": {
   ".claude/agents/reviewer.md": "0d75ec9a2c69947ef968ff5c48407a34318a59b1d5b32b4a3b88b13882b9e0d8",
   ".claude/agents/scout.md": "977d957d96b90c3b8c9d9793456d57401952810b9aa17cb25c34955381771e2d",
@@ -33,7 +33,7 @@
   "scripts/bloat_check_timing.py": "791fd309ef8333cd3c8cd5b760596d49f5c4bbbde858202c500b764f27c36a96",
   "scripts/build_site.py": "63ddc43ed672ffc22ae115268a4cba3e6dec72c13a4c5a8a89c73b59d71a9235",
   "scripts/build_site_html.py": "615398fae778ba2d8cccd36009bfe42a535efbfb3064477c5abb43f999b44cec",
-  "scripts/check.sh": "b8a9fca5e97720c6682b7d8f5a892a348ae08a76d45f05ce97f871886ec4237f",
+  "scripts/check.sh": "97ed9cc63efb15d39eaae2b6410be25048abdb136b878649014eafd7b0aead58",
   "scripts/check_blocks.py": "8f353b7aef1a6f3441a8715271b46096407a9e6d465b8467669c9f0e3fdfebcc",
   "scripts/check_content.py": "efafb44178b1bf3e28ad0089fd76b40e23a3b714c48766ca02c4c03148946c4f",
   "scripts/check_content_finders.py": "9392028385a2ee47fc8f76c2742d5206ec1a4b40c28b9dd22548d52082683034",
