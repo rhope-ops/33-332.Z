@@ -25,7 +25,7 @@ Assert-Equal 1 $results.Count 'Script saved one workbook'
 # -Include is ignored with -LiteralPath in Windows PowerShell 5.1, so the extension is checked after the listing.
 Assert-Equal 0 @(Get-ChildItem -LiteralPath $runFolder -Recurse | Where-Object { $_.Extension -in @('.txt', '.csv') }).Count 'No .txt or .csv any more'
 Assert-Equal 'NOT SCANNED Phone SSN' (Get-WorkbookTypes $results[0].FullName) 'Script found every planted type'
-Assert-Equal 'Channel' (Get-XlsxSheets $results[0].FullName)['SSN'][0][1] 'A team: the folder column is named Channel'
+Assert-Equal 'Channel' (Get-XlsxSheets $results[0].FullName)['Hits'][0][3] 'A team: the folder column is named Channel'
 Assert-Equal 1 (Get-FakeCallCount 'Read-Host') 'With the site given, one address question only (another site or exit); "Scan now?" and "Open" are their own'
 Assert-Equal $true ((Test-FakePnPCall 'Open question') -and (Test-FakePnPCall ('Open ' + $results[0].FullName))) 'Enter at the open question opens the workbook'
 Assert-Equal 1 @(Get-FakePnPConnection).Count 'One sign-in only: no posts sign-in'
@@ -62,7 +62,8 @@ Set-FakeSiteAnswer -TypedSite '' -SiteGroupId ([guid]::Empty)
 $siteFolder = Join-Path $runFolder 'site'
 & $script -SiteUrl $Sample.Site -OutputFolder $siteFolder 6>$null
 $siteBook = Get-XlsxSheets (Get-ResultFiles $siteFolder)[0].FullName
-Assert-Equal 'Folder|(top of the library)' (($siteBook['Phone'][0][1], $siteBook['Phone'][1][1]) -join '|') 'A plain site: Folder column; top-of-library file reported'
+$sitePhone = @($siteBook['Hits'] | Where-Object { $_[1] -eq 'Phone' })[0]
+Assert-Equal 'Folder|(top of the library)' (($siteBook['Hits'][0][3], $sitePhone[3]) -join '|') 'A plain site: Folder column; top-of-library file reported'
 
 # ---- The team check fails: the scan goes on, and the column is named Folder ----
 Reset-FakePnP @{ "$library/General/notes.txt" = $Txt }
@@ -70,7 +71,7 @@ Set-FakePnPOption SiteFails $true
 $checkFolder = Join-Path $runFolder 'teamcheck'
 & $script -SiteUrl $Sample.Site -OutputFolder $checkFolder 6>$null
 $checkBook = Get-XlsxSheets (Get-ResultFiles $checkFolder)[0].FullName
-Assert-Equal 'Folder' $checkBook['Phone'][0][1] 'Team check failed: scan went on with the Folder label'
+Assert-Equal 'Folder' $checkBook['Hits'][0][3] 'Team check failed: scan went on with the Folder label'
 Assert-Equal $false (@($checkBook.Keys) -contains 'Not scanned') 'Team check failed: the scan is not INCOMPLETE'
 
 # ---- No access to the site: a clear message, nothing saved, signed out, another site offered ----

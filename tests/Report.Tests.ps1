@@ -1,8 +1,8 @@
 <#
 Report.Tests.ps1 - tests of Report.psm1 and XlsxWriter.psm1: the screen summary and the results workbook.
 
-  Purpose:     The workbook goes to <site> as "Ion <site> <date time>", never overwrites, has the Summary tab first and one tab per PII
-               type worst first, holds masked values only and no formula; the folder column is named for a team
+  Purpose:     The workbook goes to <site> as "Ion <site> <date time>", never overwrites, has the Summary tab first, then Hits and Files
+               as Excel Tables (worst first), holds masked values only and no formula from scanned text; the folder column is named for a team
                or a site; the screen shows hits per type.
   Inputs:      $Sample (TestKit.ps1).
   Outputs:     passes and failures counted by Assert-Equal.
@@ -21,7 +21,7 @@ $reportRows = @(
     (New-ReportRow 'File' 'Ops' 'scan.pdf' '' '' 'NOT SCANNED' '' '' 'File type is not read by this script')
 )
 
-# ---- The workbook: Summary first, one tab per type (worst first), Low confidence, Not scanned ----
+# ---- The workbook: Summary first, Hits and Files as Excel Tables, Not scanned (the PAM, 2026-11-24: as previewed) ----
 $dob = @(Find-PiiInText 'DOB: 03/14/1985')[0]
 $reportRows += (New-ReportRow 'File' 'Ops' 'Recall.xlsx' '' '' $dob.Detector $dob.Confidence $dob.MaskedValue $dob.Context)
 $header = [ordered]@{ Site = 'https://tenant.example.com/teams/TeamA'; Channels = 'General, Ops' }
@@ -29,13 +29,15 @@ $path = Publish-ScanReport -Rows $reportRows -ItemsScanned 2 -Header $header -Ou
 Assert-Equal 'TeamA' (Split-Path (Split-Path $path -Parent) -Leaf) 'Saved in <site>, no day folder'
 Assert-Equal $true ((Split-Path $path -Leaf) -match ('^Ion TeamA ' + (Get-Date -Format 'yyyy-MM-dd') + ' \d{4}( \(\d+\))?\.xlsx$')) 'Named Ion <site> <date time>.xlsx'
 $book = Get-XlsxSheets $path
-Assert-Equal 'Summary|SSN|Date of birth|Low confidence|Not scanned|Method' (@($book.Keys) -join '|') 'Tabs: Summary, types worst first, Low, Not scanned, Method last'
-$hitHeader = 'Confidence|Channel|File|Masked value|Context|Last saved|Link|Found in|Created|Created by|Last saved by|PII first saved|PII first saved by|History note|' +
-    'Reviewed by|Review date|Is it PII?|Action taken|Reported to Privacy Manager'
-Assert-Equal $hitHeader ($book['SSN'][0] -join '|') 'Hit tab header, folder column named Channel for a team'
-Assert-Equal 'High|General|Roster.docx|***-**-6789' (($book['SSN'][1] | Select-Object -First 4) -join '|') 'SSN tab row'
-Assert-Equal 'Phone' $book['Low confidence'][1][0] 'Low hit in the Low confidence tab, with its type'
-Assert-Equal '=HYPERLINK("x")' $book['Low confidence'][1][5] 'Formula-like text kept as plain text (an inline string is never a formula)'
+Assert-Equal 'Summary|Hits|Files|Not scanned|Method' (@($book.Keys) -join '|') 'Tabs: Summary, Hits, Files, Not scanned, Method last'
+$hitHeader = 'ID|Type|Confidence|Channel|File|Masked value|Context|Is it PII?|Action taken|Reported to Privacy Manager|Reviewed by|Review date|' +
+    'Last saved|Last saved by|PII first saved|PII first saved by|Created|Created by|History note|Found in|Link'
+Assert-Equal $hitHeader ($book['Hits'][0] -join '|') 'Hits header: the review columns right after the hit; folder column named Channel for a team'
+Assert-Equal 'H001|SSN|High|General|Roster.docx|***-**-6789' (($book['Hits'][1] | Select-Object -First 6) -join '|') 'Hits row: ID, type, confidence, folder, file, value'
+$order = ($book['Hits'][2][0], $book['Hits'][2][1], $book['Hits'][3][0], $book['Hits'][3][1], $book['Hits'][3][2]) -join '|'
+Assert-Equal 'H002|Date of birth|H003|Phone|Low' $order 'Hits: worst first (High, then type), Low last, IDs in that order'
+Assert-Equal '=HYPERLINK("x")' $book['Hits'][3][6] 'Formula-like text kept as plain text (an inline string is never a formula)'
+Assert-Equal 'General|Roster.docx|1|1|0|0|SSN|0' (($book['Files'][1] | Select-Object -First 8) -join '|') 'Files tab: one row per file, counts, types, reviewed'
 Assert-Equal 'NOT SCANNED|Ops|scan.pdf' (($book['Not scanned'][1] | Select-Object -First 3) -join '|') 'Not scanned tab row'
 Assert-Equal 'Group|Type not read: .pdf' ($book['Not scanned'][0][4] + '|' + $book['Not scanned'][1][4]) 'Not scanned tab: a Group column, as the Summary counts it'
 $summary = ($book['Summary'] | ForEach-Object { $_ -join '|' }) -join "`n"
@@ -50,19 +52,28 @@ try {
     $reader = New-Object System.IO.StreamReader($zipBook.GetEntry(('xl/worksheets/sheet{0}.xml' -f $sheetCount)).Open()); $methodXml = $reader.ReadToEnd(); $reader.Dispose()
     $rels = ''
     if ($relsEntry) { $reader = New-Object System.IO.StreamReader($relsEntry.Open()); $rels = $reader.ReadToEnd(); $reader.Dispose() }
+    $reader = New-Object System.IO.StreamReader($zipBook.GetEntry('xl/tables/table1.xml').Open()); $tableXml = $reader.ReadToEnd(); $reader.Dispose()
+    $reader = New-Object System.IO.StreamReader($zipBook.GetEntry('xl/worksheets/sheet1.xml').Open()); $summaryXml = $reader.ReadToEnd(); $reader.Dispose()
 }
 finally { $zipBook.Dispose(); $zipStream.Dispose() }
-Assert-Equal $true ($sheetXml -match '<hyperlink ref="G2" r:id="rId1"/>' -and $rels -match 'Target="https://x/y" TargetMode="External"') 'Link cell is a clickable link'
-Assert-Equal $false ($sheetXml -match '<f>') 'No formula in a hit tab'
+Assert-Equal $true ($sheetXml -match '<hyperlink ref="E2" r:id="rId1"/>' -and $rels -match 'Target="https://x/y" TargetMode="External"') 'The file name is a clickable link'
+Assert-Equal $false ($sheetXml -match '<f>') 'No formula in the Hits tab'
+Assert-Equal $true ($tableXml -match 'displayName="tblHits" ref="A1:U4"' -and $tableXml -match '<tableColumn id="8" name="Is it PII\?"/>' -and
+    $rels -match 'Target="../tables/table1.xml"' -and $sheetXml -match '<tablePart r:id="rIdTable"/>' -and $sheetXml -notmatch '<autoFilter') 'Hits is an Excel Table'
+Assert-Equal $true ($sheetXml -match '<c r="M2" s="4"><v>\d+(\.\d+)?</v></c>') 'Last saved is a date cell'
+Assert-Equal $true ($sheetXml -match '<c r="C2" s="5"' -and $sheetXml -match '<c r="C4" s="7"') 'Confidence cells get the High and Low fill'
+Assert-Equal $true ($sheetXml -match 'xSplit="5"' -and $sheetXml -match '&amp;CCUI' -and $sheetXml -match 'fitToWidth="1"') 'Hits: columns frozen; CUI header and footer; one page wide'
+Assert-Equal $true ($summaryXml -match '<f>COUNTIFS\(tblHits\[Type\],\$A\d+,tblHits\[Confidence\],&quot;High&quot;\)</f><v>1</v>') 'Summary counts are formulas on the Hits table, with their value'
 Assert-Equal $true ($summary -match 'Possible PII hits\|3') 'Summary: total hits'
-$typeRows = $summary -match '(?m)^SSN\|1\|0\|0\|1$' -and $summary -match '(?m)^Date of birth\|1\|0\|0\|1$' -and $summary -match '(?m)^Phone\|0\|0\|1\|1$'
-Assert-Equal $true $typeRows 'Summary: hits per type (High, Medium, Low, Total), worst first'
+$typeRows = $summary -match '(?m)^SSN\|1\|0\|0\|1\|0$' -and $summary -match '(?m)^Date of birth\|1\|0\|0\|1\|0$' -and $summary -match '(?m)^Phone\|0\|0\|1\|1\|0$' -and
+    $summary -match '(?m)^Total\|2\|0\|1\|3\|0$'
+Assert-Equal $true $typeRows 'Summary: hits per type (High, Medium, Low, Total, Reviewed), worst first, and a Total row'
 Assert-Equal $true ($summary -match 'potential or actual breach' -and $summary -match 'para 3\.1\.2') 'Summary gives the cited breach step'
 $allCells = ($book.Values | ForEach-Object { $_ | ForEach-Object { $_ -join ' ' } }) -join ' '
 Assert-Equal $false $allCells.Contains($Sample.Ssn) 'Workbook has no full SSN'
 $again = Publish-ScanReport -Rows $reportRows -ItemsScanned 2 -Header $header -OutputFolder $reportFolder -SiteUrl $header.Site 6>$null
 Assert-Equal $true ($again -ne $path) 'A second run never overwrites the first'
-Assert-Equal 'Folder' (Get-XlsxSheets $again)['SSN'][0][1] 'Folder column named Folder for a plain site'
+Assert-Equal 'Folder' (Get-XlsxSheets $again)['Hits'][0][3] 'Folder column named Folder for a plain site'
 $plain = @(Get-WorkbookSheets @() 0 ([ordered]@{}) 'Folder')
 Assert-Equal 'Summary|Method' (@($plain | ForEach-Object { $_.Name }) -join '|') 'No hits: only the Summary and Method tabs'
 
@@ -136,10 +147,10 @@ Assert-Equal $true $methodOk 'Method tab: how the columns are worked out, and th
 $longPath = & (Get-Module ReportBook) { param($f) Get-ResultPath $f ('https://tenant.example.com/sites/' + ('a' * 150)) } $reportFolder
 Assert-Equal $true ((Split-Path $longPath -Leaf).Length -lt 70 -and $longPath.Length -lt ($reportFolder.Length + 120)) 'Long site name: cut in the folder and the file name'
 # C6 (the PAM, 2026-11-21): the review columns have dropdowns; the Method tab wraps its text; By account counts per account.
-$piiChoice = $sheetXml -match '<dataValidation type="list" allowBlank="1" showErrorMessage="1" sqref="Q2:Q\d+"><formula1>"Yes,No,Not sure"</formula1>'
+$piiChoice = $sheetXml -match '<dataValidation type="list" allowBlank="1" showErrorMessage="1" sqref="H2:H\d+"><formula1>"Yes,No,Not sure"</formula1>'
 Assert-Equal $true $piiChoice `
     'Review columns: "Is it PII?" has a Yes/No/Not sure dropdown'
-Assert-Equal $true ($sheetXml -match 'sqref="R2:R\d+"><formula1>"Removed,Moved,Access limited,Left \(not PII\),Other"') 'Review columns: "Action taken" has its dropdown'
+Assert-Equal $true ($sheetXml -match 'sqref="I2:I\d+"><formula1>"Removed,Moved,Access limited,Left \(not PII\),Other"') 'Review columns: "Action taken" has its dropdown'
 Assert-Equal $true ($methodXml -match '<c r="B2" s="3"') 'Method tab: the text column wraps (style 3)'
 $accountHits = @(
     [pscustomobject]@{ AddedBy = 'a.one'; Channel = 'Ops'; Item = 'x.docx'; Confidence = 'High' },

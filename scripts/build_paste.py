@@ -162,7 +162,7 @@ def header(sources, contents):
            '       \\\\<server>\\<share>\\<folder>): it is read with your Windows logon, no sign-in.',
            '    5. Watch the two progress bars (the whole scan, and the file in work) and the line per folder.',
            '       At the end, read the summary of hits per PII type. The results workbook is saved in',
-           '       Documents\\Ion\\<site>\\<date>: a Summary tab, then one tab per PII type (worst first).',
+           '       Documents\\Ion\\<site>\\<date>: a Summary tab, then Hits (one row per hit) and Files.',
            '       Handle it as CUI: it shows where PII is.',
            '',
            '  It scans every visible document library of the site (every folder, in a team one per standard channel, and',
