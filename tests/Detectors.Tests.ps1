@@ -150,6 +150,13 @@ $umlaut = & (Get-Module PiiMasking) { param($t) Get-MaskedText $t @() } ('M' + [
 Assert-Equal 'M*****.J***.Q.' $umlaut 'Snippet: a name with non-ASCII letters is masked'
 $after = & (Get-Module PiiMasking) { param($t) Get-MaskedText $t @() } ("by 'DOE." + "JANE.Q.' and -DOE." + "JANE.Q. and a.DOE." + "JANE.Q. and AAA.BBB.CCC.DOE." + "JANE.Q.")
 Assert-Equal "by 'D**.J***.Q.' and -D**.J***.Q. and a.D**.J***.Q. and A**.B**.C**.D**.J***.Q." $after 'Snippet: a CAC name after a quote, a dash, a short part or other parts is masked'
+$oneLetter = & (Get-Module PiiMasking) { param($t) Get-MaskedText $t @() } ('DOE.' + 'J.Q. and NG.' + 'A.B. and DOE.' + 'JANE.QUINN and e.g. i.e. U.S.')
+Assert-Equal 'D**.J.Q. and N*.A.B. and D**.J***.Q**** and e.g. i.e. U.S.' $oneLetter 'Snippet: one-letter parts and a last part without a dot; e.g., i.e., U.S. stay'
+$astral = & (Get-Module PiiMasking) { param($t) Get-MaskedText $t @() } ([char]::ConvertFromUtf32(0x1D400) + 'BC.DEF.Q.')
+Assert-Equal ([char]::ConvertFromUtf32(0x1D400) + '**.D**.Q.') $astral 'Snippet: a letter outside the BMP counts as a letter'
+$clock = [Diagnostics.Stopwatch]::StartNew()
+foreach ($adv in @(('AA.' * 100000), ('A.' * 150000), ('AA.BB ' * 50000), ('Amount 12.50 and 7.25 ' * 50000))) { $null = & (Get-Module PiiMasking) { param($t) Get-MaskedText $t @() } $adv }
+Assert-Equal $true ($clock.ElapsedMilliseconds -lt 10000) 'Snippet: long dotted text masks fast'
 
 # ---- Detection in names: underscores and accented e-mail names ----
 Assert-Equal 'DoD ID/High/******7890' (Get-HitSummary "CAC_$($Sample.DodId).docx") 'DoD ID after an underscore'
