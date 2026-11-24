@@ -25,7 +25,7 @@ The probe is a .txt file (Project rules, "Paste format"): `docs/reviews/2026-11-
    1. Click **File**.
    2. Click **New**.
    You see an empty script pane **Untitled1.ps1**. Go on.
-3. In your web browser, open `https://raw.githubusercontent.com/rhope-ops/33-332.Z/claude/ion-onedrive/docs/reviews/2026-11-23-onedrive-probe.txt`. You see the probe as text. Go on.
+3. In your web browser, open `https://raw.githubusercontent.com/rhope-ops/33-332.Z/main/docs/reviews/2026-11-23-onedrive-probe.txt`. You see the probe as text. Go on.
 4. In the browser page with the probe, do these actions:
    1. Press **Ctrl+A**.
    2. Press **Ctrl+C**.
@@ -45,7 +45,12 @@ The probe is a .txt file (Project rules, "Paste format"): `docs/reviews/2026-11-
    2. Send the message.
    You see the lines in the chat. The task is complete.
 
-## Result (the PAM, gov device, 2026-11-24)
+## Result
+
+- Date: 2026-11-24. The PAM ran the probe on the gov device, in Windows PowerShell 5.1 ISE.
+- Ion version: main at commit `4f23703` (PR 71). The OneDrive code is PR 59 (`src/DriveScan.psm1`).
+- Output: 4 count lines (below). The first line `in OneDrive=<True|False> (sync folders found: N)` was not in the
+  PAM's message.
 
 | Count | Item | reparse | online | LinkType | Target |
 |---|---|---|---|---|---|
@@ -54,5 +59,16 @@ The probe is a .txt file (Project rules, "Paste format"): `docs/reviews/2026-11-
 | 2 | file | False | False | (none) | (none) |
 | 1 | file | True | True | (none) | (none) |
 
-As expected: the OneDrive items are reparse points with no LinkType and no Target, so Ion tells them from a real link.
-The "in OneDrive" line was not in the pasted lines.
+What it proves:
+
+- All 94 reparse items (61 folders, 33 files) have no `LinkType` and no `Target` on Windows PowerShell 5.1. So
+  `Get-ReparseKind` reads them as OneDrive items, not as links, as designed.
+- 1 file is online only. Ion asks before it downloads it.
+- 2 files are normal files (not reparse points). Ion reads them as usual.
+
+Still not verified:
+
+- `Get-OneDriveRoots` (the OneDrive environment variables and the value names under
+  `HKCU:\Software\Microsoft\OneDrive\Accounts\*\Tenants`) finds the sync folder. The probe uses the same logic, and its
+  missing first line shows the result. If that line says `False` or `0`, Ion skips every OneDrive item as a link.
+- A real Ion scan of a synced folder reads the files (files read, not "A link to another file is not followed").
