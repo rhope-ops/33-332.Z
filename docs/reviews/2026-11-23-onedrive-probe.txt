@@ -1,0 +1,29 @@
+# Ion OneDrive probe: read-only, one folder and its direct subfolders, at most 2,000 items. Prints counts only.
+$folder = (Read-Host 'OneDrive or synced folder').Trim().Trim('"').TrimEnd('\')
+$top = New-Object System.IO.DirectoryInfo($folder)
+if (-not $top.Exists) { Write-Host 'Result: this folder cannot be opened. Check the path, then press F5 again.'; return }
+$roots = @(foreach ($name in @('OneDrive', 'OneDriveCommercial', 'OneDriveConsumer')) { [Environment]::GetEnvironmentVariable($name) })
+try { foreach ($tenant in @(Get-ChildItem -Path 'HKCU:\Software\Microsoft\OneDrive\Accounts\*\Tenants' -ErrorAction Stop)) { $roots += @($tenant.GetValueNames()) } }
+catch { $roots += @() }
+$inside = @($roots | Where-Object { $_ -and ($folder + '\').StartsWith($_.TrimEnd('\') + '\', [System.StringComparison]::OrdinalIgnoreCase) }).Count -gt 0
+'in OneDrive={0} (sync folders found: {1})' -f $inside, @($roots | Where-Object { $_ }).Count
+$items = New-Object System.Collections.Generic.List[object]
+foreach ($entry in $top.GetFileSystemInfos()) {
+    if ($items.Count -ge 2000) { break }
+    $items.Add($entry)
+    if ($entry -is [System.IO.DirectoryInfo]) {
+        try { foreach ($inner in $entry.GetFileSystemInfos()) { if ($items.Count -ge 2000) { break }; $items.Add($inner) } } catch { $items.Add('blocked') }
+    }
+}
+$lines = foreach ($item in $items) {
+    if ($item -is [string]) { 'a folder that cannot be opened'; continue }
+    $kind = 'file'; if ($item -is [System.IO.DirectoryInfo]) { $kind = 'folder' }
+    $reparse = [bool]($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint)
+    $online = (([int]$item.Attributes -band 0x441000) -ne 0)
+    $type = '(none)'; $target = '(none)'
+    try { $read = [string]([psobject]$item).LinkType; if ($read) { $type = $read } } catch { $type = '(error)' }
+    try { if ((@(([psobject]$item).Target) | Where-Object { $_ }).Count -gt 0) { $target = '(set)' } } catch { $target = '(error)' }
+    '{0} reparse={1} online={2} LinkType={3} Target={4}' -f $kind, $reparse, $online, $type, $target
+}
+$lines | Group-Object | Sort-Object Count -Descending | ForEach-Object { '{0,6}  {1}' -f $_.Count, $_.Name }
+Write-Host 'Done. The lines above show counts only. Copy them and paste them in the chat.'

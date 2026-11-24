@@ -10,8 +10,9 @@ DriveScan.psm1 - scans a folder on a mapped or network drive (X:\<folder> or \\<
   Depends on:  PiiDetectors.psm1, PiiMasking.psm1, TextExtract.psm1 (Test-SupportedFile), Report.psm1,
                ScanMeter.psm1, ScanQueue.psm1 and ChannelScan.psm1 (Get-ShownItem), imported first.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7, where the tests run on a temporary folder).
-  Network:     only the given folder's server, through the person's Windows logon (SMB); nothing else.
-  Writes:      only the results workbook under the results folder.
+  Network:     only the given folder's server, through the person's Windows logon (SMB); in a OneDrive folder, OneDrive
+               downloads an online-only file only after the person answers y (Select-OnlineFiles).
+  Writes:      only the results workbook under the results folder (a downloaded OneDrive file is written by OneDrive).
   Credentials: none (the Windows logon).
 #>
 
@@ -21,6 +22,134 @@ Set-StrictMode -Version 2.0
 $script:DriveTopGroup = '(top of the folder)'
 # A file link in the folder is never read (the PAM, 2026-11-21: "No reconnaissance").
 $script:FileLinkReason = 'A link to another file is not followed (it can lead outside the folder): check by hand'
+# OneDrive (and a SharePoint library synced by OneDrive) keeps its files and folders as reparse points too: they are the
+# item itself, not a link, so they are read (the PAM, 2026-11-23: scan a synced OneDrive folder when SharePoint sign-in
+# is blocked). A file whose data is only in the cloud has one of these attributes: RecallOnDataAccess (0x400000),
+# RecallOnOpen (0x40000) or Offline (0x1000). Ion asks before it reads such files (the PAM, 2026-11-23: "Ask each run").
+$script:OnlineOnlyAttributes = 0x441000
+$script:OnlineReason = 'Online only (OneDrive), not downloaded: check by hand, or run Ion again and answer y to download'
+
+function Get-OneDriveHomes {
+    # The person's own OneDrive folders ("My files"), from Windows' OneDrive environment variables: only these can hold
+    # shortcuts to other teams' libraries (Confirm-OneDriveRoot). A synced library folder is not one (review of PR 59).
+    return @(foreach ($name in @('OneDrive', 'OneDriveCommercial', 'OneDriveConsumer')) { [Environment]::GetEnvironmentVariable($name) }) |
+        Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\', '/') }
+}
+
+function Get-OneDriveRoots {
+    <#
+    .SYNOPSIS
+      The folders this person's OneDrive app syncs: its OneDrive folders (environment) and each synced SharePoint
+      library folder (the OneDrive app's own list in the registry, read-only). Only these can hold OneDrive items.
+    .OUTPUTS
+      [string[]] full folder paths.
+    #>
+    $roots = @(Get-OneDriveHomes)
+    try {
+        foreach ($tenant in @(Get-ChildItem -Path 'HKCU:\Software\Microsoft\OneDrive\Accounts\*\Tenants' -ErrorAction Stop)) {
+            $roots += @($tenant.GetValueNames())   # each value name is a synced folder
+        }
+    }
+    catch { Write-Verbose 'No OneDrive list in the registry (not Windows, or no OneDrive account).' }
+    return @($roots | Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\') })
+}
+
+function Confirm-OneDriveRoot {
+    <#
+    .SYNOPSIS
+      When the pasted folder is the person's own OneDrive folder (Get-OneDriveHomes), its top folders can be shortcuts to
+      other teams' libraries ("Add shortcut to My files"), which look like normal folders. Ion says so, lists the top
+      folders (names masked) and asks before it scans them all (the PAM, 2026-11-23: "Warn, then ask"; the rule
+      "No reconnaissance"). A folder that holds the OneDrive folder (the user folder) is asked about too. Any other
+      folder: true without a question.
+    .PARAMETER Path
+      The pasted folder.
+    .OUTPUTS
+      [bool] true to scan.
+    #>
+    param([string]$Path)
+    $folder = [System.IO.Path]::GetFullPath($Path).TrimEnd('\', '/')   # "<folder>\." and "<sub>\.." count as the folder
+    $held = @()   # the OneDrive folders that are the pasted folder or are inside it (review of PR 59)
+    foreach ($oneDriveHome in @(Get-OneDriveHomes)) {
+        try { $full = [System.IO.Path]::GetFullPath($oneDriveHome).TrimEnd('\', '/') } catch { continue }   # a bad variable: not a OneDrive folder
+        if (-not [System.IO.Directory]::Exists($full) -or $held -icontains $full) { continue }   # a folder that is gone, or listed twice
+        if ($full -ieq $folder -or $full.StartsWith($folder + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)) { $held += $full }
+    }
+    if ($held.Count -eq 0) { return $true }
+    # The top folders of the OneDrive folder itself: the ones that can be shortcuts (also when a parent folder was pasted).
+    $tops = @(foreach ($oneDrive in $held) { (New-Object System.IO.DirectoryInfo($oneDrive + [System.IO.Path]::DirectorySeparatorChar)).GetDirectories() |
+                ForEach-Object { Protect-PiiName $_.Name } })
+    if ($held -icontains $folder) { Write-Ui 'This is your whole OneDrive folder. Folders in it can be shortcuts to the libraries of other teams.' 'Accent' }
+    else { Write-Ui 'This folder holds your whole OneDrive folder. Folders in OneDrive can be shortcuts to the libraries of other teams.' 'Accent' }
+    Write-Ui ('  The top folders in OneDrive: ' + ($tops -join ', ')) 'Muted'
+    Write-Ui '  To scan one team only, press Enter, then paste the folder of that team.' 'Muted'
+    return ((Read-Host 'Scan all of them? [y/N]') -match '^\s*y')
+}
+
+function Get-ReparseKind {
+    <#
+    .SYNOPSIS
+      What a reparse point in the folder is: 'Cloud' only for an item inside a OneDrive sync folder that PowerShell
+      gives no LinkType and no Target (the file or folder itself: read); else 'Link' (a symbolic link, a junction,
+      or any other kind such as a deduplicated or Azure File Sync file: not read, as before; review of PR 59).
+    .PARAMETER Entry
+      A FileInfo or DirectoryInfo (or, in tests, an object with FullName, LinkType and Target).
+    .PARAMETER Roots
+      The OneDrive sync folders (Get-OneDriveRoots).
+    .OUTPUTS
+      [string] 'Link' or 'Cloud'.
+    #>
+    param($Entry, [string[]]$Roots)
+    $inside = $false
+    try { foreach ($root in $Roots) { if ($Entry.FullName.StartsWith($root + '\', [System.StringComparison]::OrdinalIgnoreCase)) { $inside = $true } } }
+    catch { return 'Link' }
+    if (-not $inside) { return 'Link' }
+    try {
+        $item = [psobject]$Entry
+        $type = [string]$item.LinkType
+        $target = (@($item.Target) | Where-Object { $_ }) -join ''
+    }
+    catch { return 'Link' }
+    if ($type -or $target) { return 'Link' }
+    return 'Cloud'
+}
+
+function Select-OnlineFiles {
+    <#
+    .SYNOPSIS
+      Online-only OneDrive files: when some would be read (a supported type, under the size limit), Ion shows how many
+      and their MB, and asks whether to download and read them (default no). On "no" they leave the groups and get a
+      NOT SCANNED row each (with a hit row for PII in the name). Ion never frees them again (that is a write).
+    .PARAMETER Groups
+      The groups of Get-DriveGroups (changed in place).
+    .PARAMETER Rows
+      The list that receives the rows.
+    .PARAMETER MaxFileMB
+      The size limit.
+    #>
+    param([object[]]$Groups, $Rows, [int]$MaxFileMB)
+    $online = @(foreach ($group in $Groups) { foreach ($file in $group.Files) {
+                if ($file.Online -and (Test-SupportedFile $file.Name) -and $file.Size -le $MaxFileMB * 1MB) { $file } } })
+    if ($online.Count -eq 0) { return }
+    $megabytes = ($online | ForEach-Object { $_.Size } | Measure-Object -Sum).Sum / 1MB   # 5.1 reads no hashtable key here
+    Write-Ui ('{0} files ({1:N1} MB) here are online only (OneDrive). To read them, Ion must download them to this computer.' -f $online.Count, $megabytes) 'Accent'
+    Write-Ui '  They then stay on this computer. To remove them again: right-click the folder, then click Free up space.' 'Muted'
+    if ((Read-Host 'Download and read them? [y/N]') -match '^\s*y') { return }
+    foreach ($group in $Groups) {
+        $keep = New-Object System.Collections.Generic.List[object]   # one pass per group, not one search per file
+        $declined = New-Object System.Collections.Generic.List[object]
+        foreach ($file in $group.Files) {
+            if ($file.Online -and (Test-SupportedFile $file.Name) -and $file.Size -le $MaxFileMB * 1MB) { $declined.Add($file) } else { $keep.Add($file) }
+        }
+        $group.Files.Clear(); $group.Files.AddRange($keep)
+        foreach ($file in $declined) {
+            $info = @{ Channel = (Protect-PiiName $group.Name); Item = (Get-ShownItem $group.Name $file.Inner); Link = (Get-DriveLink $file.Path); Modified = $file.Modified }
+            if (Add-FileStartRows $Rows $info ($group.Name + '/' + $file.Inner) $file.Name $file.Size $MaxFileMB) {
+                $Rows.Add((New-ReportRow 'File' $info.Channel $info.Item $info.Link $info.Modified 'NOT SCANNED' '' '' $script:OnlineReason))
+            }
+        }
+    }
+}
 
 function Get-DriveGroups {
     <#
@@ -40,6 +169,7 @@ function Get-DriveGroups {
         Links = (New-Object System.Collections.Generic.List[string]); FileLinks = (New-Object System.Collections.Generic.List[string]) }
     $byName = @{}
     $top = @{ Name = $script:DriveTopGroup; Files = (New-Object System.Collections.Generic.List[object]) }
+    $roots = Get-OneDriveRoots
     $stack = New-Object System.Collections.Generic.Stack[string]
     $stack.Push($Root)
     while ($stack.Count -gt 0) {
@@ -50,12 +180,12 @@ function Get-DriveGroups {
         foreach ($entry in $entries) {
             $rel = ($relative + '\' + $entry.Name).TrimStart($slashes)
             if ($entry -is [System.IO.DirectoryInfo]) {
-                if ($entry.Attributes -band [System.IO.FileAttributes]::ReparsePoint) { $result.Links.Add($rel); continue }
+                if (($entry.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -and (Get-ReparseKind $entry $roots) -eq 'Link') { $result.Links.Add($rel); continue }
                 $stack.Push($entry.FullName)
                 continue
             }
-            # A file link (any reparse point) is not followed: it can lead outside the folder ("No reconnaissance").
-            if ($entry.Attributes -band [System.IO.FileAttributes]::ReparsePoint) { $result.FileLinks.Add($rel); continue }
+            # A file link (a symbolic link) is not followed: it can lead outside the folder ("No reconnaissance").
+            if (($entry.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -and (Get-ReparseKind $entry $roots) -eq 'Link') { $result.FileLinks.Add($rel); continue }
             $groupName = $script:DriveTopGroup
             $inner = $rel
             $cut = $rel.IndexOfAny($slashes)
@@ -66,7 +196,7 @@ function Get-DriveGroups {
                 $group = $byName[$groupName]
             }
             $group.Files.Add(@{ Path = $entry.FullName; Inner = ($inner -replace '[\\/]', '/'); Name = $entry.Name; Size = [long]$entry.Length
-                Modified = $entry.LastWriteTime.ToString('yyyy-MM-dd HH:mm') })
+                Modified = $entry.LastWriteTime.ToString('yyyy-MM-dd HH:mm'); Online = (([int]$entry.Attributes -band $script:OnlineOnlyAttributes) -ne 0) })
         }
     }
     foreach ($name in @($byName.Keys | Sort-Object)) { $result.Groups.Add($byName[$name]) }
@@ -199,10 +329,13 @@ function Invoke-DriveScan {
     $run = @{ Meter = (New-ScanMeter 0); Reading = [TimeSpan]::Zero; Workers = 0 }   # filled by Invoke-ScanRun
     try {
         if (-not (Test-Path -LiteralPath $Path -PathType Container)) { throw 'This folder cannot be opened (check the path, and that you can open it in File Explorer).' }
+        # Own OneDrive folder: shortcuts to other teams' libraries ("No reconnaissance"); declined until a yes (a cancel too).
+        $run.Declined = $true; if (-not (Confirm-OneDriveRoot $Path)) { return $null }; $run.Declined = $false
         Write-Ui 'Listing the files ...' 'Muted'
         $found = Get-DriveGroups $Path
         $groups = $found.Groups.ToArray()
         Add-DriveListRows $found $rows
+        Select-OnlineFiles $groups $rows $MaxFileMB
         # Starts one file (Invoke-GroupScan calls it).
         $start = { param($queue, $group, $file) Invoke-DriveFile $queue $group.Name $file $MaxFileMB }
         # The file's masked path inside its folder, for the progress bar.
@@ -230,4 +363,5 @@ function Invoke-DriveScan {
     return $workbook
 }
 
-Export-ModuleMember -Function Get-DriveGroups, Invoke-DriveScan
+Export-ModuleMember -Function Get-DriveGroups, Invoke-DriveScan, Get-ReparseKind, Select-OnlineFiles, Get-OneDriveRoots,
+    Get-OneDriveHomes, Confirm-OneDriveRoot

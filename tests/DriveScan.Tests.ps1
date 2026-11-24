@@ -68,6 +68,37 @@ try {
 }
 finally { Close-ReaderPool $pool }
 
+# OneDrive (the PAM, 2026-11-23): a synced OneDrive item is a reparse point but no link: it is read; a symbolic link or
+# junction is not followed; when its kind cannot be read, it stays a link.
+$odRoots = @('C:\Users\me\OneDrive - Org')
+$inOneDrive = 'C:\Users\me\OneDrive - Org\Ops\a.docx'
+Assert-Equal 'Cloud' (Get-ReparseKind ([pscustomobject]@{ FullName = $inOneDrive; LinkType = $null; Target = $null }) $odRoots) 'OneDrive item (in a sync folder, no link type, no target): read'
+Assert-Equal 'Link' (Get-ReparseKind ([pscustomobject]@{ FullName = 'D:\Share\a.docx'; LinkType = $null; Target = $null }) $odRoots) 'Reparse point outside OneDrive (dedup, Azure File Sync): not read'
+Assert-Equal 'Link' (Get-ReparseKind ([pscustomobject]@{ FullName = 'C:\Users\me\OneDrive - Orgx\a.docx'; LinkType = $null; Target = $null }) `
+    $odRoots) 'A folder that only starts like a sync folder: not read'
+Assert-Equal 'Link' (Get-ReparseKind ([pscustomobject]@{ FullName = $inOneDrive; LinkType = 'SymbolicLink'; Target = @('x') }) $odRoots) 'Symbolic link in OneDrive: not followed'
+Assert-Equal 'Link' (Get-ReparseKind ([pscustomobject]@{ FullName = $inOneDrive; LinkType = 'Junction'; Target = $null }) $odRoots) 'Junction in OneDrive: not followed'
+Assert-Equal 'Link' (Get-ReparseKind ([pscustomobject]@{ FullName = $inOneDrive }) $odRoots) 'Kind not known: not followed'
+# Online-only files: asked first (the PAM, 2026-11-23: "Ask each run"); Enter (no) leaves them NOT SCANNED, y reads them.
+function New-OnlineGroups {
+    # Two files in one group: one online only, one on the disk.
+    $files = New-Object System.Collections.Generic.List[object]
+    $files.Add(@{ Path = 'C:\od\Ops\cloud.docx'; Inner = 'cloud.docx'; Name = 'cloud.docx'; Size = 2048L; Modified = '2026-11-23 10:00'; Online = $true })
+    $files.Add(@{ Path = 'C:\od\Ops\local.docx'; Inner = 'local.docx'; Name = 'local.docx'; Size = 1024L; Modified = '2026-11-23 10:00'; Online = $false })
+    return , @(@{ Name = 'Ops'; Files = $files })
+}
+$onlineGroups = New-OnlineGroups
+$onlineRows = New-Object System.Collections.Generic.List[object]
+Set-FakeOnlineAnswer ''
+Select-OnlineFiles $onlineGroups $onlineRows 25 6>$null
+Assert-Equal '1 local.docx' ('{0} {1}' -f $onlineGroups[0].Files.Count, $onlineGroups[0].Files[0].Name) 'Online only, answer Enter: only the file on the disk is read'
+Assert-Equal 1 @($onlineRows | Where-Object { $_.Context -like 'Online only*' }).Count 'Online only, answer Enter: one NOT SCANNED row'
+$onlineGroups = New-OnlineGroups
+Set-FakeOnlineAnswer 'y'
+Select-OnlineFiles $onlineGroups (New-Object System.Collections.Generic.List[object]) 25 6>$null
+Assert-Equal 2 $onlineGroups[0].Files.Count 'Online only, answer y: both files are read'
+Set-FakeOnlineAnswer ''
+
 # A normal old-version read while a scan's pool is open, then the close: no error, and the next scan starts clean
 # (second review of PR 58: the close threw, and every later scan ended INCOMPLETE).
 $livePool = New-ReaderPool $null
@@ -112,6 +143,47 @@ finally {
     Close-ReaderPool $stuckPool
     Assert-Equal $true ($clock.Elapsed.TotalSeconds -lt 5) 'Pool: closing does not wait for stuck workers (Ctrl+C ends)'
     & $readerPool { param($limit) $script:FileSecondsLimit = $limit } $savedLimit
+}
+
+# A whole OneDrive folder (the PAM, 2026-11-23: "Warn, then ask"): its top folders can be shortcuts to other teams'
+# libraries ("No reconnaissance"), so Ion asks first; Enter = no. A folder inside it, or any other folder: no question.
+$odRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('ion-od-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path (Join-Path $odRoot 'Team A') -Force | Out-Null
+$savedOneDrive = $env:OneDrive; $savedCommercial = $env:OneDriveCommercial; $savedConsumer = $env:OneDriveConsumer
+try {
+    $env:OneDrive = $odRoot
+    # Two variables for one folder (common on a work PC) and one for a folder that is gone: each top folder once, no error.
+    $env:OneDriveCommercial = $odRoot
+    $env:OneDriveConsumer = Join-Path $odRoot 'gone'
+    Set-FakeRootAnswer ''
+    $shown = @(Confirm-OneDriveRoot (Split-Path $odRoot -Parent) 6>&1 | ForEach-Object { [string]$_ })
+    $topLine = @($shown | Where-Object { $_ -like '*top folders in OneDrive*' })
+    Assert-Equal '1 False' ('{0} {1}' -f $topLine.Count, $shown[-1]) 'Same folder twice and a gone folder: asked once, no error'
+    Assert-Equal 1 ([regex]::Matches($topLine[0], 'Team A').Count) 'Same folder twice: each top folder shown once'
+    Set-FakeRootAnswer ''
+    Assert-Equal $false (Confirm-OneDriveRoot $odRoot 6>$null) 'Whole OneDrive folder, answer Enter: not scanned'
+    Set-FakeRootAnswer 'y'
+    Assert-Equal $true (Confirm-OneDriveRoot ($odRoot + [System.IO.Path]::DirectorySeparatorChar) 6>$null) 'Whole OneDrive folder, answer y: scanned'
+    Set-FakeRootAnswer ''
+    Assert-Equal $true (Confirm-OneDriveRoot (Join-Path $odRoot 'Team A') 6>$null) 'A folder inside OneDrive: no question'
+    Assert-Equal $false (Confirm-OneDriveRoot (Join-Path (Join-Path $odRoot 'Team A') '..') 6>$null) 'The OneDrive folder written with ..: asked (Enter = no)'
+    Assert-Equal $false (Confirm-OneDriveRoot (Split-Path $odRoot -Parent) 6>$null) 'A folder that holds the OneDrive folder: asked (Enter = no)'
+    $sibling = $odRoot + '-library'   # a synced team library next to OneDrive (registry list, not the variable)
+    New-Item -ItemType Directory -Path $sibling -Force | Out-Null
+    Assert-Equal $true (Confirm-OneDriveRoot $sibling 6>$null) 'A synced team library folder: no question'
+    $env:OneDrive = 'bad' + [char]0 + 'path'   # a path .NET cannot read: skipped, the scan is not stopped
+    Assert-Equal $true (Confirm-OneDriveRoot $sibling 6>$null) 'A bad OneDrive variable: skipped, no error'
+    $env:OneDrive = $odRoot
+    Remove-Item -LiteralPath $sibling -Recurse -Force -ErrorAction SilentlyContinue
+    # A cancel at the question saves nothing (as at "Scan now?"): Invoke-DriveScan returns no workbook.
+    Set-FakeRootAnswer 'cancel'
+    $odOut = Join-Path $odRoot 'out-not-made'
+    Assert-Equal $null (Invoke-DriveScan -Path $odRoot -OutputFolder $odOut -MaxFileMB 25 -Init $null 6>$null) 'Whole OneDrive folder, a cancel at the question: no workbook'
+    Assert-Equal $false (Test-Path -LiteralPath $odOut) 'Whole OneDrive folder, a cancel at the question: nothing saved'
+}
+finally {
+    $env:OneDrive = $savedOneDrive; $env:OneDriveCommercial = $savedCommercial; $env:OneDriveConsumer = $savedConsumer
+    Remove-Item -LiteralPath $odRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 # ---- Accountability (the PAM, 2026-11-21): who changed the file, who added the PII and when ----
