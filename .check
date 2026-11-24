@@ -33,3 +33,5 @@ block: PIIScan-*
 skip: ref/afi33-332.txt
 skip: ref/afi33-332.pdf
 skip: docs/assets/*-social-preview.png
+# The kit's content-check test file holds invented marking test data; the kit lock fails if it ever differs from the kit's copy (the Maintainer, 2026-11-24: "Skip that kit file").
+skip: scripts/check_content_test.py
