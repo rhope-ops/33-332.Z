@@ -156,16 +156,18 @@ Score. Ion: `src/` of origin/main 9ded821, not changed. PowerShell 7.4.6 on Linu
 
 Recall 87% (46 of 53). Precision 98% (46 of 47 hits). All 12 files were read (0 in the Not scanned tab). No decoy was a hit.
 
+After the passport rule (PR 97, 2026-11-24: 9 digits after a Passport label are a Passport, approved by the PAM): the test prints `RECALL found=47/53 false=0`. The baseline table and the list below describe the run before this change.
+
 Without the 9 values under a header row only: recall 98% (43 of 44), precision 98% (43 of 44 hits). Without the 9-digit passport too: 43 of 43, no false hit.
 
 The 7 misses and the 1 false hit:
 
 - DoD ID, header row only: 0 of 3. The workbook has the label "DoD ID" only in the header row of its column. Ion looks for the label at most 40 characters before the number.
 - Date of birth, header row only: 0 of 3. The same layout; Ion looks for a date-of-birth label at most 30 characters before the date.
-- Passport, 9 digits: 0 of 1. Ion reports the 9 digits as an SSN (Low), because SSN wins over Passport when two hits overlap. This is also the 1 false hit.
+- Passport, 9 digits: 0 of 1. Ion reports the 9 digits as an SSN (Low), because SSN wins over Passport when two hits overlap. This is also the 1 false hit. Fixed by PR 97.
 - Every other form: all found. This includes both e-signature forms, numbers in number cells, the CSV columns and the PDF text.
 
-These are measurements only: the detectors are not changed in this work.
+The baseline is a measurement only: the detectors were not changed for it. PR 97 changed the passport rule after it.
 
 Method note: with `-Init $null` (the reader modules loaded one by one in the workers), the PDFs were NOT SCANNED,
 because `$script:PdfTokenPattern` was not set in the worker. The bundle's reader block reads them. The baseline uses
