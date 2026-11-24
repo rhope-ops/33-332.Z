@@ -60,7 +60,7 @@ function Get-RosterXlsxText {
     # The text of a one-sheet workbook; each row a list of 'B2=text' cells (digits only: a number cell, else an inline string).
     param([object[]]$Rows)
     $xml = foreach ($row in $Rows) {
-        '<row>' + (-join @(foreach ($cell in $row) { $ref, $text = $cell -split '=', 2
+        '<row r="' + ((@($row)[0] -split '=')[0] -replace '\D', '') + '">' + (-join @(foreach ($cell in $row) { $ref, $text = $cell -split '=', 2
             if ($text -match '^\d+$') { "<c r=`"$ref`"><v>$text</v></c>" } else { "<c r=`"$ref`" t=`"inlineStr`"><is><t>$text</t></is></c>" } })) + '</row>'
     }
     return (Get-TextFromBytes -Bytes (New-ZipBytes @{ 'xl/worksheets/sheet1.xml' = '<worksheet><sheetData>' + (-join $xml) + '</sheetData></worksheet>' }) -FileName 'r.xlsx').Text
@@ -96,13 +96,32 @@ Assert-Equal "Person,SSN,DoD ID,DOB`r`nPerson A,SSN: `"$($Sample.Ssn)`",DoD ID: 
 Assert-Equal 'SSN/High/***-**-6789 DoD ID/High/******7890 Date of birth/High/[date masked]' ((Get-HitSummary $csvText) -join ' ') 'Roster csv: values found by their header'
 $tsv = "Name`tPassport`nPerson A`t$($Sample.Passport)"
 Assert-Equal "Name`tPassport`nPerson A`tPassport: $($Sample.Passport)" (Get-TextFromBytes -Bytes ([System.Text.Encoding]::UTF8.GetBytes($tsv)) -FileName 'r.tsv').Text 'Roster tsv: tab fields'
-$csvReach = "Ref,DoD ID,Order`n(a note row, so that the header text is out of reach)`n$otherTen,$($Sample.DodId),$otherTen`n$otherTen`n"
+$csvReach = "Ref,DoD ID,Order`n(a note row so that the header text is out of reach)`n$otherTen,$($Sample.DodId),$otherTen`n$otherTen`n"
 $csvReachText = (Get-TextFromBytes -Bytes ([System.Text.Encoding]::UTF8.GetBytes($csvReach)) -FileName 'r.csv').Text
 Assert-Equal 'DoD ID/High/******7890' (Get-HitSummary $csvReachText) 'Roster csv: the DoD ID label does not reach the next field or the next line'
 $csvDate = "Name,Date of birth,Suspense`nPerson A,03/14/1985,5 Mar 27`n"   # a date with 3 digits: the fewest a DOB has
 Assert-Equal 1 @(Find-PiiInText (Get-TextFromBytes -Bytes ([System.Text.Encoding]::UTF8.GetBytes($csvDate)) -FileName 'd.csv').Text).Count 'Roster csv: the DOB label does not reach a suspense date'
 $plainCsv = "Person,Code,Number`r`nPerson A,`"$($Sample.Ssn)`",$otherTen`r`n"
 Assert-Equal $plainCsv (Get-TextFromBytes -Bytes ([System.Text.Encoding]::UTF8.GetBytes($plainCsv)) -FileName 'p.csv').Text 'Roster csv: no header row, text not changed'
+# Review of PR 96, MAJOR 1: every hit of the text without labels (what main reads) stays, as high or higher.
+$keep = @(
+    @(@('A1=Name', 'B1=SSN', 'C1=DoD ID (sponsor)'), @('A2=a', "B2=$($Sample.Ssn)", "C2=$($Sample.DodId)"), 'DoD ID/High/******7890'),
+    @(@('A1=Kind', 'B1=Passport', 'C1=Value'), @('A2=DOB', "B2=$($Sample.Passport)", 'C2=03/14/1985'), 'Date of birth/High/[date masked]'),
+    @(@('A1=Kind', 'B1=DoD ID', 'C1=Value'), @('A2=SSN', "B2=$($Sample.DodId)", "C2=$($Sample.SsnBare)"), 'SSN/High/***-**-6789'))
+foreach ($case in $keep) {
+    $plainSheet = ((@($case[0], $case[1]) | ForEach-Object { @($_ | ForEach-Object { ($_ -split '=', 2)[1] }) -join ' | ' }) -join "`n")
+    $hits = Get-HitSummary (Get-RosterXlsxText @($case[0], $case[1]))
+    Assert-Equal ((Get-HitSummary $plainSheet) -join ' ') ($hits -join ' ') "Roster: the hits of the plain text stay ($($case[2]))"
+    Assert-Equal $true ($hits -contains $case[2]) "Roster: $($case[2]) is still found"
+}
+# MINOR 2: the labels end at a header-like row (a second table) or a missing row.
+$second = Get-RosterXlsxText @(@('A1=Person', 'B1=DoD ID'), @('A2=Person A', "B2=$($Sample.DodId)"), @('A3=Vendor', 'B3=Order no'), @('A4=Acme', "B4=$otherTen"))
+Assert-Equal 'DoD ID/High/******7890' (Get-HitSummary $second) 'Roster: a second table lower in the sheet gets no DoD ID label'
+$skipped = Get-RosterXlsxText @(@('A1=Person', 'B1=DoD ID'), @('A2=Person A', "B2=$($Sample.DodId)"), @('A9=(a note far down in the sheet, no digit, long text)'), @("A10=Acme", "B10=$otherTen"))
+Assert-Equal 'DoD ID/High/******7890' (Get-HitSummary $skipped) 'Roster: the labels end at a missing (empty) row'
+# MINOR 3: a quoted csv field over two lines ends the labels for the rest of the file.
+$multi = "Person,DoD ID,Note`nA,$($Sample.DodId),x`nC,`"line one`nline two, $otherTen`",z`n"
+Assert-Equal 'DoD ID/High/******7890' (Get-HitSummary (Get-TextFromBytes -Bytes ([System.Text.Encoding]::UTF8.GetBytes($multi)) -FileName 'm.csv').Text) 'Roster csv: no label in a quoted field over lines'
 
 # ---- Word field codes are not read (a TOC bookmark number is no SSN) ----
 $fieldXml = "<w:document><w:p><w:r><w:instrText xml:space=`"preserve`"> PAGEREF _Toc$($Sample.SsnBare) \h </w:instrText></w:r><w:r><w:t>Chapter 1</w:t></w:r></w:p></w:document>"

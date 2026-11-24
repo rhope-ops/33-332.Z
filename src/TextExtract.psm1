@@ -9,8 +9,8 @@ TextExtract.psm1 - turns file bytes into plain text, in memory.
   Outputs:     an object with Status ('OK' or 'NOT SCANNED'), Reason, Text, Note and Parts (Get-TextFromBytes).
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
   Depends on:  PdfText.psm1 (Get-PdfText), OcrText.psm1 (Get-ImageText), OleText.psm1 (Get-OleText) and
-               ContainerText.psm1 (Get-ArchiveParts, Get-EmailParts, Read-LimitedStream; ConvertTo-SheetText and
-               Add-CsvRosterLabels, the roster labels), imported first by Find-ChannelPII.ps1.
+               ContainerText.psm1 (Get-ArchiveParts, Get-EmailParts, Read-LimitedStream; ConvertTo-SheetText,
+               Add-CsvRosterLabels and Select-RosterText: roster labels), imported first by Find-ChannelPII.ps1.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7); .NET System.IO.Compression only.
   Network:     none.
   Writes:      none. Bytes stay in memory; nothing is saved to disk.
@@ -88,15 +88,16 @@ function Convert-SheetXmlToText {
     .PARAMETER Shared
       The shared strings of the workbook, in order (a cell of type "s" holds an index into them).
     .OUTPUTS
-      [string]
+      [string[]] the text, and the text with roster labels (ConvertTo-SheetText, ContainerText.psm1).
     #>
     param([string]$Xml, [string[]]$Shared)
     # Tags may carry a namespace prefix (<x:row>, <x:c>): some tools write them so, and a missed tag would be a silent miss.
     $rows = New-Object System.Collections.Generic.List[object]
-    foreach ($row in [regex]::Matches($Xml, '(?s)<(?:\w+:)?row\b[^>]*>(.*?)</(?:\w+:)?row>')) {
+    foreach ($row in [regex]::Matches($Xml, '(?s)<(?:\w+:)?row\b([^>]*)>(.*?)</(?:\w+:)?row>')) {
         # ::new, not New-Object: a list per row, and New-Object is slow (2000 rows: 0.7 s).
         $texts = [System.Collections.Generic.List[string]]::new(); $columns = [System.Collections.Generic.List[int]]::new(); $column = 0
-        foreach ($cell in [regex]::Matches($row.Groups[1].Value, '(?s)<(?:\w+:)?c\b([^>]*?)(?:/>|>(.*?)</(?:\w+:)?c>)')) {
+        $number = 0; [void][int]::TryParse([regex]::Match($row.Groups[1].Value, '\br="(\d{1,7})"').Groups[1].Value, [ref]$number)   # 0: none
+        foreach ($cell in [regex]::Matches($row.Groups[2].Value, '(?s)<(?:\w+:)?c\b([^>]*?)(?:/>|>(.*?)</(?:\w+:)?c>)')) {
             # The column from the cell reference ("B" in "B2"; none: the next one): empty cells are not written (roster labels).
             $ref = [regex]::Match($cell.Groups[1].Value, '\br="\$?([A-Z]{1,3})\$?\d').Groups[1].Value
             if (-not $ref) { $column++ }
@@ -113,7 +114,7 @@ function Convert-SheetXmlToText {
             }
             if ($text) { $texts.Add($text); $columns.Add($column) }
         }
-        $rows.Add(@($texts, $columns))
+        $rows.Add(@($texts, $columns, $number))
     }
     return (ConvertTo-SheetText $rows $script:CellBreak)   # ContainerText.psm1: roster columns get their labels
 }
@@ -251,13 +252,14 @@ function Get-ZipPartText {
     $zip = New-Object System.IO.Compression.ZipArchive($memory, [System.IO.Compression.ZipArchiveMode]::Read)
     try {
         $shared = @(Get-SharedStrings $zip)
-        $texts = New-Object System.Collections.Generic.List[string]
+        $texts = New-Object System.Collections.Generic.List[string]; $labelled = New-Object System.Collections.Generic.List[string]
         foreach ($entry in ($zip.Entries | Where-Object { $_.FullName -match $PartPattern } | Sort-Object FullName)) {
             $xml = Read-ZipEntry $entry
-            if ($entry.FullName -match '^xl/worksheets/') { $texts.Add((Convert-SheetXmlToText $xml $shared)) }
-            else { $texts.Add((Convert-XmlToText $xml)) }
+            if ($entry.FullName -match '^xl/worksheets/') { $pair = Convert-SheetXmlToText $xml $shared; $texts.Add($pair[0]); $labelled.Add($pair[1]) }
+            else { $one = Convert-XmlToText $xml; $texts.Add($one); $labelled.Add($one) }
         }
-        return ($texts -join "`n")
+        # The roster labels only when no hit of the whole text is lost (Select-RosterText, ContainerText.psm1).
+        return (Select-RosterText ($texts -join "`n") ($labelled -join "`n"))
     }
     finally { $zip.Dispose(); $memory.Dispose() }
 }
