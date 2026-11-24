@@ -104,10 +104,10 @@ try {
     $excelHit = $excelRead.Hits[0]
     Assert-Equal 'Passport|memo.docx|***-**-0000' ('{0}|{1}|{2}' -f $excelHit.Type, $excelHit.File, $excelHit.Masked) 'Recall Score: shared strings and a rich text cell are read'
     $excelCause = $excelRead.Causes[0]   # no @() around a list property: it fails in PowerShell
-    Assert-Equal 'roster.xlsx|Could not read (in use, damaged or protected)|Could not read the file (in use, damaged or protected?): Access to the path <path> is denied.' `
+    Assert-Equal 'roster.xlsx|Could not read (in use, damaged or protected)|Could not read the file (in use, damaged or protected?): Access to the path * is denied.' `
         ('{0}|{1}|{2}' -f $excelCause.File, $excelCause.Group, $excelCause.Reason) 'Recall Score: the Not scanned tab gives file, group and a reason with no path'
     $causeLines = Format-RecallScore (Get-RecallScore $recallPlan $excelRead)
-    Assert-Equal 1 @($causeLines | Where-Object { $_ -like '  roster.xlsx | Could not read*<path> is denied.' }).Count 'Recall Score: the cause line of a test file not scanned is printed'
+    Assert-Equal 1 @($causeLines | Where-Object { $_ -like '  roster.xlsx | Could not read*path * is denied.' }).Count 'Recall Score: the cause line of a test file not scanned is printed'
     Remove-Item -LiteralPath $excelBook -Force
     $notIon = Join-Path $recallDir 'other.xlsx'
     [System.IO.File]::WriteAllBytes($notIon, [byte[]](New-RecallZip ([ordered]@{ 'xl/workbook.xml' = $head + '<workbook><sheets><sheet name="Roster" sheetId="1" r:id="rId1"/></sheets></workbook>' })))
@@ -116,23 +116,29 @@ try {
     Remove-Item -LiteralPath $notIon -Force
     Assert-Equal $true ((Invoke-RecallMake 'relative-folder') -match 'full folder path') 'Recall Make: a relative path is refused'
 
-    # Reasons with no path, address or long number (an error message can name the profile folder: a person's name).
-    $safeCases = [ordered]@{
-        'Online only (OneDrive), not downloaded: check by hand, or run Ion again and answer y to download' =
-            'Online only (OneDrive), not downloaded: check by hand, or run Ion again and answer y to download'
-        'The reader failed: Exception calling "ReadAllBytes": "Could not find file "C:\Users\Sample Person\x.docx"."' =
-            'The reader failed: Exception calling "ReadAllBytes": "Could not find file <path>'
-        'Could not read the file (damaged or protected?): The network path \\host-one\Sample.Person\a b.docx was not found' = 'Could not read the file (damaged or protected?): The network path <path>'
-        'The reader failed: at Sample\Person line 4 for sample.person@example.test and 1234567890' = 'The reader failed: at <path> line 4 for <address> and #'
-        # Review of PR 105: relative, forward-slash and nested-quote paths leave no word of the name.
-        'Access to the path ''..\Users\Sample Person'' is denied.' = 'Access to the path <path> is denied.'
-        'Access to the path ''/Users/Sample Person/x.docx'' is denied.' = 'Access to the path <path> is denied.'
-        'Could not find /sites/team-x/Shared Documents/Sample Person/x.docx' = 'Could not find <path>'
-        'Bad ''C:\Users\Samples'' Person Q\x.docx'' here' = 'Bad <path> here'
-        'Bad ''file:Users/Sample Person/x'' here' = 'Bad <path> here'
-    }
-    foreach ($case in $safeCases.Keys) { Assert-Equal $safeCases[$case] (Get-RecallSafeReason $case) ('Recall Score: a safe reason (' + $case.Substring(0, 18) + ')') }
-    Assert-Equal 163 (Get-RecallSafeReason ('x' * 300)).Length 'Recall Score: a reason is cut at 160 characters'
+    # The reason Score prints: allowed words only (review of PR 105). Each fixed reason of Ion prints unchanged.
+    $fixedReasons = @(Get-ChildItem (Join-Path $recallRoot 'src') -Filter '*.ps*1' | ForEach-Object {
+            [regex]::Matches([System.IO.File]::ReadAllText($_.FullName), "(?m)(?:Reason = |Reason\w* = )'([^'$]{10,})'") | ForEach-Object { $_.Groups[1].Value } } |
+        Sort-Object -Unique)
+    Assert-Equal $true ($fixedReasons.Count -ge 15) 'Recall Score: the fixed reasons of Ion are found in src'
+    Assert-Equal '' (@($fixedReasons | Where-Object { (Get-RecallSafeReason $_) -cne $_ }) -join ' || ') 'Recall Score: each fixed reason of Ion prints unchanged'
+    # Invented paths and names in every form the reviews found (quoted, unquoted, relative, forward slash, nested quote).
+    $leaky = @(
+        "Access to the path 'C:\Users\Sample.D'Arcy.Q\OneDrive - Test Org\x.docx' is denied.",
+        'The reader failed: Exception calling "ReadAllBytes": "Could not find file "C:\Users\Sample Person\x.docx"."',
+        'Could not read the file (damaged or protected?): The network path \\host-one\Sample.Person\a b.docx was not found',
+        'The reader failed: at Sample\Person line 4 for sample.person@example.test and 1234567890',
+        "Access to the path '..\Users\Sample Person' is denied.", 'The reader failed: (/Users/Sample Person/x.docx)',
+        'The reader failed: path=/Users/Sample Person/x.docx', 'Could not find "/Users/Sample Person/x.docx',
+        'Could not find Users/Sample Person/x.docx', 'Could not find ./Sample Person/x.docx',
+        "Access to the path 'Sample O'Neil\x.docx' is denied.", 'The file is locked for editing by Sample Person.')
+    $leaked = @($leaky | ForEach-Object { Get-RecallSafeReason $_ } | Where-Object { $_ -match 'Sample|Person|Neil|Arcy|host|Test Org|example|\d{5}' })
+    Assert-Equal '' ($leaked -join ' || ') 'Recall Score: no word of a path or name shows'
+    $inUse = 'Could not read the file (in use, damaged or protected?): The process cannot access the file '
+    $inUseEnd = ' because it is being used by another process.'
+    Assert-Equal ($inUse + '*' + $inUseEnd) (Get-RecallSafeReason ($inUse + "'C:\Users\Sample Person\OneDrive - Test Org\RecallTest\memo.docx'" + $inUseEnd)) `
+        'Recall Score: an in-use error keeps its words and loses its path'
+    Assert-Equal 163 (Get-RecallSafeReason ('file ' * 60)).Length 'Recall Score: a reason is cut at 160 characters'
 
 
     # The local baseline: Ion scans the made folder as on the gov device (the bundle's reader block in the workers).

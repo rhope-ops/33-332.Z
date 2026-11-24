@@ -5,7 +5,7 @@
 #                many values were planted, found and missed, and how many hits were false; then recall and precision.
 #   Inputs:      Make: the path of an empty folder. Score: the path of Ion's results workbook (.xlsx).
 #   Outputs:     Make: the 12 files, and one count line. Score: count lines with type names, and for each test file in
-#                the Not scanned tab its name, group and Ion's reason with paths removed: no value, no path, no name.
+#                the Not scanned tab its name, group and Ion's reason in allowed words only: no value, no path, no name.
 #   How to run:  paste all of this text into Windows PowerShell ISE (File > New), press F5, answer the questions.
 #   Run target:  Windows PowerShell 5.1 (also PowerShell 7). .NET only: no module, no Excel, no network.
 #   Network:     none.
@@ -561,29 +561,52 @@ function Read-RecallSheet {
     return , $rows.ToArray()
 }
 
+# The words Score may print from Ion's reason (an allowlist: review of PR 105, MAJOR). Every other word becomes '*', so
+# a name in a path or an error message cannot show, however the path is written. The words of Ion's own reasons
+# (src/*.psm1; tests/Recall.Tests.ps1 checks that each fixed reason prints unchanged) and of .NET file and zip errors.
+$script:RecallReasonWords = @{}
+foreach ($word in (('a e again an and another answer archive author available be by can cannot check computer could damaged ' +
+        'download downloaded early encrypted encryption extension failed file files fine folder followed format gave hand ' +
+        'image images in inside ion is it its label language lead limit limits link longer mail may microsoft minutes more ' +
+        'name new no not ocr of office old on one onedrive online only open or outlook outside part password pdf protected ' +
+        'purview read readable reader reading rest result run scanned script search seconds sensitivity set still stopped ' +
+        'string style text than the this time to took type unusual use valid windows with without y larger mb empty bytes ' +
+        'web page sharepoint well formed unclosed stray operands wrong protected these that there was were has have been ' +
+        'process access because being used denied find directory path specified both too long fully qualified must less ' +
+        'characters network found cloud provider running operation unsuccessful exited unexpectedly system request supported ' +
+        'exception calling argument arguments end central record entries expected does correspond number local header ' +
+        'corrupt block length match complement invalid data while decoding entry compressed using unsupported compression ' +
+        'method index outside bounds array object reference instance null valued expression call input correct thrown timed ' +
+        'out thread aborted pipeline stream seeking range values zip zero larger startindex collection modified enumeration ' +
+        'execute item same key already added given present dictionary current state error disk full space enough memory ' +
+        'device ready sharing violation lock locked user mapped section volume medium drive share server busy') -split ' ')) {
+    if ($word) { $script:RecallReasonWords[$word] = $true }
+}
+
 function Get-RecallSafeReason {
     <#
     .SYNOPSIS
-      Ion's reason text without a path, a web or e-mail address or a long number (an error message can name the
-      profile folder, so a person's name): a quoted text with a slash or backslash becomes <path>; from any other path
-      start to the end of the text becomes <path>; a word with a backslash becomes <path>; an e-mail address becomes
-      <address>; 5 or more digits become #. At most 160 characters. A name with no path near it is not removed (Ion's
-      reasons are its fixed texts and .NET file errors, which name a file only by its path).
+      Ion's reason text with only allowed words ($RecallReasonWords): each run of other words, of numbers with 5 or more
+      digits, and of signs that are not punctuation (\ / @ and others) becomes one '*'. An error message can name the
+      profile folder, so a person's name: no word outside the list can show. At most 160 characters.
     .PARAMETER Reason
       The Reason cell of the Not scanned tab.
     .OUTPUTS
       [string]
     #>
     param([string]$Reason)
-    # A quoted text with a slash or backslash in it is a path. It ends at the LAST quote of the same kind followed by a
-    # space, a point, a comma, a semicolon, a colon, a bracket or the end (a quote inside a folder name, as in a name
-    # with an apostrophe, does not end it; more text masked is safe, less is not: review of PR 105).
-    $safe = [regex]::Replace($Reason, '([''"])[^''"\r\n]*[\\/].*\1(?=[\s.,;:)]|$)', '<path>')
-    # An unquoted path: from a drive, \\, a web address or a word that starts with / to the end of the text.
-    $safe = [regex]::Replace($safe, '(?s)(?:[A-Za-z]:[\\/]|\\\\|[A-Za-z]+:/|(?<!\S)/\S).*$', '<path>')
-    $safe = [regex]::Replace($safe, '\S*\\\S*', '<path>')
-    $safe = [regex]::Replace($safe, '\S+@\S+', '<address>')
-    $safe = [regex]::Replace($safe, '\d{5,}', '#').Trim()
+    $out = New-Object System.Text.StringBuilder
+    foreach ($m in [regex]::Matches($Reason, '[A-Za-z]+|\d+|\s+|.')) {
+        $t = $m.Value
+        $keep = ($t -match '^[A-Za-z]+$' -and ($script:RecallReasonWords.ContainsKey($t.ToLowerInvariant()) -or $t -cmatch '^[A-Z][A-Za-z]*Exception$')) -or
+            ($t -match '^\d{1,4}$') -or ($t -match '^\s+$') -or ($t -match '^[.,;:()?!''"\-\[\]]$')
+        if ($keep) { [void]$out.Append($t) } else { [void]$out.Append('*') }
+    }
+    # Runs of '*' with only spaces, punctuation or one allowed word between them become one '*' (a path shows as one
+    # '*', and no word count of a name shows); a quoted '*' loses its quotes.
+    $safe = $out.ToString(); $before = ''
+    while ($safe -ne $before) { $before = $safe; $safe = [regex]::Replace($safe, '\*(?:[\s.:\-'']*(?:[A-Za-z]+[\s.:\-'']*)?\*)+', '*') }
+    $safe = [regex]::Replace($safe, '([''"])\*\1', '*')
     if ($safe.Length -gt 160) { $safe = $safe.Substring(0, 160) + '...' }
     return $safe
 }
@@ -692,7 +715,7 @@ function Format-RecallScore {
     <#
     .SYNOPSIS
       The score as lines to copy: counts, percents and type names, and the cause of each test file not scanned (its
-      name, group and reason without paths: Get-RecallSafeReason). No value, no path, no name.
+      name, group and reason in allowed words only: Get-RecallSafeReason). No value, no path, no name.
     .PARAMETER Score
       Output of Get-RecallScore.
     .OUTPUTS
@@ -714,7 +737,7 @@ function Format-RecallScore {
             $total.Found, $total.Planted, (Get-RecallPercent $total.Found ($total.Found + $total.False)), ($total.Found + $total.False)))
     $lines.Add(('Test files in the Not scanned tab: {0}. Hits in files that are not test files: {1}.' -f $Score.NotScanned, $Score.OutsideHits))
     if ($Score.ContainsKey('Causes') -and @($Score.Causes).Count -gt 0) {
-        $lines.Add('Why (file | group | reason, paths removed):')
+        $lines.Add('Why (file | group | reason; * is a word that Score does not show):')
         foreach ($cause in $Score.Causes) { $lines.Add('  ' + $cause) }
     }
     $lines.Add('By form:')

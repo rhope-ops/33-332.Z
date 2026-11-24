@@ -12,7 +12,7 @@ values in 12 files. Ion scans the files. Then the test compares Ion's workbook w
 - Score matches each hit to the key by file and type. It uses the last 4 digits, the last 3 passport characters, or the e-mail domain.
 - Ion masks a date of birth and a home address completely. For these 2 types, Score counts the hits in each file.
 - A hit that does not match the key is a false hit. A decoy that Ion reports is a false hit.
-- Score prints counts, type names and test file names. For a test file in the Not scanned tab, it also prints its group and Ion's reason, with paths, addresses and long numbers removed. It prints no value and no path.
+- Score prints counts, type names and test file names. For a test file in the Not scanned tab, it also prints its group and Ion's reason. In the reason, Score keeps only the words of a fixed list and shows each other word, path or long number as `*`. It prints no value and no path.
 
 | Type | Planted | Forms |
 |---|---|---|
@@ -135,7 +135,7 @@ Part 4: score the Ion workbook. If you do not see **Copy as path** in a menu, cl
 - Recall: Found divided by Planted. Precision: Found divided by all hits.
 - "By form" shows each type again, split by how the value is written (for example "labelled" or "header row only").
 - "Why" (only when a test file is in the Not scanned tab): one line per such file: its name, the group of the Not scanned
-  tab, and Ion's reason. Score removes paths, addresses and long numbers from the reason.
+  tab, and Ion's reason. Score keeps only the words of a fixed list in the reason; each other word, path or long number shows as `*`.
 
 ## Baseline (pwsh 7, Linux, invented files)
 
@@ -216,7 +216,7 @@ the bundle's reader block, the same code as on the gov device.
   2. No one code path explains the 3 files (confidence high). `pay.xlsx`, `memo.docx` and `travel.docx` take the same
      path (no roster section), and `pay.xlsx` was read.
   3. The cause is in the Reason column of the Not scanned tab. Score did not print it. Score now prints, for each test
-     file in the Not scanned tab, the file name, the group and Ion's reason with paths removed (`Get-RecallSafeReason`).
+     file in the Not scanned tab, the file name, the group and Ion's reason with only the words of a fixed list (`Get-RecallSafeReason`; other words show as `*`).
   4. Assumption, medium confidence: the state of the 3 files on the device changed after run 1 (opened and saved in
      Office with a label, online only, or in use by OneDrive). The new Score line shows which.
 - Run 3: Part 4 again on the workbook of run 2 (the new Score shows why), then Parts 1 to 4 in a new folder with the
