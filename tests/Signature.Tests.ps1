@@ -316,10 +316,33 @@ foreach ($date in $monDates) {
         }
     }
 }
-$monNone = @("Signed 2012 $sig442", "Signed Nov $monYear $sig442", "Signed 20 Sept $monYear $sig442", "Signed 20 Nov 26 $sig442",
+$monNone = @("Signed 2012 $sig442", "Signed Nov $monYear $sig442", "Signed 20 Sept $monYear $sig442",
     "Signed 20 Novx $monYear $sig442", "Signed Innov 20, $monYear $sig442", "Note 20 Nov $monYear $sig442")
 foreach ($case in $monNone) {
     Assert-Equal 0 @(Get-HitSummary $case | Where-Object { $_ -like 'DoD ID/*' }).Count "Month-name date: no ID ($($case -replace '\d', '#'))"
 }
 $monPhone = @(Get-HitSummary "Signed 20 Nov $monYear $revPhone")
 Assert-Equal 'Phone' (($monPhone | ForEach-Object { $_.Split('/')[0] }) -join ',') 'Month-name date: a phone after it stays a phone'
+
+# More month-name spellings are dates (the PAM, 2026-11-24, question dialog): no comma, a 2-digit year, dashes, ordinals.
+# "Signed 20 Nov 26 ..." was no ID above before this ruling; it is now an ID. Other mixes stay no date (as on main).
+$monYear2 = '2' + '6'
+$monMore = @("Nov 20 $monYear", "nov. 5 $monYear", "20NOV$monYear2", "20 Nov $monYear2", "Nov 20, $monYear2", "20-Nov-$monYear", "20-Nov-$monYear2",
+    "Nov 20th, $monYear", "20th Nov $monYear", "Nov 1st $monYear", "Nov 2ND $monYear", "3rd November $monYear", "Nov 20TH $monYear")
+foreach ($date in $monMore) {
+    foreach ($shape in @($sig442, $sig91, $sig55)) {
+        foreach ($case in @("Signed $date $shape", "Digitally signed by $date $shape")) {
+            Assert-Equal 'DoD ID/Low/******7890' ((Get-HitSummary $case) -join ',') "Month-name date, more spellings: an ID ($($case -replace '\d', '#'))"
+        }
+    }
+}
+$monMoreNone = @("Signed 2012 $sig442", "Signed Nov $monYear $sig442", "Signed Nov $monYear2 $sig442", "Signed Innov 20 $monYear $sig442",
+    "Signed Novx 20 $monYear $sig442", "Signed Innov 20th, $monYear $sig442", "Note Nov 20 $monYear $sig442", "Note 20-Nov-$monYear2 $sig442",
+    "Note 20th Nov $monYear $sig442", "Signed 20-Novx-$monYear $sig442", "Signed 20xx Nov $monYear $sig442")
+foreach ($case in $monMoreNone) {
+    Assert-Equal 0 @(Get-HitSummary $case | Where-Object { $_ -like 'DoD ID/*' }).Count "Month-name date, more spellings: no ID ($($case -replace '\d', '#'))"
+}
+foreach ($date in @("Nov 20 $monYear", "20 Nov $monYear2", "Nov 20, $monYear2", "20-Nov-$monYear", "20-Nov-$monYear2", "Nov 20th, $monYear", "20th Nov $monYear")) {
+    $monPhone = @(Get-HitSummary "Signed $date $revPhone")
+    Assert-Equal 'Phone' (($monPhone | ForEach-Object { $_.Split('/')[0] }) -join ',') "Month-name date: a phone after it stays a phone ($($date -replace '\d', '#'))"
+}
