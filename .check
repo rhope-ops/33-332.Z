@@ -30,3 +30,4 @@ block: PIIScan-*
 # the publication's own text, not project data. The copies are pinned in ref/SHA256SUMS.
 skip: ref/afi33-332.txt
 skip: ref/afi33-332.pdf
+skip: docs/assets/*-social-preview.png

@@ -1,4 +1,4 @@
-![33-332.Z: Privacy Act Management](https://repository-images.githubusercontent.com/1465745904/63428ac3-60d0-44c2-be58-475984d11817)
+![33-332.Z: Privacy Act Management](docs/assets/33-332.Z-social-preview.png)
 
 # Ion
 **DoD365 PII Reporter**
@@ -38,7 +38,7 @@ The steps to run it are at the top of the script.
 
 <kbd>Sign in</kbd> → <kbd>List and confirm</kbd> → <kbd>Read files in memory</kbd> → <kbd>Find PII</kbd> → <kbd><b>Mask it</b></kbd> → <kbd>Report</kbd>
 
-- **Sign in:** paste a Teams link (... next to the team or channel name > Copy link), a SharePoint site address or a drive folder. A Teams link alone is enough: Ion looks up that one team's site, so two CAC sign-in windows open, one after the other. If the lookup fails, Ion asks for the site address.
+- **Sign in:** paste a Teams link (... next to the team or channel name > Copy link), a SharePoint site address or a drive folder. A Teams link alone is enough: Ion looks up that one team's site, so two CAC sign-in windows open, one after the other. If the lookup fails, Ion asks for the site address. If the SharePoint sign-in does not work on your computer (for example, it is blocked), Ion shows how to sync the library with OneDrive and scan the synced folder instead.
 - **List and confirm:** Ion lists the files first and shows how many it found, their size, and how many it will list but not read. When it finds files, it asks "Scan now? [Y/n]"; Enter starts the scan, and "n" saves nothing.
 - **Progress:** one bar shows the folder, the run so far (files done, read, not scanned, possible PII, time elapsed and left) and the file in work. For a SharePoint or Teams file of 1 MB or more, a second bar, "Downloading...", shows the MB downloaded. A download goes into memory only, never to disk, and is gone when the file is read.
 - **Report:** one Excel workbook per run, in `Documents\Ion\<site>\Ion <site> <yyyy-MM-dd HHmm>.xlsx` (a drive folder gets a folder of its own name; a site or folder name longer than 40 characters is cut to 40 in the path). It has a Summary tab, one tab per PII type (worst first), Low confidence, Not scanned, By account (when an account is named) and, last, Method. Each hit row shows when the file was created and by whom, when it was last saved and by whom, which account first saved a version with the PII and when, and a History note when the file's history cannot show that. Five empty columns are for the reviewer to fill in: Reviewed by, Review date, Is it PII? (Yes, No, Not sure), Action taken (Removed, Moved, Access limited, Left (not PII), Other) and Reported to Privacy Manager (Yes, No, Not needed). The By account tab counts files and High, Medium and Low hits per "first saved by" account. The Method tab explains, for each PII type, when a match is Low, Medium or High, and how each column is worked out: the "first saved by" account is evidence, not proof of who typed the PII.
@@ -69,8 +69,10 @@ The steps to run it are at the top of the script.
 | Channel posts and replies | Requires tenant admin rights |
 | Private and shared channels | Each has its own SharePoint site: run Ion again with that site's link |
 | Subsites | Run Ion again with the subsite's link |
-| A link to another folder inside a scanned drive folder | Listed as NOT SCANNED (a link can lead outside the folder): check it by hand |
-| A file link inside a scanned drive folder, including OneDrive online-only files and files on deduplicated or Azure File Sync shares | Listed as NOT SCANNED (a link can lead outside the folder): check it by hand |
+| A link (symbolic link or junction) to another folder or file inside a scanned drive folder | Listed as NOT SCANNED (a link can lead outside the folder): check it by hand |
+| Other reparse points: deduplicated or Azure File Sync files, and any outside a OneDrive folder | Listed as NOT SCANNED (a link can lead outside the folder): check it by hand |
+| Your whole OneDrive folder (it can hold shortcuts to other teams' libraries) | Ion lists its top folders and asks before it scans them all; to scan one team, paste that team's folder |
+| OneDrive files that are online only (not on this computer) | Ion shows how many and their MB, and asks before it downloads them; on "no" they are listed as NOT SCANNED. Downloaded files stay on the computer until you click Free up space |
 | Style Library and Form Templates | SharePoint's own files, not people's: skipped on purpose |
 | Files with a sensitivity label that encrypts them (Microsoft Purview) | Listed as NOT SCANNED, in a group of their own: open them and check by hand |
 | Encrypted or password-protected files, and PDFs with limits set by their author | Listed as NOT SCANNED, in a group of their own: check them by hand |

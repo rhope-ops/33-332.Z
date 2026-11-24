@@ -73,5 +73,6 @@ These are defaults: how work normally goes here. The method is yours unless the 
 - Source authority (2026-11-20): AFI 33-332 with its guidance memorandum (edition: docs/DECISIONS.md) is the only rule source for each privacy step a tool or doc names; cite its paragraph; the memorandum wins where they differ.
 - Masked output (2026-11-20): every found PII value is masked wherever a tool shows or saves it.
 - Platform (2026-11-20): Windows PowerShell 5.1 and PnP.PowerShell 1.12.0 only; own CAC sign-in, read-only, no admin, no service account, no stored credentials; a tool reaches the gov device as one generated text pasted into PowerShell ISE (ISSM ruling 2026-11-13), never with an execution-policy change or unblocked files.
+- Paste format (2026-11-23; cannot be changed): every script a person pastes on a gov device (Ion and each test snippet) is a .txt file opened by a raw link; never a .ps1 file and never only a code block in a page.
 - Code standard (2026-11-20): docs/code-standard-33-332.md.
 - Project log (2026-11-20): in the private doc https://claude.ai/artifact/AczuD9hQ8NkU7UMUEUTgCA, never in this repo.
