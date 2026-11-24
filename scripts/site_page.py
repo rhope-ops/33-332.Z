@@ -23,12 +23,12 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # the kit's scripts/fulcrum_palette.py
+from fulcrum_palette import contrast  # noqa: E402
+
 PAGE = 'index.html'
 # The page alone (the logos are files): a budget with room for text, far below the 119 KB of inline logos it had.
 MAX_BYTES = 35000
-# WCAG 2.x relative luminance: the sRGB threshold and the flare term of the contrast ratio.
-SRGB_LINEAR_LIMIT = 0.03928
-FLARE = 0.05
 TEXT_MIN = 4.5   # SC 1.4.3, normal text
 UI_MIN = 3.0     # SC 1.4.11, UI borders and focus; SC 1.4.3 large text
 # (foreground token, background token, minimum, scope). Scope "page" reads :root (and its dark block); "tool" reads the
@@ -56,19 +56,6 @@ REQUIRED = (
     (r'\[hidden\]\{display:none!important\}', 'the [hidden] !important rule'),
     (r'\.sr-only\{position:absolute!important', 'the .sr-only !important rule'),
 )
-
-
-def luminance(hex_colour):
-    """Return the WCAG relative luminance of a #RRGGBB colour."""
-    channels = [int(hex_colour[i:i + 2], 16) / 255 for i in (1, 3, 5)]
-    linear = [c / 12.92 if c <= SRGB_LINEAR_LIMIT else ((c + 0.055) / 1.055) ** 2.4 for c in channels]
-    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
-
-
-def contrast(fore, back):
-    """Return the WCAG contrast ratio of two #RRGGBB colours."""
-    light, dark = sorted((luminance(fore), luminance(back)), reverse=True)
-    return (light + FLARE) / (dark + FLARE)
 
 
 def tokens(block):
