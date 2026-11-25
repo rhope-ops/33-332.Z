@@ -2,11 +2,11 @@
 # usaf.dps.mil only. Read-only, one site, one file. Prints only counts, True/False and error type names: no address,
 # no file name and no error message. No Microsoft Graph call: the addresses are on usaf.dps.mil only.
 $ErrorActionPreference = 'Stop'
-'T4 test version=2026-11-25b'
+'T4 test version=2026-11-25c'
 $typed = (Read-Host 'Question 1: the address of the folder page in your web browser').Trim().Trim('"')
 $fileText = (Read-Host 'Question 2: the file name with its type (for example Report.pdf)').Trim().Trim('"', '/')
 Clear-Host
-'T4 test version=2026-11-25b'
+'T4 test version=2026-11-25c'
 $tag = 'T4'
 $signedIn = $false
 try {
@@ -31,6 +31,7 @@ try {
     }
     $folderPath = $folderPath.TrimEnd('/')
     $name = [uri]::UnescapeDataString($fileText)
+    if (($folderPath + '/' + $name) -match '(^|/)\.\.(/|$)') { '{0} answer with .. found=True: stopped' -f $tag; return }
     if ($name.Contains('/')) { $folderFrom = 'answer 2 (a path)'; $path = $sitePath + '/' + $name.TrimStart('/') }
     elseif (-not $folderPath.StartsWith($sitePath + '/', [StringComparison]::OrdinalIgnoreCase)) { '{0} folder in the address found=False' -f $tag; return }
     else { $path = $folderPath + '/' + $name }
@@ -41,19 +42,18 @@ try {
     'T4 sign-in ok=True ms={0}' -f $clock.ElapsedMilliseconds
     $clock.Restart()
     $item = $null; $by = 'name'
-    try { $item = Get-PnPFile -Url $path -AsListItem }
-    catch {
-        # The web page can show a name without its type: try the files of that one folder by the name without its type.
-        if ($folderFrom -ne 'answer 2 (a path)') {
-            try {
-                $inFolder = Get-PnPFolderItem -FolderSiteRelativeUrl $folderPath.Substring($sitePath.Length + 1) -ItemType File
-                $same = @(foreach ($one in $inFolder) { $one }) | Where-Object { $_.Name -ieq $name -or [IO.Path]::GetFileNameWithoutExtension($_.Name) -ieq $name }
-                $same = @($same)
-                if ($same.Count -eq 1) { $item = Get-PnPFile -Url $same[0].ServerRelativeUrl -AsListItem; $by = 'name without its type' }
-                else { 'T4 files with this name in the folder={0}' -f $same.Count }
-            }
-            catch { 'T4 folder read ok=False {0}' -f (Get-Kind $_) }
+    # A file that is not there gives nothing (PnP 1.12.0) or an error: both go on to the search below.
+    try { $item = Get-PnPFile -Url $path -AsListItem } catch { $item = $null }
+    # The web page can show a name without its type: only then, the files of that one folder by the name without its type.
+    if (-not $item -and $folderFrom -ne 'answer 2 (a path)' -and -not [IO.Path]::GetExtension($name)) {
+        try {
+            $inFolder = Get-PnPFolderItem -FolderSiteRelativeUrl $folderPath.Substring($sitePath.Length + 1) -ItemType File
+            $same = @(foreach ($one in $inFolder) { $one }) | Where-Object { [IO.Path]::GetFileNameWithoutExtension($_.Name) -ieq $name }
+            $same = @($same)
+            if ($same.Count -eq 1) { $item = Get-PnPFile -Url $same[0].ServerRelativeUrl -AsListItem; $by = 'name without its type' }
+            else { 'T4 files with this name in the folder={0}' -f $same.Count }
         }
+        catch { 'T4 folder read ok=False {0}' -f (Get-Kind $_) }
     }
     'T4 file found={0} by={1} ms={2}' -f [bool]$item, $by, $clock.ElapsedMilliseconds
     if (-not $item) { return }
