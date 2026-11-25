@@ -1,0 +1,114 @@
+# Ion device probe 6 (2026-11-25): read-only. Prints only True/False, counts, value names of the OneDrive app's own
+# registry entry, error kinds and times: no name, no address, no path and no value from a file. Probe 5 showed that the
+# OneDrive address of a shortcut or a synced Teams library names the library only. Probe 6 looks for the synced
+# folder's own path in the library: in the OneDrive app's registry entry and in its settings files (.ini, read-only).
+# It tries each candidate path against the web (the items of that one folder) and prints which source fits.
+$ErrorActionPreference = 'Stop'
+$folder = (Read-Host 'Question 1: a OneDrive folder that has files (paste the path)').Trim().Trim('"').TrimEnd('\')
+Clear-Host
+$signedIn = $false
+try {
+function Get-Kind($err) {
+    $m = [string]$err.Exception.Message
+    $kind = 'Other'
+    if ($m -match '(?i)no connection|not connected|connect first|current connection') { $kind = 'NoConnection' }
+    elseif ($m -match '(?i)\(404\)|not found|does not exist') { $kind = 'NotFound' }
+    elseif ($m -match '(?i)\(401\)|\(403\)|forbidden|access denied|unauthori') { $kind = 'NoAccess' }
+    elseif ($m -match '(?i)cancel') { $kind = 'Cancelled' }
+    elseif ($m -match '(?i)time ?out|timed out') { $kind = 'Timeout' }
+    '{0}/{1}' -f $err.Exception.GetType().Name, $kind
+}
+if (-not $folder -or -not (Test-Path -LiteralPath $folder -PathType Container)) { 'P6 folder found=False'; return }   # 'finally' prints Done.
+# The OneDrive app's own list (read-only): the synced folder that holds this folder (the longest one wins).
+$match = $null
+foreach ($p in @(Get-ChildItem -Path 'HKCU:\Software\SyncEngines\Providers\OneDrive' -ErrorAction SilentlyContinue)) {
+    $mount = [string]$p.GetValue('MountPoint'); $ns = [string]$p.GetValue('UrlNamespace')
+    if ($mount -and $ns -and ($folder + '\').StartsWith($mount.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
+        if (-not $match -or $mount.Length -gt $match.Mount.Length) { $match = @{ Mount = $mount.TrimEnd('\'); Ns = $ns.TrimEnd('/'); Key = $p } }
+    }
+}
+if (-not $match) { 'P6 no OneDrive entry holds this folder'; return }
+# The value names of the entry are the OneDrive app's own names (not data): they show where a folder path can be.
+$names = @($match.Key.GetValueNames() | Sort-Object)
+'P6 entry value names: {0}' -f ($names -join ', ')
+$homes = @(foreach ($n in @('OneDrive', 'OneDriveCommercial')) { [Environment]::GetEnvironmentVariable($n) }) | Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\') }
+'P6 entry is the OneDrive home folder={0}' -f [bool]($homes -contains $match.Mount)
+$nsPath = [uri]::UnescapeDataString(([uri]$match.Ns).AbsolutePath).TrimEnd('/')
+$sitePath = if ($nsPath -match '^/(personal|sites|teams)/[^/]+') { $Matches[0] } else { $nsPath }
+$site = ([uri]$match.Ns).GetLeftPart([UriPartial]::Authority) + $sitePath
+$rest = $folder.Substring($match.Mount.Length).Replace('\', '/')
+$local = @(Get-ChildItem -LiteralPath $folder -File -Force -ErrorAction SilentlyContinue | Where-Object { -not ($_.Attributes -band 0x6) } | ForEach-Object { $_.Name })
+'P6 local files={0}' -f $local.Count
+# Candidates for the synced folder's path in the library: each one is a folder path below the library root.
+$candidates = New-Object System.Collections.Generic.List[object]
+function Add-Candidate($source, [string]$text) {
+    $t = $text.Trim().Trim('/', '\').Replace('\', '/')
+    # Not a folder path: empty, an ID (a GUID, or 16 or more hex characters), a number of 5 or more digits, or a text with ':'.
+    $id = $t -match '^\{?[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\}?$' -or $t -match '^[0-9a-fA-F+\-]{16,}$'
+    if (-not $t -or $id -or $t -match '^\d{5,}$' -or $t -match ':' -or $candidates.Count -ge 20) { return }
+    if (@($candidates | Where-Object { $_.Path -eq $t }).Count -eq 0) { $candidates.Add(@{ Source = $source; Path = $t }) }
+}
+# 1. Registry: a string value that is a web address deeper than the library, or a text value that is not a known one.
+foreach ($n in $names) {
+    $v = $match.Key.GetValue($n)
+    if ($v -isnot [string] -or $n -in @('MountPoint', 'UrlNamespace')) { continue }
+    $u = $null
+    if ([uri]::TryCreate($v, [UriKind]::Absolute, [ref]$u) -and $u.Scheme -like 'http*') {
+        $path = [uri]::UnescapeDataString($u.AbsolutePath).TrimEnd('/')
+        if ($path.StartsWith($nsPath + '/', [StringComparison]::OrdinalIgnoreCase)) { Add-Candidate ('registry value ' + $n + ' (address)') $path.Substring($nsPath.Length) }
+    }
+    else { Add-Candidate ('registry value ' + $n) $v }
+}
+# 2. The OneDrive app's settings files (read-only): the lines that name this synced folder; each quoted text in them.
+$iniFiles = @(Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA 'Microsoft\OneDrive\settings') -Filter '*.ini' -Recurse -File -ErrorAction SilentlyContinue)
+$lines = 0; $lineNo = 0; $wide = 0
+# The mount path as a whole folder: followed by a quote, a backslash or the end (not "General Two" for "General").
+$mountRx = [regex]::new([regex]::Escape($match.Mount) + '(?=["\\]|$)', 'IgnoreCase')
+foreach ($f in $iniFiles) {
+    $text = ''
+    try {
+        $bytes = [IO.File]::ReadAllBytes($f.FullName)
+        # UTF-16 without a byte order mark has a 0 byte after most letters: read it as UTF-16 (Unicode).
+        if ($bytes.Length -gt 1 -and $bytes[1] -eq 0 -and -not ($bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE)) { $text = [Text.Encoding]::Unicode.GetString($bytes); $wide++ }
+        else { $text = [IO.File]::ReadAllText($f.FullName) }
+    }
+    catch { continue }
+    foreach ($line in ($text -split "`r?`n")) {
+        if (-not $mountRx.IsMatch($line)) { continue }
+        $lines++; $lineNo++
+        # The key of the line is the OneDrive app's own word; anything else (a path, a whole line) prints as 'other'.
+        $key = ($line -split '=', 2)[0].Trim(); if ($line.IndexOf('=') -lt 0 -or $key -notmatch '^[A-Za-z]{1,40}$') { $key = 'other' }
+        $field = 0
+        foreach ($q in [regex]::Matches($line, '"([^"]*)"')) { $field++; Add-Candidate ('settings line ' + $lineNo + ' (' + $key + ') field ' + $field) $q.Groups[1].Value }
+    }
+}
+'P6 settings files={0} read as UTF-16 with no mark={1} lines that name this folder={2} candidates={3}' -f $iniFiles.Count, $wide, $lines, $candidates.Count
+$clock = [Diagnostics.Stopwatch]::StartNew()
+$signedIn = $true   # before the sign-in: a stop during it still signs out
+try { Connect-PnPOnline -Url $site -UseWebLogin -WarningAction SilentlyContinue; 'P6 sign-in ok=True ms={0}' -f $clock.ElapsedMilliseconds }
+catch { 'P6 sign-in ok=False {0} ms={1}' -f (Get-Kind $_), $clock.ElapsedMilliseconds; return }
+# The library by its address, as Ion finds it (src/DriveScan.psm1 Get-OneDriveWebFiles).
+$lib = Get-PnPList -Identity $nsPath.Substring($sitePath.Length).TrimStart('/')
+$root = ''; if ($lib) { $root = (Get-PnPProperty -ClientObject $lib -Property RootFolder).ServerRelativeUrl.TrimEnd('/') }
+'P6 library found={0} root matches={1}' -f [bool]$lib, ($root -eq $nsPath)
+if (-not $lib -or $root -ne $nsPath) { return }
+# Each candidate: the items of that one web folder (at most 500), and how many local file names are in it.
+$n = 0
+foreach ($c in @(@{ Source = 'none (probe 5 map)'; Path = '' }) + @($candidates)) {
+    $n++
+    $web = ($nsPath + '/' + $c.Path).TrimEnd('/') + $rest
+    try {
+        $items = @(Get-PnPListItem -List $lib -FolderServerRelativeUrl $web -PageSize 500 -Fields 'FileLeafRef', 'FileDirRef', 'FSObjType' | Select-Object -First 500)
+        $direct = @($items | Where-Object { [string]$_['FSObjType'] -eq '0' -and ([string]$_['FileDirRef']).TrimEnd('/') -eq $web } | ForEach-Object { [string]$_['FileLeafRef'] })
+        $both = @($local | Where-Object { $direct -contains $_ }).Count
+        'P6 candidate {0} from {1}: items={2} files in the folder={3} names on both={4} of {5} same as the folder name={6}' -f $n, $c.Source, $items.Count, $direct.Count, $both,
+            $local.Count, ($c.Path -ieq (Split-Path $match.Mount -Leaf))
+    }
+    catch { 'P6 candidate {0} from {1}: ok=False {2}' -f $n, $c.Source, (Get-Kind $_) }
+}
+}
+catch { 'P6 stopped ok=False {0}' -f (Get-Kind $_) }
+finally {
+    if ($signedIn) { try { Disconnect-PnPOnline } catch { Write-Verbose 'Already signed out.' } }
+    Write-Host 'Done. The lines above show True/False, counts, value names, error kinds and times only. Copy them into an e-mail to yourself.'
+}
