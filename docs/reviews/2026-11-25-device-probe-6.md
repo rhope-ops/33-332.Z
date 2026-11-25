@@ -8,10 +8,10 @@ against the web, and prints which source fits. Ion's map fix (plan step 4) uses 
 ## What it does
 
 - Read-only. It writes nothing and changes no setting.
-- It prints only True or False, counts, the value names of the OneDrive app's registry entry, error kinds and times. It prints no name, no address, no path and no value from a file.
+- It prints only True or False, counts, the value names of the OneDrive app's registry entry, the key word of a settings line (or `other`), error kinds and times. It prints no name, no address, no path and no value from a file.
 - It asks 1 question first, then clears the screen.
 - It reads the OneDrive app's registry entry and its settings files (.ini) on this computer.
-- It touches only the folder you give and the one library of that folder. For each candidate path, it reads the list details of at most 500 items of that one web folder.
+- It touches only the folder you give and the one library of that folder. It tries at most 21 candidate folders in that library, and reads the list details of at most 500 items of each. It prints counts only.
 
 | Line | It shows |
 |---|---|
@@ -56,7 +56,7 @@ steps 2 times: run A with a shortcut folder in your OneDrive, run B with a folde
     1. Press **Ctrl+V**.
     2. Press **Enter**.
     You see that the screen clears. Go on.
-13. If a window asks if you want to continue running scripts, click **Yes**. You see the sign-in window. Go on.
+13. If a window asks if you want to continue running scripts, click **Yes**. The window closes. Go on.
 14. If a sign-in window opens, sign in with your CAC. The window closes. Go on.
 15. In the ISE output pane, wait until the line **Done.** shows. Do not copy before then.
 16. In the ISE output pane, do these actions:

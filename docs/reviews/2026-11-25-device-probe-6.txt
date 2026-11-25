@@ -43,7 +43,9 @@ $local = @(Get-ChildItem -LiteralPath $folder -File -Force -ErrorAction Silently
 $candidates = New-Object System.Collections.Generic.List[object]
 function Add-Candidate($source, [string]$text) {
     $t = $text.Trim().Trim('/', '\').Replace('\', '/')
-    if (-not $t -or $t -match '^[0-9a-fA-F{}\-+ ]+$' -or $t -match '^\d+$' -or $t -match ':' -or $candidates.Count -ge 20) { return }
+    # Not a folder path: empty, an ID (a GUID, or 16 or more hex characters), a number of 5 or more digits, or a text with ':'.
+    $id = $t -match '^\{?[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\}?$' -or $t -match '^[0-9a-fA-F+\-]{16,}$'
+    if (-not $t -or $id -or $t -match '^\d{5,}$' -or $t -match ':' -or $candidates.Count -ge 20) { return }
     if (@($candidates | Where-Object { $_.Path -eq $t }).Count -eq 0) { $candidates.Add(@{ Source = $source; Path = $t }) }
 }
 # 1. Registry: a string value that is a web address deeper than the library, or a text value that is not a known one.
@@ -59,18 +61,28 @@ foreach ($n in $names) {
 }
 # 2. The OneDrive app's settings files (read-only): the lines that name this synced folder; each quoted text in them.
 $iniFiles = @(Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA 'Microsoft\OneDrive\settings') -Filter '*.ini' -Recurse -File -ErrorAction SilentlyContinue)
-$lines = 0; $lineNo = 0
+$lines = 0; $lineNo = 0; $wide = 0
+# The mount path as a whole folder: followed by a quote, a backslash or the end (not "General Two" for "General").
+$mountRx = [regex]::new([regex]::Escape($match.Mount) + '(?=["\\]|$)', 'IgnoreCase')
 foreach ($f in $iniFiles) {
-    $text = ''; try { $text = [IO.File]::ReadAllText($f.FullName) } catch { continue }
+    $text = ''
+    try {
+        $bytes = [IO.File]::ReadAllBytes($f.FullName)
+        # UTF-16 without a byte order mark has a 0 byte after most letters: read it as UTF-16 (Unicode).
+        if ($bytes.Length -gt 1 -and $bytes[1] -eq 0 -and -not ($bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE)) { $text = [Text.Encoding]::Unicode.GetString($bytes); $wide++ }
+        else { $text = [IO.File]::ReadAllText($f.FullName) }
+    }
+    catch { continue }
     foreach ($line in ($text -split "`r?`n")) {
-        if ($line.IndexOf($match.Mount, [StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
+        if (-not $mountRx.IsMatch($line)) { continue }
         $lines++; $lineNo++
-        $key = ($line -split '=', 2)[0].Trim()
+        # The key of the line is the OneDrive app's own word; anything else (a path, a whole line) prints as 'other'.
+        $key = ($line -split '=', 2)[0].Trim(); if ($line.IndexOf('=') -lt 0 -or $key -notmatch '^[A-Za-z]{1,40}$') { $key = 'other' }
         $field = 0
         foreach ($q in [regex]::Matches($line, '"([^"]*)"')) { $field++; Add-Candidate ('settings line ' + $lineNo + ' (' + $key + ') field ' + $field) $q.Groups[1].Value }
     }
 }
-'P6 settings files={0} lines that name this folder={1} candidates={2}' -f $iniFiles.Count, $lines, $candidates.Count
+'P6 settings files={0} read as UTF-16 with no mark={1} lines that name this folder={2} candidates={3}' -f $iniFiles.Count, $wide, $lines, $candidates.Count
 $clock = [Diagnostics.Stopwatch]::StartNew()
 $signedIn = $true   # before the sign-in: a stop during it still signs out
 try { Connect-PnPOnline -Url $site -UseWebLogin -WarningAction SilentlyContinue; 'P6 sign-in ok=True ms={0}' -f $clock.ElapsedMilliseconds }
