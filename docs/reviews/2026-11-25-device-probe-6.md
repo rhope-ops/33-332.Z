@@ -73,4 +73,19 @@ steps 2 times: run A with a shortcut folder in your OneDrive, run B with a folde
 
 ## Result
 
-- Not run yet.
+The PAM ran both runs on 2026-11-25 (e-mail of 15:19 UTC; counts, value names and error kinds only).
+
+| Line | Run A (a synced folder) | Run B (a shortcut to a Teams library) |
+|---|---|---|
+| Entry value names | AIPIntegrationEnabled, FullRemotePath, GraphDriveId, IsFolderScope, IsOfficeSyncIntegrationEnabled, LastModifiedTime, LibraryType, MountPoint, OpcEnabled, SequentialID, UrlNamespace, WebUrl, ZipItEnabled | the same 13 |
+| Entry is the OneDrive home folder | False | False |
+| Local files | 22 | 8 |
+| Settings files / UTF-16 with no mark / lines that name this folder / candidates | 15 / 15 / 0 / 4 | 13 / 13 / 0 / 5 |
+| Sign-in | ok, 105,287 ms | ok, 101,107 ms |
+| Library found / root matches | True / True | True / True |
+| Stopped | ok=False ArgumentException/Other | ok=False ArgumentException/Other |
+
+- No "P6 candidate" line shows in either run: the probe stopped after the library check and before the first
+  candidate, outside the per-candidate try (the loop header or the web path line). For the OneDrive session.
+- The registry entry has `FullRemotePath` and `WebUrl` (value names only): a possible direct source of the web folder.
+- Sign-in took about 100 s in both runs; the PAM saw slow Microsoft sign-in the same day (3-5 min to the window).

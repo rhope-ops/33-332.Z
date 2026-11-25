@@ -168,16 +168,19 @@ Assert-Equal '2 False False' ('{0} {1} {2}' -f $ssnBooks.Count, $ssnShown.Contai
 Reset-FakePnP @{ "$library/General/notes.txt" = $Txt }
 Set-FakeSiteAnswer -TypedSite @($siteB)
 $roundFolder = Join-Path $runFolder 'rounds'
-& $script -SiteUrl $Sample.Site -OutputFolder $roundFolder 6>$null
+$roundShown = (& $script -SiteUrl $Sample.Site -OutputFolder $roundFolder 6>&1 | ForEach-Object { [string]$_ }) -join ' '
 $signOutLast = (Get-FakeCallIndex 'Disconnect-PnPOnline') -gt (Get-FakeCallIndex ('Connect ' + $siteB))
 $roundOrder = '{0}|{1}|{2}' -f ((Get-FakePnPConnection) -join ' '), (Get-FakeCallCount 'Disconnect-PnPOnline'), $signOutLast
 Assert-Equal ($Sample.Site + ' ' + $siteB + '|1|True') $roundOrder 'Scan more: no sign-out between rounds; one sign-out at the end'
 Assert-Equal 2 @(Get-ResultFiles $roundFolder).Count 'Scan more: one workbook per round'
 Assert-Equal 1 (Get-FakeCallCount 'Speed question') 'Scan more: the speed is asked one time per run, not per round'
+Assert-Equal 1 ([regex]::Matches($roundShown, 'Choose how much of this computer Ion uses')).Count 'Scan more: the speed note shows one time per run'
+Assert-Equal $true ($roundShown -match 'Fast: +resource intensive\. +\[Speed question\]') 'Speed: the note shows right before the question'
 # The answer f gives Fast: the reader pool may use one reader per processor.
 Reset-FakePnP @{ "$library/General/notes.txt" = $Txt }
 Set-FakeSpeedAnswer ' F '
-& $script -SiteUrl $Sample.Site -OutputFolder (Join-Path $runFolder 'fast') 6>$null
+$fastShown = (& $script -SiteUrl $Sample.Site -OutputFolder (Join-Path $runFolder 'fast') 6>&1 | ForEach-Object { [string]$_ }) -join ' '
+Assert-Equal $true ($fastShown -match 'Normal: uses less power and memory\..*Fast: +resource intensive\.') 'Speed: a note on each mode'
 Assert-Equal 'Fast' (Get-ScanSpeed) 'Speed: the answer f (any case, spaces) gives Fast'
 $fastPool = New-ReaderPool @{}
 try { Assert-Equal (Get-ReaderLimit 'Fast' ([Environment]::ProcessorCount)) $fastPool.Max 'Speed: the reader pool follows Fast' } finally { Close-ReaderPool $fastPool }
