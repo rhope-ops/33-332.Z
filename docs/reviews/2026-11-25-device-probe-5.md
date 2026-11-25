@@ -10,7 +10,7 @@ that call on the gov device, and it checks the other OneDrive list for a synced 
 - Read-only. It writes nothing and changes no setting.
 - It prints only True or False, counts, error kinds and times. It prints no name, no address, no path and no value.
 - It asks 1 question first, then clears the screen.
-- It touches only the folder you give, the one library of that folder, and at most 20 files of that folder. It reads 1 file of at most 5 MB into memory.
+- It touches only the folder you give and the one library of that folder. It reads the list details of at most 5000 items in that folder, checks at most 20 files, and reads 1 file of at most 5 MB into memory.
 - It reads the OneDrive app's 2 lists in the registry (read-only).
 
 | Line | It shows |
@@ -25,7 +25,9 @@ that call on the gov device, and it checks the other OneDrive list for a synced 
 | P5 folder listing | the items that SharePoint gives for the one folder: all, under the folder, files at any depth, files in the folder itself |
 | P5 names | the file names on both sides, on the web only, on the disk only |
 | P5 web files checked | of at most 20 web files: at the mapped local path, same size, found by web path, errors |
-| P5 folder found=False, P5 no web listing, P5 stopped | the probe stops at this line; it prints the error kind only |
+| P5 folder found=False, P5 no web listing | the probe stops at this line (fixed text) |
+| P5 stopped | an error stopped the probe: its error kind |
+| P5 disk read skipped | the small file is not at the mapped local path, or it is online only |
 | P5 entries with the chosen folder, P5 web read, P5 disk read | as in probe 4: entries for the same folder; 1 file of at most 5 MB read into memory |
 
 ## How to run it
