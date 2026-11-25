@@ -45,6 +45,7 @@ $mountLeaf = Split-Path $match.Mount -Leaf
 $step = 3; $stepName = 'local files'
 $local = @(Get-ChildItem -LiteralPath $folder -File -Force -ErrorAction SilentlyContinue | Where-Object { -not ($_.Attributes -band 0x6) } | ForEach-Object { $_.Name })
 'P7 local files={0} folder depth below the synced folder={1}' -f $local.Count, @($rest.Split('/') | Where-Object { $_ }).Count
+if ($local.Count -eq 0) { 'P7 the folder has no files: choose a folder with 5 or more files'; return }   # '0 of 0' proves nothing
 $step = 4; $stepName = 'value shape'
 # The shape of each value (never the value): its kind, its host, where it is against the library root, its depth.
 $candidates = @(@{ Source = 'none (probe 5 map)'; Sub = '' })   # a plain array: '@(List)' of a New-Object list throws in probe 6
@@ -97,7 +98,8 @@ foreach ($c in $candidates) {
         $items = @(Get-PnPListItem -List $lib -FolderServerRelativeUrl $web -PageSize 500 -Fields 'FileLeafRef', 'FileDirRef', 'FSObjType' | Select-Object -First 500)
         $direct = @($items | Where-Object { [string]$_['FSObjType'] -eq '0' -and ([string]$_['FileDirRef']).TrimEnd('/') -ieq $web } | ForEach-Object { [string]$_['FileLeafRef'] })
         $both = @($local | Where-Object { $direct -contains $_ }).Count
-        'P7 candidate {0} from {1}: items={2} files in the folder={3} names on both={4} of {5}' -f $n, $c.Source, $items.Count, $direct.Count, $both, $local.Count
+        # The list can hold items of subfolders too: at 500 items, files of this folder can be missing from the count.
+        'P7 candidate {0} from {1}: items={2} stopped at 500={3} files in the folder={4} names on both={5} of {6}' -f $n, $c.Source, $items.Count, ($items.Count -ge 500), $direct.Count, $both, $local.Count
     }
     catch { 'P7 candidate {0} from {1}: ok=False {2}' -f $n, $c.Source, (Get-Kind $_) }
 }

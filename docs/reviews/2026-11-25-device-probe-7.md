@@ -25,12 +25,13 @@ to "local files".
 |---|---|
 | P7 probe version | 2026-11-25a: the text you pasted is this version |
 | P7 entry is the OneDrive home folder | True: your own OneDrive; False: a shortcut or a synced library |
-| P7 local files | the files directly in the folder you gave, and its depth below the synced folder |
-| P7 value FullRemotePath, P7 value WebUrl | present; kind (https address, rooted path, text); same host as the library; path parts; where it is against the library root; depth below the root; if its last part is the synced folder's name, or the end of that name; if it is the library address |
+| P7 entry is the OneDrive home folder (second part) | folder is the synced folder itself: True when you gave the top folder of the shortcut or library |
+| P7 local files | the files directly in the folder you gave, and its depth below the synced folder; with 0 files the probe stops before the sign-in |
+| P7 value FullRemotePath, P7 value WebUrl | present; kind (https address, http address, rooted path, text, text with a colon, not text); same host as the library; path parts; where it is against the library root; depth below the root; if its last part is the synced folder's name, or the end of that name; if it is the library address |
 | P7 candidates | the web folders to try: the probe 5 map, and 1 for each value that is below the library root |
 | P7 sign-in | the sign-in to the site of the folder |
 | P7 library found | the library by its address, and if its root is the mapped address |
-| P7 candidate | for each web folder: its items, the files in it, and the local file names that are on both sides |
+| P7 candidate | for each web folder: its items, if the list stopped at 500 items (then the count can be low), the files in it, and the local file names that are on both sides |
 | P7 stopped at step | an error stopped the probe: the step and the error kind |
 
 ## Test before the device run
@@ -43,8 +44,7 @@ path, a path that starts with the library part, a missing value, a value on anot
 ## How to run it
 
 The probe is a .txt file (Project rules, "Paste format"): `docs/reviews/2026-11-25-device-probe-7.txt`. Do the
-steps 2 times: run A with a folder of a synced Teams library, run B with a shortcut folder in your OneDrive. Use the
-same 2 folders as in probe 6.
+steps 2 times: run A with a folder of a synced Teams library, run B with a shortcut folder in your OneDrive.
 
 1. Open **File Explorer**. You see the window **File Explorer**. Go on.
 2. In the left pane of **File Explorer**, click the folder for this run. For run A, click a synced Teams library under the name of your organization. For run B, click a shortcut folder in your OneDrive. You see the files of that folder. Go on.
@@ -84,6 +84,12 @@ same 2 folders as in probe 6.
     You see the lines in the e-mail. Go on.
 18. If you did run A only, start this list again from the top for run B. You see this list from the top. Go on.
 19. In the e-mail with run A and run B, click **Send**. You see the message in your sent mail. The task is complete.
+
+## Open (review of PR 122, MINOR, not verified)
+
+- `Get-PnPListItem -FolderServerRelativeUrl` can return items of subfolders too (assumption, low confidence: not checked
+  in the PnP.PowerShell 1.12.0 source). Then a 500-item cap can drop files of the folder itself. Probe 7 prints
+  "stopped at 500" for this. `src/DriveScan.psm1` uses the same call: check it in the folder map fix.
 
 ## Result
 
