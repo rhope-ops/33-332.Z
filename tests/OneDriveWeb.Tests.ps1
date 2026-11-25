@@ -70,7 +70,8 @@ try {
     $files = @($hits | ForEach-Object { $_[4] } | Sort-Object -Unique)
     Assert-Equal 'notes.txt|webonly.txt' ($files -join '|') 'OneDrive scan: the disk file and the web-only file are read; the file outside the folder is not'
     Assert-Equal 'https://tenant.example.com/sites/TeamA' (@(Get-FakePnPConnection) -join ' ') 'OneDrive scan: one sign-in, to the site of the folder'
-    Assert-Equal '0|0' ('{0}|{1}' -f @($odVersionUrls | Where-Object { $_ -like '*outside.txt' }).Count, (Get-FakeCallCount 'Online question')) 'OneDrive scan: nothing outside the folder is read, no download question'
+    $outsideReads = @($odVersionUrls | Where-Object { $_ -like '*outside.txt' }).Count
+    Assert-Equal '0|0' ('{0}|{1}' -f $outsideReads, (Get-FakeCallCount 'Online question')) 'OneDrive scan: nothing outside the folder is read, no download question'
     Assert-Equal 2 @($odVersionUrls | Sort-Object -Unique).Count 'OneDrive scan: the history of each file with a hit is read from the web'
     $header = @($sheets['Hits'])[0]; $noteColumn = [array]::IndexOf(@($header), 'History note')
     Assert-Equal 0 @($hits | Where-Object { $_[$noteColumn] -eq 'A drive keeps no file history' }).Count 'OneDrive scan: no hit says "a drive keeps no history"'
