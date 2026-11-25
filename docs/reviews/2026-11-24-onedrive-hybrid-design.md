@@ -34,7 +34,7 @@ If the sign-in or the mapping fails, Ion scans as now (local only, with the down
 5. Match the local list and the web list by relative path:
    - on the disk: read from the disk (content); the web item gives the history;
    - online only and on the web: read through PnP into memory;
-   - on the disk only (not synced yet): read from the disk; History note "Not on the web yet (not synced): no version history";
+   - on the disk only (not synced yet): read from the disk; history "Not recorded (not synced yet)" (approved text; the build uses "Not on the web yet (not synced): no version history": the PAM to confirm);
    - on the web only (not synced down): read through PnP into memory (the PAM, 2026-11-24, Q4). It is inside the
      pasted folder's own mapped web folder, so the scan does not widen.
 6. History for each file with a hit: Find-PiiAddedVersion with the mapped server-relative path. When the disk copy is
@@ -75,10 +75,9 @@ names in every new row.
 
 - Built (PR 109): `src/DriveScan.psm1` (map, sign-in, web files of the pasted folder only, join, reads, history),
   tests in `tests/OneDriveWeb.Tests.ps1`. Only the own OneDrive uses the web (`$script:WebKinds`); a synced library
-  and a shortcut join after probe 4 runs A and B pass. The Summary has the line "OneDrive on the web".
+  and a shortcut join after probe 5 passes (probe 4 run A stopped at 5000 items; run B found no sync entry). The Summary has the line "OneDrive on the web".
 - Not built: the History note "The disk copy is newer than the last synced version" (flow step 6). The local time and
   the web time come in different time zones, so a compare could give wrong notes; it waits for a device sample.
-- Step 5 "on the disk only": the History note "Not on the web yet (not synced): no version history".
 - Open (review of PR 109, MINOR): a web link names the OneDrive owner's folder (/personal/<owner>/...), as a file link
   names the local profile folder. Assumption A7, medium: `Get-PnPListItem -FolderServerRelativeUrl` in PnP.PowerShell
   1.12.0 lists the folder at any depth; the device test shows it (if not: the scan is local only, with a note).
