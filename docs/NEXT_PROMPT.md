@@ -24,7 +24,5 @@ Title: 33-332.Z · <task> · <date>. Read AGENTS.md first.
     step 3 = parallel downloads in a planned order, and version-history reads off the main thread (slow run 28:49).
 17. 2026-11-24 merged: PRs 58-88. Excel and local OneDrive tests open.
 18. Plan approved 2026-11-24, continue it: docs/reviews/2026-11-24-no-persistence-plan.md (Status).
-19. 2026-11-25: PRs 105-112 merged. Recall on the device 53/53. Step 4 (OneDrive hybrid) works on the device for the
-    own OneDrive; shortcuts and synced libraries stay local only (probe 5). Next: plan step 6, or the shortcut map.
-20. 2026-11-25 (later): probe 6 cause found (`@()` of a New-Object list). Probe 7 and test 4 (view counts) as .txt
-    files wait on the PAM's runs. Open: lane B MINORs of the speed modes (parallel-downloads design, "Open after PR 115").
+19. 2026-11-25: PRs 105-121 merged. Shortcuts and synced libraries stay local only. Probe 6 failed (`@()` of a
+    New-Object list); probe 7 and test 4 (view counts), both .txt, wait on the PAM. Open: speed-mode MINORs (lane B).
