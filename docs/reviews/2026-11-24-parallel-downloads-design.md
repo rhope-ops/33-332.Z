@@ -102,3 +102,8 @@ Speed modes merged 2026-11-25 (PR 119). Open after its fix review (MINOR and NIT
 - README Speed line: Normal is also capped at 8 readers; "processors read files" and "reader" name one thing twice.
 - src/Find-ChannelPII.ps1 comment "Fast = all": Fast is one reader per processor (at most 8) and 3 downloads.
 
+Normal mode on the device (the PAM, 2026-11-25): the fan is quiet with mild spikes (Fast: much more intense). No
+times: the PAM stopped the run, because the Microsoft sign-in was very slow that day (3-5 min to the window). Screen
+note above the speed question (the PAM's words): "Normal: less power and memory; the scan takes longer." and "Fast:
+resource intensive; the scan is faster."
+

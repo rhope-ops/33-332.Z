@@ -177,7 +177,8 @@ Assert-Equal 1 (Get-FakeCallCount 'Speed question') 'Scan more: the speed is ask
 # The answer f gives Fast: the reader pool may use one reader per processor.
 Reset-FakePnP @{ "$library/General/notes.txt" = $Txt }
 Set-FakeSpeedAnswer ' F '
-& $script -SiteUrl $Sample.Site -OutputFolder (Join-Path $runFolder 'fast') 6>$null
+$fastShown = (& $script -SiteUrl $Sample.Site -OutputFolder (Join-Path $runFolder 'fast') 6>&1 | ForEach-Object { [string]$_ }) -join ' '
+Assert-Equal $true ($fastShown -match 'Normal: less power and memory.*Fast: +resource intensive') 'Speed: a note on each mode shows before the question'
 Assert-Equal 'Fast' (Get-ScanSpeed) 'Speed: the answer f (any case, spaces) gives Fast'
 $fastPool = New-ReaderPool @{}
 try { Assert-Equal (Get-ReaderLimit 'Fast' ([Environment]::ProcessorCount)) $fastPool.Max 'Speed: the reader pool follows Fast' } finally { Close-ReaderPool $fastPool }

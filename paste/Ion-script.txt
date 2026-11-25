@@ -1,5 +1,5 @@
 <#
-  Ion - DoD365 PII Reporter, build b78a2118 (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
+  Ion - DoD365 PII Reporter, build 1de4e888 (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
 
   HOW TO RUN
     1. Optional: read this text first (Open the script shows it as a .txt in your browser).
@@ -45,7 +45,7 @@
     src/SiteTarget.psm1, sha256 2e693a68f413
     src/ChannelScan.psm1, sha256 2c367cf77f5c
     src/DriveScan.psm1, sha256 58850f316f96
-    src/Find-ChannelPII.ps1, sha256 c1386afb27fc
+    src/Find-ChannelPII.ps1, sha256 d5d4a2c10a2a
 
   Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.
   Run target: Windows PowerShell 5.1 with PnP.PowerShell 1.12.0; no admin rights, no file to unblock.
@@ -84,7 +84,7 @@
     line  7497  Module ChannelScan.psm1
     line  8323  Module DriveScan.psm1
     line  8938  Body of Find-ChannelPII.ps1
-    line  9149  Clean-up
+    line  9154  Clean-up
 #>
 
 # ISE runs pasted text in your session: keep its error setting so the Clean-up block at the end can put it back.
@@ -97,12 +97,12 @@ $SiteUrl = ''            # the team's Teams link, or its site https://usaf.dps.m
 $OutputFolder = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Ion')   # results: a folder per site, then per day
 $MaxFileMB = 25          # files larger than this are reported as NOT SCANNED
 
-$IonPasteHash = '957c8e349e2a878bc0ecb269539c59cd8ec40baaf55867c7f022786ea3be35e9'   # the SHA-256 of the text from the line Paste check to the end (do not edit)
+$IonPasteHash = '28a86926ec1c680e579959d6cf19b9cf51ac0a091697a2e8f2a4db1c926b51e6'   # the SHA-256 of the text from the line Paste check to the end (do not edit)
 
 # ==== Paste check ==== (the text from this line to the end must be the published text, or nothing runs)
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
-$IonBuild = 'b78a2118'       # the build ID: Ion shows it at the start (do not edit)
+$IonBuild = '1de4e888'       # the build ID: Ion shows it at the start (do not edit)
 $IonPasteCheck = 'not read'
 $pasteText = ''
 try { $pastePath = $PSCommandPath } catch { $pastePath = '' }   # no script path: read the ISE pane
@@ -9114,8 +9114,13 @@ $script:IonSignInTried = $false   # true after the first site sign-in is tried: 
 # the run signs out once here, at its end, also after an error or Ctrl+C ('finally' runs on both).
 try {
     $targets = @(Read-ScanTargetList $SiteUrl 'What to scan')
-    # Speed, asked once per run (the PAM, 2026-11-25): Normal (Enter) = half the processors and 2 downloads; Fast = all.
+    # Speed, asked once per run (the PAM, 2026-11-25): Normal (Enter) = half the processors and 2 downloads; Fast = one reader per
+    # processor (at most 8) and 3 downloads.
     if ($targets.Count -gt 0) {
+        # A note on each mode, so the person can decide (the PAM's words, 2026-11-25).
+        Write-Ui 'Choose how much of this computer Ion uses:' 'Text'
+        Write-Ui '  Normal: less power and memory; the scan takes longer.' 'Muted'
+        Write-Ui '  Fast:   resource intensive; the scan is faster.' 'Muted'
         $speed = Read-Host 'Speed: [N]ormal or [F]ast?'
         if ($speed -and $speed.Trim() -match '^(f|fast)$') { Set-ScanSpeed 'Fast' } else { Set-ScanSpeed 'Normal' }
     }
