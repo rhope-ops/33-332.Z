@@ -104,6 +104,6 @@ Speed modes merged 2026-11-25 (PR 119). Open after its fix review (MINOR and NIT
 
 Normal mode on the device (the PAM, 2026-11-25): the fan is quiet with mild spikes (Fast: much more intense). No
 times: the PAM stopped the run, because the Microsoft sign-in was very slow that day (3-5 min to the window). Screen
-note above the speed question (the PAM's words): "Normal: less power and memory; the scan takes longer." and "Fast:
-resource intensive; the scan is faster."
+note above the speed question, from the PAM's words ("one uses less power and memory and the other is resource
+intensive"): "Normal: uses less power and memory." and "Fast: resource intensive."
 

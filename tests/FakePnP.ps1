@@ -334,7 +334,11 @@ function global:Read-Host {
     # The open-the-workbook question has its own answer (Enter = open), so the queued addresses stay in order.
     if ([string]$Prompt -like 'Open the workbook*') { $global:FakePnP.Calls.Add('Open question'); return $global:FakePnP.OpenAnswer }
     if ([string]$Prompt -like 'Open the results folder*') { $global:FakePnP.Calls.Add('Folder question'); return 'n' }   # never opens a real folder
-    if ([string]$Prompt -like 'Speed:*') { $global:FakePnP.Calls.Add('Speed question'); return $global:FakePnP.SpeedAnswer }
+    if ([string]$Prompt -like 'Speed:*') {
+        $global:FakePnP.Calls.Add('Speed question')
+        Write-Information '[Speed question]' -InformationAction Continue   # in the screen output, so a test sees the order
+        return $global:FakePnP.SpeedAnswer
+    }
     if ([string]$Prompt -like 'Scan these*') { $global:FakePnP.Calls.Add('List question'); return $global:FakePnP.ScanAnswer }
     if ([string]$Prompt -like 'Scan all of them*') {
         $global:FakePnP.Calls.Add('Root question')

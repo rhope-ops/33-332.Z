@@ -253,8 +253,8 @@ try {
     if ($targets.Count -gt 0) {
         # A note on each mode, so the person can decide (the PAM's words, 2026-11-25).
         Write-Ui 'Choose how much of this computer Ion uses:' 'Text'
-        Write-Ui '  Normal: less power and memory; the scan takes longer.' 'Muted'
-        Write-Ui '  Fast:   resource intensive; the scan is faster.' 'Muted'
+        Write-Ui '  Normal: uses less power and memory.' 'Muted'
+        Write-Ui '  Fast:   resource intensive.' 'Muted'
         $speed = Read-Host 'Speed: [N]ormal or [F]ast?'
         if ($speed -and $speed.Trim() -match '^(f|fast)$') { Set-ScanSpeed 'Fast' } else { Set-ScanSpeed 'Normal' }
     }
