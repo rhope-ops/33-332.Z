@@ -3,14 +3,14 @@
 Title: 33-332.Z · <task> · <date>. Read AGENTS.md first.
 
 00. Resume first: docs/reviews/2026-11-24-ion-detector-handoff.md (PRs 60, 61).
-10. The PAM to test on the gov device: ISE paste of paste/Ion-script.txt; a drive folder scan (runspaces in ISE, FIPS
+10. The PAM to test on the gov device: ISE paste of paste/Ion-script.txt ("Paste check: OK", P4c); a drive folder scan (runspaces in ISE, FIPS
    SHA-256); Windows OCR on an image; SharePoint version history ("PII first saved by"); colours; Excel opening.
 12. Tracked minors (PR bodies of #14, #19, #20): short spaced line under a heading of another size; OCR time outside
    the PDF limit; a PDF with text and scans not OCR'd; meter misses
    file-name hits; no time limit per worker; old versions not size-capped; masked dates/addresses compare equal.
    A second address pasted after a Teams link without a groupId can supply that groupId (the site check holds).
    Teams-link lookup and OCR wait on the PAM's test snippet results.
-13. README rework 2026-11-21 on main; open items: docs/reviews/2026-11-21-readme-rework.md.
+13. README open items: docs/reviews/2026-11-21-readme-rework.md.
 14. Done 2026-11-21: PRs 30-39 (bars, symbol-font hits, glyph names, workbook columns, screen polish, "Scan now?").
     Gov results: bar works; "Wingdings" PDF 1 hit left (a wide PDF: open); Ctrl+C saves; Teams lookup test 1 works.
     Next: Teams test 2 (docs/reviews/2026-11-21-teams-lookup-test.md). Roadmap and open items: docs/DECISIONS.md

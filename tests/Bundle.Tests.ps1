@@ -59,6 +59,7 @@ $results = @(Get-ResultFiles $bundleFolder)
 Assert-Equal 1 $results.Count 'Bundle saved one workbook'
 Assert-Equal 'NOT SCANNED Phone SSN' (Get-WorkbookTypes $results[0].FullName) 'Bundle found every planted type'
 Assert-Equal $true (Test-FakePnPCall 'Disconnect-PnPOnline') 'Bundle signed out'
+Assert-Equal 'verified' $IonPasteCheck 'Paste check: the script file read back matches its hash'
 
 # The clean-up also runs when the scan fails part way: the session's error setting comes back after the error.
 Reset-FakePnP @{}
@@ -93,5 +94,84 @@ Assert-Equal 1 (Get-FakeCallCount 'Read-Host') 'Then another site is offered (En
 Assert-Equal 'Continue' $outerAction 'Outer clean-up put the session error setting back'
 Assert-Equal $false $outerStrict 'Outer clean-up turned strict mode off'
 Assert-Equal $true (Test-FakePnPCall 'Disconnect-PnPOnline') 'Outer error path signed out'
+Assert-Equal $true ($shown -match 'Paste check: OK\.') 'Paste check: the person sees OK'
+
+# ---- Paste check (fleet v2 plan P4c): a changed text stops before anything runs ----
+# One character changed below the check's mark: the run stops with the STOPPED text, signs nothing in, saves
+# nothing, and the clean-up still puts the session back.
+$changedCopy = Join-Path $bundleFolder 'changed.ps1'
+Set-Content -LiteralPath $changedCopy -Value $filled.Replace('# ==== Reader modules ====', '# ==== Reader module ====') -Encoding UTF8
+Reset-FakePnP @{ "$library/General/notes.txt" = $Txt }
+$before = @(Get-ResultFiles $bundleFolder).Count
+Remove-Variable -Name IonWorkerInit   # set by the runs above, below the check's mark
+$ErrorActionPreference = 'Continue'
+Set-StrictMode -Off
+$stopError = ''
+try { . $changedCopy 6>$null } catch { $stopError = $_.Exception.Message }
+$stopAction = $ErrorActionPreference
+$stopStrict = $false
+try { $null = $notDefinedAtTheStop } catch { $stopStrict = $true }
+Set-StrictMode -Version 2.0
+$ErrorActionPreference = 'Stop'
+Assert-Equal $true ($stopError -match '^Paste check: STOPPED\. Nothing ran\.') 'Paste check: a changed text stops with the STOPPED text'
+Assert-Equal 'changed' $IonPasteCheck 'Paste check: the stop is for a changed text'
+Assert-Equal $false (Test-FakePnPCall 'Connect-PnPOnline') 'Paste check: no sign-in after the stop'
+Assert-Equal $before @(Get-ResultFiles $bundleFolder).Count 'Paste check: no workbook after the stop'
+Assert-Equal $false (Test-Path -LiteralPath variable:IonWorkerInit) 'Paste check: no code below the check ran (no reader block)'
+Assert-Equal 'Continue' $stopAction 'Paste check: the session error setting is back after the stop'
+Assert-Equal $false $stopStrict 'Paste check: strict mode is off after the stop'
+
+# The ISE script pane (no script file): the text comes from $psISE, with CRLF line ends and spaces at line ends as
+# a browser copy can give; the check reads it and passes. A sign-in that fails keeps the run short.
+$psISE = [pscustomobject]@{ CurrentFile = [pscustomobject]@{ Editor = [pscustomobject]@{ Text = ($filled.Replace("`n", "  `r`n")) } } }
+Reset-FakePnP @{}
+Set-FakePnPOption ConnectFails $true
+$ErrorActionPreference = 'Continue'
+Set-StrictMode -Off
+try { . ([scriptblock]::Create($filled)) 6>$null } catch { $null = $_ }
+Set-StrictMode -Version 2.0
+$ErrorActionPreference = 'Stop'
+Assert-Equal 'verified' $IonPasteCheck 'Paste check: the ISE pane text (CRLF, spaces at line ends) matches its hash'
+# The same pane with one character changed stops.
+$psISE.CurrentFile.Editor.Text = $filled.Replace('# ==== Reader modules ====', '# ==== Reader module ====')
+$ErrorActionPreference = 'Continue'
+Set-StrictMode -Off
+$stopError = ''
+try { . ([scriptblock]::Create($filled)) 6>$null } catch { $stopError = $_.Exception.Message }
+Set-StrictMode -Version 2.0
+$ErrorActionPreference = 'Stop'
+Assert-Equal 'changed' $IonPasteCheck 'Paste check: a changed ISE pane text stops'
+# No text to read back (no script file, no ISE): one line, and the scan goes on (a false stop must not block a paste).
+Remove-Variable -Name psISE
+Reset-FakePnP @{}
+Set-FakePnPOption ConnectFails $true
+$ErrorActionPreference = 'Continue'
+Set-StrictMode -Off
+$shown = ''
+try { $shown = (. ([scriptblock]::Create($filled)) 6>&1 | ForEach-Object { [string]$_ }) -join ' ' } catch { $null = $_ }
+Set-StrictMode -Version 2.0
+$ErrorActionPreference = 'Stop'
+Assert-Equal 'not read' $IonPasteCheck 'Paste check: a text that cannot be read back is not checked'
+Assert-Equal $true ($shown -match 'Paste check: not done\. .*sign-in refused') 'Paste check: not done is shown, and the run goes on'
+
+# ---- A cut paste runs nothing (the try opens above the Settings) ----
+# Each cut at 10/25/50/75/90/99 % does not parse; a cut above the check's mark that parses holds no statement.
+$cutLines = $filled.Replace("`r`n", "`n").Split("`n")
+$markLine = [array]::IndexOf($cutLines, ($cutLines | Where-Object { $_ -like '# ==== Paste check ====*' } | Select-Object -First 1))
+$tokens = $null
+$parseErrors = $null
+$parsing = 0
+foreach ($pct in 10, 25, 50, 75, 90, 99) {
+    $cut = [int]($cutLines.Count * $pct / 100)
+    $null = [System.Management.Automation.Language.Parser]::ParseInput(($cutLines[0..($cut - 1)] -join "`n"), [ref]$tokens, [ref]$parseErrors)
+    if (-not $parseErrors) { $parsing++ }
+}
+Assert-Equal 0 $parsing 'Cut paste: no cut at 10/25/50/75/90/99 % parses'
+$running = @()
+for ($cut = 1; $cut -le $markLine; $cut++) {
+    $ast = [System.Management.Automation.Language.Parser]::ParseInput(($cutLines[0..($cut - 1)] -join "`n"), [ref]$tokens, [ref]$parseErrors)
+    if (-not $parseErrors -and $ast.EndBlock -and $ast.EndBlock.Statements.Count) { $running += $cut }
+}
+Assert-Equal '' ($running -join ',') 'Cut paste: no cut above the check runs a statement'
 
 Remove-Item -LiteralPath $bundleFolder -Recurse -Force

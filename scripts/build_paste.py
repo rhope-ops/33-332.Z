@@ -8,13 +8,16 @@ What it writes: paste/Ion-script.txt, the one bundle file (a .txt: a .ps1 link c
 2026-11-21; the .ps1 copy is retired, fleet v2 DEC 8, 2026-11-23), in this order:
   1. a header (the build ID, how to run first, then GENERATED, the sources with their SHA-256, Network/Writes/Credentials,
      a contents list);
-  2. the Settings block: plain variables a person may set in ISE (site, results folder, file size limit), and
-     $IonBuild, the build ID that Ion shows on its start screen (the PAM, 2026-11-24: which Ion ran);
+  2. the Settings block, inside the try that opens above it: plain variables a person may set in ISE (site, results
+     folder, file size limit), and $IonPasteHash, the SHA-256 of the text from the Paste check line to the end;
+  2a. the Paste check (plan P4c, 2026-11-25): strict mode, the error setting, $IonBuild (the build ID that Ion shows
+     on its start screen; the PAM, 2026-11-24: which Ion ran), then the check: it reads the pasted text back and stops
+     before anything runs when that text is not the built text (a cut text does not parse: the try opens above);
   3. the modules of src/, inline (no module file is loaded), in dependency order: the reader modules inside one
      script block ($IonReaderBlock), loaded as an in-memory module by the script and by each reader worker
      (ReaderPool.psm1 gets the block's text as $IonWorkerInit), then the scan and report modules;
   4. the body of src/Find-ChannelPII.ps1 (from its "# ==== Body ====" line to the end);
-  5. a Clean-up block: parts 3 and 4 run inside try/finally, which turns strict mode off and puts the ISE session's
+  5. a Clean-up block: parts 2 to 4 run inside try/finally, which turns strict mode off and puts the ISE session's
      error setting back when the run ends.
 Inputs:  the files in READERS and MODULES below (src/*.psm1) and src/Find-ChannelPII.ps1.
 Outputs: the bundle file; with --check, nothing: exit 1 when it differs from a fresh build or the retired .ps1 is back.
@@ -65,28 +68,93 @@ CLEANUP = """# ==== Clean-up ====
 """
 
 # Module lines that do not belong in one pasted script: the export list (a module-only command, which may run on
-# to the next lines) is dropped; Set-StrictMode is set once in the Settings block.
+# to the next lines) is dropped; Set-StrictMode is set once, at the top of the Paste check block.
 EXPORT_START = 'Export-ModuleMember'
 STRICT_LINE = 'Set-StrictMode -Version 2.0'
 
 # The Settings block: a person may edit these values in ISE before F5; empty means the script asks. The scan
 # always covers every folder of the site's library and saves one workbook (the PAM, 2026-11-20).
-SETTINGS = """# ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
+SETTINGS = """# ISE runs pasted text in your session: keep its error setting so the Clean-up block at the end can put it back.
+# The try starts here, before the Settings, so a text that is cut short anywhere below does not parse: nothing runs.
+try {
+$previousErrorAction = $ErrorActionPreference
+
+# ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
 $SiteUrl = ''            # the team's Teams link, or its site https://usaf.dps.mil/teams/<team-site>; empty = asked
 $OutputFolder = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Ion')   # results: a folder per site, then per day
 $MaxFileMB = 25          # files larger than this are reported as NOT SCANNED
 
-# ISE runs pasted text in your session: keep its error setting so the Clean-up block at the end can put it back.
-$previousErrorAction = $ErrorActionPreference
-try {
+"""
+
+# The paste check (fleet v2 plan P4c, 2026-11-25): the first code below the marker reads the pasted text back (the
+# script file when there is one, else the ISE script pane), and stops before anything runs when the text from the
+# marker to the end is not the built text. The Settings lines above the marker stay free to edit. A text that cannot
+# be read back, or a computer with no SHA-256, gets one line and the scan goes on (a false stop must not block a good
+# paste). Only the try, the Settings and the hash line are above the marker: the strict mode, the error setting and
+# the build ID are below it, so the hash covers them. The hash is of normalized text: LF line ends, no spaces or tabs at a line end, no blank lines at the end.
+CHECK_MARK = '# ==== Paste check ===='
+HASH_LINE = "$IonPasteHash = '%s'   # the SHA-256 of the text from the line Paste check to the end (do not edit)\n"
+PASTE_CHECK = CHECK_MARK + """ (the text from this line to the end must be the published text, or nothing runs)
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
+$IonBuild = 'BUILD_ID'       # the build ID: Ion shows it at the start (do not edit)
+$IonPasteCheck = 'not read'
+$pasteText = ''
+try { $pastePath = $PSCommandPath } catch { $pastePath = '' }   # no script path: read the ISE pane
+if ($pastePath) { try { $pasteText = [System.IO.File]::ReadAllText($pastePath) } catch { $pasteText = '' } }   # unreadable file: try the ISE pane
+$pasteMark = '(?m)^# ==== Paste check ===='
+if (-not ($pasteText -match $pasteMark) -and (Test-Path -LiteralPath variable:psISE)) {
+    try { $pasteText = [string]$psISE.CurrentFile.Editor.Text } catch { $pasteText = '' }   # no pane text: the check is not done
+}
+if ($pasteText -notmatch $pasteMark) { $pasteText = '' }
+if ($pasteText) {
+    $pasteAt = [regex]::Match($pasteText.Replace("`r`n", "`n"), $pasteMark)
+    $pasteHex = ''
+    if ($pasteAt.Success) {
+        $pasteRest = [regex]::Replace($pasteText.Replace("`r`n", "`n").Substring($pasteAt.Index), '(?m)[ \\t]+$', '')
+        $pasteBytes = [System.Text.Encoding]::UTF8.GetBytes($pasteRest.TrimEnd("`n") + "`n")
+        try {
+            $pasteSha = New-Object System.Security.Cryptography.SHA256CryptoServiceProvider
+            try { $pasteHex = [BitConverter]::ToString($pasteSha.ComputeHash($pasteBytes)).Replace('-', '').ToLower() } finally { $pasteSha.Dispose() }
+        }
+        catch { $pasteHex = '' }   # no SHA-256 here (for example FIPS): the check is not done, the scan goes on
+    }
+    if (-not $pasteHex) { $IonPasteCheck = 'no hash' }
+    elseif ($pasteHex -eq $IonPasteHash) { $IonPasteCheck = 'verified' }
+    else {
+        $IonPasteCheck = 'changed'
+        throw ('Paste check: STOPPED. Nothing ran. The pasted text is not the same as the published text. ' +
+            'In the browser, click Open the script. Copy all of the text. In ISE, choose File > New. Paste the text and press F5.')
+    }
+}
+if ($IonPasteCheck -eq 'verified') { Write-Host 'Paste check: OK. The text is complete and not changed.' }
+elseif ($IonPasteCheck -eq 'no hash') { Write-Host 'Paste check: not done. This computer cannot make a SHA-256 hash. The scan continues.' }
+else { Write-Host 'Paste check: not done. Ion cannot read the pasted text back here. The scan continues.' }
+
 """
 
 
 def sha256(text):
     """Return the SHA-256 hex digest of a text (UTF-8)."""
     return hashlib.sha256(text.encode('utf-8')).hexdigest()
+
+
+def normalized(text):
+    """Return a text as the paste check hashes it: LF line ends, no spaces or tabs at a line end, one final LF."""
+    lines = text.replace('\r\n', '\n').split('\n')
+    return '\n'.join(line.rstrip(' \t') for line in lines).rstrip('\n') + '\n'
+
+
+def paste_hash(text):
+    """Return the SHA-256 that the paste check compares: of the normalized text from the first marker line to the end.
+
+    Args:
+        text: the whole bundle text (the Settings above the marker may have any values).
+    Returns:
+        The hex digest, or '' when the text has no marker line.
+    """
+    found = re.search('^' + re.escape(CHECK_MARK), text.replace('\r\n', '\n'), re.M)
+    return sha256(normalized(text.replace('\r\n', '\n')[found.start():])) if found else ''
 
 
 def read(rel):
@@ -174,7 +242,9 @@ def header(sources, contents):
            '  HOW TO RUN',
            '    1. Optional: read this text first (Open the script shows it as a .txt in your browser).',
            '    2. Open Windows PowerShell ISE and choose File > New.',
-           '    3. Paste ALL of this text (Ctrl+V) and press F5.',
+           '    3. Paste ALL of this text (Ctrl+V) and press F5. You see a line that starts with "Paste check:".',
+           '       If it shows "OK" or "not done", go on. If it shows "STOPPED", nothing ran: do the steps in the red text.',
+           '       If ISE shows a red error and no "Paste check:" line, the text is cut short: copy all of it again.',
            '    4. When asked, paste a Teams link (... next to the team or channel name > Copy link) or a SharePoint',
            '       site address (in Teams: the Shared tab > ... > Open in SharePoint). Sign in with your CAC.',
            '       If you do not see a sign-in window, press Alt+Tab. Or paste a folder on a drive (X:\\<folder> or',
@@ -211,8 +281,9 @@ def build():
     modules = [(rel, module_code(rel)) for rel in MODULES]
     check_names(modules)
     sources = [(rel, sha256(read(rel))) for rel in MODULES + (MAIN,)]
-    settings = SETTINGS + "$IonBuild = '%s'       # the build ID: Ion shows it at the start (do not edit)\n" % build_id(sources)
-    parts = [('Settings', settings), ('Reader block', READER_START)]
+    settings = SETTINGS + HASH_LINE % ('0' * 64)
+    check = PASTE_CHECK.replace("'BUILD_ID'", "'%s'" % build_id(sources))
+    parts = [('Settings', settings), ('Paste check', check), ('Reader block', READER_START)]
     for rel, code in modules:
         parts.append(('Module %s' % Path(rel).name, '# ==== Module %s ====\n%s' % (Path(rel).name, code)))
         if rel == READERS[-1]:
@@ -227,7 +298,9 @@ def build():
         for title, text in parts:
             contents.append((line, title))
             line += text.count('\n') + 1
-    return head + '\n'.join(text for _, text in parts)
+    text = head + '\n'.join(text for _, text in parts)
+    # The hash line is above the marker, so its value does not change the hashed text.
+    return text.replace(HASH_LINE % ('0' * 64), HASH_LINE % paste_hash(text), 1)
 
 
 def main():
