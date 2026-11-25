@@ -5,7 +5,8 @@ after the gov run", item (3): "2-4 parallel downloads, ordered from the full fil
 download to appear at the beginning"). It replaces the 2026-11-20 row's "No parallel downloads: each would need its own
 CAC sign-in", if test 3 (below) or the first device run shows that a copy of the sign-in works in a worker.
 
-Status: design written; open questions go to the PAM in one dialog. Nothing is built yet.
+Status: approved 2026-11-24 (docs/DECISIONS.md: 3 at once, per folder largest first, build with fallback, one bar).
+Built in PR 115.
 
 ## Today
 
@@ -19,15 +20,15 @@ file. On a slow tenant, the main thread waits on the network and the readers wai
    download worker (PnP.Framework `ClientContextExtensions.Clone`, same site address; test 3 of
    docs/reviews/2026-11-21-ion-round2-tests.md does the same). No new sign-in, no stored credential. A worker calls no
    PnP cmdlet: it uses only its own copy (a client context is not safe on two threads).
-2. **Download workers.** A runspace pool of N workers (N = the PAM's answer, 2 to 4) in ChannelScan.psm1 (no new
+2. **Download workers.** A runspace pool of N = 3 workers (the PAM, 2026-11-24) in ChannelScan.psm1 (no new
    module: scripts/build_paste.py and Find-ChannelPII.ps1 list the modules). Each worker gets its copy, the file's
    server-relative path and the list size, reads the file with `OpenBinaryStream` into memory (never to disk), and puts
    its bytes done into a shared table. The main thread draws the bar from that table (a worker's Write-Progress does
    not reach ISE).
 3. **Network limit.** Windows PowerShell 5.1 (.NET Framework) allows 2 connections per host by default. Ion sets the
    connection limit of the one site host to N + 1 (in memory; it ends when the PowerShell window closes). No other host.
-4. **Planned order.** Before the first download, Ion plans the order from the full file list (the PAM's answer to
-   question 2). A pure function makes the plan, so a test checks the order without timing.
+4. **Planned order.** Before the first download, Ion plans the order from the full file list (the PAM, 2026-11-24: per folder, the
+   files to download first, largest first, then the files not downloaded). A pure function makes the plan, so a test checks the order without timing.
 5. **Check every download.** A download whose byte count is not the list size (for example a sign-in page) is a
    failure, as the streamed download is today. Size 0 in the list: the count is not checked.
 6. **Fallback.** A failed worker download is tried one more time on the main thread (Get-FileBytes, as today). If that
@@ -39,8 +40,8 @@ file. On a slow tenant, the main thread waits on the network and the readers wai
 8. **Memory.** At most N downloads in flight plus 1 finished download that waits for a reader. A new download starts
    only after a finished one goes to the readers. Peak with the 25 MB limit and N = 3: 25 MB x (3 + 1 + 8 readers)
    = 300 MB, against 225 MB today.
-9. **Screen and report.** One download bar for all files in flight (preview in question 4). "Time downloading" becomes
-   the wall time with at least one download in flight. A new header line "Parallel downloads": "3", or "off (<error
+9. **Screen and report.** One download bar for all files in flight (approved preview). "Time downloading" is the wall
+   time with a worker download in flight, plus each main-thread download (the burst clock pauses for it). A new header line "Parallel downloads": "3", or "off (<error
    type name>)", with no message text (a message can hold a path). This is the device evidence.
 10. **Kept rules.** No reconnaissance: the workers get only the paths of the listed files of the one site. Masked
     output: no path or name leaves the main thread unmasked (the worker gives back bytes and an error type name).

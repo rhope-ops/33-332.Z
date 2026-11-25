@@ -359,6 +359,16 @@ Assert-Equal 3 ([IonFake.Copy]::MaxActive) 'Parallel: 3 downloads at once, not m
 Assert-Equal '3' ((Get-ScanTiming)['Parallel downloads']) 'Parallel: the header says 3'
 Assert-Equal 3 ([IonFake.Copy]::Disposed) 'Parallel: the 3 copies of the connection are closed after the scan'
 Assert-Equal $true ((Get-FakeProgressText) -match 'Downloading\.\. \d files: [\d.]+ of [\d.]+ MB') 'Parallel: one bar for the files in flight'
+# Two folders: the download bar shows in the second folder too (review of PR 115: it stayed blank after the first).
+$twoFolders = @{}
+foreach ($key in $parallelFiles.Keys) { $twoFolders[$key] = $parallelFiles[$key] }
+$twoFolders["$library/Ops/other1.txt"] = $parallelFiles["$library/General/part1.txt"]
+$twoFolders["$library/Ops/other2.txt"] = $parallelFiles["$library/General/part2.txt"]
+[IonFake.Copy]::Reset()
+Reset-FakePnP $twoFolders
+$twoRows = New-Object System.Collections.Generic.List[object]
+Assert-Equal 8 (Invoke-FileScan -Library $lib -Channels @('General', 'Ops') -SiteUrl $Sample.Site -MaxFileMB 25 -Rows $twoRows 6>$null) 'Two folders: every file is read'
+Assert-Equal $true ((Get-FakeProgressText) -match '(?s)Folder 2 of 2.*Downloading\.\. \d files?: ') 'Two folders: the download bar shows in folder 2'
 # A copy gives a web page (wrong size): the main thread downloads the file, and parallel downloads stop.
 [IonFake.Copy]::Reset(); [IonFake.Copy]::Modes["$library/General/part6.txt"] = 'short'
 Reset-FakePnP $parallelFiles

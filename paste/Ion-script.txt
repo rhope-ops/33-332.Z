@@ -1,5 +1,5 @@
 <#
-  Ion - DoD365 PII Reporter, build 69751d62 (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
+  Ion - DoD365 PII Reporter, build 240bf873 (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
 
   HOW TO RUN
     1. Optional: read this text first (Open the script shows it as a .txt in your browser).
@@ -41,7 +41,7 @@
     src/ScanQueue.psm1, sha256 994908e5db1b
     src/Accountability.psm1, sha256 8bf31404f723
     src/SiteTarget.psm1, sha256 2e693a68f413
-    src/ChannelScan.psm1, sha256 1de92f9f3e3b
+    src/ChannelScan.psm1, sha256 b7e7a0d2e42d
     src/DriveScan.psm1, sha256 58850f316f96
     src/Find-ChannelPII.ps1, sha256 6f7aac5ba0d3
 
@@ -79,9 +79,9 @@
     line  6676  Module Accountability.psm1
     line  7060  Module SiteTarget.psm1
     line  7417  Module ChannelScan.psm1
-    line  8225  Module DriveScan.psm1
-    line  8840  Body of Find-ChannelPII.ps1
-    line  9046  Clean-up
+    line  8239  Module DriveScan.psm1
+    line  8854  Body of Find-ChannelPII.ps1
+    line  9060  Clean-up
 #>
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
@@ -94,7 +94,7 @@ $previousErrorAction = $ErrorActionPreference
 try {
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
-$IonBuild = '69751d62'       # the build ID: Ion shows it at the start (do not edit)
+$IonBuild = '240bf873'       # the build ID: Ion shows it at the start (do not edit)
 
 # ==== Reader modules ==== (one script block: this script loads it as an in-memory module, and each reader
 # worker loads the same text; nothing is read from a file)
@@ -7488,7 +7488,7 @@ $script:CloneContext = {
 # What a download worker runs: its copy of the connection reads one file into memory (never to disk), and puts its
 # bytes done in the shared table. It gives back the bytes, or the error's type name only (a message can hold a path).
 $script:DownloadWorkerScript = @'
-param($Copy, $Path, $Progress, $Slot)
+param($Copy, $Path, $Progress, $Key)
 $answer = @{ Bytes = $null; Error = '' }
 try {
     $binary = $Copy.Web.GetFileByServerRelativeUrl($Path).OpenBinaryStream()
@@ -7497,7 +7497,7 @@ try {
     $memory = New-Object System.IO.MemoryStream
     try {
         $buffer = New-Object byte[] 65536
-        while (($read = $source.Read($buffer, 0, $buffer.Length)) -gt 0) { $memory.Write($buffer, 0, $read); $Progress[$Slot] = $memory.Length }
+        while (($read = $source.Read($buffer, 0, $buffer.Length)) -gt 0) { $memory.Write($buffer, 0, $read); $Progress[$Key] = $memory.Length }
         $answer.Bytes = $memory.ToArray()
     }
     finally { $memory.Dispose(); $source.Dispose() }
@@ -7889,7 +7889,7 @@ function New-DownloadPool {
     $state = @{ On = $false; State = ''; Count = $count; Copies = @{}; Pool = $null; Stuck = 0; SiteUrl = $SiteUrl
         Jobs = (New-Object System.Collections.Generic.List[object]); Free = (New-Object System.Collections.Generic.Stack[int])
         Progress = [hashtable]::Synchronized(@{}); Busy = (New-Object Diagnostics.Stopwatch)
-        BurstClock = (New-Object Diagnostics.Stopwatch); BurstBytes = 0L; BurstDone = 0L; LastBar = 0L }
+        BurstClock = (New-Object Diagnostics.Stopwatch); BurstBytes = 0L; BurstDone = 0L; LastBar = 0L; NextKey = 0 }
     try {
         $context = Get-PnPContext
         for ($slot = 0; $slot -lt $count; $slot++) { $state.Copies[$slot] = & $script:CloneContext $context $SiteUrl }
@@ -7922,15 +7922,19 @@ function Start-DownloadJob {
     param([hashtable]$State, [hashtable]$Prepared)
     if ($State.Jobs.Count -eq 0) {
         # A new burst: the bar counts from here.
-        $State.BurstBytes = 0L; $State.BurstDone = 0L; $State.BurstClock.Restart(); $State.Busy.Start()
+        # LastBar too, so the bar shows at once in each new burst (review of PR 115).
+        $State.BurstBytes = 0L; $State.BurstDone = 0L; $State.LastBar = 0L; $State.BurstClock.Restart(); $State.Busy.Start()
     }
     $slot = $State.Free.Pop()
-    $State.Progress[$slot] = 0L
+    # The bytes done go under a key of this job, not of the worker: a stopped worker cannot change a later job's count.
+    $State.NextKey++
+    $key = $State.NextKey
+    $State.Progress[$key] = 0L
     $State.BurstBytes += $Prepared.Size
     $shell = [powershell]::Create()
     $shell.RunspacePool = $State.Pool
-    [void]$shell.AddScript($script:DownloadWorkerScript).AddArgument($State.Copies[$slot]).AddArgument($Prepared.Ref).AddArgument($State.Progress).AddArgument($slot)
-    $State.Jobs.Add(@{ Shell = $shell; Handle = $shell.BeginInvoke(); Slot = $slot; Prepared = $Prepared; Clock = [Diagnostics.Stopwatch]::StartNew() })
+    [void]$shell.AddScript($script:DownloadWorkerScript).AddArgument($State.Copies[$slot]).AddArgument($Prepared.Ref).AddArgument($State.Progress).AddArgument($key)
+    $State.Jobs.Add(@{ Shell = $shell; Handle = $shell.BeginInvoke(); Slot = $slot; Key = $key; Prepared = $Prepared; Clock = [Diagnostics.Stopwatch]::StartNew() })
 }
 
 function Write-DownloadBar {
@@ -7939,7 +7943,7 @@ function Write-DownloadBar {
     if ($State.BurstClock.ElapsedMilliseconds - $State.LastBar -lt $script:DownloadBarMs -and $State.LastBar -gt 0) { return }
     $State.LastBar = [Math]::Max(1L, $State.BurstClock.ElapsedMilliseconds)
     $done = $State.BurstDone
-    foreach ($job in $State.Jobs) { $done += [long]$State.Progress[$job.Slot] }
+    foreach ($job in $State.Jobs) { $done += [long]$State.Progress[$job.Key] }
     Write-DownloadsStep $State.Jobs.Count $State.BurstBytes $done $State.BurstClock.Elapsed $script:DownloadStep
 }
 
@@ -7978,6 +7982,8 @@ function Receive-DownloadResult {
         $slow = @($State.Jobs | Where-Object { -not $_.Handle.IsCompleted -and $_.Clock.Elapsed.TotalSeconds -gt $script:DownloadSecondsLimit })
         foreach ($job in $slow) {
             Stop-DownloadJob $State $job
+            $State.Progress.Remove($job.Key)
+            $State.BurstDone += [long]$job.Prepared.Size
             @{ Prepared = $job.Prepared; Bytes = $null; Error = 'TimeoutException' }
         }
         if ($ready.Count -gt 0 -or $slow.Count -gt 0 -or $State.Jobs.Count -eq 0) { break }
@@ -7994,7 +8000,7 @@ function Receive-DownloadResult {
             else { $answer.Bytes = [byte[]]$output.Bytes }
         }
         catch { $answer.Error = Get-ErrorTypeName $_.Exception }
-        finally { $job.Shell.Dispose(); $State.Free.Push($job.Slot) }
+        finally { $job.Shell.Dispose(); $State.Free.Push($job.Slot); $State.Progress.Remove($job.Key) }
         # Not the size the list gives (a sign-in page, for example): a failure. Size 0 in the list: not checked.
         $size = [long]$job.Prepared.Size
         if (-not $answer.Error -and ($null -eq $answer.Bytes -or ($size -gt 0 -and $answer.Bytes.LongLength -ne $size))) { $answer.Error = 'WrongSize'; $answer.Bytes = $null }
@@ -8030,7 +8036,9 @@ function Complete-Download {
         Write-Progress -Id 2 -Activity $script:DownloadStep -Completed
         if ($running -and $State.Jobs.Count -gt 0) { $State.Busy.Start() }
     }
-    if ($State.On) { $State.On = $false; $State.State = 'off ({0})' -f $Done.Error }
+    # The main thread got the same other size: the list size is wrong, not the copy of the connection (review of PR 115).
+    $fileFault = $Done.Error -eq 'WrongSize' -and $prepared.Size -gt 0 -and $bytes.LongLength -ne $prepared.Size
+    if ($State.On -and -not $fileFault) { $State.On = $false; $State.State = 'off ({0})' -f $Done.Error }
     Complete-FileScan $Queue $prepared $bytes
 }
 
@@ -8059,6 +8067,8 @@ function Invoke-ParallelGroup {
     $started = $false
     try {
         while ($next -lt $plan.Download.Count -or $State.Jobs.Count -gt 0) {
+            # No worker left (each new copy of the connection failed): one at a time, not an endless loop (review of PR 115).
+            if ($State.On -and $State.Free.Count -eq 0 -and $State.Jobs.Count -eq 0) { $State.On = $false; $State.State = 'off (NoWorker)' }
             while ($next -lt $plan.Download.Count -and (-not $State.On -or $State.Free.Count -gt 0)) {
                 $file = $plan.Download[$next]; $next++
                 $ref = Get-FieldValue $file 'FileRef'
@@ -8066,7 +8076,11 @@ function Invoke-ParallelGroup {
                 # '#' and '%' break the client call's address (as for the stream): such a file takes the main thread's download.
                 if (-not $State.On -or $ref.IndexOfAny([char[]]'#%') -ge 0) {
                     $first = $Queue.Rows.Count
-                    if (-not (Invoke-OneFileScan $Queue $file $Group.Name $Group.Prefix $Origin $MaxFileMB)) { & $count $first }
+                    # Its download time is counted on its own: the burst clock pauses (no double count, review of PR 115).
+                    $running = $State.Busy.IsRunning
+                    $State.Busy.Stop()
+                    try { if (-not (Invoke-OneFileScan $Queue $file $Group.Name $Group.Prefix $Origin $MaxFileMB)) { & $count $first } }
+                    finally { if ($running -and $State.Jobs.Count -gt 0) { $State.Busy.Start() } }
                     continue
                 }
                 $first = $Queue.Rows.Count
