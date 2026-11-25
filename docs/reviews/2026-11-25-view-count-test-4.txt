@@ -1,0 +1,51 @@
+# Ion test 4 (view counts; first written 2026-11-21, as a .txt file 2026-11-25): the view count of one file, on
+# usaf.dps.mil only. Read-only, one site, one file. Prints only counts, True/False and error type names: no address,
+# no file name and no error message. No Microsoft Graph call: the addresses are on usaf.dps.mil only.
+$ErrorActionPreference = 'Stop'
+'T4 test version=2026-11-25a'
+$typed = (Read-Host 'Question 1: your team site address (usaf.dps.mil/sites/<name> or /teams/<name>)').Trim().Trim('"')
+$fileText = (Read-Host 'Question 2: the file path after the site (for example Shared Documents/General/Report.pdf)').Trim().Trim('"', '/')
+Clear-Host
+'T4 test version=2026-11-25a'
+$signedIn = $false
+try {
+    if ($typed -notmatch '^https?://') { $typed = 'https://' + $typed }
+    $siteMatch = [regex]::Match($typed, '^https://usaf\.dps\.mil/((?:sites|teams)/[^/?#\s]+)')
+    if (-not $siteMatch.Success) { 'T4 answer 1 is a DoD365 site address=False'; return }   # 'finally' prints Done.
+    if (-not $fileText) { 'T4 answer 2 given=False'; return }
+    $site = 'https://usaf.dps.mil/' + $siteMatch.Groups[1].Value
+    $path = '/' + $siteMatch.Groups[1].Value + '/' + [uri]::UnescapeDataString($fileText)
+    $signedIn = $true   # before the sign-in: a stop during it still signs out
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    Connect-PnPOnline -Url $site -UseWebLogin -WarningAction SilentlyContinue
+    'T4 sign-in ok=True ms={0}' -f $clock.ElapsedMilliseconds
+    $item = Get-PnPFile -Url $path -AsListItem
+    $list = Get-PnPProperty -ClientObject $item -Property ParentList
+    $siteId = (Get-PnPSite -Includes Id).Id; $webId = (Get-PnPWeb -Includes Id).Id
+    'T4 file found={0}' -f [bool]$item
+    $address = '/_api/v2.1/sites/usaf.dps.mil,{0},{1}/lists/{2}/items/{3}' -f $siteId, $webId, $list.Id, $item.Id
+    # Method 1: all-time count (the SharePoint item analytics, as Graph's itemAnalytics).
+    try {
+        $all = Invoke-PnPSPRestMethod -Method Get -Url ($address + '/analytics/allTime')
+        $count = ''; if ($all -and $all.PSObject.Properties['access']) { $count = [string]$all.access.actionCount }
+        if ($count -ne '') { 'T4a works: {0} views, all time' -f $count } else { 'T4a no answer' }
+    }
+    catch { 'T4a failed: {0}' -f $_.Exception.GetType().Name }
+    # Method 2: views per month from a start date (what Ion needs: the views after the "PII first saved" date).
+    try {
+        $start = (Get-Date).AddDays(-89).ToString('yyyy-MM-dd'); $end = (Get-Date).ToString('yyyy-MM-dd')
+        $url = "$address/getActivitiesByInterval(startDateTime='$start',endDateTime='$end',interval='month')"
+        $months = Invoke-PnPSPRestMethod -Method Get -Url $url
+        $total = 0; $rows = 0
+        if ($months -and $months.PSObject.Properties['value']) {
+            foreach ($month in @($months.value)) { $rows++; if ($month.access) { $total += [int]$month.access.actionCount } }
+        }
+        if ($rows -gt 0) { 'T4b works: {0} views in the last 90 days, {1} months' -f $total, $rows } else { 'T4b no answer' }
+    }
+    catch { 'T4b failed: {0}' -f $_.Exception.GetType().Name }
+}
+catch { 'T4 stopped: {0}' -f $_.Exception.GetType().Name }
+finally {
+    if ($signedIn) { try { Disconnect-PnPOnline } catch { Write-Verbose 'Already signed out.' } }
+    Write-Host 'Done. The lines above show counts, True/False and error type names only. Copy them into an e-mail to yourself.'
+}

@@ -89,3 +89,6 @@ The PAM ran both runs on 2026-11-25 (e-mail of 15:19 UTC; counts, value names an
   candidate, outside the per-candidate try (the loop header or the web path line). For the OneDrive session.
 - The registry entry has `FullRemotePath` and `WebUrl` (value names only): a possible direct source of the web folder.
 - Sign-in took about 100 s in both runs; the PAM saw slow Microsoft sign-in the same day (3-5 min to the window).
+- Cause (found 2026-11-25, reproduced on PowerShell 7.4 with invented data): the loop header `@($candidates)` on a
+  `List[object]` made by `New-Object` throws "Argument types do not match" (ArgumentException). Next: probe 7
+  (docs/reviews/2026-11-25-device-probe-7.md) with plain arrays and the shape of `FullRemotePath` and `WebUrl`.
