@@ -1,0 +1,110 @@
+# Ion device probe 7 (2026-11-25): read-only. Prints only True/False, counts, kinds, error kinds and times: no name,
+# no address, no path and no value. Probe 6 stopped with ArgumentException before its first candidate: '@($candidates)'
+# on a List[object] made by New-Object throws "Argument types do not match". Probe 7 keeps plain arrays. It reads the
+# shape of the values FullRemotePath and WebUrl of the OneDrive app's entry for this folder, makes the web folder from
+# each one, and counts the local file names that are in that one web folder.
+$ErrorActionPreference = 'Stop'
+'P7 probe version=2026-11-25a'
+$folder = (Read-Host 'Question 1: a OneDrive folder that has files (paste the path)').Trim().Trim('"').TrimEnd('\')
+Clear-Host
+'P7 probe version=2026-11-25a'
+$signedIn = $false
+$step = 0; $stepName = 'start'
+try {
+function Get-Kind($err) {
+    $m = [string]$err.Exception.Message
+    $kind = 'Other'
+    if ($m -match '(?i)no connection|not connected|connect first|current connection') { $kind = 'NoConnection' }
+    elseif ($m -match '(?i)\(404\)|not found|does not exist') { $kind = 'NotFound' }
+    elseif ($m -match '(?i)\(401\)|\(403\)|forbidden|access denied|unauthori') { $kind = 'NoAccess' }
+    elseif ($m -match '(?i)cancel') { $kind = 'Cancelled' }
+    elseif ($m -match '(?i)time ?out|timed out') { $kind = 'Timeout' }
+    '{0}/{1}' -f $err.Exception.GetType().Name, $kind
+}
+$step = 1; $stepName = 'folder'
+if (-not $folder -or -not (Test-Path -LiteralPath $folder -PathType Container)) { 'P7 folder found=False'; return }   # 'finally' prints Done.
+$step = 2; $stepName = 'OneDrive entry'
+# The OneDrive app's own list (read-only): the synced folder that holds this folder (the longest one wins).
+$match = $null
+foreach ($p in @(Get-ChildItem -Path 'HKCU:\Software\SyncEngines\Providers\OneDrive' -ErrorAction SilentlyContinue)) {
+    $mount = [string]$p.GetValue('MountPoint'); $ns = [string]$p.GetValue('UrlNamespace')
+    if ($mount -and $ns -and ($folder + '\').StartsWith($mount.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
+        if (-not $match -or $mount.Length -gt $match.Mount.Length) { $match = @{ Mount = $mount.TrimEnd('\'); Ns = $ns.TrimEnd('/'); Key = $p } }
+    }
+}
+if (-not $match) { 'P7 no OneDrive entry holds this folder'; return }
+$homes = @(foreach ($n in @('OneDrive', 'OneDriveCommercial')) { [Environment]::GetEnvironmentVariable($n) }) | Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\') }
+'P7 entry is the OneDrive home folder={0} folder is the synced folder itself={1}' -f [bool]($homes -contains $match.Mount), ($folder -ieq $match.Mount)
+$nsUri = [uri]$match.Ns
+$nsPath = [uri]::UnescapeDataString($nsUri.AbsolutePath).TrimEnd('/')
+$sitePath = if ($nsPath -match '^/(personal|sites|teams)/[^/]+') { $Matches[0] } else { $nsPath }
+$libPart = $nsPath.Substring($sitePath.Length).Trim('/')   # the library part of the address, for example the documents library
+$site = $nsUri.GetLeftPart([UriPartial]::Authority) + $sitePath
+$rest = $folder.Substring($match.Mount.Length).Replace('\', '/')
+$mountLeaf = Split-Path $match.Mount -Leaf
+$step = 3; $stepName = 'local files'
+$local = @(Get-ChildItem -LiteralPath $folder -File -Force -ErrorAction SilentlyContinue | Where-Object { -not ($_.Attributes -band 0x6) } | ForEach-Object { $_.Name })
+'P7 local files={0} folder depth below the synced folder={1}' -f $local.Count, @($rest.Split('/') | Where-Object { $_ }).Count
+$step = 4; $stepName = 'value shape'
+# The shape of each value (never the value): its kind, its host, where it is against the library root, its depth.
+$candidates = @(@{ Source = 'none (probe 5 map)'; Sub = '' })   # a plain array: '@(List)' of a New-Object list throws in probe 6
+$values = @{}
+foreach ($name in @('FullRemotePath', 'WebUrl')) {
+    $v = $match.Key.GetValue($name)
+    if ($null -eq $v) { 'P7 value {0}: present=False' -f $name; continue }
+    if ($v -isnot [string]) { 'P7 value {0}: present=True kind=not text ({1})' -f $name, $v.GetType().Name; continue }
+    $values[$name] = $v
+    $u = $null; $kind = 'text'; $host2 = '-'; $path = $v.Trim().Replace('\', '/')
+    if ([uri]::TryCreate($v.Trim(), [UriKind]::Absolute, [ref]$u) -and $u.Scheme -like 'http*') {
+        $kind = $u.Scheme + ' address'; $host2 = [string]($u.Host -ieq $nsUri.Host); $path = [uri]::UnescapeDataString($u.AbsolutePath)
+    }
+    elseif ($path.StartsWith('/')) { $kind = 'rooted path' }
+    elseif ($path -match ':') { $kind = 'text with a colon' }
+    $path = $path.TrimEnd('/')
+    # The part below the library root: from the full root path, from the library part, or the whole text as a path.
+    $sub = $null; $how = 'none'
+    if ($path.StartsWith($nsPath + '/', [StringComparison]::OrdinalIgnoreCase)) { $sub = $path.Substring($nsPath.Length); $how = 'below the library root' }
+    elseif ($path -ieq $nsPath) { $sub = ''; $how = 'the library root' }
+    elseif ($libPart -and ('/' + $path.TrimStart('/') + '/').StartsWith('/' + $libPart + '/', [StringComparison]::OrdinalIgnoreCase)) { $sub = ('/' + $path.TrimStart('/')).Substring($libPart.Length + 1); $how = 'below the library part' }
+    elseif ($kind -eq 'text' -and $path) { $sub = '/' + $path.TrimStart('/'); $how = 'the whole text as a path' }
+    $parts = @($path.Split('/') | Where-Object { $_ })
+    $last = if ($parts.Count) { $parts[$parts.Count - 1] } else { '' }
+    $depth = if ($null -ne $sub) { [string]@($sub.Split('/') | Where-Object { $_ }).Count } else { '-' }
+    'P7 value {0}: present=True kind={1} same host as the library={2} path parts={3} found as={4} depth below the library root={5} last part = synced folder name={6} synced folder name ends with last part={7} same as the library address={8}' -f $name, $kind, $host2,
+        $parts.Count, $how, $depth, ($last -and $last -ieq $mountLeaf), [bool]($last -and $mountLeaf.EndsWith($last, [StringComparison]::OrdinalIgnoreCase)), ($v.Trim().TrimEnd('/') -ieq $match.Ns)
+    if ($null -ne $sub -and $sub -ne '' -and @($candidates | Where-Object { $_.Sub -ieq $sub }).Count -eq 0) { $candidates += @{ Source = $name; Sub = $sub } }
+}
+'P7 FullRemotePath same as WebUrl={0}' -f [bool]($values.Count -eq 2 -and $values['FullRemotePath'].Trim().TrimEnd('/') -ieq $values['WebUrl'].Trim().TrimEnd('/'))
+'P7 candidates={0}' -f $candidates.Count
+$step = 5; $stepName = 'sign-in'
+$clock = [Diagnostics.Stopwatch]::StartNew()
+$signedIn = $true   # before the sign-in: a stop during it still signs out
+try { Connect-PnPOnline -Url $site -UseWebLogin -WarningAction SilentlyContinue; 'P7 sign-in ok=True ms={0}' -f $clock.ElapsedMilliseconds }
+catch { 'P7 sign-in ok=False {0} ms={1}' -f (Get-Kind $_), $clock.ElapsedMilliseconds; return }
+$step = 6; $stepName = 'library'
+# The library by its address, as Ion finds it (src/DriveScan.psm1 Get-OneDriveWebFiles).
+$lib = Get-PnPList -Identity $libPart
+$root = ''; if ($lib) { $root = (Get-PnPProperty -ClientObject $lib -Property RootFolder).ServerRelativeUrl.TrimEnd('/') }
+'P7 library found={0} root matches={1}' -f [bool]$lib, ($root -eq $nsPath)
+if (-not $lib -or $root -ne $nsPath) { return }
+$step = 7; $stepName = 'candidates'
+# Each candidate: the items of that one web folder (at most 500), and how many local file names are in it.
+$n = 0
+foreach ($c in $candidates) {
+    $n++
+    try {
+        $web = $nsPath + $c.Sub + $rest
+        $items = @(Get-PnPListItem -List $lib -FolderServerRelativeUrl $web -PageSize 500 -Fields 'FileLeafRef', 'FileDirRef', 'FSObjType' | Select-Object -First 500)
+        $direct = @($items | Where-Object { [string]$_['FSObjType'] -eq '0' -and ([string]$_['FileDirRef']).TrimEnd('/') -ieq $web } | ForEach-Object { [string]$_['FileLeafRef'] })
+        $both = @($local | Where-Object { $direct -contains $_ }).Count
+        'P7 candidate {0} from {1}: items={2} files in the folder={3} names on both={4} of {5}' -f $n, $c.Source, $items.Count, $direct.Count, $both, $local.Count
+    }
+    catch { 'P7 candidate {0} from {1}: ok=False {2}' -f $n, $c.Source, (Get-Kind $_) }
+}
+$step = 8; $stepName = 'end'
+}
+catch { 'P7 stopped at step {0} ({1}) ok=False {2}' -f $step, $stepName, (Get-Kind $_) }
+finally {
+    if ($signedIn) { try { Disconnect-PnPOnline } catch { Write-Verbose 'Already signed out.' } }
+    Write-Host 'Done. The lines above show True/False, counts, kinds, error kinds and times only. Copy them into an e-mail to yourself.'
+}
