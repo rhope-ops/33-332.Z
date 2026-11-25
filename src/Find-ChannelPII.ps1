@@ -248,8 +248,8 @@ $script:IonSignInTried = $false   # true after the first site sign-in is tried: 
 # the run signs out once here, at its end, also after an error or Ctrl+C ('finally' runs on both).
 try {
     $targets = @(Read-ScanTargetList $SiteUrl 'What to scan')
-    # Speed, asked once per run (the PAM, 2026-11-25): Normal (Enter) = half the processors and 2 downloads; Fast = one reader per
-    # processor (at most 8) and 3 downloads.
+    # Speed, asked once per run (the PAM, 2026-11-25): Normal (Enter) = one reader per 2 processors (at most 8) and 2 downloads;
+    # Fast = one reader per processor (at most 8) and 3 downloads.
     if ($targets.Count -gt 0) {
         # A note on each mode, so the person can decide (from the PAM's words, 2026-11-25).
         Write-Ui 'Choose how much of this computer Ion uses:' 'Text'

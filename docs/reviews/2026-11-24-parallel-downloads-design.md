@@ -72,7 +72,7 @@ file. On a slow tenant, the main thread waits on the network and the readers wai
 - Built as well: two folders (the bar shows in folder 2; review of PR 115, MAJOR, fixed).
 - Not built: a cancel test.
 
-## Open after PR 115 (fresh review of the fix, MINOR; for a later lane B change)
+## Open after PR 115 (fresh review of the fix, MINOR; fixed 2026-11-25 on branch claude/speed-minors-2026-11-25)
 
 - "Time downloading" is a little too low for a '#' or '%' file while worker downloads run: the download clock stays
   stopped while that file goes to the readers (src/ChannelScan.psm1 Invoke-ParallelGroup); its code comment says
@@ -101,6 +101,12 @@ Speed modes merged 2026-11-25 (PR 119). Open after its fix review (MINOR and NIT
 - The Fast pool test proves nothing on a 1-processor runner.
 - README Speed line: Normal is also capped at 8 readers; "processors read files" and "reader" name one thing twice.
 - src/Find-ChannelPII.ps1 comment "Fast = all": Fast is one reader per processor (at most 8) and 3 downloads.
+
+Fixed 2026-11-25 (branch claude/speed-minors-2026-11-25), all items of both lists: the Busy clock pauses for the
+download of a '#' or '%' file only (Invoke-OneFileScan -Pool); "off (<reason>)" names Ion's own reasons WrongSize,
+NoResult and NoWorker (New-DownloadPool); the Complete-Download synopsis names the list-size fault; new tests: NoWorker,
+the list-size fault, per-job byte keys, the timing (wall time, 3 at once), the '#' file clock; the Enter test sets Fast
+right before the answer; the reader pool tests set 4 processors; README Speed line and the speed comment.
 
 Normal mode on the device (the PAM, 2026-11-25): the fan is quiet with mild spikes (Fast: much more intense). No
 times: the PAM stopped the run, because the Microsoft sign-in was very slow that day (3-5 min to the window). Screen
