@@ -8,12 +8,15 @@ DriveScan.psm1 - scans a folder on a mapped or network drive (X:\<folder> or \\<
   Outputs:     report rows; the results workbook (Report.psm1 Publish-ScanReport).
   How to run:  imported by Find-ChannelPII.ps1; Invoke-DriveScan runs when the pasted target is a folder path.
   Depends on:  PiiDetectors.psm1, PiiMasking.psm1, TextExtract.psm1 (Test-SupportedFile), Report.psm1,
-               ScanMeter.psm1, ScanQueue.psm1 and ChannelScan.psm1 (Get-ShownItem), imported first.
+               ScanMeter.psm1, ScanQueue.psm1, ChannelScan.psm1 (Get-ShownItem, Get-FileBytes, Get-FieldValue,
+               Get-SafeLink), Accountability.psm1 and SiteTarget.psm1 (Connect-TeamSite), imported first.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7, where the tests run on a temporary folder).
-  Network:     only the given folder's server, through the person's Windows logon (SMB); in a OneDrive folder, OneDrive
-               downloads an online-only file only after the person answers y (Select-OnlineFiles).
+  Network:     only the given folder's server, through the person's Windows logon (SMB). In a folder of the own
+               work OneDrive (Connect-OneDriveWeb): its own site, one library and only the pasted folder in it, for the who/when history and to read online-only and web-only files
+               into memory; when the web is not used, OneDrive downloads an online-only file only after the person
+               answers y (Select-OnlineFiles).
   Writes:      only the results workbook under the results folder (a downloaded OneDrive file is written by OneDrive).
-  Credentials: none (the Windows logon).
+  Credentials: none stored (the Windows logon; in a OneDrive folder, the person's own CAC sign-in).
 #>
 
 Set-StrictMode -Version 2.0
@@ -128,8 +131,9 @@ function Select-OnlineFiles {
       The size limit.
     #>
     param([object[]]$Groups, $Rows, [int]$MaxFileMB)
+    # A file that OneDrive on the web gives (Add-OneDriveWebFiles) is read from there, into memory: not asked about.
     $online = @(foreach ($group in $Groups) { foreach ($file in $group.Files) {
-                if ($file.Online -and (Test-SupportedFile $file.Name) -and $file.Size -le $MaxFileMB * 1MB) { $file } } })
+                if ($file.Online -and -not $file.ContainsKey('Web') -and (Test-SupportedFile $file.Name) -and $file.Size -le $MaxFileMB * 1MB) { $file } } })
     if ($online.Count -eq 0) { return }
     $megabytes = ($online | ForEach-Object { $_.Size } | Measure-Object -Sum).Sum / 1MB   # 5.1 reads no hashtable key here
     Write-Ui ('{0} files ({1:N1} MB) here are online only (OneDrive). To read them, Ion must download them to this computer.' -f $online.Count, $megabytes) 'Accent'
@@ -139,7 +143,8 @@ function Select-OnlineFiles {
         $keep = New-Object System.Collections.Generic.List[object]   # one pass per group, not one search per file
         $declined = New-Object System.Collections.Generic.List[object]
         foreach ($file in $group.Files) {
-            if ($file.Online -and (Test-SupportedFile $file.Name) -and $file.Size -le $MaxFileMB * 1MB) { $declined.Add($file) } else { $keep.Add($file) }
+            if ($file.Online -and -not $file.ContainsKey('Web') -and (Test-SupportedFile $file.Name) -and $file.Size -le $MaxFileMB * 1MB) { $declined.Add($file) }
+            else { $keep.Add($file) }
         }
         $group.Files.Clear(); $group.Files.AddRange($keep)
         foreach ($file in $declined) {
@@ -239,12 +244,72 @@ function Invoke-DriveFile {
     $rows = $Queue.Rows
     $channel = Protect-PiiName $Group
     $item = Get-ShownItem $Group $File.Inner
-    $link = Get-DriveLink $File.Path
+    $web = $null; if ($File.ContainsKey('Web')) { $web = $File.Web }
+    if ($web) { $link = Get-SafeLink $File.Origin (Get-FieldValue $web 'FileRef') (Get-FieldValue $web 'UniqueId') } else { $link = Get-DriveLink $File.Path }
     $info = @{ Channel = $channel; Item = $item; Link = $link; Modified = $File.Modified }
     if (-not (Add-FileStartRows $rows $info ($Group + '/' + $File.Inner) $File.Name $File.Size $MaxFileMB)) { return $false }
-    $info.DrivePath = $File.Path
-    Submit-ScanFile $Queue $info $File.Name $null $File.Path
+    if (-not $web) {   # no web copy: the disk only, and the Windows owner and times (as before)
+        $info.DrivePath = $File.Path
+        if ($File.ContainsKey('NoWeb')) { $info.DriveNote = $script:NotSyncedNote }
+        Submit-ScanFile $Queue $info $File.Name $null $File.Path
+        return $true
+    }
+    # The who/when history from the web copy, as for a team site (Find-PiiAddedVersion, Accountability.psm1).
+    $ref = Get-FieldValue $web 'FileRef'; $name = $File.Name
+    $who = Get-SharePointWho $web
+    $who.Modified = Get-FieldValue $web 'Modified'
+    $info.Who = $who
+    $info.Added = { param($hits) Find-PiiAddedVersion $ref $name $hits $who }.GetNewClosure()
+    if (-not $File.Online -and $File.Path) { Submit-ScanFile $Queue $info $name $null $File.Path; return $true }   # on the disk: read from the disk
+    # Online only, or on the web only: read from the web into memory (the PAM, 2026-11-24: nothing goes to the disk).
+    try { $bytes = Get-FileBytes $ref $File.Size }
+    catch {
+        $rows.Add((New-ReportRow 'File' $channel $item $link $File.Modified 'NOT SCANNED' '' '' (Protect-PiiText ('Download failed: ' + $_.Exception.Message))))
+        return $false
+    }
+    finally { Write-Progress -Id 2 -Activity 'Downloading' -Completed }
+    Submit-ScanFile $Queue $info $name $bytes ''
     return $true
+}
+
+function Add-OneDriveWebFiles {
+    <#
+    .SYNOPSIS
+      Joins the web files of the pasted folder (Connect-OneDriveWeb) to its local files: a local file with a web copy
+      gets it (Web, Origin: history, and the read of an online-only file); a web file that is not on the disk joins its
+      group (the PAM, 2026-11-24: read through PnP). The web side never adds a file outside the pasted folder.
+    .PARAMETER Groups
+      The groups of Get-DriveGroups (changed in place).
+    .PARAMETER Web
+      Output of Connect-OneDriveWeb with Used = $true.
+    .OUTPUTS
+      [int] the number of web-only files added.
+    #>
+    param([System.Collections.Generic.List[object]]$Groups, [hashtable]$Web)
+    $seen = @{}
+    foreach ($group in $Groups) {
+        foreach ($file in $group.Files) {
+            $rel = $file.Inner; if ($group.Name -ne $script:DriveTopGroup) { $rel = $group.Name + '/' + $file.Inner }
+            $key = $rel.ToLowerInvariant(); $seen[$key] = $true
+            if ($Web.Files.ContainsKey($key)) { $file.Web = $Web.Files[$key]; $file.Origin = $Web.Origin }
+            else { $file.NoWeb = $true }   # on this computer only (not synced yet): no history (design, step 5)
+        }
+    }
+    $added = 0
+    foreach ($key in @($Web.Files.Keys | Sort-Object)) {
+        if ($seen.ContainsKey($key)) { continue }
+        $item = $Web.Files[$key]
+        $rel = (Get-FieldValue $item 'FileRef').Substring($Web.Map.WebFolder.Length + 1)
+        $groupName = $script:DriveTopGroup; $inner = $rel
+        $cut = $rel.IndexOf('/'); if ($cut -gt 0) { $groupName = $rel.Substring(0, $cut); $inner = $rel.Substring($cut + 1) }
+        $group = $null; foreach ($g in $Groups) { if ($g.Name -ieq $groupName) { $group = $g; break } }
+        if (-not $group) { $group = @{ Name = $groupName; Files = (New-Object System.Collections.Generic.List[object]) }; $Groups.Add($group) }
+        $size = 0L; [void][long]::TryParse((Get-FieldValue $item 'File_x0020_Size'), [ref]$size)
+        $group.Files.Add(@{ Path = ''; Inner = $inner; Name = (Get-FieldValue $item 'FileLeafRef'); Size = $size; Modified = (Get-FieldValue $item 'Modified')
+            Online = $true; Web = $item; Origin = $Web.Origin })
+        $added++
+    }
+    return $added
 }
 
 function Add-DriveListRows {
@@ -289,18 +354,54 @@ function Get-DriveHeader {
       The time all workers spent reading.
     .PARAMETER Workers
       The number of files read at once at the end.
+    .PARAMETER WebNote
+      Connect-OneDriveWeb's note (empty for a folder that OneDrive does not sync).
     .OUTPUTS
       [System.Collections.Specialized.OrderedDictionary]
     #>
-    param([string]$Path, [object[]]$Groups, [TimeSpan]$Used, [TimeSpan]$Reading, [int]$Workers)
+    param([string]$Path, [object[]]$Groups, [TimeSpan]$Used, [TimeSpan]$Reading, [int]$Workers, [string]$WebNote = '')
     $header = [ordered]@{}
     $header['Folder'] = Protect-PiiName $Path
+    if ($WebNote) { $header['OneDrive on the web'] = $WebNote }
     $header['Folders'] = ($Groups | ForEach-Object { Protect-PiiName $_.Name }) -join ', '
     $header['Run'] = Get-Date -Format 'yyyy-MM-dd HH:mm'
     $header['Time used'] = Format-Duration $Used
     $header['Time reading files (all readers)'] = Format-Duration $Reading
     $header['Files read at the same time (at the end)'] = [string]$Workers
     return $header
+}
+
+function Get-DriveScanList {
+    <#
+    .SYNOPSIS
+      The files to scan: the folder's files, joined with their web copies in a OneDrive folder (plan step 4: one
+      sign-in; history, online-only and web-only files from the web; local only if that fails), the rows for blocked
+      folders and links, and the download question for online-only files with no web copy.
+    .PARAMETER Path
+      The folder.
+    .PARAMETER Rows
+      The list that receives the rows.
+    .PARAMETER MaxFileMB
+      The size limit.
+    .PARAMETER Run
+      Receives WebNote (Connect-OneDriveWeb's note for the Summary).
+    .PARAMETER SyncEntries
+      The OneDrive sync entries, or $null (the registry).
+    .PARAMETER OneDriveHomes
+      The own OneDrive folders, or $null (Windows).
+    .OUTPUTS
+      [object[]] the groups.
+    #>
+    param([string]$Path, $Rows, [int]$MaxFileMB, [hashtable]$Run, [object[]]$SyncEntries, [string[]]$OneDriveHomes)
+    Write-Ui 'Listing the files ...' 'Muted'
+    $found = Get-DriveGroups $Path
+    $web = Connect-OneDriveWeb $Path $SyncEntries $OneDriveHomes
+    $Run.WebNote = $web.Note
+    if ($web.Used) { $null = Add-OneDriveWebFiles $found.Groups $web }
+    $groups = $found.Groups.ToArray()
+    Add-DriveListRows $found $Rows
+    Select-OnlineFiles $groups $Rows $MaxFileMB
+    return , $groups
 }
 
 function Invoke-DriveScan {
@@ -319,24 +420,24 @@ function Invoke-DriveScan {
       How the reader workers load their code (New-ReaderPool).
     .PARAMETER AutoStart
       Do not ask "Scan now?" (the person said yes to a list of targets); the OneDrive question still asks.
+    .PARAMETER SyncEntries
+      The OneDrive sync entries; $null (the default) reads them from the registry. Tests give their own.
+    .PARAMETER OneDriveHomes
+      The person's own OneDrive folders; $null (the default) reads them from Windows. Tests give their own.
     .OUTPUTS
       [string] the workbook path.
     #>
-    param([string]$Path, [string]$OutputFolder, [int]$MaxFileMB, [hashtable]$Init, [switch]$AutoStart)
+    param([string]$Path, [string]$OutputFolder, [int]$MaxFileMB, [hashtable]$Init, [switch]$AutoStart, [object[]]$SyncEntries = $null, [string[]]$OneDriveHomes = $null)
     $clock = [Diagnostics.Stopwatch]::StartNew()
     $rows = New-Object System.Collections.Generic.List[object]
     $finished = $false
     $groups = @(); $workbook = $null
-    $run = @{ Meter = (New-ScanMeter 0); Reading = [TimeSpan]::Zero; Workers = 0; AutoStart = [bool]$AutoStart }   # filled by Invoke-ScanRun
+    $run = @{ Meter = (New-ScanMeter 0); Reading = [TimeSpan]::Zero; Workers = 0; AutoStart = [bool]$AutoStart; WebNote = '' }   # filled by Invoke-ScanRun
     try {
         if (-not (Test-Path -LiteralPath $Path -PathType Container)) { throw 'This folder cannot be opened (check the path, and that you can open it in File Explorer).' }
         # Own OneDrive folder: shortcuts to other teams' libraries ("No reconnaissance"); declined until a yes (a cancel too).
         $run.Declined = $true; if (-not (Confirm-OneDriveRoot $Path)) { return $null }; $run.Declined = $false
-        Write-Ui 'Listing the files ...' 'Muted'
-        $found = Get-DriveGroups $Path
-        $groups = $found.Groups.ToArray()
-        Add-DriveListRows $found $rows
-        Select-OnlineFiles $groups $rows $MaxFileMB
+        $groups = Get-DriveScanList $Path $rows $MaxFileMB $run $SyncEntries $OneDriveHomes
         # Starts one file (Invoke-GroupScan calls it).
         $start = { param($queue, $group, $file) Invoke-DriveFile $queue $group.Name $file $MaxFileMB }
         # The file's masked path inside its folder, for the progress bar.
@@ -356,7 +457,7 @@ function Invoke-DriveScan {
         if ($run.ContainsKey('Declined') -and $run.Declined) { Write-Ui 'Not scanned: nothing was saved.' 'Accent' }
         else {
             Add-IncompleteRow -Rows $rows -Finished $finished
-            $header = Get-DriveHeader $Path $groups $clock.Elapsed $run.Reading $run.Workers
+            $header = Get-DriveHeader $Path $groups $clock.Elapsed $run.Reading $run.Workers $run.WebNote
             $name = $Path.TrimEnd('\') -replace '\\', '/'   # the results folder is named after the folder's last part
             $workbook = Publish-ScanReport -Rows $rows.ToArray() -ItemsScanned $run.Meter.Read -Header $header -OutputFolder $OutputFolder -SiteUrl $name -FolderLabel 'Folder'
         }
@@ -364,5 +465,154 @@ function Invoke-DriveScan {
     return $workbook
 }
 
+# ---- OneDrive on the web (plan step 4, the OneDrive hybrid; the PAM, 2026-11-24: docs/reviews/2026-11-24-onedrive-hybrid-design.md) ----
+
+# The OneDrive app's list of synced folders (one key per folder: MountPoint, UrlNamespace).
+$script:SyncEnginesKey = 'HKCU:\Software\SyncEngines\Providers\OneDrive'
+# The folder kinds that use the web (the PAM, 2026-11-24: all three, with a probe first for the 2 not tested). Probe 4
+# tested 'Home' (runs 1 and 2). 'Library' and 'Shortcut' join when probe 4 runs A and B pass on the gov device.
+$script:WebKinds = @('Home')
+# The list fields read for each web file (as ChannelScan.psm1 reads them for a team site).
+$script:WebFields = @('FileLeafRef', 'FileRef', 'FSObjType', 'File_x0020_Size', 'Modified', 'UniqueId', 'Created', 'Author', 'Editor')
+# True after a sign-in to a OneDrive site was tried: Find-ChannelPII.ps1 then signs out at the end of the run.
+$script:SignInTried = $false
+$script:NoHistoryNote = 'The who/when history is not available for this scan'
+$script:NotSyncedNote = 'Not on the web yet (not synced): no version history'
+
+function Get-OneDriveSyncEntries {
+    <#
+    .SYNOPSIS
+      The folders the OneDrive app syncs, from its registry list (read-only): each @{ MountPoint; UrlNamespace }.
+      None when the list is not there (not Windows, or no OneDrive account).
+    .OUTPUTS
+      [hashtable[]]
+    #>
+    $entries = @()
+    foreach ($key in @(Get-ChildItem -Path $script:SyncEnginesKey -ErrorAction SilentlyContinue)) {
+        $mount = [string]$key.GetValue('MountPoint'); $space = [string]$key.GetValue('UrlNamespace')
+        if ($mount -and $space) { $entries += @{ MountPoint = $mount; UrlNamespace = $space } }
+    }
+    return $entries
+}
+
+function Get-OneDriveWebMap {
+    <#
+    .SYNOPSIS
+      The web place of a local folder: the sync entry whose MountPoint holds it (the longest one: probe 4 found 2
+      entries with the same folder and address), its site, its web folder, and its kind. $null when no entry holds it.
+    .PARAMETER Folder
+      The pasted folder (full path).
+    .PARAMETER Entries
+      The sync entries (Get-OneDriveSyncEntries).
+    .PARAMETER Homes
+      The person's own OneDrive folders (Get-OneDriveHomes).
+    .OUTPUTS
+      [hashtable] Mount, LibraryPath (the library root, server-relative), Site, Origin, WebFolder, Kind ('Home',
+      'Shortcut' or 'Library'); or $null.
+    #>
+    param([string]$Folder, [object[]]$Entries, [string[]]$Homes)
+    $slashes = [char[]]@('\', '/')
+    $path = $Folder.TrimEnd($slashes)
+    $best = $null
+    foreach ($entry in $Entries) {
+        $mount = ([string]$entry.MountPoint).TrimEnd($slashes)
+        if (-not $mount -or -not $entry.UrlNamespace) { continue }
+        $inside = $path -ieq $mount -or ($path.Length -gt $mount.Length -and
+            $path.StartsWith($mount, [StringComparison]::OrdinalIgnoreCase) -and $slashes -contains $path[$mount.Length])
+        if ($inside -and (-not $best -or $mount.Length -gt $best.Mount.Length)) { $best = @{ Mount = $mount; Space = [string]$entry.UrlNamespace } }
+    }
+    if (-not $best) { return $null }
+    $address = $null
+    if (-not [uri]::TryCreate($best.Space.TrimEnd('/'), [UriKind]::Absolute, [ref]$address)) { return $null }   # not a web address: no map (local only)
+    $library = [uri]::UnescapeDataString($address.AbsolutePath).TrimEnd('/')
+    $sitePath = $library; if ($library -match '^/(personal|sites|teams)/[^/]+') { $sitePath = $Matches[0] }
+    $origin = $address.GetLeftPart([UriPartial]::Authority)
+    $kind = 'Library'
+    foreach ($oneDriveHome in @($Homes | Where-Object { $_ } | ForEach-Object { $_.TrimEnd($slashes) })) {
+        if ($best.Mount -ieq $oneDriveHome) { $kind = 'Home'; break }
+        if ($best.Mount.StartsWith($oneDriveHome, [StringComparison]::OrdinalIgnoreCase) -and $slashes -contains $best.Mount[$oneDriveHome.Length]) { $kind = 'Shortcut' }
+    }
+    $rest = $path.Substring($best.Mount.Length) -replace '[\\/]+', '/'
+    return @{ Mount = $best.Mount; LibraryPath = $library; Site = $origin + $sitePath; Origin = $origin; WebFolder = ($library + $rest).TrimEnd('/'); Kind = $kind }
+}
+
+function Get-OneDriveWebFiles {
+    <#
+    .SYNOPSIS
+      The files under the mapped web folder (any depth), from the one library whose root is the mapped library: the
+      relative path in small letters ('/' between folders) -> the list item. The library is found by its own address
+      (no list of the site's lists), and SharePoint gives only the items in the mapped folder ("No reconnaissance").
+    .PARAMETER Map
+      Output of Get-OneDriveWebMap.
+    .OUTPUTS
+      [hashtable]; throws when no library has that root.
+    #>
+    param([hashtable]$Map)
+    $siteRelative = $Map.LibraryPath.Substring(([uri]$Map.Site).AbsolutePath.TrimEnd('/').Length).TrimStart('/')
+    $library = Get-PnPList -Identity $siteRelative -ErrorAction Stop
+    $root = ''; if ($library) { $root = (Get-PnPProperty -ClientObject $library -Property RootFolder -ErrorAction Stop).ServerRelativeUrl.TrimEnd('/') }
+    if (-not $library -or $root -ine $Map.LibraryPath) { throw 'The OneDrive folder was not found on the web (no library with its address).' }
+    $prefix = $Map.WebFolder + '/'
+    $files = @{}
+    $items = @(Get-PnPListItem -List $library -FolderServerRelativeUrl $Map.WebFolder -PageSize 500 -Fields $script:WebFields -ErrorAction Stop)
+    foreach ($item in $items) {   # the prefix check stays: only files under the pasted folder are kept, whatever the query gives
+        if ([string]$item['FSObjType'] -ne '0') { continue }
+        $ref = [string]$item['FileRef']
+        if ($ref.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { $files[$ref.Substring($prefix.Length).ToLowerInvariant()] = $item }
+    }
+    return $files
+}
+
+function Connect-OneDriveWeb {
+    <#
+    .SYNOPSIS
+      For a folder that OneDrive syncs: the map, one sign-in to its site (Connect-TeamSite: the full-address site
+      check), and its web files. Never throws: a folder that is not synced, a kind not tested yet, or any failure
+      gives Used = $false and a Note for the Summary (the scan is then local only, as before).
+    .PARAMETER Folder
+      The pasted folder.
+    .PARAMETER Entries
+      The sync entries; $null reads them from the registry (tests give their own).
+    .PARAMETER Homes
+      The person's own OneDrive folders; $null reads them from Windows (tests give their own).
+    .OUTPUTS
+      [hashtable] Used, Note, Files (Get-OneDriveWebFiles), Map, Origin.
+    #>
+    param([string]$Folder, [object[]]$Entries = $null, [string[]]$Homes = $null)
+    $web = @{ Used = $false; Note = ''; Files = @{}; Map = $null; Origin = '' }
+    if ($null -eq $Entries) { $Entries = @(Get-OneDriveSyncEntries) }
+    # Only the work OneDrive is the own OneDrive here: a personal (consumer) OneDrive is never signed in to (review of PR 109).
+    if ($null -eq $Homes) { $Homes = @([Environment]::GetEnvironmentVariable('OneDriveCommercial') | Where-Object { $_ }) }
+    $map = Get-OneDriveWebMap $Folder $Entries $Homes
+    if (-not $map) { return $web }   # not a OneDrive folder: a plain drive scan, no note
+    $web.Map = $map; $web.Origin = $map.Origin
+    if ($script:WebKinds -notcontains $map.Kind) {
+        $web.Note = 'Not used: this kind of OneDrive folder (a synced library or a shortcut) is not tested yet. ' + $script:NoHistoryNote + '.'
+        return $web
+    }
+    try {
+        Write-Ui 'This folder is in OneDrive: Ion signs in once to read the who/when history and the online-only files.' 'Muted'
+        $script:SignInTried = $true   # before the sign-in: a Ctrl+C during it still gets the run's one sign-out
+        $null = Connect-TeamSite ([pscustomobject]@{ SiteUrl = $map.Site; GroupId = $null; IsChannel = $false })
+        $web.Files = Get-OneDriveWebFiles $map
+        $web.Used = $true
+        $web.Note = 'Used: {0} files in this folder on the web; history from the web.' -f $web.Files.Count
+    }
+    catch {
+        # The first sentence only: a sign-in error goes on with advice for a site scan ("Nothing was scanned ...").
+        $first = @(([string]$_.Exception.Message) -split "`n" | Where-Object { $_.Trim() })
+        $why = ''; if ($first.Count) { $why = ' (' + (Protect-PiiText (($first[0] -split '(?<=\.)\s')[0]).TrimEnd('.')) + ')' }
+        Write-Ui ('OneDrive on the web is not used' + $why + ': Ion reads the files on this computer only.') 'Accent'
+        $web.Note = 'Not used' + $why + '. ' + $script:NoHistoryNote + '.'
+    }
+    return $web
+}
+
+function Test-OneDriveSignIn {
+    # True when a sign-in to a OneDrive site was tried in this run (Find-ChannelPII.ps1 signs out once at the end).
+    return $script:SignInTried
+}
+
 Export-ModuleMember -Function Get-DriveGroups, Invoke-DriveScan, Get-ReparseKind, Select-OnlineFiles, Get-OneDriveRoots,
-    Get-OneDriveHomes, Confirm-OneDriveRoot
+    Get-OneDriveHomes, Confirm-OneDriveRoot, Add-OneDriveWebFiles, Get-OneDriveSyncEntries, Get-OneDriveWebMap, Get-OneDriveWebFiles,
+    Connect-OneDriveWeb, Test-OneDriveSignIn
