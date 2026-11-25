@@ -440,12 +440,13 @@ $sizeRows = New-Object System.Collections.Generic.List[object]
 Assert-Equal 6 (Invoke-FileScan -Library $lib -Channels @('General') -SiteUrl $Sample.Site -MaxFileMB 25 -Rows $sizeRows 6>$null) 'Wrong list size: the file is still read'
 Assert-Equal '3' ((Get-ScanTiming)['Parallel downloads']) 'Wrong list size: parallel downloads go on'
 # Time downloading: the wall time with a download in flight, not the sum of the downloads (3 at once).
-[IonFake.Copy]::Reset(); [IonFake.Copy]::DelayMs = 400
+# 1.5 s per download, so the start of the workers (about 1.4 s in Windows PowerShell 5.1) cannot hide the difference.
+[IonFake.Copy]::Reset(); [IonFake.Copy]::DelayMs = 1500
 Reset-FakePnP $parallelFiles
 Invoke-FileScan -Library $lib -Channels @('General') -SiteUrl $Sample.Site -MaxFileMB 25 -Rows (New-Object System.Collections.Generic.List[object]) 6>$null | Out-Null
 $downloadMs = (& $channelScan { $script:Timing.Download }).TotalMilliseconds
 [IonFake.Copy]::DelayMs = 100
-Assert-Equal $true ($downloadMs -ge 700 -and $downloadMs -lt 2000) ('Time downloading: 6 downloads of 0.4 s, 3 at once, count about 0.8 s, not 2.4 s (got {0:N0} ms)' -f $downloadMs)
+Assert-Equal $true ($downloadMs -ge 2800 -and $downloadMs -lt 6750) ('Time downloading: 6 downloads of 1.5 s, 3 at once, count about 3 s, not 9 s (got {0:N0} ms)' -f $downloadMs)
 # A '#' file on the main thread while workers download: the Busy clock pauses for its download only, and runs while
 # the file goes to the readers (review of PR 115).
 $oneFileClock = & $channelScan {
