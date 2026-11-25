@@ -136,4 +136,5 @@ finally {
 
 ## Results
 
-- Waiting on the PAM.
+- Test 3: not run. The PAM, 2026-11-24: build with fallback; the header line "Parallel downloads" of a normal Ion run
+  is the evidence (docs/reviews/2026-11-24-parallel-downloads-design.md). Test 4: waiting on the PAM.
