@@ -95,3 +95,10 @@ The copy of the sign-in works in a worker on DoD365 (the low assumption above is
 modes follow (docs/DECISIONS.md, 2026-11-25): Normal (Enter) = 2 downloads and half the processors for readers; Fast =
 3 downloads and one reader per processor; both at below-normal priority.
 
+Speed modes merged 2026-11-25 (PR 119). Open after its fix review (MINOR and NIT, for a later lane B change):
+- tests/EndToEnd.Tests.ps1 "Enter gives Normal again in the next run" cannot fail: each run re-imports the modules,
+  which sets Normal.
+- The Fast pool test proves nothing on a 1-processor runner.
+- README Speed line: Normal is also capped at 8 readers; "processors read files" and "reader" name one thing twice.
+- src/Find-ChannelPII.ps1 comment "Fast = all": Fast is one reader per processor (at most 8) and 3 downloads.
+
