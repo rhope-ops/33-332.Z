@@ -429,6 +429,7 @@ Assert-Equal 3 (Invoke-FileScan -Library $lib -Channels @('General') -SiteUrl $S
 Assert-Equal 'off (NoWorker)' ((Get-ScanTiming)['Parallel downloads']) 'No worker left: parallel downloads stop, the header says NoWorker'
 Assert-Equal 3 @($noWorkerRows | Where-Object { $_.Detector -eq 'NOT SCANNED' -and $_.Context -like 'Download failed*' }).Count 'No worker left: a NOT SCANNED row per refused file'
 & $channelScan { $script:DownloadSecondsLimit = 180 }
+# The fake copy of the connection again: every copy works.
 & $channelScan { $script:CloneContext = { param($context, $site) New-FakeConnectionCopy } }
 # The list size is wrong (the worker and the main thread get the same other size): the file is read, and parallel
 # downloads go on (the copy of the connection is not at fault).
