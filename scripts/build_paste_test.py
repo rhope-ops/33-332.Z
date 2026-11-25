@@ -4,7 +4,8 @@
 It proves: the build is the same text twice (no time stamp or random part); the header lists every source with the
 first 12 characters of the SHA-256 of its text; each module appears once, in the READERS/MODULES order, and every src/*.psm1 is in MODULES; two
 modules that define the same function stop the build; a module's export list and Set-StrictMode line are dropped; the
-retired .ps1 copy (DEC 8) is absent; the README "Open the script" link and the site button point at the bundle named
+retired .ps1 copy (DEC 8) is absent; the paste check's hash line holds the hash of the text from the check's mark to the
+end, which a Settings edit, CRLF line ends or spaces at line ends do not change and a changed character does; the README "Open the script" link and the site button point at the bundle named
 in site.config.json (DEC 7: the one home of the owner, repo and branch).
 Usage:   python3 scripts/build_paste_test.py        (prints "BUILD_PASTE TEST PASS" and exits 0, or names the failure)
 Inputs:  scripts/build_paste.py, src/, README.md, index.html, site.config.json.
@@ -92,6 +93,24 @@ class BuildPasteTest(unittest.TestCase):
         self.assertNotIn('    Get-B', code)
         self.assertNotIn(bp.STRICT_LINE, code)
         self.assertIn('function Get-B {}', code)
+
+    def test_paste_hash_line(self):
+        """The hash line holds paste_hash(); the try, the Settings, the hash line, the mark and the reader block are in that order."""
+        found = re.search(r"^\$IonPasteHash = '([0-9a-f]{64})'", self.text, re.M)
+        self.assertTrue(found)
+        self.assertEqual(found.group(1), bp.paste_hash(self.text))
+        self.assertEqual(len(re.findall('^' + re.escape(bp.CHECK_MARK), self.text, re.M)), 1)
+        order = [self.text.index(mark) for mark in ('\ntry {\n', '# ==== Settings ====', '$IonPasteHash = ', '\n' + bp.CHECK_MARK,
+                                                    '$IonReaderBlock = {')]
+        self.assertEqual(order, sorted(order))
+
+    def test_paste_hash_scope(self):
+        """A Settings edit, CRLF line ends and spaces at line ends keep the hash; one changed character below the mark does not."""
+        base = bp.paste_hash(self.text)
+        self.assertEqual(base, bp.paste_hash(self.text.replace("$SiteUrl = ''", "$SiteUrl = 'https://usaf.dps.mil/teams/x'")))
+        self.assertEqual(base, bp.paste_hash(self.text.replace('\n', ' \t\r\n') + '\r\n\r\n'))
+        self.assertNotEqual(base, bp.paste_hash(self.text.replace('# ==== Reader modules ====', '# ==== Reader module ====')))
+        self.assertEqual('', bp.paste_hash('no mark\n'))
 
     def test_retired_copy_is_absent(self):
         """The retired .ps1 copy is not in paste/ and the bundle is the .txt."""

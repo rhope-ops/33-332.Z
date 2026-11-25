@@ -1,10 +1,11 @@
 <#
-  Ion - DoD365 PII Reporter, build 240bf873 (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
+  Ion - DoD365 PII Reporter, build 039bd0b3 (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
 
   HOW TO RUN
     1. Optional: read this text first (Open the script shows it as a .txt in your browser).
     2. Open Windows PowerShell ISE and choose File > New.
-    3. Paste ALL of this text (Ctrl+V) and press F5.
+    3. Paste ALL of this text (Ctrl+V) and press F5. You see "Paste check: OK". If you see "Paste check:
+       STOPPED", nothing ran: open the script again, copy all of the text and paste it into a new script pane.
     4. When asked, paste a Teams link (... next to the team or channel name > Copy link) or a SharePoint
        site address (in Teams: the Shared tab > ... > Open in SharePoint). Sign in with your CAC.
        If you do not see a sign-in window, press Alt+Tab. Or paste a folder on a drive (X:\<folder> or
@@ -52,49 +53,87 @@
   Credentials: your own CAC sign-in in the PnP sign-in window (a drive folder: your Windows logon); nothing is stored.
 
   Contents (line numbers of this file):
-    line    87  Settings
-    line    99  Reader block
-    line   105  Module PiiPatterns.psm1
-    line   505  Module PiiSignedIds.psm1
-    line   823  Module PiiDetectors.psm1
-    line  1027  Module PiiMasking.psm1
-    line  1274  Module OcrText.psm1
-    line  1427  Module OleText.psm1
-    line  1566  Module ContainerText.psm1
-    line  2014  Module PdfCore.psm1
-    line  2376  Module PdfObjects.psm1
-    line  2734  Module PdfFonts.psm1
-    line  3052  Module PdfShown.psm1
-    line  3303  Module PdfLayout.psm1
-    line  3443  Module PdfContent.psm1
-    line  3773  Module PdfText.psm1
-    line  3965  Module TextExtract.psm1
-    line  4406  Module ReaderPool.psm1
-    line  4731  Reader block end
-    line  4735  Module XlsxWriter.psm1
-    line  5172  Module Report.psm1
-    line  5548  Module ReportBook.psm1
-    line  5852  Module ScanMeter.psm1
-    line  6274  Module ScanQueue.psm1
-    line  6676  Module Accountability.psm1
-    line  7060  Module SiteTarget.psm1
-    line  7417  Module ChannelScan.psm1
-    line  8239  Module DriveScan.psm1
-    line  8854  Body of Find-ChannelPII.ps1
-    line  9060  Clean-up
+    line    89  Settings
+    line   104  Paste check
+    line   138  Reader block
+    line   144  Module PiiPatterns.psm1
+    line   544  Module PiiSignedIds.psm1
+    line   862  Module PiiDetectors.psm1
+    line  1066  Module PiiMasking.psm1
+    line  1313  Module OcrText.psm1
+    line  1466  Module OleText.psm1
+    line  1605  Module ContainerText.psm1
+    line  2053  Module PdfCore.psm1
+    line  2415  Module PdfObjects.psm1
+    line  2773  Module PdfFonts.psm1
+    line  3091  Module PdfShown.psm1
+    line  3342  Module PdfLayout.psm1
+    line  3482  Module PdfContent.psm1
+    line  3812  Module PdfText.psm1
+    line  4004  Module TextExtract.psm1
+    line  4445  Module ReaderPool.psm1
+    line  4770  Reader block end
+    line  4774  Module XlsxWriter.psm1
+    line  5211  Module Report.psm1
+    line  5587  Module ReportBook.psm1
+    line  5891  Module ScanMeter.psm1
+    line  6313  Module ScanQueue.psm1
+    line  6715  Module Accountability.psm1
+    line  7099  Module SiteTarget.psm1
+    line  7456  Module ChannelScan.psm1
+    line  8278  Module DriveScan.psm1
+    line  8893  Body of Find-ChannelPII.ps1
+    line  9099  Clean-up
 #>
+
+# ISE runs pasted text in your session: keep its error setting so the Clean-up block at the end can put it back.
+# The try starts here, before the Settings, so a text that is cut short anywhere below does not parse: nothing runs.
+try {
+$previousErrorAction = $ErrorActionPreference
 
 # ==== Settings ==== (optional: edit the values between the quotes; empty = the script asks)
 $SiteUrl = ''            # the team's Teams link, or its site https://usaf.dps.mil/teams/<team-site>; empty = asked
 $OutputFolder = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Ion')   # results: a folder per site, then per day
 $MaxFileMB = 25          # files larger than this are reported as NOT SCANNED
 
-# ISE runs pasted text in your session: keep its error setting so the Clean-up block at the end can put it back.
-$previousErrorAction = $ErrorActionPreference
-try {
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
-$IonBuild = '240bf873'       # the build ID: Ion shows it at the start (do not edit)
+$IonBuild = '039bd0b3'       # the build ID: Ion shows it at the start (do not edit)
+$IonPasteHash = '81fe3a61eddf5f7830daf88115e71385a5893ad55b72234bd5a52bcdbbf04e84'   # the SHA-256 of the text from the line Paste check to the end (do not edit)
+
+# ==== Paste check ==== (the text from this line to the end must be the published text, or nothing runs)
+$IonPasteCheck = 'not read'
+$pasteText = ''
+try { $pastePath = $PSCommandPath } catch { $pastePath = '' }
+if ($pastePath) { try { $pasteText = [System.IO.File]::ReadAllText($pastePath) } catch { $pasteText = '' } }
+$pasteMark = '(?m)^# ==== Paste check ===='
+if (-not ($pasteText -match $pasteMark) -and (Test-Path -LiteralPath variable:psISE)) {
+    try { $pasteText = [string]$psISE.CurrentFile.Editor.Text } catch { $pasteText = '' }
+}
+if ($pasteText -notmatch $pasteMark) { $pasteText = '' }
+if ($pasteText) {
+    $pasteAt = [regex]::Match($pasteText.Replace("`r`n", "`n"), $pasteMark)
+    $pasteHex = ''
+    if ($pasteAt.Success) {
+        $pasteRest = [regex]::Replace($pasteText.Replace("`r`n", "`n").Substring($pasteAt.Index), '(?m)[ \t]+$', '')
+        $pasteBytes = [System.Text.Encoding]::UTF8.GetBytes($pasteRest.TrimEnd("`n") + "`n")
+        try {
+            $pasteSha = New-Object System.Security.Cryptography.SHA256CryptoServiceProvider
+            try { $pasteHex = [BitConverter]::ToString($pasteSha.ComputeHash($pasteBytes)).Replace('-', '').ToLower() } finally { $pasteSha.Dispose() }
+        }
+        catch { $pasteHex = '' }
+    }
+    if (-not $pasteHex) { $IonPasteCheck = 'no hash' }
+    elseif ($pasteHex -eq $IonPasteHash) { $IonPasteCheck = 'verified' }
+    else {
+        $IonPasteCheck = 'changed'
+        throw 'Paste check: STOPPED. Nothing ran. The pasted text is not the same as the published text. Open the script again, copy all of the text and paste it into a new script pane.'
+    }
+}
+if ($IonPasteCheck -eq 'verified') { Write-Host 'Paste check: OK. The text is complete and not changed.' }
+elseif ($IonPasteCheck -eq 'no hash') { Write-Host 'Paste check: not done. This computer cannot make a SHA-256 hash. The scan continues.' }
+else { Write-Host 'Paste check: not done. Ion cannot read the pasted text back here. The scan continues.' }
+
 
 # ==== Reader modules ==== (one script block: this script loads it as an in-memory module, and each reader
 # worker loads the same text; nothing is read from a file)
