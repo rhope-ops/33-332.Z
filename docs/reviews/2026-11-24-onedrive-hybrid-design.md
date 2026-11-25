@@ -49,7 +49,8 @@ If the sign-in or the mapping fails, Ion scans as now (local only, with the down
 | A2 | They work the same for a synced team library and for a shortcut ("Add shortcut to My files") | not tested | low |
 | A3 | The disk copy has the same content as the web copy; the size difference is SharePoint properties | probe 4 (1 of 9) | medium |
 | A4 | The own CAC sign-in can read the version history of files in the own OneDrive | Accountability works on team sites | medium |
-| A5 | Recall run 2 (3 Office files not scanned in a OneDrive folder) does not change this design | not known until run 3 | low |
+| A5 | Recall run 2 does not change this design: its 3 files got a Purview encryption label after they were saved (run 3) | recall run 3 | high |
+| A6 | A file with an encryption label read through PnP is still encrypted, so it stays a Not scanned row (as on the disk) | not tested | medium |
 
 ## Decisions (the PAM, question dialog, 2026-11-24)
 

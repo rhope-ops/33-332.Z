@@ -209,7 +209,7 @@ the bundle's reader block, the same code as on the gov device.
   | Home address | 5 | 4 | 1 | 0 | 80% |
   | All types | 53 | 35 | 18 | 0 | 66% |
 
-  Analysis (2026-11-24, open):
+  Analysis (2026-11-24; closed by run 3):
   1. Not a Windows PowerShell 5.1 error in PRs 96 and 97 (confidence high). The `ps51` workflow (Windows PowerShell
      5.1, the bundle's reader block in runspaces) gave `RECALL found=53/53 false=0` on the merge of PR 96
      (run 45478038105); `src/` and `paste/` on main are the same since.
@@ -219,5 +219,13 @@ the bundle's reader block, the same code as on the gov device.
      file in the Not scanned tab, the file name, the group and Ion's reason with only the words of a fixed list (`Get-RecallSafeReason`; other words show as `*`).
   4. Assumption, medium confidence: the state of the 3 files on the device changed after run 1 (opened and saved in
      Office with a label, online only, or in use by OneDrive). The new Score line shows which.
-- Run 3: Part 4 again on the workbook of run 2 (the new Score shows why), then Parts 1 to 4 in a new folder with the
-  Build line. Expected for fresh files: `found 53 of 53, false 0`.
+- Run 3, 2026-11-24 (the PAM, by e-mail; counts only):
+  1. Score again on the workbook of run 2: the "Why" lines give the cause. All 3 files are in the group "Sensitivity label
+     with encryption" (reason: "Sensitivity label with encryption (Microsoft Purview): open it and check by hand"). The
+     labels came onto the files after run 1, so Ion could not open them. Ion reported it correctly: not a defect.
+  2. New test files in a new folder, scanned and scored: `found 53 of 53, false 0` (recall 100%, precision 100%). Test
+     files in the Not scanned tab: 0. Every type and form 100%. Build line not copied (grey line, missed); the result
+     matches only the Ion after PRs 96 and 97 (the Ion before them finds 46).
+  What it proves: on the gov device, Ion finds all 53 planted values with no false hit, the same as Linux and the
+  `ps51` workflow. Lesson for OneDrive (plan step 4): an Office file in OneDrive can get an encryption label after it
+  is saved; Ion then lists it in the Not scanned tab.
