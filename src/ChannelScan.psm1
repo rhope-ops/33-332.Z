@@ -400,19 +400,27 @@ function Invoke-OneFileScan {
       https://<host>
     .PARAMETER MaxFileMB
       The size limit.
+    .PARAMETER Pool
+      Optional: the download pool (New-DownloadPool) while worker downloads run. Its Busy clock pauses for this
+      download only (counted here), and runs again while the file goes to the readers (the workers still download).
     .OUTPUTS
       [bool] true when the file went to the readers (else its rows are in and it still needs counting).
     #>
-    param([hashtable]$Queue, $File, [string]$Channel, [string]$Prefix, [string]$Origin, [int]$MaxFileMB)
+    param([hashtable]$Queue, $File, [string]$Channel, [string]$Prefix, [string]$Origin, [int]$MaxFileMB, [hashtable]$Pool)
     $prepared = Start-FileScan $Queue $File $Channel $Prefix $Origin $MaxFileMB
     if (-not $prepared) { return $false }
+    $paused = $Pool -and $Pool.Busy.IsRunning
+    if ($paused) { $Pool.Busy.Stop() }   # no double count: this download's time is counted on its own
     $clock = [Diagnostics.Stopwatch]::StartNew()
     try { $bytes = Get-FileBytes $prepared.Ref $prepared.Size }
     catch {
         # One file that cannot be downloaded must not stop the scan: note it and go on.
         Add-DownloadFailedRow $Queue $prepared $_.Exception.Message; return $false
     }
-    finally { $script:Timing.Download += $clock.Elapsed; Write-Progress -Id 2 -Activity $script:DownloadStep -Completed }
+    finally {
+        $script:Timing.Download += $clock.Elapsed; Write-Progress -Id 2 -Activity $script:DownloadStep -Completed
+        if ($paused -and $Pool.Jobs.Count -gt 0) { $Pool.Busy.Start() }
+    }
     # The main thread downloads the next file while workers read this one (speed, the PAM 2026-11-21).
     Complete-FileScan $Queue $prepared $bytes
     return $true
@@ -469,7 +477,9 @@ function New-DownloadPool {
     .PARAMETER SiteUrl
       The signed-in site.
     .OUTPUTS
-      [hashtable] the pool state (On, State: the header text "2" or "3", or "off (<error type>)").
+      [hashtable] the pool state (On, State: the header text "2" or "3", or "off (<reason>)"). The reason is the type
+      name of the error, or one of Ion's own names: WrongSize (not the size the list gives), NoResult (the worker gave
+      nothing back), NoWorker (no copy of the connection left).
     #>
     param([string]$SiteUrl)
     $count = $script:NormalDownloads
@@ -603,7 +613,8 @@ function Complete-Download {
     .SYNOPSIS
       A finished worker download: its bytes to the readers. A failed one is tried once more on the main thread: when
       that works, the copy of the connection is at fault and parallel downloads stop for the rest of the scan; when it
-      also fails, the file is at fault: its NOT SCANNED row, and parallel downloads go on.
+      also fails, the file is at fault: its NOT SCANNED row, and parallel downloads go on. A WrongSize that the main
+      thread gets too (the same other size) is a fault of the list size, not of the copy: parallel downloads go on.
     .PARAMETER Queue
       Output of New-ScanQueue.
     .PARAMETER State
@@ -664,11 +675,8 @@ function Invoke-ParallelGroup {
                 # '#' and '%' break the client call's address (as for the stream): such a file takes the main thread's download.
                 if (-not $State.On -or $ref.IndexOfAny([char[]]'#%') -ge 0) {
                     $first = $Queue.Rows.Count
-                    # Its download time is counted on its own: the burst clock pauses (no double count, review of PR 115).
-                    $running = $State.Busy.IsRunning
-                    $State.Busy.Stop()
-                    try { if (-not (Invoke-OneFileScan $Queue $file $Group.Name $Group.Prefix $Origin $MaxFileMB)) { & $count $first } }
-                    finally { if ($running -and $State.Jobs.Count -gt 0) { $State.Busy.Start() } }
+                    # The Busy clock pauses for its download only, not while it goes to the readers (review of PR 115).
+                    if (-not (Invoke-OneFileScan $Queue $file $Group.Name $Group.Prefix $Origin $MaxFileMB -Pool $State)) { & $count $first }
                     continue
                 }
                 $first = $Queue.Rows.Count
@@ -716,7 +724,7 @@ function Close-DownloadPool {
 
 function Get-ScanTiming {
     # The time of the last file scan spent downloading (wall time with a download in flight) and spent reading, as
-    # minutes:seconds text, and its parallel downloads ("2" or "3", or "off (<error type>)").
+    # minutes:seconds text, and its parallel downloads ("2" or "3", or "off (<reason>)": New-DownloadPool names the reasons).
     $timing = [ordered]@{ 'Time downloading' = (Format-Duration $script:Timing.Download); 'Time reading files (all readers)' = (Format-Duration $script:Timing.Check) }
     if ($script:ParallelState) { $timing['Parallel downloads'] = $script:ParallelState }
     return $timing

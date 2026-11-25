@@ -1,5 +1,5 @@
 <#
-  Ion - DoD365 PII Reporter, build 4f053807 (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
+  Ion - DoD365 PII Reporter, build bca79894 (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
 
   HOW TO RUN
     1. Optional: read this text first (Open the script shows it as a .txt in your browser).
@@ -35,7 +35,7 @@
     src/PdfContent.psm1, sha256 85ee6cfeaf8f
     src/PdfText.psm1, sha256 dffef7dc6f8b
     src/TextExtract.psm1, sha256 18f1eb17ebf9
-    src/ReaderPool.psm1, sha256 1b209514ad6b
+    src/ReaderPool.psm1, sha256 e5865e4bc160
     src/XlsxWriter.psm1, sha256 56c1ec673d09
     src/Report.psm1, sha256 ef3a24aa8a55
     src/ReportBook.psm1, sha256 36823a05d39b
@@ -43,9 +43,9 @@
     src/ScanQueue.psm1, sha256 994908e5db1b
     src/Accountability.psm1, sha256 8bf31404f723
     src/SiteTarget.psm1, sha256 2e693a68f413
-    src/ChannelScan.psm1, sha256 2c367cf77f5c
+    src/ChannelScan.psm1, sha256 55f485157624
     src/DriveScan.psm1, sha256 58850f316f96
-    src/Find-ChannelPII.ps1, sha256 cfc3f07031c2
+    src/Find-ChannelPII.ps1, sha256 485aca86fc94
 
   Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.
   Run target: Windows PowerShell 5.1 with PnP.PowerShell 1.12.0; no admin rights, no file to unblock.
@@ -73,18 +73,18 @@
     line  3814  Module PdfText.psm1
     line  4006  Module TextExtract.psm1
     line  4447  Module ReaderPool.psm1
-    line  4811  Reader block end
-    line  4815  Module XlsxWriter.psm1
-    line  5252  Module Report.psm1
-    line  5628  Module ReportBook.psm1
-    line  5932  Module ScanMeter.psm1
-    line  6354  Module ScanQueue.psm1
-    line  6756  Module Accountability.psm1
-    line  7140  Module SiteTarget.psm1
-    line  7497  Module ChannelScan.psm1
-    line  8323  Module DriveScan.psm1
-    line  8938  Body of Find-ChannelPII.ps1
-    line  9154  Clean-up
+    line  4814  Reader block end
+    line  4818  Module XlsxWriter.psm1
+    line  5255  Module Report.psm1
+    line  5631  Module ReportBook.psm1
+    line  5935  Module ScanMeter.psm1
+    line  6357  Module ScanQueue.psm1
+    line  6759  Module Accountability.psm1
+    line  7143  Module SiteTarget.psm1
+    line  7500  Module ChannelScan.psm1
+    line  8334  Module DriveScan.psm1
+    line  8949  Body of Find-ChannelPII.ps1
+    line  9165  Clean-up
 #>
 
 # ISE runs pasted text in your session: keep its error setting so the Clean-up block at the end can put it back.
@@ -97,12 +97,12 @@ $SiteUrl = ''            # the team's Teams link, or its site https://usaf.dps.m
 $OutputFolder = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Ion')   # results: a folder per site, then per day
 $MaxFileMB = 25          # files larger than this are reported as NOT SCANNED
 
-$IonPasteHash = 'eec07688306564bf38233837edc543f62a124189b8d03c1d4cee7cecd71f42ee'   # the SHA-256 of the text from the line Paste check to the end (do not edit)
+$IonPasteHash = '0be9af62d251b41a913d8b632dd0795b5c177d615dc9aa2c06bb991cdc3577f9'   # the SHA-256 of the text from the line Paste check to the end (do not edit)
 
 # ==== Paste check ==== (the text from this line to the end must be the published text, or nothing runs)
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
-$IonBuild = '4f053807'       # the build ID: Ion shows it at the start (do not edit)
+$IonBuild = 'bca79894'       # the build ID: Ion shows it at the start (do not edit)
 $IonPasteCheck = 'not read'
 $pasteText = ''
 try { $pastePath = $PSCommandPath } catch { $pastePath = '' }   # no script path: read the ISE pane
@@ -4472,6 +4472,9 @@ $script:FirstWorkers = 2
 # The run's speed (the PAM, 2026-11-25: a Fast run made the fan loud): 'Normal' uses at most half the processors for
 # readers; 'Fast' one per processor. In both, workers run at below-normal Windows priority, so other programs come first.
 $script:ScanSpeed = 'Normal'
+
+# The processors of this computer (tests set another count, so a Fast test holds on a runner with 1 processor).
+$script:Processors = [Environment]::ProcessorCount
 # The target is reviewed after every this many finished files: up one when the MB per second rose by more than
 # $GrowthStep, down one when it fell by more than $DropStep.
 $script:ReviewEvery = 6
@@ -4640,7 +4643,7 @@ function New-ReaderPool {
     param([hashtable]$Init)
     if (-not $Init) { $Init = @{ Paths = @(Get-Module $script:ReaderModules | ForEach-Object { $_.Path }) } }
     $script:LastInit = $Init
-    $max = Get-ReaderLimit $script:ScanSpeed ([Environment]::ProcessorCount)
+    $max = Get-ReaderLimit $script:ScanSpeed $script:Processors
     $pool = [runspacefactory]::CreateRunspacePool(1, $max)
     $pool.Open()
     return @{ Pool = $pool; Init = $Init; Jobs = (New-Object System.Collections.Generic.List[object]); Max = $max
@@ -7896,19 +7899,27 @@ function Invoke-OneFileScan {
       https://<host>
     .PARAMETER MaxFileMB
       The size limit.
+    .PARAMETER Pool
+      Optional: the download pool (New-DownloadPool) while worker downloads run. Its Busy clock pauses for this
+      download only (counted here), and runs again while the file goes to the readers (the workers still download).
     .OUTPUTS
       [bool] true when the file went to the readers (else its rows are in and it still needs counting).
     #>
-    param([hashtable]$Queue, $File, [string]$Channel, [string]$Prefix, [string]$Origin, [int]$MaxFileMB)
+    param([hashtable]$Queue, $File, [string]$Channel, [string]$Prefix, [string]$Origin, [int]$MaxFileMB, [hashtable]$Pool)
     $prepared = Start-FileScan $Queue $File $Channel $Prefix $Origin $MaxFileMB
     if (-not $prepared) { return $false }
+    $paused = $Pool -and $Pool.Busy.IsRunning
+    if ($paused) { $Pool.Busy.Stop() }   # no double count: this download's time is counted on its own
     $clock = [Diagnostics.Stopwatch]::StartNew()
     try { $bytes = Get-FileBytes $prepared.Ref $prepared.Size }
     catch {
         # One file that cannot be downloaded must not stop the scan: note it and go on.
         Add-DownloadFailedRow $Queue $prepared $_.Exception.Message; return $false
     }
-    finally { $script:Timing.Download += $clock.Elapsed; Write-Progress -Id 2 -Activity $script:DownloadStep -Completed }
+    finally {
+        $script:Timing.Download += $clock.Elapsed; Write-Progress -Id 2 -Activity $script:DownloadStep -Completed
+        if ($paused -and $Pool.Jobs.Count -gt 0) { $Pool.Busy.Start() }
+    }
     # The main thread downloads the next file while workers read this one (speed, the PAM 2026-11-21).
     Complete-FileScan $Queue $prepared $bytes
     return $true
@@ -7965,7 +7976,9 @@ function New-DownloadPool {
     .PARAMETER SiteUrl
       The signed-in site.
     .OUTPUTS
-      [hashtable] the pool state (On, State: the header text "2" or "3", or "off (<error type>)").
+      [hashtable] the pool state (On, State: the header text "2" or "3", or "off (<reason>)"). The reason is the type
+      name of the error, or one of Ion's own names: WrongSize (not the size the list gives), NoResult (the worker gave
+      nothing back), NoWorker (no copy of the connection left).
     #>
     param([string]$SiteUrl)
     $count = $script:NormalDownloads
@@ -8099,7 +8112,8 @@ function Complete-Download {
     .SYNOPSIS
       A finished worker download: its bytes to the readers. A failed one is tried once more on the main thread: when
       that works, the copy of the connection is at fault and parallel downloads stop for the rest of the scan; when it
-      also fails, the file is at fault: its NOT SCANNED row, and parallel downloads go on.
+      also fails, the file is at fault: its NOT SCANNED row, and parallel downloads go on. A WrongSize that the main
+      thread gets too (the same other size) is a fault of the list size, not of the copy: parallel downloads go on.
     .PARAMETER Queue
       Output of New-ScanQueue.
     .PARAMETER State
@@ -8160,11 +8174,8 @@ function Invoke-ParallelGroup {
                 # '#' and '%' break the client call's address (as for the stream): such a file takes the main thread's download.
                 if (-not $State.On -or $ref.IndexOfAny([char[]]'#%') -ge 0) {
                     $first = $Queue.Rows.Count
-                    # Its download time is counted on its own: the burst clock pauses (no double count, review of PR 115).
-                    $running = $State.Busy.IsRunning
-                    $State.Busy.Stop()
-                    try { if (-not (Invoke-OneFileScan $Queue $file $Group.Name $Group.Prefix $Origin $MaxFileMB)) { & $count $first } }
-                    finally { if ($running -and $State.Jobs.Count -gt 0) { $State.Busy.Start() } }
+                    # The Busy clock pauses for its download only, not while it goes to the readers (review of PR 115).
+                    if (-not (Invoke-OneFileScan $Queue $file $Group.Name $Group.Prefix $Origin $MaxFileMB -Pool $State)) { & $count $first }
                     continue
                 }
                 $first = $Queue.Rows.Count
@@ -8212,7 +8223,7 @@ function Close-DownloadPool {
 
 function Get-ScanTiming {
     # The time of the last file scan spent downloading (wall time with a download in flight) and spent reading, as
-    # minutes:seconds text, and its parallel downloads ("2" or "3", or "off (<error type>)").
+    # minutes:seconds text, and its parallel downloads ("2" or "3", or "off (<reason>)": New-DownloadPool names the reasons).
     $timing = [ordered]@{ 'Time downloading' = (Format-Duration $script:Timing.Download); 'Time reading files (all readers)' = (Format-Duration $script:Timing.Check) }
     if ($script:ParallelState) { $timing['Parallel downloads'] = $script:ParallelState }
     return $timing
@@ -9114,8 +9125,8 @@ $script:IonSignInTried = $false   # true after the first site sign-in is tried: 
 # the run signs out once here, at its end, also after an error or Ctrl+C ('finally' runs on both).
 try {
     $targets = @(Read-ScanTargetList $SiteUrl 'What to scan')
-    # Speed, asked once per run (the PAM, 2026-11-25): Normal (Enter) = half the processors and 2 downloads; Fast = one reader per
-    # processor (at most 8) and 3 downloads.
+    # Speed, asked once per run (the PAM, 2026-11-25): Normal (Enter) = one reader per 2 processors (at most 8) and 2 downloads;
+    # Fast = one reader per processor (at most 8) and 3 downloads.
     if ($targets.Count -gt 0) {
         # A note on each mode, so the person can decide (from the PAM's words, 2026-11-25).
         Write-Ui 'Choose how much of this computer Ion uses:' 'Text'

@@ -26,6 +26,9 @@ $script:FirstWorkers = 2
 # The run's speed (the PAM, 2026-11-25: a Fast run made the fan loud): 'Normal' uses at most half the processors for
 # readers; 'Fast' one per processor. In both, workers run at below-normal Windows priority, so other programs come first.
 $script:ScanSpeed = 'Normal'
+
+# The processors of this computer (tests set another count, so a Fast test holds on a runner with 1 processor).
+$script:Processors = [Environment]::ProcessorCount
 # The target is reviewed after every this many finished files: up one when the MB per second rose by more than
 # $GrowthStep, down one when it fell by more than $DropStep.
 $script:ReviewEvery = 6
@@ -194,7 +197,7 @@ function New-ReaderPool {
     param([hashtable]$Init)
     if (-not $Init) { $Init = @{ Paths = @(Get-Module $script:ReaderModules | ForEach-Object { $_.Path }) } }
     $script:LastInit = $Init
-    $max = Get-ReaderLimit $script:ScanSpeed ([Environment]::ProcessorCount)
+    $max = Get-ReaderLimit $script:ScanSpeed $script:Processors
     $pool = [runspacefactory]::CreateRunspacePool(1, $max)
     $pool.Open()
     return @{ Pool = $pool; Init = $Init; Jobs = (New-Object System.Collections.Generic.List[object]); Max = $max

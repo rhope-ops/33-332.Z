@@ -409,7 +409,75 @@ $slowRows = New-Object System.Collections.Generic.List[object]
 Assert-Equal 6 (Invoke-FileScan -Library $lib -Channels @('General') -SiteUrl $Sample.Site -MaxFileMB 25 -Rows $slowRows 6>$null) 'A download over the time limit: the scan goes on'
 Assert-Equal 'off (TimeoutException)' ((Get-ScanTiming)['Parallel downloads']) 'A download over the time limit: tried on the main thread, then one at a time'
 Assert-Equal 1 @($slowRows | Where-Object { $_.Item -eq 'part1.txt' -and $_.Detector -eq 'Phone' }).Count 'A download over the time limit: its PII is still found'
+# No worker left: each worker goes over the time limit, its file fails on the main thread too, and no new copy of the
+# connection can be made. Parallel downloads stop ("NoWorker"), and the other files come one at a time.
+& $channelScan {
+    $script:CopiesMade = 0
+    # Fake copy of the connection: the first 3 work (the pool), each later one fails (no new worker).
+    $script:CloneContext = {
+        param($context, $site)
+        $script:CopiesMade++
+        if ($script:CopiesMade -gt 3) { throw 'FAKE: no copy' }
+        New-FakeConnectionCopy
+    }
+}
+[IonFake.Copy]::Reset(); foreach ($n in 4, 5, 6) { [IonFake.Copy]::Modes["$library/General/part$n.txt"] = 'hang' }
+Reset-FakePnP $parallelFiles
+Set-FakeRefusedFile @("$library/General/part4.txt", "$library/General/part5.txt", "$library/General/part6.txt")
+$noWorkerRows = New-Object System.Collections.Generic.List[object]
+Assert-Equal 3 (Invoke-FileScan -Library $lib -Channels @('General') -SiteUrl $Sample.Site -MaxFileMB 25 -Rows $noWorkerRows 6>$null) 'No worker left: the other files are read one at a time'
+Assert-Equal 'off (NoWorker)' ((Get-ScanTiming)['Parallel downloads']) 'No worker left: parallel downloads stop, the header says NoWorker'
+Assert-Equal 3 @($noWorkerRows | Where-Object { $_.Detector -eq 'NOT SCANNED' -and $_.Context -like 'Download failed*' }).Count 'No worker left: a NOT SCANNED row per refused file'
 & $channelScan { $script:DownloadSecondsLimit = 180 }
+# The fake copy of the connection again: every copy works.
+& $channelScan { $script:CloneContext = { param($context, $site) New-FakeConnectionCopy } }
+# The list size is wrong (the worker and the main thread get the same other size): the file is read, and parallel
+# downloads go on (the copy of the connection is not at fault).
+[IonFake.Copy]::Reset()
+Reset-FakePnP $parallelFiles
+Set-FakeListSize "$library/General/part6.txt" ($parallelFiles["$library/General/part6.txt"].Length + 5)
+$sizeRows = New-Object System.Collections.Generic.List[object]
+Assert-Equal 6 (Invoke-FileScan -Library $lib -Channels @('General') -SiteUrl $Sample.Site -MaxFileMB 25 -Rows $sizeRows 6>$null) 'Wrong list size: the file is still read'
+Assert-Equal '3' ((Get-ScanTiming)['Parallel downloads']) 'Wrong list size: parallel downloads go on'
+# Time downloading: the wall time with a download in flight, not the sum of the downloads (3 at once).
+# 1.5 s per download, so the start of the workers (about 1.4 s in Windows PowerShell 5.1) cannot hide the difference.
+[IonFake.Copy]::Reset(); [IonFake.Copy]::DelayMs = 1500
+Reset-FakePnP $parallelFiles
+Invoke-FileScan -Library $lib -Channels @('General') -SiteUrl $Sample.Site -MaxFileMB 25 -Rows (New-Object System.Collections.Generic.List[object]) 6>$null | Out-Null
+$downloadMs = (& $channelScan { $script:Timing.Download }).TotalMilliseconds
+[IonFake.Copy]::DelayMs = 100
+Assert-Equal $true ($downloadMs -ge 2800 -and $downloadMs -lt 6750) ('Time downloading: 6 downloads of 1.5 s, 3 at once, count about 3 s, not 9 s (got {0:N0} ms)' -f $downloadMs)
+# A '#' file on the main thread while workers download: the Busy clock pauses for its download only, and runs while
+# the file goes to the readers (review of PR 115).
+$oneFileClock = & $channelScan {
+    $saved = @{}; foreach ($name in 'Start-FileScan', 'Get-FileBytes', 'Complete-FileScan') { $saved[$name] = (Get-Item "function:$name").ScriptBlock }
+    $pool = @{ Busy = [Diagnostics.Stopwatch]::StartNew(); Jobs = (New-Object System.Collections.Generic.List[object]) }
+    $pool.Jobs.Add(@{})
+    $seen = @{}
+    Set-Item function:script:Start-FileScan { @{ Ref = '/a#b.txt'; Size = 1 } }
+    Set-Item function:script:Get-FileBytes { $seen.Running = $pool.Busy.IsRunning; Start-Sleep -Milliseconds 200; $seen.AtDownload = $pool.Busy.ElapsedMilliseconds; , [byte[]](1) }.GetNewClosure()
+    Set-Item function:script:Complete-FileScan { Start-Sleep -Milliseconds 300 }
+    $script:Timing = @{ Download = [TimeSpan]::Zero; Check = [TimeSpan]::Zero }
+    try { [void](Invoke-OneFileScan @{} $null 'General' '' '' 25 -Pool $pool) }
+    finally { foreach ($name in $saved.Keys) { Set-Item "function:script:$name" $saved[$name] } }
+    '{0}|{1}|{2}|{3}' -f $seen.Running, $pool.Busy.IsRunning, ($pool.Busy.ElapsedMilliseconds - $seen.AtDownload -ge 250), ($script:Timing.Download.TotalMilliseconds -ge 150)
+}
+Assert-Equal 'False|True|True|True' $oneFileClock "A '#' file: the Busy clock pauses for its download, runs again while it goes to the readers, and its download is counted"
+# The bytes done go under a key of the job, not of the worker: a stopped download cannot change a later job's count.
+$jobKeys = & $channelScan {
+    param($site, $folder)
+    $state = New-DownloadPool $site
+    try {
+        Start-DownloadJob $state @{ Ref = "$folder/part1.txt"; Size = 0 }
+        $first = $state.Jobs[0]
+        Stop-DownloadJob $state $first
+        Start-DownloadJob $state @{ Ref = "$folder/part2.txt"; Size = 0 }
+        $second = $state.Jobs[0]
+        '{0}|{1}' -f ($second.Slot -eq $first.Slot), ($second.Key -ne $first.Key)
+    }
+    finally { Close-DownloadPool $state }
+} $Sample.Site "$library/General"
+Assert-Equal 'True|True' $jobKeys 'Per-job byte keys: a new job on the same worker gets its own key'
 & $channelScan { param($opener) $script:OpenDirectStream = $opener } $normalOpener
 & $channelScan { param($copy) $script:CloneContext = $copy } $normalCopy
 Set-ScanSpeed 'Normal'

@@ -182,9 +182,16 @@ Set-FakeSpeedAnswer ' F '
 $fastShown = (& $script -SiteUrl $Sample.Site -OutputFolder (Join-Path $runFolder 'fast') 6>&1 | ForEach-Object { [string]$_ }) -join ' '
 Assert-Equal $true ($fastShown -match 'Normal: uses less power and memory\..*Fast: +resource intensive\.') 'Speed: a note on each mode'
 Assert-Equal 'Fast' (Get-ScanSpeed) 'Speed: the answer f (any case, spaces) gives Fast'
+# 4 processors (set here, so the test also holds on a runner with 1 processor): Fast 4 readers, Normal 2.
+& (Get-Module ReaderPool) { $script:Processors = 4 }
 $fastPool = New-ReaderPool @{}
-try { Assert-Equal (Get-ReaderLimit 'Fast' ([Environment]::ProcessorCount)) $fastPool.Max 'Speed: the reader pool follows Fast' } finally { Close-ReaderPool $fastPool }
+try { Assert-Equal 4 $fastPool.Max 'Speed: the reader pool follows Fast (4 of 4 processors)' } finally { Close-ReaderPool $fastPool }
+Set-ScanSpeed 'Normal'
+$normalPool = New-ReaderPool @{}
+try { Assert-Equal 2 $normalPool.Max 'Speed: the reader pool follows Normal (2 of 4 processors)' } finally { Close-ReaderPool $normalPool }
+# Fast is set right before the answer Enter: only the answer can give Normal (the new import of the modules gives it too).
 Reset-FakePnP @{ "$library/General/notes.txt" = $Txt }
+Set-FakeSpeedAnswer '' -Before 'Fast'
 & $script -SiteUrl $Sample.Site -OutputFolder (Join-Path $runFolder 'normal') 6>$null
 Assert-Equal 'Normal' (Get-ScanSpeed) 'Speed: Enter gives Normal again in the next run'
 # A cancel at "Scan more" (as Ctrl+C) leaves the script with an error: the run still signs out.

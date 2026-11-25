@@ -49,7 +49,9 @@ function Reset-FakePnP {
         OpenAnswer  = ''                                          # the answer to "Open the workbook now?" ('' = Enter = yes)
         ScanAnswer  = ''                                          # the answer to "Scan now?" ('' = Enter = yes)
         SpeedAnswer = ''                                          # the answer to "Speed: [N]ormal or [F]ast?" ('' = Enter = Normal)
-        RefusedFile = ''                                          # a path that Get-PnPFile refuses ('' = none)
+        SpeedBefore = ''                                          # a speed set right before that answer ('' = none)
+        RefusedFile = @()                                         # the paths that Get-PnPFile refuses (none = empty)
+        ListSizes   = @{}                                         # a list size per path that differs from its bytes (none = empty)
         Calls       = New-Object System.Collections.Generic.List[string]
         Progress    = New-Object System.Collections.Generic.List[string]
     }
@@ -62,15 +64,23 @@ function Set-FakePnPOption {
 }
 
 function Set-FakeSpeedAnswer {
-    # The answer to "Speed: [N]ormal or [F]ast?" ('' = Enter = Normal).
-    param([string]$Answer)
+    # The answer to "Speed: [N]ormal or [F]ast?" ('' = Enter = Normal). Before: a speed set right before the answer, so
+    # a test sees that the answer sets the speed (each run imports the modules again, which also gives Normal).
+    param([string]$Answer, [string]$Before = '')
     $global:FakePnP.SpeedAnswer = $Answer
+    $global:FakePnP.SpeedBefore = $Before
 }
 
 function Set-FakeRefusedFile {
-    # One file path that the fake Get-PnPFile refuses (also on the main connection); '' for none.
-    param([string]$Path)
-    $global:FakePnP.RefusedFile = $Path
+    # The file paths that the fake Get-PnPFile refuses (also on the main connection); none for none.
+    param([string[]]$Path)
+    $global:FakePnP.RefusedFile = @($Path | Where-Object { $_ })
+}
+
+function Set-FakeListSize {
+    # The size that the fake list gives for one path (a list size that is not the size of its bytes).
+    param([string]$Path, [long]$Size)
+    $global:FakePnP.ListSizes[$Path] = $Size
 }
 
 function Set-FakeRootAnswer {
@@ -210,8 +220,10 @@ function global:Get-PnPListItem {
     else { @{ FileLeafRef = 'General'; FileRef = '/sites/TeamA/Shared Documents/General'; FSObjType = 1 } }
     foreach ($path in $global:FakePnP.Files.Keys) {
         if ($FolderServerRelativeUrl -and -not $path.StartsWith($FolderServerRelativeUrl + '/')) { continue }
+        $size = [string]$global:FakePnP.Files[$path].Length
+        if ($global:FakePnP.ListSizes.ContainsKey($path)) { $size = [string]$global:FakePnP.ListSizes[$path] }
         @{ FileLeafRef = ($path -split '/')[-1]; FileRef = $path; FSObjType = 0
-           File_x0020_Size = [string]$global:FakePnP.Files[$path].Length; Modified = [datetime]'2026-11-01'
+           File_x0020_Size = $size; Modified = [datetime]'2026-11-01'
            UniqueId = [guid]'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' }
     }
 }
@@ -219,7 +231,7 @@ function global:Get-PnPListItem {
 function global:Get-PnPFile {
     # Fake: the file bytes as a memory stream (a later PnP version's -AsMemoryStream).
     [CmdletBinding()] param($Url, [switch]$AsMemoryStream)
-    if ($global:FakePnP.RefusedFile -and $Url -eq $global:FakePnP.RefusedFile) { throw 'FAKE: file refused' }
+    if (@($global:FakePnP.RefusedFile) -contains $Url) { throw 'FAKE: file refused' }
     New-Object System.IO.MemoryStream(, $global:FakePnP.Files[$Url])
 }
 
@@ -337,6 +349,7 @@ function global:Read-Host {
     if ([string]$Prompt -like 'Speed:*') {
         $global:FakePnP.Calls.Add('Speed question')
         Write-Information '[Speed question]' -InformationAction Continue   # in the screen output, so a test sees the order
+        if ($global:FakePnP.SpeedBefore) { Set-ScanSpeed $global:FakePnP.SpeedBefore }
         return $global:FakePnP.SpeedAnswer
     }
     if ([string]$Prompt -like 'Scan these*') { $global:FakePnP.Calls.Add('List question'); return $global:FakePnP.ScanAnswer }
