@@ -15,48 +15,25 @@ The PAM approved this plan on 2026-11-21 (docs/DECISIONS.md, newest row). Step 1
 ## How to run test 4
 
 Test 3 does not run (Results, below); its text is in the git history of this file (before 2026-11-25). Test 4 is a
-.txt file (Project rules, "Paste format", 2026-11-23): `docs/reviews/2026-11-25-view-count-test-4.txt`. Before you
-start, choose 1 file on your team site that people opened in the last 90 days.
+.txt file (Project rules, "Paste format", 2026-11-23): `docs/reviews/2026-11-25-view-count-test-4.txt`.
 
-1. In your web browser, open the folder of the file on your team site. You see the files of the folder. Write down the name of the file as the column **Name** shows it, for example `Report.pdf`. Go on.
-2. Close every **Windows PowerShell ISE** window. You see no ISE window. Go on.
-3. Open **Windows PowerShell ISE**. You see the window **Windows PowerShell ISE**. Go on.
-4. In the window **Windows PowerShell ISE**, do these actions:
-   1. Click **File**.
-   2. Click **New**.
-   You see an empty script pane **Untitled1.ps1**. Go on.
-5. In your web browser, open `https://raw.githubusercontent.com/rhope-ops/33-332.Z/main/docs/reviews/2026-11-25-view-count-test-4.txt`. You see the test as text. The first line starts with `# Ion test 4`. Go on.
-6. In the browser page with the test, do these actions:
-   1. Press **Ctrl+A**.
-   2. Press **Ctrl+C**.
-   You see all the test text selected. Go on.
-7. In the script pane **Untitled1.ps1**, press **Ctrl+V**. You see the test text in the pane. Go on.
-8. In the window **Windows PowerShell ISE**, press **F5**. You see the question **Question 1: the address of the folder page in your web browser**. Go on.
-9. In your web browser, on the page of the folder, do these actions:
-   1. Click the address bar.
-   2. Press **Ctrl+C**.
-   You see the address selected. Go on.
-10. On the question **Question 1** in **Windows PowerShell ISE**, do these actions:
-    1. Press **Ctrl+V**.
-    2. Press **Enter**.
-    You see **Question 2**. Go on.
-11. On the question **Question 2**, do these actions:
-    1. Type the file name that you wrote down, for example `Report.pdf`.
-    2. Press **Enter**.
-    You see that the screen clears. Then you see the line `T4 test version=2026-11-25e`. Go on.
-12. If a window asks if you want to continue running scripts, click **Yes**. The window closes. Go on.
-13. If a sign-in window opens, sign in with your CAC. The window closes. The sign-in can take 2 minutes or more. Go on.
-14. In the ISE output pane, wait until the line **Done.** shows. Do not copy before then.
-15. In the ISE output pane, do these actions:
-    1. Select the lines from the first line to **Done.**.
-    2. Press **Ctrl+C**.
-    You see the lines selected. Go on.
-16. In an e-mail to yourself, do these actions:
-    1. Type `test 4`.
-    2. Press **Enter**.
-    3. Press **Ctrl+V**.
-    4. Click **Send**.
-    You see the message in your sent mail. The task is complete.
+1. In your web browser, on your team site, find a file that people opened in the last 90 days.
+2. In your web browser, open the folder of that file. Write down the file name as the column **Name** shows it, for example `Report.pdf`.
+3. Close every **Windows PowerShell ISE** window.
+4. Open **Windows PowerShell ISE**, then click **File** > **New**. The empty script pane **Untitled1.ps1** opens.
+5. In your web browser, open a new tab, type `https://raw.githubusercontent.com/rhope-ops/33-332.Z/main/docs/reviews/2026-11-25-view-count-test-4.txt`, then press **Enter**. The first line starts with `# Ion test 4`.
+6. In the tab with the test, press `Ctrl+A`, then press `Ctrl+C`.
+7. In the script pane **Untitled1.ps1**, press `Ctrl+V`, then press `F5`. The **Console pane** shows **Question 1**.
+8. In your web browser, click the tab of the folder page, click the address bar, then press `Ctrl+C`.
+9. In the **Console pane** of ISE, below **Question 1**, press `Ctrl+V`, then press **Enter**. **Question 2** shows.
+10. In the **Console pane**, below **Question 2**, type the file name that you wrote down, then press **Enter**.
+11. Make sure that the **Console pane** clears and then shows `T4 test version=2026-11-25e`. If it shows another version, close ISE and start this list again.
+12. While it runs, if a window asks if you want to continue running scripts, click **Yes**.
+13. While it runs, if a sign-in window opens, sign in with your CAC. This can take 2 minutes or more.
+14. Wait until the line **Done.** shows in the **Console pane** of ISE. Do not copy before then.
+15. In the **Console pane**, select the lines from `T4 test version=2026-11-25e` to **Done.**, then press `Ctrl+C`.
+16. In Outlook, click **New Email**. In **To**, type your own e-mail address. In **Subject**, type `test 4`.
+17. Click in the body of the e-mail, press `Ctrl+V`, then click **Send**.
 
 ## What the results mean
 

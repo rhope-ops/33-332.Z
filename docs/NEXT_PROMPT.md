@@ -24,5 +24,5 @@ Title: 33-332.Z · <task> · <date>. Read AGENTS.md first.
     step 3 = parallel downloads in a planned order, and version-history reads off the main thread (slow run 28:49).
 17. 2026-11-24 merged: PRs 58-88. Excel and local OneDrive tests open.
 18. Plan approved 2026-11-24, continue it: docs/reviews/2026-11-24-no-persistence-plan.md (Status).
-19. 2026-11-25: PRs 105-121 merged. Shortcuts and synced libraries stay local only. Probe 6 failed (`@()` of a
-    New-Object list); probe 7 and test 4 (view counts), both .txt, wait on the PAM. Open: speed-mode MINORs (lane B).
+19. 2026-11-25: PRs 105-125 merged. Waits on the PAM's device runs: probe 7 (shortcut/synced-library map), test 4
+    (view counts, v2026-11-25e), probe 8 (permissions, v2026-11-25f). Audit: not now (the PAM). Limits: probe-8.md.

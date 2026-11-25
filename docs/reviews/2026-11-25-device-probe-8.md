@@ -49,46 +49,35 @@ The probe is a .txt file (Project rules, "Paste format"): `docs/reviews/2026-11-
 2 times: run A with a file that you shared with a link, run B with a file that you did not share. Both files are on
 your team site.
 
-1. In your web browser, open the folder of the file for this run on your team site. You see the files of the folder. Write down the name of the file as the column **Name** shows it, for example `Report.pdf`. Go on.
-2. Close every **Windows PowerShell ISE** window. You see no ISE window. Go on.
-3. Open **Windows PowerShell ISE**. You see the window **Windows PowerShell ISE**. Go on.
-4. In the window **Windows PowerShell ISE**, do these actions:
-   1. Click **File**.
-   2. Click **New**.
-   You see an empty script pane **Untitled1.ps1**. Go on.
-5. In your web browser, open `https://raw.githubusercontent.com/rhope-ops/33-332.Z/main/docs/reviews/2026-11-25-device-probe-8.txt`. You see the probe as text. The first line starts with `# Ion device probe 8`. Go on.
-6. In the browser page with the probe, do these actions:
-   1. Press **Ctrl+A**.
-   2. Press **Ctrl+C**.
-   You see all the probe text selected. Go on.
-7. In the script pane **Untitled1.ps1**, press **Ctrl+V**. You see the probe text in the pane. Go on.
-8. In the window **Windows PowerShell ISE**, press **F5**. You see the question **Question 1: the address of the folder page in your web browser**. Go on.
-9. In your web browser, on the page of the folder, do these actions:
-   1. Click the address bar.
-   2. Press **Ctrl+C**.
-   You see the address selected. Go on.
-10. On the question **Question 1** in **Windows PowerShell ISE**, do these actions:
-    1. Press **Ctrl+V**.
-    2. Press **Enter**.
-    You see **Question 2**. Go on.
-11. On the question **Question 2**, do these actions:
-    1. Type the file name that you wrote down, for example `Report.pdf`.
-    2. Press **Enter**.
-    You see that the screen clears. Then you see the line `P8 probe version=2026-11-25f`. Go on.
-12. If a window asks if you want to continue running scripts, click **Yes**. The window closes. Go on.
-13. If a sign-in window opens, sign in with your CAC. The window closes. The sign-in can take 2 minutes or more. Go on.
-14. In the ISE output pane, wait until the line **Done.** shows. Do not copy before then.
-15. In the ISE output pane, do these actions:
-    1. Select the lines from the first line to **Done.**.
-    2. Press **Ctrl+C**.
-    You see the lines selected. Go on.
-16. In an e-mail to yourself, do these actions:
-    1. Type `probe 8 run A` or `probe 8 run B` (for run B: under the lines of run A).
-    2. Press **Enter**.
-    3. Press **Ctrl+V**.
-    You see the lines in the e-mail. Go on.
-17. If you did run A only, start this list again from the top for run B. You see this list from the top. Go on.
-18. In the e-mail with run A and run B, click **Send**. You see the message in your sent mail. The task is complete.
+1. For run A, in your web browser, on your team site, find a file that you shared with a link.
+2. For run B, in your web browser, on your team site, find a file that you did not share.
+3. In your web browser, open the folder of that file. Write down the file name as the column **Name** shows it, for example `Report.pdf`.
+4. Close every **Windows PowerShell ISE** window.
+5. Open **Windows PowerShell ISE**, then click **File** > **New**. The empty script pane **Untitled1.ps1** opens.
+6. In your web browser, open a new tab, type `https://raw.githubusercontent.com/rhope-ops/33-332.Z/main/docs/reviews/2026-11-25-device-probe-8.txt`, then press **Enter**. The first line starts with `# Ion device probe 8`.
+7. In the tab with the probe, press `Ctrl+A`, then press `Ctrl+C`.
+8. In the script pane **Untitled1.ps1**, press `Ctrl+V`, then press `F5`. The **Console pane** shows **Question 1**.
+9. In your web browser, click the tab of the folder page, click the address bar, then press `Ctrl+C`.
+10. In the **Console pane** of ISE, below **Question 1**, press `Ctrl+V`, then press **Enter**. **Question 2** shows.
+11. In the **Console pane**, below **Question 2**, type the file name that you wrote down for this run, then press **Enter**.
+12. Make sure that the **Console pane** clears and then shows `P8 probe version=2026-11-25f`. If it shows another version, close ISE and start this list again.
+13. While it runs, if a window asks if you want to continue running scripts, click **Yes**.
+14. While it runs, if a sign-in window opens, sign in with your CAC. This can take 2 minutes or more.
+15. Wait until the line **Done.** shows in the **Console pane** of ISE. Do not copy before then.
+16. In the **Console pane**, select the lines from `P8 probe version=2026-11-25f` to **Done.**, then press `Ctrl+C`.
+17. For run A, in Outlook, click **New Email**, click in the body, then type `probe 8 run A`.
+18. For run B, in the open e-mail, click below the lines of run A, then type `probe 8 run B`.
+19. In the body of the e-mail, press **Enter**, then press `Ctrl+V`.
+20. After run A, keep the e-mail open and do not send it. Close the browser tabs that this list opened.
+21. After run A, start this list again from the top for run B.
+22. In **To**, type your own e-mail address, then click **Send**.
+
+## Known limits (fourth review of PR 125, MINOR, kept)
+
+- A file name with `%` and 2 hex digits (for example `80%AB`) is refused: choose another file.
+- A subsite of the same team site can be reached through the address or answer 2: it is inside the one team.
+- The probe counts the other entry types too (mail list, security group, SharePoint group): the PAM's words of
+  2026-11-25 cover "certain permissions or user groups" (docs/DECISIONS.md).
 
 ## Result
 
