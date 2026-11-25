@@ -1,0 +1,9 @@
+message_id,timestamp,turn,session_id,repo,model,source,agent,agent_id,input_tokens,cache_creation_input_tokens,cache_read_input_tokens,output_tokens,cache_write_1h_tokens,speed,web_search_requests,inference_geo,skill_use
+msg_011ChQLBrBqwzNgQ87ukHFL7,2026-11-25T21:09:38.362Z,1,8faa674d-e2bd-5aa6-85f8-ce78e0f46352,33-332.Z,claude-sonnet-5-5,main,main,,2,31142,63462,267,31142,standard,0,global,"{""kit-update"":{""read"":1}}"
+msg_011ChQLC8Lh4P3QUQaFYzM6F,2026-11-25T21:09:41.983Z,1,8faa674d-e2bd-5aa6-85f8-ce78e0f46352,33-332.Z,claude-sonnet-5-5,main,main,,2,5633,94604,257,5633,standard,0,global,
+msg_011ChQLCPCQeAmxh12mfEfSb,2026-11-25T21:09:45.485Z,1,8faa674d-e2bd-5aa6-85f8-ce78e0f46352,33-332.Z,claude-sonnet-5-5,main,main,,4,2920,100237,287,2920,standard,0,global,
+msg_011ChQLCgyEwUdFakxCNPuWe,2026-11-25T21:09:51.902Z,1,8faa674d-e2bd-5aa6-85f8-ce78e0f46352,33-332.Z,claude-sonnet-5-5,main,main,,2,560,103157,451,560,standard,0,global,
+msg_011ChQLCysUeZivW32WTac7X,2026-11-25T21:09:55.518Z,1,8faa674d-e2bd-5aa6-85f8-ce78e0f46352,33-332.Z,claude-sonnet-5-5,main,main,,2,808,103717,287,808,standard,0,global,
+msg_011ChQLDCyHHvLiwmnGCJE28,2026-11-25T21:09:59.080Z,1,8faa674d-e2bd-5aa6-85f8-ce78e0f46352,33-332.Z,claude-sonnet-5-5,main,main,,4,2316,104525,442,2316,standard,0,global,
+msg_011ChQLDUTgv4SXP6bCf8say,2026-11-25T21:10:01.967Z,1,8faa674d-e2bd-5aa6-85f8-ce78e0f46352,33-332.Z,claude-sonnet-5-5,main,main,,2,776,106841,413,776,standard,0,global,
+msg_011ChQLDmTdpFKrRTUipzqt7,2026-11-25T21:10:07.473Z,1,8faa674d-e2bd-5aa6-85f8-ce78e0f46352,33-332.Z,claude-sonnet-5-5,main,main,,2,428,107617,497,428,standard,0,global,
