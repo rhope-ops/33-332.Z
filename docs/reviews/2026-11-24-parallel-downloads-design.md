@@ -6,7 +6,7 @@ download to appear at the beginning"). It replaces the 2026-11-20 row's "No para
 CAC sign-in", if test 3 (below) or the first device run shows that a copy of the sign-in works in a worker.
 
 Status: approved 2026-11-24 (docs/DECISIONS.md: 3 at once, per folder largest first, build with fallback, one bar).
-Built in PR 115.
+Built and merged in PR 115 (2026-11-24). Waits on the device: the header line "Parallel downloads" of the next Ion run.
 
 ## Today
 
@@ -33,7 +33,9 @@ file. On a slow tenant, the main thread waits on the network and the readers wai
    failure, as the streamed download is today. Size 0 in the list: the count is not checked.
 6. **Fallback.** A failed worker download is tried one more time on the main thread (Get-FileBytes, as today). If that
    works, the copy of the sign-in is at fault: parallel downloads stop for the rest of the scan. If it also fails, the
-   file is at fault: its NOT SCANNED row, as today, and parallel downloads go on.
+   file is at fault: its NOT SCANNED row, as today, and parallel downloads go on. Two more cases keep this rule: the main
+   thread also gets a size other than the list size (the list size is wrong: parallel stays on); no worker is left
+   (each new copy failed after a time limit): "off (NoWorker)".
 7. **Time limit and cancel.** A download over 180 s (the reader limit) is stopped without waiting and tried on the main
    thread. The download pool closes in the scan's `finally`, before the one sign-out at the end of the run. Ctrl+C still
    stops the scan.
@@ -41,7 +43,7 @@ file. On a slow tenant, the main thread waits on the network and the readers wai
    only after a finished one goes to the readers. Peak with the 25 MB limit and N = 3: 25 MB x (3 + 1 + 8 readers)
    = 300 MB, against 225 MB today.
 9. **Screen and report.** One download bar for all files in flight (approved preview). "Time downloading" is the wall
-   time with a worker download in flight, plus each main-thread download (the burst clock pauses for it). A new header line "Parallel downloads": "3", or "off (<error
+   time with a worker download in flight, plus each main-thread download (the download clock pauses for it). A new header line "Parallel downloads": "3", or "off (<error
    type name>)", with no message text (a message can hold a path). This is the device evidence.
 10. **Kept rules.** No reconnaissance: the workers get only the paths of the listed files of the one site. Masked
     output: no path or name leaves the main thread unmasked (the worker gives back bytes and an error type name).
@@ -53,7 +55,7 @@ file. On a slow tenant, the main thread waits on the network and the readers wai
 
 | Assumption | Source | Confidence |
 |---|---|---|
-| A copy of the sign-in downloads in a runspace on DoD365 | PnP.Framework Clone copies the sign-in handler; test 3 not run on the device (its Results: "Waiting on the PAM") | low: question 1 |
+| A copy of the sign-in downloads in a runspace on DoD365 | PnP.Framework Clone copies the sign-in handler; test 3 not run on the device (its Results: "Waiting on the PAM") | low: the PAM chose to build with fallback; the next device run answers it |
 | 3 downloads at once are faster than one by one on the gov network | test 3 not run; the 2026-11-21 slow run (28:49) | medium |
 | The connection limit of 2 per host applies in ISE | .NET Framework default for desktop programs | high |
 | Nothing in the tests or the workbook needs today's row order inside a folder | grep of tests/ for row indexes: 2 hits, both one-file cases | medium |
@@ -67,3 +69,14 @@ file. On a slow tenant, the main thread waits on the network and the readers wai
 - A file that fails on both: one NOT SCANNED row; parallel stays on.
 - A worker over the time limit: stopped, the scan goes on.
 - The pool closes after a cancel; no path or name in the header line.
+- Built as well: two folders (the bar shows in folder 2; review of PR 115, MAJOR, fixed).
+- Not built: a cancel test.
+
+## Open after PR 115 (fresh review of the fix, MINOR; for a later lane B change)
+
+- "Time downloading" is a little too low for a '#' or '%' file while worker downloads run: the download clock stays
+  stopped while that file goes to the readers (src/ChannelScan.psm1 Invoke-ParallelGroup); its code comment says
+  "burst clock", it is the Busy clock.
+- No tests for: "off (NoWorker)", the list-size fault, the per-job byte keys, the timing.
+- "NoWorker" is not an error type name (like "WrongSize" and "NoResult" before it).
+- The synopsis of Complete-Download does not name the list-size exception.
