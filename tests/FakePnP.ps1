@@ -220,8 +220,10 @@ function global:Get-PnPListItem {
     else { @{ FileLeafRef = 'General'; FileRef = '/sites/TeamA/Shared Documents/General'; FSObjType = 1 } }
     foreach ($path in $global:FakePnP.Files.Keys) {
         if ($FolderServerRelativeUrl -and -not $path.StartsWith($FolderServerRelativeUrl + '/')) { continue }
+        $size = [string]$global:FakePnP.Files[$path].Length
+        if ($global:FakePnP.ListSizes.ContainsKey($path)) { $size = [string]$global:FakePnP.ListSizes[$path] }
         @{ FileLeafRef = ($path -split '/')[-1]; FileRef = $path; FSObjType = 0
-           File_x0020_Size = $(if ($global:FakePnP.ListSizes.ContainsKey($path)) { [string]$global:FakePnP.ListSizes[$path] } else { [string]$global:FakePnP.Files[$path].Length }); Modified = [datetime]'2026-11-01'
+           File_x0020_Size = $size; Modified = [datetime]'2026-11-01'
            UniqueId = [guid]'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' }
     }
 }
