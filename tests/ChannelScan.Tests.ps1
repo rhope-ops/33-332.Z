@@ -413,8 +413,8 @@ Assert-Equal 1 @($slowRows | Where-Object { $_.Item -eq 'part1.txt' -and $_.Dete
 # connection can be made. Parallel downloads stop ("NoWorker"), and the other files come one at a time.
 & $channelScan {
     $script:CopiesMade = 0
+    # Fake copy of the connection: the first 3 work (the pool), each later one fails (no new worker).
     $script:CloneContext = {
-        # Fake copy of the connection: the first 3 work (the pool), each later one fails (no new worker).
         param($context, $site)
         $script:CopiesMade++
         if ($script:CopiesMade -gt 3) { throw 'FAKE: no copy' }
