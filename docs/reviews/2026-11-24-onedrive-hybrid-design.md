@@ -34,7 +34,7 @@ If the sign-in or the mapping fails, Ion scans as now (local only, with the down
 5. Match the local list and the web list by relative path:
    - on the disk: read from the disk (content); the web item gives the history;
    - online only and on the web: read through PnP into memory;
-   - on the disk only (not synced yet): read from the disk; history "Not recorded (not synced yet)";
+   - on the disk only (not synced yet): read from the disk; History note "Not on the web yet (not synced): no version history";
    - on the web only (not synced down): read through PnP into memory (the PAM, 2026-11-24, Q4). It is inside the
      pasted folder's own mapped web folder, so the scan does not widen.
 6. History for each file with a hit: Find-PiiAddedVersion with the mapped server-relative path. When the disk copy is
@@ -82,3 +82,8 @@ names in every new row.
 - Open (review of PR 109, MINOR): a web link names the OneDrive owner's folder (/personal/<owner>/...), as a file link
   names the local profile folder. Assumption A7, medium: `Get-PnPListItem -FolderServerRelativeUrl` in PnP.PowerShell
   1.12.0 lists the folder at any depth; the device test shows it (if not: the scan is local only, with a note).
+- Open after PR 109 (fresh reviews, MINOR): a test for Ion's own folder-prefix check (the fake also filters); asserts
+  for the "Not on the web yet" note and the first-sentence sign-in note; the note for a consumer OneDrive names "a
+  synced library or a shortcut". Not verified here (PnP source not reachable): `Get-PnPListItem -FolderServerRelativeUrl`
+  with `-Fields` lists subfolders too; if not, files in subfolders get "Not on the web yet". Probe 5 shows it.
+

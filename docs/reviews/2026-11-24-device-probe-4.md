@@ -113,3 +113,14 @@ The probe is a .txt file (Project rules, "Paste format"): `docs/reviews/2026-11-
   Entries 2 (1 web address), home folder True, local 9 / online only 0, libraries=4 (found), web folder found with 9
   web files, names on both 9, checked 9 (at the mapped path 9, same size 8, found by web path 9, errors 0), web and disk
   read sizes equal. What it proves: run 1 repeats; the mapping and path A are stable.
+
+- Runs A and B, 2026-11-25 (the PAM, by e-mail; counts only). The PAM wrote: "The 2nd one was the sync under my
+  organization (sharepoint) and the first was a shortcut under my onedrive".
+  1. A shortcut in the own OneDrive: matching entries 3, 1 with the chosen folder (1 web address); not the home
+     folder; local files 12, online only 12; sign-in ok (6714 ms); library found (libraries=12). Web listing: 5000
+     items, stopped at 5000 = True (FSObjType 0=3947 1=1053), web folder found = False, names on both 0. The map and
+     the sign-in work. The library has more than 5000 items; assumption (medium confidence): the first 5000 did
+     not reach the folder (a wrong subfolder map is not ruled out; probe 5 shows which).
+  2. A folder of a synced team library: matching entries 0 ("no OneDrive entry holds this folder").
+  What it proves: a shortcut needs a folder-scoped listing (PR 109 asks for the folder only); a synced team library
+  is not in this OneDrive list. Next: probe 5 (docs/reviews/2026-11-25-device-probe-5.md).
