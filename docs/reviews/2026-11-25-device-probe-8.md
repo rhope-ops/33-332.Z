@@ -11,25 +11,25 @@ did not find its file, and probe 3 tested sign-in and paths only. The PAM chose 
 - It asks 2 questions first, then clears the screen.
 - It touches only the one site and the one file you give ("No reconnaissance"). It lists no other file, site or user.
 - It prints only True or False, counts, kinds, error kinds and times. It prints no name, no address, no path, no group
-  name and no value. It reads the name and the sign-in name of each permission entry of the file to sort it into a
-  kind, and prints only the count of each kind.
+  name and no value. It reads the sign-in name and the type of each permission entry of the file, in memory only, to
+  sort it into a kind, and prints only the count of each kind (the PAM's decision, 2026-11-25).
 
 | Line | It shows |
 |---|---|
-| P8 probe version | 2026-11-25d: the text you pasted is this version |
+| P8 probe version | 2026-11-25e: the text you pasted is this version |
 | P8 answer 1 is a DoD365 site address=False | the address is not on usaf.dps.mil: the probe stops |
 | P8 folder from | where the probe found the folder in the address: id (a folder page), library page, path |
 | P8 folder in the address found=False | the address does not name a folder of this site: the probe stops |
 | P8 sign-in | the sign-in to the site |
 | P8 file found | the file in that folder, found by its name, or (only for a name with no type) by its name without its type: then the probe reads the file names of that one folder; False: the probe stops |
-| P8 answer with .. found=True | an answer has `..` in it: the probe stops |
+| P8 answer with .. or \ found=True | an answer has `..`, `.` as a folder, or `\` in it: the probe stops |
 | P8 files with this name in the folder, P8 folder read | the count of files with that name when it is not exactly 1, or why the folder could not be read |
 | P8 library read=False | the library of the file could not be read: the sharing links are not read |
 | P8 unique permissions | True: the file has its own permissions; False: it has the permissions of its folder or library |
 | P8 site groups | the site's own groups (owners, members, visitors) that the probe can read |
 | P8 permission entries | the permission entries of the file (people and groups with access) |
 | P8 entry kinds | the count of each kind: person, site group, team members or team owners (Microsoft 365 group), SharePoint group, sharing link group, security group, mail list, whole organization; "(limited access only)" when the entry gives no access to this file |
-| P8 sharing links | the sharing links of the file, counted by kind (SharePoint's SharingLinkKind): direct, organization view or edit, anyone view or edit, specific people, and others |
+| P8 sharing links | the sharing links of the file, counted by kind (SharePoint's SharingLinkKind): direct, organization view or edit, anyone view or edit, specific people (flexible), and others |
 | P8 Get-PnPFileSharingLink exists | if PnP.PowerShell 1.12.0 has this command |
 | P8 stopped at step | an error stopped the probe: the step and the error kind |
 
@@ -38,8 +38,8 @@ A read that fails shows `read=False` and the error kind, for example `NoAccess`:
 ## Test before the device run
 
 Stub run on PowerShell 7.4 (2026-11-25, invented data, fake PnP commands that give each collection as one object and nothing
-for a missing file, as PnP.PowerShell 1.12.0 does): 9 cases: the 6 below, a missing file, a missing file named
-without its type, and an answer with `..`. The 6 cases, each ends with "Done." and prints no value: a folder page address (8 entries in 7
+for a missing file, as PnP.PowerShell 1.12.0 does): 11 cases: the 6 below, a missing file, a missing file named
+without its type, an answer with `..`, a site name `..`, and an answer with `\`. The 6 cases, each ends with "Done." and prints no value: a folder page address (8 entries in 7
 kinds, 3 links in 3 kinds), a name without its type, a library page address, each read refused (`NoAccess`), an
 address that is not on usaf.dps.mil, and a folder of another site (the probe stops).
 
@@ -74,7 +74,7 @@ your team site.
 11. On the question **Question 2**, do these actions:
     1. Type the file name that you wrote down, for example `Report.pdf`.
     2. Press **Enter**.
-    You see that the screen clears. Then you see the line `P8 probe version=2026-11-25d`. Go on.
+    You see that the screen clears. Then you see the line `P8 probe version=2026-11-25e`. Go on.
 12. If a window asks if you want to continue running scripts, click **Yes**. The window closes. Go on.
 13. If a sign-in window opens, sign in with your CAC. The window closes. The sign-in can take 2 minutes or more. Go on.
 14. In the ISE output pane, wait until the line **Done.** shows. Do not copy before then.

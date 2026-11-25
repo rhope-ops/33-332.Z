@@ -2,17 +2,17 @@
 # usaf.dps.mil only. Read-only, one site, one file. Prints only counts, True/False and error type names: no address,
 # no file name and no error message. No Microsoft Graph call: the addresses are on usaf.dps.mil only.
 $ErrorActionPreference = 'Stop'
-'T4 test version=2026-11-25c'
+'T4 test version=2026-11-25d'
 $typed = (Read-Host 'Question 1: the address of the folder page in your web browser').Trim().Trim('"')
 $fileText = (Read-Host 'Question 2: the file name with its type (for example Report.pdf)').Trim().Trim('"', '/')
 Clear-Host
-'T4 test version=2026-11-25c'
+'T4 test version=2026-11-25d'
 $tag = 'T4'
 $signedIn = $false
 try {
     function Get-Kind($err) { $err.Exception.GetType().Name }   # the error type name only, never the message
     if ($typed -notmatch '^https?://') { $typed = 'https://' + $typed }
-    $siteMatch = [regex]::Match($typed, '^https://usaf\.dps\.mil/((?:sites|teams)/[^/?#\s]+)')
+    $siteMatch = [regex]::Match($typed, '^https://usaf\.dps\.mil/((?:sites|teams)/[A-Za-z0-9_-][A-Za-z0-9_.-]*)(?=[/?#]|$)')
     if (-not $siteMatch.Success) { 'T4 answer 1 is a DoD365 site address=False'; return }   # 'finally' prints Done.
     if (-not $fileText) { 'T4 answer 2 given=False'; return }
     $site = 'https://usaf.dps.mil/' + $siteMatch.Groups[1].Value
@@ -31,7 +31,7 @@ try {
     }
     $folderPath = $folderPath.TrimEnd('/')
     $name = [uri]::UnescapeDataString($fileText)
-    if (($folderPath + '/' + $name) -match '(^|/)\.\.(/|$)') { '{0} answer with .. found=True: stopped' -f $tag; return }
+    if (([uri]::UnescapeDataString($typed) + '/' + $folderPath + '/' + $name) -match '(^|/)\.{1,2}(/|$)|\\') { '{0} answer with .. or \ found=True: stopped' -f $tag; return }
     if ($name.Contains('/')) { $folderFrom = 'answer 2 (a path)'; $path = $sitePath + '/' + $name.TrimStart('/') }
     elseif (-not $folderPath.StartsWith($sitePath + '/', [StringComparison]::OrdinalIgnoreCase)) { '{0} folder in the address found=False' -f $tag; return }
     else { $path = $folderPath + '/' + $name }
