@@ -34,7 +34,7 @@ If the sign-in or the mapping fails, Ion scans as now (local only, with the down
 5. Match the local list and the web list by relative path:
    - on the disk: read from the disk (content); the web item gives the history;
    - online only and on the web: read through PnP into memory;
-   - on the disk only (not synced yet): read from the disk; history "Not recorded (not synced yet)" (approved text; the build uses "Not on the web yet (not synced): no version history": the PAM to confirm);
+   - on the disk only (not synced yet): read from the disk; History note "Not on the web yet (not synced): no version history" (the PAM, 2026-11-25: keep this text);
    - on the web only (not synced down): read through PnP into memory (the PAM, 2026-11-24, Q4). It is inside the
      pasted folder's own mapped web folder, so the scan does not widen.
 6. History for each file with a hit: Find-PiiAddedVersion with the mapped server-relative path. When the disk copy is
