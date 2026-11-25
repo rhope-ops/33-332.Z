@@ -62,17 +62,18 @@ steps 2 times: run A with a folder of a synced Teams library, run B with a short
 10. In **File Explorer**, click the address bar, then press `Ctrl+C`.
 11. In **Windows PowerShell ISE**, press `F5`. The **Console pane** shows **Question 1: a OneDrive folder that has files**. A synced Teams library is a OneDrive folder too.
 12. In the **Console pane**, below **Question 1**, press `Ctrl+V`, then press **Enter**.
-13. Make sure that the **Console pane** clears and then shows `P7 probe version=2026-11-25a`.
-14. If a window asks if you want to continue running scripts, click **Yes**.
-15. If a sign-in window opens, sign in with your CAC. The sign-in can take 2 minutes or more.
+13. Make sure that the **Console pane** clears and then shows `P7 probe version=2026-11-25a`. If it shows another version, close ISE and start this list again.
+14. While it runs, if a window asks if you want to continue running scripts, click **Yes**.
+15. While it runs, if a sign-in window opens, sign in with your CAC. This can take 2 minutes or more.
 16. Wait until the line **Done.** shows in the **Console pane** of ISE. Do not copy before then.
 17. If the line **P7 the folder has no files** shows, start this list again from the top. Use a folder of 5 or more files.
 18. In the **Console pane**, select the lines from `P7 probe version=2026-11-25a` to **Done.**, then press `Ctrl+C`.
 19. For run A, in Outlook, click **New Email**, click in the body, then type `run A`.
 20. For run B, in the open e-mail, click below the lines of run A, then type `run B`.
 21. In the body of the e-mail, press **Enter**, then press `Ctrl+V`.
-22. If you did run A only, keep the e-mail open and do not send it. Start this list again from the top for run B.
-23. In **To**, type your own e-mail address, then click **Send**.
+22. After run A, keep the e-mail open and do not send it. Close the browser tabs that this list opened.
+23. After run A, start this list again from the top for run B.
+24. In **To**, type your own e-mail address, then click **Send**.
 
 ## Open (review of PR 122, MINOR, not verified)
 

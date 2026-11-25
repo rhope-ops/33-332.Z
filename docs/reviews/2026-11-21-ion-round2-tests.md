@@ -15,10 +15,9 @@ The PAM approved this plan on 2026-11-21 (docs/DECISIONS.md, newest row). Step 1
 ## How to run test 4
 
 Test 3 does not run (Results, below); its text is in the git history of this file (before 2026-11-25). Test 4 is a
-.txt file (Project rules, "Paste format", 2026-11-23): `docs/reviews/2026-11-25-view-count-test-4.txt`. Before you
-start, choose 1 file on your team site that people opened in the last 90 days.
+.txt file (Project rules, "Paste format", 2026-11-23): `docs/reviews/2026-11-25-view-count-test-4.txt`.
 
-1. On your team site, choose 1 file that people opened in the last 90 days.
+1. In your web browser, on your team site, find a file that people opened in the last 90 days.
 2. In your web browser, open the folder of that file. Write down the file name as the column **Name** shows it, for example `Report.pdf`.
 3. Close every **Windows PowerShell ISE** window.
 4. Open **Windows PowerShell ISE**, then click **File** > **New**. The empty script pane **Untitled1.ps1** opens.
@@ -28,9 +27,9 @@ start, choose 1 file on your team site that people opened in the last 90 days.
 8. In your web browser, click the tab of the folder page, click the address bar, then press `Ctrl+C`.
 9. In the **Console pane** of ISE, below **Question 1**, press `Ctrl+V`, then press **Enter**. **Question 2** shows.
 10. In the **Console pane**, below **Question 2**, type the file name that you wrote down, then press **Enter**.
-11. Make sure that the **Console pane** clears and then shows `T4 test version=2026-11-25e`.
-12. If a window asks if you want to continue running scripts, click **Yes**.
-13. If a sign-in window opens, sign in with your CAC. The sign-in can take 2 minutes or more.
+11. Make sure that the **Console pane** clears and then shows `T4 test version=2026-11-25e`. If it shows another version, close ISE and start this list again.
+12. While it runs, if a window asks if you want to continue running scripts, click **Yes**.
+13. While it runs, if a sign-in window opens, sign in with your CAC. This can take 2 minutes or more.
 14. Wait until the line **Done.** shows in the **Console pane** of ISE. Do not copy before then.
 15. In the **Console pane**, select the lines from `T4 test version=2026-11-25e` to **Done.**, then press `Ctrl+C`.
 16. In Outlook, click **New Email**. In **To**, type your own e-mail address. In **Subject**, type `test 4`.
