@@ -59,7 +59,7 @@ $script:ParallelDownloads = 3
 # tried on the main thread.
 $script:DownloadSecondsLimit = 180
 # How long the main thread waits between bar updates while downloads run (milliseconds).
-$script:WaitSliceMs = 250
+$script:DownloadWaitMs = 250
 $script:DownloadBarMs = 250
 # The header line "Parallel downloads" of the last site scan: "3", or "off (<error type>)"; empty before a scan.
 $script:ParallelState = ''
@@ -566,7 +566,7 @@ function Receive-DownloadResult {
         }
         if ($ready.Count -gt 0 -or $slow.Count -gt 0 -or $State.Jobs.Count -eq 0) { break }
         Write-DownloadBar $State
-        [void]$State.Jobs[0].Handle.AsyncWaitHandle.WaitOne($script:WaitSliceMs)
+        [void]$State.Jobs[0].Handle.AsyncWaitHandle.WaitOne($script:DownloadWaitMs)
     }
     foreach ($job in $ready) {
         [void]$State.Jobs.Remove($job)
@@ -778,6 +778,7 @@ function Invoke-FileScan {
     # Parallel downloads in a planned order (the PAM, 2026-11-24); one file at a time when the pool is off.
     $downloads = New-DownloadPool $SiteUrl
     $script:ParallelState = $downloads.State
+    # Starts the files of one folder (Invoke-GroupScan calls it).
     $run.GroupScan = { param($queue, $group) Invoke-ParallelGroup $queue $group $downloads $origin $MaxFileMB }
     try { Invoke-ScanRun $Init $Rows $groups $start $shown $run $facts $MaxFileMB }
     finally {

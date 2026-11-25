@@ -347,6 +347,7 @@ for ($n = 1; $n -le 6; $n++) {
     $parallelFiles["$library/General/part$n.txt"] = $bytes
 }
 $parallelFiles["$library/General/tool.exe"] = $Txt
+# The fake copy of the connection, in place of PnP.Framework's.
 & $channelScan { $script:CloneContext = { param($context, $site) New-FakeConnectionCopy } }
 [IonFake.Copy]::Reset()
 Reset-FakePnP $parallelFiles
