@@ -46,7 +46,7 @@ If the sign-in or the mapping fails, Ion scans as now (local only, with the down
 | # | Assumption | Source | Confidence |
 |---|---|---|---|
 | A1 | The mapping and path A work for the own OneDrive folder | probe 4, 2 runs | high |
-| A2 | They work the same for a synced team library and for a shortcut ("Add shortcut to My files") | not tested | low |
+| A2 | They work the same for a synced team library and for a shortcut ("Add shortcut to My files") | probe 5 (2026-11-25): false, the map misses the folder's path in the library | refuted |
 | A3 | The disk copy has the same content as the web copy; the size difference is SharePoint properties | probe 4 (1 of 9) | medium |
 | A4 | The own CAC sign-in can read the version history of files in the own OneDrive | Accountability works on team sites | medium |
 | A5 | Recall run 2 does not change this design: its 3 files got a Purview encryption label after they were saved (run 3) | recall run 3 | high |
@@ -84,5 +84,5 @@ names in every new row.
 - Open after PR 109 (fresh reviews, MINOR): a test for Ion's own folder-prefix check (the fake also filters); asserts
   for the "Not on the web yet" note and the first-sentence sign-in note; the note for a consumer OneDrive names "a
   synced library or a shortcut". Not verified here (PnP source not reachable): `Get-PnPListItem -FolderServerRelativeUrl`
-  with `-Fields` lists subfolders too; if not, files in subfolders get "Not on the web yet". Probe 5 shows it.
+  with `-Fields` lists subfolders too: probe 5 run A shows it does (3898 files at any depth).
 

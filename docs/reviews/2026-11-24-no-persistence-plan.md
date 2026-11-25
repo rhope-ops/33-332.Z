@@ -29,8 +29,8 @@ permissions as scope only ("No reconnaissance": no user names listed); month-nam
   First device result (the PAM, 2026-11-24): 2 team sites in one run, 1 sign-in window, no PIN, no script error
   (counts not copied).
 - Step 4 (OneDrive hybrid): unblocked. Probe 4 runs 1 and 2 (2026-11-24): the local-to-web mapping and path A work (9 of 9).
-  Design approved 2026-11-24 (docs/reviews/2026-11-24-onedrive-hybrid-design.md); built 2026-11-25 for the own OneDrive (PR 109, src/DriveScan.psm1); shortcuts and synced libraries wait on probe 5
-  (docs/reviews/2026-11-25-device-probe-5.md).
+  Design approved 2026-11-24 (docs/reviews/2026-11-24-onedrive-hybrid-design.md); built 2026-11-25 for the own OneDrive (PR 109, src/DriveScan.psm1); probe 5 (2026-11-25): the folder
+  listing works at any depth, but the map is wrong for shortcuts and synced libraries: they stay local only.
 - Step 5 (permission scope): waits on probe 3 (no permission read ran yet). Step 6 (parallel downloads): open.
 - Added 2026-11-24: seeded recall test (PR 87; local baseline 46/53 found, 87%); roster header fix merged
   (PR 96) and passport rule merged (PR 97): local recall 53/53, false 0. Build ID on the start screen (PR 95).

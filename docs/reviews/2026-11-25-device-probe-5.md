@@ -76,4 +76,21 @@ steps 2 times: run A with a shortcut folder in your OneDrive, run B with a folde
 
 ## Result
 
-- Not run yet.
+- Run A and run B, 2026-11-25 (the PAM, by e-mail; counts only):
+  1. Run A, a shortcut in the own OneDrive (no scripts question, no PIN): entries 3, 1 with the chosen folder (1 web
+     address); not the home folder; local files 22, online only 17; sign-in ok (6688 ms); library by its address found,
+     root matches; folder listing: listed 5000, stopped at 5000, under the folder 5000, files at any depth 3898, files in
+     the folder itself 0; names on both 0, local only 22.
+  2. Run B, a synced Teams library (the PAM: "a sync'd teams"): entries 1; not the home folder; local files 4, online
+     only 4; sign-in ok (623 ms); library found, root matches; folder listing: listed 0; names on both 0, local only 4.
+
+  What it proves:
+  1. `Get-PnPListItem -FolderServerRelativeUrl` gives the items at any depth under the folder (run A: 3898 files
+     below the folder, 0 in it). Assumption A7 of the design holds (high confidence).
+  2. `Get-PnPList -Identity <site-relative address>` finds the library, with the right root, for both kinds.
+  3. The folder map (library address + the local path after MountPoint) is wrong for a shortcut and for a synced Teams
+     library: run A maps to a folder with over 5000 items and none of the 22 local files; run B maps to an empty place.
+     Assumption (medium confidence): for these kinds, UrlNamespace names the library, and MountPoint is the synced
+     folder inside it, so the folder's own path in the library is missing from the map.
+  4. Ion stays as built: only the own OneDrive uses the web; a shortcut and a synced library are scanned on the
+     computer only, with their history "A drive keeps no file history".
