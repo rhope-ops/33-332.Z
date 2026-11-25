@@ -248,6 +248,11 @@ $script:IonSignInTried = $false   # true after the first site sign-in is tried: 
 # the run signs out once here, at its end, also after an error or Ctrl+C ('finally' runs on both).
 try {
     $targets = @(Read-ScanTargetList $SiteUrl 'What to scan')
+    # Speed, asked once per run (the PAM, 2026-11-25): Normal (Enter) = half the processors and 2 downloads; Fast = all.
+    if ($targets.Count -gt 0) {
+        $speed = Read-Host 'Speed: [N]ormal or [F]ast?'
+        if ($speed -and $speed.Trim() -match '^(f|fast)$') { Set-ScanSpeed 'Fast' } else { Set-ScanSpeed 'Normal' }
+    }
     while ($targets.Count -gt 0) {
         $list = $targets.Count -gt 1
         $go = $true

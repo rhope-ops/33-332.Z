@@ -35,6 +35,7 @@ Assert-Equal $false ((Get-FakeProgressText).Contains([string][char]0x3B3)) 'The 
 Assert-Equal $false ((Get-FakeProgressText) -match 'Downloading [\d.]+ (of|MB)') 'Small files: no per-file bar (it would only slow the scan)'
 
 Assert-Equal $true (Test-FakePnPCall 'Scan question') 'Before the scan: "Scan now?" is asked'
+Assert-Equal 1 (Get-FakeCallCount 'Speed question') 'Speed: asked one time, after the targets'
 
 # ---- "No" to "Scan now?": nothing read, nothing saved, signed out (the PAM, 2026-11-21) ----
 Reset-FakePnP @{ "$library/General/notes.txt" = $Txt; "$library/Ops/scan.exe" = $Txt }
@@ -172,6 +173,17 @@ $signOutLast = (Get-FakeCallIndex 'Disconnect-PnPOnline') -gt (Get-FakeCallIndex
 $roundOrder = '{0}|{1}|{2}' -f ((Get-FakePnPConnection) -join ' '), (Get-FakeCallCount 'Disconnect-PnPOnline'), $signOutLast
 Assert-Equal ($Sample.Site + ' ' + $siteB + '|1|True') $roundOrder 'Scan more: no sign-out between rounds; one sign-out at the end'
 Assert-Equal 2 @(Get-ResultFiles $roundFolder).Count 'Scan more: one workbook per round'
+Assert-Equal 1 (Get-FakeCallCount 'Speed question') 'Scan more: the speed is asked one time per run, not per round'
+# The answer f gives Fast: the reader pool may use one reader per processor.
+Reset-FakePnP @{ "$library/General/notes.txt" = $Txt }
+Set-FakeSpeedAnswer ' F '
+& $script -SiteUrl $Sample.Site -OutputFolder (Join-Path $runFolder 'fast') 6>$null
+Assert-Equal 'Fast' (Get-ScanSpeed) 'Speed: the answer f (any case, spaces) gives Fast'
+$fastPool = New-ReaderPool @{}
+try { Assert-Equal (Get-ReaderLimit 'Fast' ([Environment]::ProcessorCount)) $fastPool.Max 'Speed: the reader pool follows Fast' } finally { Close-ReaderPool $fastPool }
+Reset-FakePnP @{ "$library/General/notes.txt" = $Txt }
+& $script -SiteUrl $Sample.Site -OutputFolder (Join-Path $runFolder 'normal') 6>$null
+Assert-Equal 'Normal' (Get-ScanSpeed) 'Speed: Enter gives Normal again in the next run'
 # A cancel at "Scan more" (as Ctrl+C) leaves the script with an error: the run still signs out.
 Reset-FakePnP @{ "$library/General/notes.txt" = $Txt }
 Set-FakeSiteAnswer -TypedSite @('cancel')

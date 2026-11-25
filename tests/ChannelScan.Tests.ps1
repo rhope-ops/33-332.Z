@@ -340,7 +340,14 @@ Assert-Equal $true ((Get-FakeProgressText) -match 'Downloading\.\. 3 files: 12\.
 Reset-FakePnP @{}
 Write-DownloadsStep 2 (500KB) (100KB) ([TimeSpan]::FromSeconds(2)) 'Downloading..'
 Assert-Equal '' (Get-FakeProgressText) 'Download bar: none under 1 MB, as for one file'
-# A scan with fake copies of the connection: 3 workers at once, the same rows as one at a time.
+# Speed (the PAM, 2026-11-25): the most readers at one time, Normal = half the processors, Fast = one per processor.
+Assert-Equal '4|1|1|8|8' (@((Get-ReaderLimit 'Normal' 8), (Get-ReaderLimit 'Normal' 1), (Get-ReaderLimit 'Normal' 3), (Get-ReaderLimit 'Fast' 8),
+    (Get-ReaderLimit 'Fast' 16)) -join '|') 'Speed: readers Normal = half the processors (at least 1), Fast = one per processor (at most 8)'
+Assert-Equal 'Normal' (Get-ScanSpeed) 'Speed: Normal until the person types F'
+$lowPriority = (& (Get-Module ReaderPool) { $script:PoolWorkerScript }) + (& $channelScan { $script:DownloadWorkerScript })
+Assert-Equal 2 ([regex]::Matches($lowPriority, 'ThreadPriority\]::BelowNormal')).Count 'Speed: reader and download workers run at below-normal priority'
+# A scan with fake copies of the connection, Fast: 3 workers at once, the same rows as one at a time.
+Set-ScanSpeed 'Fast'
 $parallelFiles = @{}
 for ($n = 1; $n -le 6; $n++) {
     $bytes = New-Object byte[] (1MB + $n * 1000); [System.Text.Encoding]::UTF8.GetBytes('Call ' + $Sample.Phone).CopyTo($bytes, 0)
@@ -359,6 +366,15 @@ Assert-Equal 3 ([IonFake.Copy]::MaxActive) 'Parallel: 3 downloads at once, not m
 Assert-Equal '3' ((Get-ScanTiming)['Parallel downloads']) 'Parallel: the header says 3'
 Assert-Equal 3 ([IonFake.Copy]::Disposed) 'Parallel: the 3 copies of the connection are closed after the scan'
 Assert-Equal $true ((Get-FakeProgressText) -match 'Downloading\.\. \d files: [\d.]+ of [\d.]+ MB') 'Parallel: one bar for the files in flight'
+# Normal: 2 downloads at once.
+Set-ScanSpeed 'Normal'
+[IonFake.Copy]::Reset()
+Reset-FakePnP $parallelFiles
+$normalRows = New-Object System.Collections.Generic.List[object]
+Assert-Equal 6 (Invoke-FileScan -Library $lib -Channels @('General') -SiteUrl $Sample.Site -MaxFileMB 25 -Rows $normalRows 6>$null) 'Normal speed: every file is read'
+Assert-Equal 2 ([IonFake.Copy]::MaxActive) 'Normal speed: 2 downloads at once'
+Assert-Equal '2' ((Get-ScanTiming)['Parallel downloads']) 'Normal speed: the header says 2'
+Set-ScanSpeed 'Fast'
 # Two folders: the download bar shows in the second folder too (review of PR 115: it stayed blank after the first).
 $twoFolders = @{}
 foreach ($key in $parallelFiles.Keys) { $twoFolders[$key] = $parallelFiles[$key] }
@@ -396,6 +412,7 @@ Assert-Equal 1 @($slowRows | Where-Object { $_.Item -eq 'part1.txt' -and $_.Dete
 & $channelScan { $script:DownloadSecondsLimit = 180 }
 & $channelScan { param($opener) $script:OpenDirectStream = $opener } $normalOpener
 & $channelScan { param($copy) $script:CloneContext = $copy } $normalCopy
+Set-ScanSpeed 'Normal'
 
 # ---- Team or plain site: names the folder column ----
 Reset-FakePnP @{}
