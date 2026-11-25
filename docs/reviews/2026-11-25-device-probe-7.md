@@ -51,25 +51,28 @@ The probe is a .txt file (Project rules, "Paste format"): `docs/reviews/2026-11-
 steps 2 times: run A with a folder of a synced Teams library, run B with a shortcut folder in your OneDrive.
 
 1. Open **File Explorer**.
-2. In the left pane of **File Explorer**, click the folder for this run. For run A, click a synced Teams library under the name of your organization.
-3. For run B, click a shortcut folder in your OneDrive.
+2. For run A, in the left pane of **File Explorer**, click a synced Teams library.
+3. For run B, in the left pane of **File Explorer**, click a OneDrive shortcut folder.
 4. In **File Explorer**, double-click a folder that has 5 or more files.
 5. Close every **Windows PowerShell ISE** window.
 6. Open **Windows PowerShell ISE**, then click **File** > **New**. The empty script pane **Untitled1.ps1** opens.
-7. In your web browser, open `https://raw.githubusercontent.com/rhope-ops/33-332.Z/main/docs/reviews/2026-11-25-device-probe-7.txt`. The first line of the page starts with `# Ion device probe 7`.
-8. In the browser page, press `Ctrl+A`, then press `Ctrl+C`.
+7. In your web browser, open a new tab, type `https://raw.githubusercontent.com/rhope-ops/33-332.Z/main/docs/reviews/2026-11-25-device-probe-7.txt`, then press **Enter**. The first line starts with `# Ion device probe 7`.
+8. In the tab with the probe, press `Ctrl+A`, then press `Ctrl+C`.
 9. In the script pane **Untitled1.ps1**, press `Ctrl+V`.
 10. In **File Explorer**, click the address bar, then press `Ctrl+C`.
-11. In **Windows PowerShell ISE**, press `F5`. The question **Question 1: a OneDrive folder that has files** shows.
-12. On **Question 1**, press `Ctrl+V`, then press **Enter**. The screen clears and shows `P7 probe version=2026-11-25a`.
-13. If a window asks if you want to continue running scripts, click **Yes**.
-14. If a sign-in window opens, sign in with your CAC. The sign-in can take 2 minutes or more.
-15. Wait until the line **Done.** shows in the ISE output pane. Do not copy before then.
-16. If the line **P7 the folder has no files** shows, start this list again with a folder of 5 or more files.
-17. In the ISE output pane, select the lines from the first line to **Done.**, then press `Ctrl+C`.
-18. In an e-mail to yourself, type `run A` or `run B` , press **Enter**, then press `Ctrl+V` (run B goes under run A).
-19. If you did run A only, start this list again from the top for run B.
-20. In the e-mail with run A and run B, click **Send**.
+11. In **Windows PowerShell ISE**, press `F5`. The **Console pane** shows **Question 1: a OneDrive folder that has files**. A synced Teams library is a OneDrive folder too.
+12. In the **Console pane**, below **Question 1**, press `Ctrl+V`, then press **Enter**.
+13. Make sure that the **Console pane** clears and then shows `P7 probe version=2026-11-25a`.
+14. If a window asks if you want to continue running scripts, click **Yes**.
+15. If a sign-in window opens, sign in with your CAC. The sign-in can take 2 minutes or more.
+16. Wait until the line **Done.** shows in the **Console pane** of ISE. Do not copy before then.
+17. If the line **P7 the folder has no files** shows, start this list again from the top. Use a folder of 5 or more files.
+18. In the **Console pane**, select the lines from `P7 probe version=2026-11-25a` to **Done.**, then press `Ctrl+C`.
+19. For run A, in Outlook, click **New Email**, click in the body, then type `run A`.
+20. For run B, in the open e-mail, click below the lines of run A, then type `run B`.
+21. In the body of the e-mail, press **Enter**, then press `Ctrl+V`.
+22. If you did run A only, keep the e-mail open and do not send it. Start this list again from the top for run B.
+23. In **To**, type your own e-mail address, then click **Send**.
 
 ## Open (review of PR 122, MINOR, not verified)
 

@@ -49,22 +49,27 @@ The probe is a .txt file (Project rules, "Paste format"): `docs/reviews/2026-11-
 2 times: run A with a file that you shared with a link, run B with a file that you did not share. Both files are on
 your team site.
 
-1. In your web browser, open the folder of the file for this run on your team site. Write down the file name as the column **Name** shows it, for example `Report.pdf`.
-2. Close every **Windows PowerShell ISE** window.
-3. Open **Windows PowerShell ISE**, then click **File** > **New**. The empty script pane **Untitled1.ps1** opens.
-4. In your web browser, open `https://raw.githubusercontent.com/rhope-ops/33-332.Z/main/docs/reviews/2026-11-25-device-probe-8.txt`. The first line of the page starts with `# Ion device probe 8`.
-5. In the browser page, press `Ctrl+A`, then press `Ctrl+C`.
-6. In the script pane **Untitled1.ps1**, press `Ctrl+V`, then press `F5`. The question **Question 1: the address of the folder page in your web browser** shows.
-7. In your web browser, on the page of the folder, click the address bar, then press `Ctrl+C`.
-8. In **Windows PowerShell ISE**, on **Question 1**, press `Ctrl+V`, then press **Enter**. **Question 2** shows.
-9. On **Question 2**, type the file name that you wrote down, then press **Enter**. The screen clears and shows `P8 probe version=2026-11-25f`.
-10. If a window asks if you want to continue running scripts, click **Yes**.
-11. If a sign-in window opens, sign in with your CAC. The sign-in can take 2 minutes or more.
-12. Wait until the line **Done.** shows in the ISE output pane. Do not copy before then.
-13. In the ISE output pane, select the lines from the first line to **Done.**, then press `Ctrl+C`.
-14. In an e-mail to yourself, type `probe 8 run A` or `probe 8 run B` , press **Enter**, then press `Ctrl+V` (run B goes under run A).
-15. If you did run A only, start this list again from the top for run B.
-16. In the e-mail with run A and run B, click **Send**.
+1. For run A, on your team site, choose a file that you shared with a link.
+2. For run B, on your team site, choose a file that you did not share.
+3. In your web browser, open the folder of that file. Write down the file name as the column **Name** shows it, for example `Report.pdf`.
+4. Close every **Windows PowerShell ISE** window.
+5. Open **Windows PowerShell ISE**, then click **File** > **New**. The empty script pane **Untitled1.ps1** opens.
+6. In your web browser, open a new tab, type `https://raw.githubusercontent.com/rhope-ops/33-332.Z/main/docs/reviews/2026-11-25-device-probe-8.txt`, then press **Enter**. The first line starts with `# Ion device probe 8`.
+7. In the tab with the probe, press `Ctrl+A`, then press `Ctrl+C`.
+8. In the script pane **Untitled1.ps1**, press `Ctrl+V`, then press `F5`. The **Console pane** shows **Question 1**.
+9. In your web browser, click the tab of the folder page, click the address bar, then press `Ctrl+C`.
+10. In the **Console pane** of ISE, below **Question 1**, press `Ctrl+V`, then press **Enter**. **Question 2** shows.
+11. In the **Console pane**, below **Question 2**, type the file name that you wrote down for this run, then press **Enter**.
+12. Make sure that the **Console pane** clears and then shows `P8 probe version=2026-11-25f`.
+13. If a window asks if you want to continue running scripts, click **Yes**.
+14. If a sign-in window opens, sign in with your CAC. The sign-in can take 2 minutes or more.
+15. Wait until the line **Done.** shows in the **Console pane** of ISE. Do not copy before then.
+16. In the **Console pane**, select the lines from `P8 probe version=2026-11-25f` to **Done.**, then press `Ctrl+C`.
+17. For run A, in Outlook, click **New Email**, click in the body, then type `probe 8 run A`.
+18. For run B, in the open e-mail, click below the lines of run A, then type `probe 8 run B`.
+19. In the body of the e-mail, press **Enter**, then press `Ctrl+V`.
+20. If you did run A only, keep the e-mail open and do not send it. Start this list again from the top for run B.
+21. In **To**, type your own e-mail address, then click **Send**.
 
 ## Known limits (fourth review of PR 125, MINOR, kept)
 
