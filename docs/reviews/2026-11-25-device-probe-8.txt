@@ -1,13 +1,14 @@
 # Ion device probe 8 (2026-11-25): the permission reads of one team-site file, for plan step 5 (permission scope
 # column). Read-only, one site, one file. Prints only True/False, counts, kinds, error kinds and times: no name, no
 # address, no path, no group name and no value. It reads: unique permissions (True/False), the permission entries of
-# the file (counted by kind), and the sharing links of the file (counted by kind). It lists no other file, site or user.
+# the file (counted by kind), and the sharing links of the file (counted by kind). It lists no other site or user.
 $ErrorActionPreference = 'Stop'
-'P8 probe version=2026-11-25a'
-$typed = (Read-Host 'Question 1: your team site address (usaf.dps.mil/sites/<name> or /teams/<name>)').Trim().Trim('"')
-$fileText = (Read-Host 'Question 2: the file path after the site (for example Shared Documents/General/Report.pdf)').Trim().Trim('"', '/')
+'P8 probe version=2026-11-25c'
+$typed = (Read-Host 'Question 1: the address of the folder page in your web browser').Trim().Trim('"')
+$fileText = (Read-Host 'Question 2: the file name with its type (for example Report.pdf)').Trim().Trim('"', '/')
 Clear-Host
-'P8 probe version=2026-11-25a'
+'P8 probe version=2026-11-25c'
+$tag = 'P8'
 $signedIn = $false
 $step = 0; $stepName = 'start'
 try {
@@ -29,7 +30,25 @@ $siteMatch = [regex]::Match($typed, '^https://usaf\.dps\.mil/((?:sites|teams)/[^
 if (-not $siteMatch.Success) { 'P8 answer 1 is a DoD365 site address=False'; return }   # 'finally' prints Done.
 if (-not $fileText) { 'P8 answer 2 given=False'; return }
 $site = 'https://usaf.dps.mil/' + $siteMatch.Groups[1].Value
-$path = '/' + $siteMatch.Groups[1].Value + '/' + [uri]::UnescapeDataString($fileText)
+# The folder of the file, from the address of the folder page in the web browser: its 'id=' part (a folder), or the
+# part before '/Forms/' (the library), or the path of the address. Only a folder of this one site is used.
+$sitePath = '/' + $siteMatch.Groups[1].Value
+$u = [uri]$typed
+$folderPath = ''; $folderFrom = 'none'
+$q = [regex]::Match($u.Query, '(?i)(?:^\?|&)(?:id|RootFolder)=([^&]+)')
+if ($q.Success) { $folderPath = [uri]::UnescapeDataString($q.Groups[1].Value); $folderFrom = 'id' }
+else {
+    $p = [uri]::UnescapeDataString($u.AbsolutePath).TrimEnd('/')
+    $i = $p.IndexOf('/Forms/', [StringComparison]::OrdinalIgnoreCase)
+    if ($i -gt 0) { $folderPath = $p.Substring(0, $i); $folderFrom = 'library page' }
+    elseif ($p.Length -gt $sitePath.Length) { $folderPath = $p; $folderFrom = 'path' }
+}
+$folderPath = $folderPath.TrimEnd('/')
+$name = [uri]::UnescapeDataString($fileText)
+if ($name.Contains('/')) { $folderFrom = 'answer 2 (a path)'; $path = $sitePath + '/' + $name.TrimStart('/') }
+elseif (-not $folderPath.StartsWith($sitePath + '/', [StringComparison]::OrdinalIgnoreCase)) { '{0} folder in the address found=False' -f $tag; return }
+else { $path = $folderPath + '/' + $name }
+'{0} folder from={1}' -f $tag, $folderFrom
 $step = 2; $stepName = 'sign-in'
 $clock = [Diagnostics.Stopwatch]::StartNew()
 $signedIn = $true   # before the sign-in: a stop during it still signs out
@@ -37,10 +56,26 @@ try { Connect-PnPOnline -Url $site -UseWebLogin -WarningAction SilentlyContinue;
 catch { 'P8 sign-in ok=False {0} ms={1}' -f (Get-Kind $_), $clock.ElapsedMilliseconds; return }
 $step = 3; $stepName = 'file'
 $clock.Restart()
-$item = Get-PnPFile -Url $path -AsListItem
-'P8 file found={0} ms={1}' -f [bool]$item, $clock.ElapsedMilliseconds
+$item = $null; $by = 'name'
+try { $item = Get-PnPFile -Url $path -AsListItem }
+catch {
+    # The web page can show a name without its type: try the files of that one folder by the name without its type.
+    if ($folderFrom -ne 'answer 2 (a path)') {
+        try {
+            $inFolder = Get-PnPFolderItem -FolderSiteRelativeUrl $folderPath.Substring($sitePath.Length + 1) -ItemType File
+            $same = @(foreach ($one in $inFolder) { $one }) | Where-Object { $_.Name -ieq $name -or [IO.Path]::GetFileNameWithoutExtension($_.Name) -ieq $name }
+            $same = @($same)
+            if ($same.Count -eq 1) { $item = Get-PnPFile -Url $same[0].ServerRelativeUrl -AsListItem; $by = 'name without its type' }
+            else { 'P8 files with this name in the folder={0}' -f $same.Count }
+        }
+        catch { 'P8 folder read ok=False {0}' -f (Get-Kind $_) }
+    }
+}
+'P8 file found={0} by={1} ms={2}' -f [bool]$item, $by, $clock.ElapsedMilliseconds
 if (-not $item) { return }
-$listId = (Get-PnPProperty -ClientObject $item -Property ParentList).Id
+$listId = $null
+try { $listId = (Get-PnPProperty -ClientObject $item -Property ParentList).Id }
+catch { 'P8 library read ok=False {0}' -f (Get-Kind $_) }
 $step = 4; $stepName = 'unique permissions'
 $clock.Restart()
 try { $unique = Get-PnPProperty -ClientObject $item -Property HasUniqueRoleAssignments; 'P8 unique permissions read=True value={0} ms={1}' -f [bool]$unique, $clock.ElapsedMilliseconds }
@@ -56,17 +91,22 @@ try {
 catch { 'P8 site groups read=False {0}' -f (Get-Kind $_) }
 $clock.Restart()
 try {
-    $entries = @(Get-PnPProperty -ClientObject $item -Property RoleAssignments)
+    # Get-PnPProperty gives the collection as one object, and '@()' of it can throw (probe 6): a loop lists its entries.
+    $assignments = Get-PnPProperty -ClientObject $item -Property RoleAssignments
+    $entries = @(foreach ($one in $assignments) { $one })
     'P8 permission entries read=True count={0} ms={1}' -f $entries.Count, $clock.ElapsedMilliseconds
     # Each entry by kind only (the name and the sign-in name are read to sort, never printed).
     $kinds = @{}
     $clock.Restart()
     foreach ($entry in $entries) {
         $member = Get-PnPProperty -ClientObject $entry -Property Member
-        $roles = @(Get-PnPProperty -ClientObject $entry -Property RoleDefinitionBindings)
+        $bindings = Get-PnPProperty -ClientObject $entry -Property RoleDefinitionBindings
+        $roles = @(foreach ($one in $bindings) { $one })
         $login = [string]$member.LoginName
         $kind = switch ([int]$member.PrincipalType) { 1 { 'person' } 2 { 'mail list' } 4 { 'security group' } 8 { 'SharePoint group' } default { 'other' } }
         if ($login -match '(?i)spo-grid-all-users|^c:0\(\.s\|true$') { $kind = 'whole organization' }
+        elseif ($login -match '(?i)federateddirectoryclaimprovider\|[0-9a-f-]+_o$') { $kind = 'team owners (Microsoft 365 group)' }
+        elseif ($login -match '(?i)federateddirectoryclaimprovider') { $kind = 'team members (Microsoft 365 group)' }
         elseif ($kind -eq 'SharePoint group' -and $siteGroups -contains $member.Id) { $kind = 'site group' }
         elseif ($kind -eq 'SharePoint group' -and $login -like 'SharingLinks.*') { $kind = 'sharing link group' }
         # Limited Access only (role kind 1, Guest): the entry exists for a link or an item below; it gives no access here.
@@ -80,15 +120,17 @@ catch { 'P8 permission entries read=False {0}' -f (Get-Kind $_) }
 $step = 6; $stepName = 'sharing links'
 $clock.Restart()
 try {
+    if (-not $listId) { throw 'the library is not known' }
     $info = Invoke-PnPSPRestMethod -Method Post -Url ("/_api/web/lists('{0}')/items({1})/GetSharingInformation?`$expand=sharingLinks" -f $listId, $item.Id)
     $links = @(); if ($info.PSObject.Properties['sharingLinks']) { $links = @($info.sharingLinks) } elseif ($info.PSObject.Properties['d']) { $links = @($info.d.sharingLinks.results) }
     $links = @($links | Where-Object { $_ -and $_.linkDetails -and $_.linkDetails.Url })   # only links that exist
-    $names = @{ 1 = 'organization view'; 2 = 'organization edit'; 3 = 'anyone view'; 4 = 'anyone edit'; 5 = 'specific people'; 6 = 'review'; 7 = 'block download'; 8 = 'view only' }
+    # SharePoint's SharingLinkKind: 0 none, 1 direct, 2-3 organization, 4-5 anyone, 6 specific people.
+    $names = @{ 1 = 'direct'; 2 = 'organization view'; 3 = 'organization edit'; 4 = 'anyone view'; 5 = 'anyone edit'; 6 = 'specific people' }
     $linkKinds = @{}
     foreach ($link in $links) {
         $k = [int]$link.linkDetails.LinkKind
-        $name = if ($names.ContainsKey($k)) { $names[$k] } else { 'kind ' + $k }
-        $linkKinds[$name] = 1 + [int]$linkKinds[$name]
+        $kindName = if ($names.ContainsKey($k)) { $names[$k] } else { 'kind ' + $k }
+        $linkKinds[$kindName] = 1 + [int]$linkKinds[$kindName]
     }
     $text = @($linkKinds.Keys | Sort-Object | ForEach-Object { '{0}x {1}' -f $linkKinds[$_], $_ }) -join ', '
     'P8 sharing links read=True count={0} ms={1}: {2}' -f $links.Count, $clock.ElapsedMilliseconds, $(if ($text) { $text } else { 'none' })

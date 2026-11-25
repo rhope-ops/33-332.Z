@@ -18,7 +18,7 @@ Test 3 does not run (Results, below); its text is in the git history of this fil
 .txt file (Project rules, "Paste format", 2026-11-23): `docs/reviews/2026-11-25-view-count-test-4.txt`. Before you
 start, choose 1 file on your team site that people opened in the last 90 days.
 
-1. In your web browser, open the folder of the file on your team site. You see the files of the folder. Write down the file path after the site, for example `Shared Documents/General/Report.pdf`. Go on.
+1. In your web browser, open the folder of the file on your team site. You see the files of the folder. Write down the name of the file as the column **Name** shows it, for example `Report.pdf`. Go on.
 2. Close every **Windows PowerShell ISE** window. You see no ISE window. Go on.
 3. Open **Windows PowerShell ISE**. You see the window **Windows PowerShell ISE**. Go on.
 4. In the window **Windows PowerShell ISE**, do these actions:
@@ -31,7 +31,7 @@ start, choose 1 file on your team site that people opened in the last 90 days.
    2. Press **Ctrl+C**.
    You see all the test text selected. Go on.
 7. In the script pane **Untitled1.ps1**, press **Ctrl+V**. You see the test text in the pane. Go on.
-8. In the window **Windows PowerShell ISE**, press **F5**. You see the question **Question 1: your team site address**. Go on.
+8. In the window **Windows PowerShell ISE**, press **F5**. You see the question **Question 1: the address of the folder page in your web browser**. Go on.
 9. In your web browser, on the page of the folder, do these actions:
    1. Click the address bar.
    2. Press **Ctrl+C**.
@@ -41,9 +41,9 @@ start, choose 1 file on your team site that people opened in the last 90 days.
     2. Press **Enter**.
     You see **Question 2**. Go on.
 11. On the question **Question 2**, do these actions:
-    1. Type the file path that you wrote down, for example `Shared Documents/General/Report.pdf`.
+    1. Type the file name that you wrote down, for example `Report.pdf`.
     2. Press **Enter**.
-    You see that the screen clears. Go on.
+    You see that the screen clears. Then you see the line `T4 test version=2026-11-25b`. Go on.
 12. If a window asks if you want to continue running scripts, click **Yes**. The window closes. Go on.
 13. If a sign-in window opens, sign in with your CAC. The window closes. The sign-in can take 2 minutes or more. Go on.
 14. In the ISE output pane, wait until the line **Done.** shows. Do not copy before then.
@@ -70,4 +70,4 @@ start, choose 1 file on your team site that people opened in the last 90 days.
 ## Results
 
 - Test 3: not run. The PAM, 2026-11-24: build with fallback; the header line "Parallel downloads" of a normal Ion run
-  is the evidence (docs/reviews/2026-11-24-parallel-downloads-design.md). Test 4: as a .txt file since 2026-11-25 (stub run on PowerShell 7.4 with invented data: 3 cases end with "Done."); waiting on the PAM's run.
+  is the evidence (docs/reviews/2026-11-24-parallel-downloads-design.md). Test 4: as a .txt file since 2026-11-25; version 2026-11-25b takes the folder from the address of the folder page and asks for the file name only (the web page shows the library as "Documents", the address has "Shared Documents"; review of PR 125). Stub run on PowerShell 7.4 with invented data: 4 cases end with "Done.". Waiting on the PAM's run.
