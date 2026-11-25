@@ -259,6 +259,31 @@ function Write-FileStep {
     Write-Progress -Id 2 -Activity $Step -Status $status -PercentComplete $percent
 }
 
+function Write-DownloadsStep {
+    <#
+    .SYNOPSIS
+      The second progress bar while several files download at once (ChannelScan.psm1, the PAM 2026-11-24): one bar for
+      all files in flight, "3 files: 12.4 of 30.1 MB (41%) | 2.1 MB/s". No bar while the total is under 1 MB, as for one file.
+    .PARAMETER Files
+      The number of files downloading now.
+    .PARAMETER Size
+      The bytes of this burst: the files in flight and the ones that finished since the first of them started.
+    .PARAMETER Done
+      The bytes done of Size.
+    .PARAMETER Elapsed
+      The time since the burst started.
+    .PARAMETER Step
+      The bar's step text, for example 'Downloading..'.
+    #>
+    param([int]$Files, [long]$Size, [long]$Done, [TimeSpan]$Elapsed, [string]$Step)
+    if (-not (Test-FileBarSize $Size)) { return }
+    $noun = 'files'; if ($Files -eq 1) { $noun = 'file' }
+    $percent = [int][Math]::Floor([Math]::Min(100.0, 100.0 * $Done / [Math]::Max(1, $Size)))
+    $status = '{0} {1}: {2:N1} of {3:N1} MB ({4}%)' -f $Files, $noun, ($Done / 1MB), ($Size / 1MB), $percent
+    if ($Done -gt 0 -and $Elapsed.TotalSeconds -ge $script:RateAfterSeconds) { $status += ' | {0:N1} MB/s' -f ($Done / $Elapsed.TotalSeconds / 1MB) }
+    Write-Progress -Id 2 -Activity $Step -Status $status -PercentComplete $percent
+}
+
 function Copy-StreamWithProgress {
     <#
     .SYNOPSIS
@@ -397,4 +422,4 @@ function Write-RuleLine {
 
 Export-ModuleMember -Function Format-BoxTable, Get-TableLines, Get-ScreenWidth,
     Format-Duration, New-ScanMeter, Update-ScanMeter, Get-ScanMeterText, Get-MeterPercent, Get-NameWidth, Write-MeterLine, Test-FileBarSize,
-    Write-FileStep, Copy-StreamWithProgress, Write-ChannelLine, Write-RuleLine
+    Write-FileStep, Write-DownloadsStep, Copy-StreamWithProgress, Write-ChannelLine, Write-RuleLine

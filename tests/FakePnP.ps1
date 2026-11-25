@@ -344,3 +344,61 @@ function global:Invoke-Item {
     [CmdletBinding()] param($LiteralPath)
     $global:FakePnP.Calls.Add('Open ' + $LiteralPath)
 }
+
+# Fake copies of the signed-in connection for the parallel downloads (ChannelScan.psm1 CloneContext). Compiled
+# classes, not script objects: a download worker runs in another runspace, where a ScriptMethod cannot run.
+if (-not ('IonFake.Copy' -as [type])) {
+    Add-Type -TypeDefinition @'
+namespace IonFake {
+    using System;
+    using System.Collections.Generic;
+    using System.IO;
+    using System.Threading;
+    public class Result { public Stream Value; }
+    public class File {
+        private readonly Copy copy; private readonly string url;
+        public File(Copy copy, string url) { this.copy = copy; this.url = url; }
+        public Result OpenBinaryStream() { var result = new Result(); copy.Pending.Add(new KeyValuePair<string, Result>(url, result)); return result; }
+    }
+    public class Web {
+        private readonly Copy copy;
+        public Web(Copy copy) { this.copy = copy; }
+        public File GetFileByServerRelativeUrl(string url) { return new File(copy, url); }
+    }
+    // Mode per path: "" the bytes; "short" two bytes of a web page; "throw" a WebException; "hang" a long wait.
+    public class Copy : IDisposable {
+        public static int Active; public static int MaxActive; public static int Disposed; public static int DelayMs = 100; public static int HangMs = 3000;
+        public static Dictionary<string, string> Modes = new Dictionary<string, string>();
+        public Dictionary<string, byte[]> Files;
+        public Web Web;
+        public List<KeyValuePair<string, Result>> Pending = new List<KeyValuePair<string, Result>>();
+        public Copy(Dictionary<string, byte[]> files) { Files = files; Web = new Web(this); }
+        public static void Reset() { Active = 0; MaxActive = 0; Disposed = 0; Modes.Clear(); }
+        public void ExecuteQuery() {
+            int now = Interlocked.Increment(ref Active);
+            lock (Modes) { if (now > MaxActive) { MaxActive = now; } }
+            try {
+                Thread.Sleep(DelayMs);
+                // The queued calls go with this request, also when it fails (as the client library does).
+                var queued = new List<KeyValuePair<string, Result>>(Pending); Pending.Clear();
+                foreach (var pair in queued) {
+                    string mode; lock (Modes) { if (!Modes.TryGetValue(pair.Key, out mode)) { mode = ""; } }
+                    if (mode == "throw") { throw new System.Net.WebException("FAKE: refused"); }
+                    if (mode == "hang") { Thread.Sleep(HangMs); }
+                    pair.Value.Value = new MemoryStream(mode == "short" ? new byte[] { 60, 104 } : Files[pair.Key]);
+                }
+            }
+            finally { Interlocked.Decrement(ref Active); }
+        }
+        public void Dispose() { Interlocked.Increment(ref Disposed); }
+    }
+}
+'@
+}
+
+function New-FakeConnectionCopy {
+    # Fake of ChannelScan.psm1 CloneContext: a copy that serves the fake site's files (one copy per download worker).
+    $files = New-Object 'System.Collections.Generic.Dictionary[string,byte[]]'
+    foreach ($key in $global:FakePnP.Files.Keys) { $files[$key] = $global:FakePnP.Files[$key] }
+    return New-Object IonFake.Copy (, $files)
+}

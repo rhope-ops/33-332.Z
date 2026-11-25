@@ -53,6 +53,47 @@ $script:OpenDirectStream = {
     return $fileType::OpenBinaryDirect((Get-PnPContext), $ServerRelativeUrl).Stream
 }
 
+# Parallel downloads (the PAM, 2026-11-24): 3 at once, each in a worker with its own copy of the signed-in connection.
+$script:ParallelDownloads = 3
+# The longest one download may take in a worker (seconds; as the reader limit, ReaderPool.psm1). Over it, the file is
+# tried on the main thread.
+$script:DownloadSecondsLimit = 180
+# How long the main thread waits between bar updates while downloads run (milliseconds).
+$script:WaitSliceMs = 250
+$script:DownloadBarMs = 250
+# The header line "Parallel downloads" of the last site scan: "3", or "off (<error type>)"; empty before a scan.
+$script:ParallelState = ''
+# Makes a copy of the signed-in connection (PnP.Framework; test 3 of docs/reviews/2026-11-21-ion-round2-tests.md).
+# Tests replace it.
+$script:CloneContext = {
+    param($Context, [string]$SiteUrl)
+    return [Microsoft.SharePoint.Client.ClientContextExtensions]::Clone($Context, $SiteUrl)
+}
+# What a download worker runs: its copy of the connection reads one file into memory (never to disk), and puts its
+# bytes done in the shared table. It gives back the bytes, or the error's type name only (a message can hold a path).
+$script:DownloadWorkerScript = @'
+param($Copy, $Path, $Progress, $Slot)
+$answer = @{ Bytes = $null; Error = '' }
+try {
+    $binary = $Copy.Web.GetFileByServerRelativeUrl($Path).OpenBinaryStream()
+    $Copy.ExecuteQuery()
+    $source = $binary.Value
+    $memory = New-Object System.IO.MemoryStream
+    try {
+        $buffer = New-Object byte[] 65536
+        while (($read = $source.Read($buffer, 0, $buffer.Length)) -gt 0) { $memory.Write($buffer, 0, $read); $Progress[$Slot] = $memory.Length }
+        $answer.Bytes = $memory.ToArray()
+    }
+    finally { $memory.Dispose(); $source.Dispose() }
+}
+catch {
+    $inner = $_.Exception
+    while ($inner -is [System.Management.Automation.MethodInvocationException] -and $inner.InnerException) { $inner = $inner.InnerException }
+    $answer.Error = $inner.GetType().Name
+}
+$answer
+'@
+
 # How the report and the screen name the files at the top of the library (in no folder).
 $script:RootGroupName = '(top of the library)'
 
@@ -250,11 +291,100 @@ function Get-FilesByFolder {
     return $byFolder
 }
 
+function Start-FileScan {
+    <#
+    .SYNOPSIS
+      The first part of one file: a hit for PII in its name, then a NOT SCANNED row when it is not read (type, size).
+    .PARAMETER Queue
+      Output of New-ScanQueue.
+    .PARAMETER File
+      The list item.
+    .PARAMETER Channel
+      The channel folder name.
+    .PARAMETER Prefix
+      The channel folder's server-relative path with a trailing '/'.
+    .PARAMETER Origin
+      https://<host>
+    .PARAMETER MaxFileMB
+      The size limit.
+    .OUTPUTS
+      [hashtable] the file to download (Info, Ref, Name, Size, File, NameRows: the rows added here); $null when it got
+      its NOT SCANNED row.
+    #>
+    param([hashtable]$Queue, $File, [string]$Channel, [string]$Prefix, [string]$Origin, [int]$MaxFileMB)
+    $rows = $Queue.Rows
+    $name = Get-FieldValue $File 'FileLeafRef'
+    $ref = Get-FieldValue $File 'FileRef'
+    $rawChannel = $Channel
+    $Channel = Protect-PiiName $Channel   # from here on, the channel name as the report shows it
+    $modified = Get-FieldValue $File 'Modified'
+    # The path is shown in the report: mask PII in it (with its folder name), and report a name that holds PII as a hit.
+    $rawItem = $ref.Substring($Prefix.Length)
+    $item = Get-ShownItem $rawChannel $rawItem
+    $link = Get-SafeLink $Origin $ref (Get-FieldValue $File 'UniqueId')
+    $size = 0L
+    [void][long]::TryParse((Get-FieldValue $File 'File_x0020_Size'), [ref]$size)
+    $info = @{ Channel = $Channel; Item = $item; Link = $link; Modified = $modified }
+    $first = $rows.Count
+    if (-not (Add-FileStartRows $rows $info ($rawChannel + '/' + $rawItem) $name $size $MaxFileMB)) { return $null }
+    $nameRows = New-Object System.Collections.Generic.List[object]
+    for ($r = $first; $r -lt $rows.Count; $r++) { $nameRows.Add($rows[$r]) }
+    return @{ Info = $info; Ref = $ref; Name = $name; Size = $size; File = $File; NameRows = $nameRows }
+}
+
+function Complete-FileScan {
+    <#
+    .SYNOPSIS
+      The last part of one downloaded file: who made and changed it, then its bytes to the readers (its text rows follow
+      when a worker finishes).
+    .PARAMETER Queue
+      Output of New-ScanQueue.
+    .PARAMETER Prepared
+      Output of Start-FileScan.
+    .PARAMETER Bytes
+      The file bytes.
+    #>
+    param([hashtable]$Queue, [hashtable]$Prepared, [byte[]]$Bytes)
+    $info = $Prepared.Info
+    $ref = $Prepared.Ref
+    $name = $Prepared.Name
+    # Accountability: who made and changed the file; for a file with a hit, who added each hit (version history).
+    $who = Get-SharePointWho $Prepared.File
+    $who.Modified = $info.Modified
+    $info.Who = $who
+    $info.Added = { param($hits) Find-PiiAddedVersion $ref $name $hits $who }.GetNewClosure()
+    Submit-ScanFile $Queue $info $name $Bytes ''
+}
+
+function Add-DownloadFailedRow {
+    <#
+    .SYNOPSIS
+      The NOT SCANNED row of a file that could not be downloaded, counted on the meter with its file-name hits.
+    .PARAMETER Queue
+      Output of New-ScanQueue.
+    .PARAMETER Prepared
+      Output of Start-FileScan.
+    .PARAMETER Message
+      The error message (masked here).
+    .PARAMETER Count
+      Count the file on the meter (the parallel scan); the one-by-one scan counts it in Invoke-GroupScan.
+    #>
+    param([hashtable]$Queue, [hashtable]$Prepared, [string]$Message, [switch]$Count)
+    $info = $Prepared.Info
+    $row = New-ReportRow 'File' $info.Channel $info.Item $info.Link $info.Modified 'NOT SCANNED' '' '' (Protect-PiiText ('Download failed: ' + $Message))
+    $Queue.Rows.Add($row)
+    if (-not $Count) { return }
+    $fileRows = New-Object System.Collections.Generic.List[object]
+    foreach ($nameRow in $Prepared.NameRows) { $fileRows.Add($nameRow) }
+    $fileRows.Add($row)
+    Update-ScanMeter $Queue.Meter $fileRows 0 0
+    Write-MeterLine $Queue.Meter 'file'
+}
+
 function Invoke-OneFileScan {
     <#
     .SYNOPSIS
-      Starts one file: a hit for PII in its name, then a NOT SCANNED row (unsupported, too large, download failed)
-      or its download, handed to the readers (its text rows follow when a worker finishes).
+      Starts one file on the main thread: Start-FileScan, its download, then Complete-FileScan.
     .PARAMETER Queue
       Output of New-ScanQueue.
     .PARAMETER File
@@ -271,41 +401,307 @@ function Invoke-OneFileScan {
       [bool] true when the file went to the readers (else its rows are in and it still needs counting).
     #>
     param([hashtable]$Queue, $File, [string]$Channel, [string]$Prefix, [string]$Origin, [int]$MaxFileMB)
-    $rows = $Queue.Rows
-    $name = Get-FieldValue $File 'FileLeafRef'
-    $ref = Get-FieldValue $File 'FileRef'
-    $rawChannel = $Channel
-    $Channel = Protect-PiiName $Channel   # from here on, the channel name as the report shows it
-    $modified = Get-FieldValue $File 'Modified'
-    # The path is shown in the report: mask PII in it (with its folder name), and report a name that holds PII as a hit.
-    $rawItem = $ref.Substring($Prefix.Length)
-    $item = Get-ShownItem $rawChannel $rawItem
-    $link = Get-SafeLink $Origin $ref (Get-FieldValue $File 'UniqueId')
-    $size = 0L
-    [void][long]::TryParse((Get-FieldValue $File 'File_x0020_Size'), [ref]$size)
-    $info = @{ Channel = $Channel; Item = $item; Link = $link; Modified = $modified }
-    if (-not (Add-FileStartRows $rows $info ($rawChannel + '/' + $rawItem) $name $size $MaxFileMB)) { return $false }
+    $prepared = Start-FileScan $Queue $File $Channel $Prefix $Origin $MaxFileMB
+    if (-not $prepared) { return $false }
     $clock = [Diagnostics.Stopwatch]::StartNew()
-    try { $bytes = Get-FileBytes $ref $size }
+    try { $bytes = Get-FileBytes $prepared.Ref $prepared.Size }
     catch {
         # One file that cannot be downloaded must not stop the scan: note it and go on.
-        $reason = Protect-PiiText ('Download failed: ' + $_.Exception.Message)
-        $rows.Add((New-ReportRow 'File' $Channel $item $link $modified 'NOT SCANNED' '' '' $reason)); return $false
+        Add-DownloadFailedRow $Queue $prepared $_.Exception.Message; return $false
     }
     finally { $script:Timing.Download += $clock.Elapsed; Write-Progress -Id 2 -Activity $script:DownloadStep -Completed }
     # The main thread downloads the next file while workers read this one (speed, the PAM 2026-11-21).
-    # Accountability: who made and changed the file; for a file with a hit, who added each hit (version history).
-    $who = Get-SharePointWho $File
-    $who.Modified = $modified
-    $info.Who = $who
-    $info.Added = { param($hits) Find-PiiAddedVersion $ref $name $hits $who }.GetNewClosure()
-    Submit-ScanFile $Queue $info $name $bytes ''
+    Complete-FileScan $Queue $prepared $bytes
     return $true
 }
 
+# =====================================================================================
+# Parallel downloads (plan step 6, the PAM 2026-11-24: docs/reviews/2026-11-24-parallel-downloads-design.md)
+# =====================================================================================
+
+function Get-DownloadPlan {
+    <#
+    .SYNOPSIS
+      The order of one folder's files (the PAM, 2026-11-24): the files to download first, largest first (equal sizes
+      keep the list order); then the files that are not downloaded (file type not read, or over the size limit).
+    .PARAMETER Files
+      The folder's list items.
+    .PARAMETER MaxFileMB
+      The size limit.
+    .OUTPUTS
+      [hashtable] Download (list items, in order), Other (list items, in list order).
+    #>
+    param([object[]]$Files, [int]$MaxFileMB)
+    $download = New-Object System.Collections.Generic.List[object]
+    $other = New-Object System.Collections.Generic.List[object]
+    $index = 0
+    foreach ($file in $Files) {
+        $size = 0L
+        [void][long]::TryParse((Get-FieldValue $file 'File_x0020_Size'), [ref]$size)
+        if ((Test-SupportedFile (Get-FieldValue $file 'FileLeafRef')) -and $size -le $MaxFileMB * 1MB) {
+            $download.Add([pscustomobject]@{ File = $file; Size = $size; Index = $index })
+        }
+        else { $other.Add($file) }
+        $index++
+    }
+    # Sort-Object is not stable in Windows PowerShell 5.1: the list index keeps equal sizes in list order.
+    $sorted = @($download | Sort-Object @{ Expression = 'Size'; Descending = $true }, @{ Expression = 'Index'; Descending = $false } |
+        ForEach-Object { $_.File })
+    return @{ Download = $sorted; Other = $other.ToArray() }
+}
+
+function Get-ErrorTypeName {
+    # The type name of an error, under PowerShell's wrapper of a .NET call error; never the message (it can hold a path).
+    param([System.Exception]$Exception)
+    $inner = $Exception
+    while ($inner -is [System.Management.Automation.MethodInvocationException] -and $inner.InnerException) { $inner = $inner.InnerException }
+    return $inner.GetType().Name
+}
+
+function New-DownloadPool {
+    <#
+    .SYNOPSIS
+      The download workers of one site scan: one copy of the signed-in connection per worker (no new sign-in), and a
+      runspace pool. When a copy cannot be made, the pool is off and the scan downloads one file at a time.
+    .PARAMETER SiteUrl
+      The signed-in site.
+    .OUTPUTS
+      [hashtable] the pool state (On, State: the header text "3" or "off (<error type>)").
+    #>
+    param([string]$SiteUrl)
+    $count = $script:ParallelDownloads
+    $state = @{ On = $false; State = ''; Count = $count; Copies = @{}; Pool = $null; Stuck = 0; SiteUrl = $SiteUrl
+        Jobs = (New-Object System.Collections.Generic.List[object]); Free = (New-Object System.Collections.Generic.Stack[int])
+        Progress = [hashtable]::Synchronized(@{}); Busy = (New-Object Diagnostics.Stopwatch)
+        BurstClock = (New-Object Diagnostics.Stopwatch); BurstBytes = 0L; BurstDone = 0L; LastBar = 0L }
+    try {
+        $context = Get-PnPContext
+        for ($slot = 0; $slot -lt $count; $slot++) { $state.Copies[$slot] = & $script:CloneContext $context $SiteUrl }
+        # .NET Framework allows 2 connections per host to a desktop program: N downloads need N, and the main thread 1.
+        # Only this one host; in memory, it ends with the PowerShell window.
+        $point = [System.Net.ServicePointManager]::FindServicePoint([uri]$SiteUrl)
+        if ($point.ConnectionLimit -lt $count + 1) { $point.ConnectionLimit = $count + 1 }
+        $state.Pool = [runspacefactory]::CreateRunspacePool(1, $count)
+        $state.Pool.Open()
+        for ($slot = $count - 1; $slot -ge 0; $slot--) { $state.Free.Push($slot) }
+        $state.On = $true
+        $state.State = [string]$count
+    }
+    catch {
+        $state.State = 'off ({0})' -f (Get-ErrorTypeName $_.Exception)
+        Close-DownloadPool $state
+    }
+    return $state
+}
+
+function Start-DownloadJob {
+    <#
+    .SYNOPSIS
+      Hands one file to a free download worker (the caller checks that one is free).
+    .PARAMETER State
+      Output of New-DownloadPool.
+    .PARAMETER Prepared
+      Output of Start-FileScan.
+    #>
+    param([hashtable]$State, [hashtable]$Prepared)
+    if ($State.Jobs.Count -eq 0) {
+        # A new burst: the bar counts from here.
+        $State.BurstBytes = 0L; $State.BurstDone = 0L; $State.BurstClock.Restart(); $State.Busy.Start()
+    }
+    $slot = $State.Free.Pop()
+    $State.Progress[$slot] = 0L
+    $State.BurstBytes += $Prepared.Size
+    $shell = [powershell]::Create()
+    $shell.RunspacePool = $State.Pool
+    [void]$shell.AddScript($script:DownloadWorkerScript).AddArgument($State.Copies[$slot]).AddArgument($Prepared.Ref).AddArgument($State.Progress).AddArgument($slot)
+    $State.Jobs.Add(@{ Shell = $shell; Handle = $shell.BeginInvoke(); Slot = $slot; Prepared = $Prepared; Clock = [Diagnostics.Stopwatch]::StartNew() })
+}
+
+function Write-DownloadBar {
+    # The one download bar for all files in flight (Write-DownloadsStep), at most every $DownloadBarMs.
+    param([hashtable]$State)
+    if ($State.BurstClock.ElapsedMilliseconds - $State.LastBar -lt $script:DownloadBarMs -and $State.LastBar -gt 0) { return }
+    $State.LastBar = [Math]::Max(1L, $State.BurstClock.ElapsedMilliseconds)
+    $done = $State.BurstDone
+    foreach ($job in $State.Jobs) { $done += [long]$State.Progress[$job.Slot] }
+    Write-DownloadsStep $State.Jobs.Count $State.BurstBytes $done $State.BurstClock.Elapsed $script:DownloadStep
+}
+
+function Stop-DownloadJob {
+    <#
+    .SYNOPSIS
+      Stops one download over the time limit without waiting (a stuck network call does not stop). Its copy of the
+      connection is not used again: the worker gets a new copy, or is dropped when no copy can be made.
+    .PARAMETER State
+      Output of New-DownloadPool.
+    .PARAMETER Job
+      The job (from State.Jobs).
+    #>
+    param([hashtable]$State, [hashtable]$Job)
+    [void]$State.Jobs.Remove($Job)
+    try { [void]$Job.Shell.BeginStop($null, $null) } catch { Write-Verbose 'The download had already stopped.' }
+    $State.Stuck++
+    [void]$State.Pool.SetMaxRunspaces($State.Count + $State.Stuck)
+    try { $State.Copies[$Job.Slot] = & $script:CloneContext (Get-PnPContext) $State.SiteUrl; $State.Free.Push($Job.Slot) }
+    catch { Write-Verbose 'No new copy of the connection: one download worker less.' }
+}
+
+function Receive-DownloadResult {
+    <#
+    .SYNOPSIS
+      Waits (a slice at a time, the bar moving) until at least one download finished or went over the time limit, and
+      gives back each: Prepared, Bytes, Error ('' when the bytes are right).
+    .PARAMETER State
+      Output of New-DownloadPool.
+    .OUTPUTS
+      [hashtable] one per finished download.
+    #>
+    param([hashtable]$State)
+    while ($true) {
+        $ready = @($State.Jobs | Where-Object { $_.Handle.IsCompleted })
+        $slow = @($State.Jobs | Where-Object { -not $_.Handle.IsCompleted -and $_.Clock.Elapsed.TotalSeconds -gt $script:DownloadSecondsLimit })
+        foreach ($job in $slow) {
+            Stop-DownloadJob $State $job
+            @{ Prepared = $job.Prepared; Bytes = $null; Error = 'TimeoutException' }
+        }
+        if ($ready.Count -gt 0 -or $slow.Count -gt 0 -or $State.Jobs.Count -eq 0) { break }
+        Write-DownloadBar $State
+        [void]$State.Jobs[0].Handle.AsyncWaitHandle.WaitOne($script:WaitSliceMs)
+    }
+    foreach ($job in $ready) {
+        [void]$State.Jobs.Remove($job)
+        $answer = @{ Prepared = $job.Prepared; Bytes = $null; Error = '' }
+        try {
+            $output = @($job.Shell.EndInvoke($job.Handle)) | Where-Object { $_ -is [hashtable] } | Select-Object -Last 1
+            if (-not $output) { $answer.Error = 'NoResult' }
+            elseif ($output.Error) { $answer.Error = [string]$output.Error }
+            else { $answer.Bytes = [byte[]]$output.Bytes }
+        }
+        catch { $answer.Error = Get-ErrorTypeName $_.Exception }
+        finally { $job.Shell.Dispose(); $State.Free.Push($job.Slot) }
+        # Not the size the list gives (a sign-in page, for example): a failure. Size 0 in the list: not checked.
+        $size = [long]$job.Prepared.Size
+        if (-not $answer.Error -and ($null -eq $answer.Bytes -or ($size -gt 0 -and $answer.Bytes.LongLength -ne $size))) { $answer.Error = 'WrongSize'; $answer.Bytes = $null }
+        $State.BurstDone += $size
+        $answer
+    }
+    if ($State.Jobs.Count -eq 0) { $State.Busy.Stop() }
+}
+
+function Complete-Download {
+    <#
+    .SYNOPSIS
+      A finished worker download: its bytes to the readers. A failed one is tried once more on the main thread: when
+      that works, the copy of the connection is at fault and parallel downloads stop for the rest of the scan; when it
+      also fails, the file is at fault: its NOT SCANNED row, and parallel downloads go on.
+    .PARAMETER Queue
+      Output of New-ScanQueue.
+    .PARAMETER State
+      Output of New-DownloadPool.
+    .PARAMETER Done
+      One result of Receive-DownloadResult.
+    #>
+    param([hashtable]$Queue, [hashtable]$State, [hashtable]$Done)
+    $prepared = $Done.Prepared
+    if (-not $Done.Error) { Complete-FileScan $Queue $prepared $Done.Bytes; return }
+    $running = $State.Busy.IsRunning
+    $State.Busy.Stop()   # the main thread's download time is counted on its own (no double count)
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    try { $bytes = Get-FileBytes $prepared.Ref $prepared.Size }
+    catch { Add-DownloadFailedRow $Queue $prepared $_.Exception.Message -Count; return }
+    finally {
+        $script:Timing.Download += $clock.Elapsed
+        Write-Progress -Id 2 -Activity $script:DownloadStep -Completed
+        if ($running -and $State.Jobs.Count -gt 0) { $State.Busy.Start() }
+    }
+    if ($State.On) { $State.On = $false; $State.State = 'off ({0})' -f $Done.Error }
+    Complete-FileScan $Queue $prepared $bytes
+}
+
+function Invoke-ParallelGroup {
+    <#
+    .SYNOPSIS
+      Starts the files of one folder in the planned order (Get-DownloadPlan), up to $ParallelDownloads downloads at a
+      time, then the files that are not downloaded (Invoke-GroupScan waits for the readers and writes the folder line).
+    .PARAMETER Queue
+      Output of New-ScanQueue.
+    .PARAMETER Group
+      One group of Get-ScanGroups.
+    .PARAMETER State
+      Output of New-DownloadPool.
+    .PARAMETER Origin
+      https://<host>
+    .PARAMETER MaxFileMB
+      The size limit.
+    #>
+    param([hashtable]$Queue, $Group, [hashtable]$State, [string]$Origin, [int]$MaxFileMB)
+    $meter = $Queue.Meter
+    $plan = Get-DownloadPlan $Group.Files $MaxFileMB
+    # Counts a file that did not go to the readers from the rows it added (as Invoke-GroupScan does).
+    $count = { param($first) Update-ScanMeter $meter $Queue.Rows $first 0; Write-MeterLine $meter 'file' }
+    $next = 0
+    $started = $false
+    try {
+        while ($next -lt $plan.Download.Count -or $State.Jobs.Count -gt 0) {
+            while ($next -lt $plan.Download.Count -and (-not $State.On -or $State.Free.Count -gt 0)) {
+                $file = $plan.Download[$next]; $next++
+                $ref = Get-FieldValue $file 'FileRef'
+                Write-ScanBar $Queue ('File: ' + (Get-ShownItem $Group.Name $ref.Substring($Group.Prefix.Length)))
+                # '#' and '%' break the client call's address (as for the stream): such a file takes the main thread's download.
+                if (-not $State.On -or $ref.IndexOfAny([char[]]'#%') -ge 0) {
+                    $first = $Queue.Rows.Count
+                    if (-not (Invoke-OneFileScan $Queue $file $Group.Name $Group.Prefix $Origin $MaxFileMB)) { & $count $first }
+                    continue
+                }
+                $first = $Queue.Rows.Count
+                $prepared = Start-FileScan $Queue $file $Group.Name $Group.Prefix $Origin $MaxFileMB
+                if ($prepared) { Start-DownloadJob $State $prepared; $started = $true } else { & $count $first }
+            }
+            if ($State.Jobs.Count -gt 0) { foreach ($done in @(Receive-DownloadResult $State)) { Complete-Download $Queue $State $done } }
+        }
+    }
+    finally { if ($started) { Write-Progress -Id 2 -Activity $script:DownloadStep -Completed } }
+    foreach ($file in $plan.Other) {
+        Write-ScanBar $Queue ('File: ' + (Get-ShownItem $Group.Name (Get-FieldValue $file 'FileRef').Substring($Group.Prefix.Length)))
+        $first = $Queue.Rows.Count
+        if (-not (Invoke-OneFileScan $Queue $file $Group.Name $Group.Prefix $Origin $MaxFileMB)) { & $count $first }
+    }
+}
+
+function Close-DownloadPool {
+    <#
+    .SYNOPSIS
+      Stops the downloads that still run (after a cancel or an error) without waiting, closes the pool and the copies
+      of the connection. The one sign-out of the run comes after (Find-ChannelPII.ps1).
+    .PARAMETER State
+      Output of New-DownloadPool.
+    #>
+    param([hashtable]$State)
+    $running = 0
+    foreach ($job in $State.Jobs.ToArray()) {
+        if ($job.Handle.IsCompleted) { $job.Shell.Dispose() }
+        else { $running++; try { [void]$job.Shell.BeginStop($null, $null) } catch { Write-Verbose 'The download had already stopped.' } }
+    }
+    $State.Jobs.Clear()
+    $State.Busy.Stop()
+    if ($State.Pool) {
+        if ($running + $State.Stuck -gt 0) { [void]$State.Pool.BeginClose($null, $null) }   # it closes when the stuck workers end
+        else { $State.Pool.Close(); $State.Pool.Dispose() }
+        $State.Pool = $null
+    }
+    foreach ($copy in @($State.Copies.Values)) {
+        if ($copy -is [System.IDisposable]) { try { $copy.Dispose() } catch { Write-Verbose 'A copy of the connection was already closed.' } }
+    }
+    $State.Copies = @{}
+    $State.On = $false
+}
+
 function Get-ScanTiming {
-    # The time of the last file scan spent downloading and spent reading, as minutes:seconds text.
-    [ordered]@{ 'Time downloading' = (Format-Duration $script:Timing.Download); 'Time reading files (all readers)' = (Format-Duration $script:Timing.Check) }
+    # The time of the last file scan spent downloading (wall time with a download in flight) and spent reading, as
+    # minutes:seconds text, and its parallel downloads ("3" or "off (<error type>)").
+    $timing = [ordered]@{ 'Time downloading' = (Format-Duration $script:Timing.Download); 'Time reading files (all readers)' = (Format-Duration $script:Timing.Check) }
+    if ($script:ParallelState) { $timing['Parallel downloads'] = $script:ParallelState }
+    return $timing
 }
 
 function Get-ScanGroups {
@@ -379,8 +775,17 @@ function Invoke-FileScan {
     $run = $Progress; if (-not $run) { $run = @{} }
     # A file's name and size, for the question before the scan.
     $facts = { param($file) $size = 0L; [void][long]::TryParse((Get-FieldValue $file 'File_x0020_Size'), [ref]$size); (Get-FieldValue $file 'FileLeafRef'), $size }
+    # Parallel downloads in a planned order (the PAM, 2026-11-24); one file at a time when the pool is off.
+    $downloads = New-DownloadPool $SiteUrl
+    $script:ParallelState = $downloads.State
+    $run.GroupScan = { param($queue, $group) Invoke-ParallelGroup $queue $group $downloads $origin $MaxFileMB }
     try { Invoke-ScanRun $Init $Rows $groups $start $shown $run $facts $MaxFileMB }
-    finally { if ($run.ContainsKey('Reading')) { $script:Timing.Check = $run.Reading } }
+    finally {
+        if ($run.ContainsKey('Reading')) { $script:Timing.Check = $run.Reading }
+        $script:Timing.Download += $downloads.Busy.Elapsed
+        $script:ParallelState = $downloads.State
+        Close-DownloadPool $downloads
+    }
     return $run.Meter.Read
 }
 
