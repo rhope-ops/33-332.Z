@@ -368,14 +368,9 @@ Assert-Equal 'off (WrongSize)' ((Get-ScanTiming)['Parallel downloads']) 'Wrong s
 Assert-Equal 6 @($shortRows | Where-Object { $_.Detector -eq 'Phone' }).Count 'Wrong size in a worker: no hit is lost'
 # A file that fails in the worker and on the main thread: its row; parallel downloads go on.
 & $channelScan { $script:OpenDirectStream = { param($url) throw 'FAKE: no stream' } }
-function global:Get-PnPFile {
-    # Fake: the file bytes, except one file that SharePoint refuses (also on the main connection).
-    [CmdletBinding()] param($Url, [switch]$AsMemoryStream)
-    if ($Url -like '*part5.txt') { throw 'FAKE: file refused' }
-    New-Object System.IO.MemoryStream(, $global:FakePnP.Files[$Url])
-}
 [IonFake.Copy]::Reset(); [IonFake.Copy]::Modes["$library/General/part5.txt"] = 'throw'
 Reset-FakePnP $parallelFiles
+Set-FakeRefusedFile "$library/General/part5.txt"
 $badRows = New-Object System.Collections.Generic.List[object]
 Assert-Equal 5 (Invoke-FileScan -Library $lib -Channels @('General') -SiteUrl $Sample.Site -MaxFileMB 25 -Rows $badRows 6>$null) 'A file refused everywhere: the others are read'
 Assert-Equal 1 @($badRows | Where-Object { $_.Detector -eq 'NOT SCANNED' -and $_.Item -eq 'part5.txt' -and $_.Context -like 'Download failed*' }).Count 'A file refused everywhere: its NOT SCANNED row'
@@ -389,12 +384,6 @@ Assert-Equal 6 (Invoke-FileScan -Library $lib -Channels @('General') -SiteUrl $S
 Assert-Equal 'off (TimeoutException)' ((Get-ScanTiming)['Parallel downloads']) 'A download over the time limit: tried on the main thread, then one at a time'
 Assert-Equal 1 @($slowRows | Where-Object { $_.Item -eq 'part1.txt' -and $_.Detector -eq 'Phone' }).Count 'A download over the time limit: its PII is still found'
 & $channelScan { $script:DownloadSecondsLimit = 180 }
-Remove-Item Function:\Get-PnPFile
-function global:Get-PnPFile {
-    # Fake: the file bytes as a memory stream (a later PnP version's -AsMemoryStream).
-    [CmdletBinding()] param($Url, [switch]$AsMemoryStream)
-    New-Object System.IO.MemoryStream(, $global:FakePnP.Files[$Url])
-}
 & $channelScan { param($opener) $script:OpenDirectStream = $opener } $normalOpener
 & $channelScan { param($copy) $script:CloneContext = $copy } $normalCopy
 

@@ -48,6 +48,7 @@ function Reset-FakePnP {
         LookupSite  = ''                                          # the tenant root's answer for a Teams link's group ('' = none; 'fail' = refused)
         OpenAnswer  = ''                                          # the answer to "Open the workbook now?" ('' = Enter = yes)
         ScanAnswer  = ''                                          # the answer to "Scan now?" ('' = Enter = yes)
+        RefusedFile = ''                                          # a path that Get-PnPFile refuses ('' = none)
         Calls       = New-Object System.Collections.Generic.List[string]
         Progress    = New-Object System.Collections.Generic.List[string]
     }
@@ -57,6 +58,12 @@ function Set-FakePnPOption {
     # Changes one switch of the fake site: one of the names in the ValidateSet below (Reset-FakePnP says what each does).
     param([ValidateSet('ListFails', 'ConnectFails', 'SiteFails', 'NoAccess', 'StopInFolder2', 'StaleWeb', 'StaleHost')][string]$Name, [bool]$Value)
     $global:FakePnP[$Name] = $Value
+}
+
+function Set-FakeRefusedFile {
+    # One file path that the fake Get-PnPFile refuses (also on the main connection); '' for none.
+    param([string]$Path)
+    $global:FakePnP.RefusedFile = $Path
 }
 
 function Set-FakeRootAnswer {
@@ -205,6 +212,7 @@ function global:Get-PnPListItem {
 function global:Get-PnPFile {
     # Fake: the file bytes as a memory stream (a later PnP version's -AsMemoryStream).
     [CmdletBinding()] param($Url, [switch]$AsMemoryStream)
+    if ($global:FakePnP.RefusedFile -and $Url -eq $global:FakePnP.RefusedFile) { throw 'FAKE: file refused' }
     New-Object System.IO.MemoryStream(, $global:FakePnP.Files[$Url])
 }
 
