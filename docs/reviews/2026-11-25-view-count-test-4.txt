@@ -2,11 +2,11 @@
 # usaf.dps.mil only. Read-only, one site, one file. Prints only counts, True/False and error type names: no address,
 # no file name and no error message. No Microsoft Graph call: the addresses are on usaf.dps.mil only.
 $ErrorActionPreference = 'Stop'
-'T4 test version=2026-11-25d'
+'T4 test version=2026-11-25e'
 $typed = (Read-Host 'Question 1: the address of the folder page in your web browser').Trim().Trim('"')
 $fileText = (Read-Host 'Question 2: the file name with its type (for example Report.pdf)').Trim().Trim('"', '/')
 Clear-Host
-'T4 test version=2026-11-25d'
+'T4 test version=2026-11-25e'
 $tag = 'T4'
 $signedIn = $false
 try {
@@ -31,7 +31,8 @@ try {
     }
     $folderPath = $folderPath.TrimEnd('/')
     $name = [uri]::UnescapeDataString($fileText)
-    if (([uri]::UnescapeDataString($typed) + '/' + $folderPath + '/' + $name) -match '(^|/)\.{1,2}(/|$)|\\') { '{0} answer with .. or \ found=True: stopped' -f $tag; return }
+    # Only the one site: no part of only dots and spaces ('..'), no '\', and nothing still encoded after the one decode ('%252e').
+    if (([uri]::UnescapeDataString($typed) + '/' + $folderPath + '/' + $name) -match '(^|/)[.\s]+(/|$|[?#&])|\\|%[0-9A-Fa-f]{2}') { '{0} answer with .. or \ found=True: stopped' -f $tag; return }
     if ($name.Contains('/')) { $folderFrom = 'answer 2 (a path)'; $path = $sitePath + '/' + $name.TrimStart('/') }
     elseif (-not $folderPath.StartsWith($sitePath + '/', [StringComparison]::OrdinalIgnoreCase)) { '{0} folder in the address found=False' -f $tag; return }
     else { $path = $folderPath + '/' + $name }

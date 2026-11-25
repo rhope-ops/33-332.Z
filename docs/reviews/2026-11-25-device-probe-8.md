@@ -16,13 +16,13 @@ did not find its file, and probe 3 tested sign-in and paths only. The PAM chose 
 
 | Line | It shows |
 |---|---|
-| P8 probe version | 2026-11-25e: the text you pasted is this version |
+| P8 probe version | 2026-11-25f: the text you pasted is this version |
 | P8 answer 1 is a DoD365 site address=False | the address is not on usaf.dps.mil: the probe stops |
 | P8 folder from | where the probe found the folder in the address: id (a folder page), library page, path |
 | P8 folder in the address found=False | the address does not name a folder of this site: the probe stops |
 | P8 sign-in | the sign-in to the site |
 | P8 file found | the file in that folder, found by its name, or (only for a name with no type) by its name without its type: then the probe reads the file names of that one folder; False: the probe stops |
-| P8 answer with .. or \ found=True | an answer has `..`, `.` as a folder, or `\` in it: the probe stops |
+| P8 answer with .. or \ found=True | an answer has a part of only dots (`..`), `\`, or a code like `%2e` left after one decode: the probe stops |
 | P8 files with this name in the folder, P8 folder read | the count of files with that name when it is not exactly 1, or why the folder could not be read |
 | P8 library read=False | the library of the file could not be read: the sharing links are not read |
 | P8 unique permissions | True: the file has its own permissions; False: it has the permissions of its folder or library |
@@ -74,7 +74,7 @@ your team site.
 11. On the question **Question 2**, do these actions:
     1. Type the file name that you wrote down, for example `Report.pdf`.
     2. Press **Enter**.
-    You see that the screen clears. Then you see the line `P8 probe version=2026-11-25e`. Go on.
+    You see that the screen clears. Then you see the line `P8 probe version=2026-11-25f`. Go on.
 12. If a window asks if you want to continue running scripts, click **Yes**. The window closes. Go on.
 13. If a sign-in window opens, sign in with your CAC. The window closes. The sign-in can take 2 minutes or more. Go on.
 14. In the ISE output pane, wait until the line **Done.** shows. Do not copy before then.

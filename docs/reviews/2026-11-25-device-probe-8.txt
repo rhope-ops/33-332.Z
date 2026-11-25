@@ -3,11 +3,11 @@
 # address, no path, no group name and no value. It reads: unique permissions (True/False), the permission entries of
 # the file (counted by kind), and the sharing links of the file (counted by kind). It lists no other site or user.
 $ErrorActionPreference = 'Stop'
-'P8 probe version=2026-11-25e'
+'P8 probe version=2026-11-25f'
 $typed = (Read-Host 'Question 1: the address of the folder page in your web browser').Trim().Trim('"')
 $fileText = (Read-Host 'Question 2: the file name with its type (for example Report.pdf)').Trim().Trim('"', '/')
 Clear-Host
-'P8 probe version=2026-11-25e'
+'P8 probe version=2026-11-25f'
 $tag = 'P8'
 $signedIn = $false
 $step = 0; $stepName = 'start'
@@ -45,7 +45,8 @@ else {
 }
 $folderPath = $folderPath.TrimEnd('/')
 $name = [uri]::UnescapeDataString($fileText)
-if (([uri]::UnescapeDataString($typed) + '/' + $folderPath + '/' + $name) -match '(^|/)\.{1,2}(/|$)|\\') { '{0} answer with .. or \ found=True: stopped' -f $tag; return }
+# Only the one site: no part of only dots and spaces ('..'), no '\', and nothing still encoded after the one decode ('%252e').
+if (([uri]::UnescapeDataString($typed) + '/' + $folderPath + '/' + $name) -match '(^|/)[.\s]+(/|$|[?#&])|\\|%[0-9A-Fa-f]{2}') { '{0} answer with .. or \ found=True: stopped' -f $tag; return }
 if ($name.Contains('/')) { $folderFrom = 'answer 2 (a path)'; $path = $sitePath + '/' + $name.TrimStart('/') }
 elseif (-not $folderPath.StartsWith($sitePath + '/', [StringComparison]::OrdinalIgnoreCase)) { '{0} folder in the address found=False' -f $tag; return }
 else { $path = $folderPath + '/' + $name }
@@ -95,7 +96,7 @@ try {
     $assignments = Get-PnPProperty -ClientObject $item -Property RoleAssignments
     $entries = @(foreach ($one in $assignments) { $one })
     'P8 permission entries read=True count={0} ms={1}' -f $entries.Count, $clock.ElapsedMilliseconds
-    # Each entry by kind only (the name and the sign-in name are read to sort, never printed).
+    # Each entry by kind only (the sign-in name and the type are read to sort, never printed).
     $kinds = @{}
     $clock.Restart()
     foreach ($entry in $entries) {

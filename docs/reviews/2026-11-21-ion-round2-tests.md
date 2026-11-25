@@ -43,7 +43,7 @@ start, choose 1 file on your team site that people opened in the last 90 days.
 11. On the question **Question 2**, do these actions:
     1. Type the file name that you wrote down, for example `Report.pdf`.
     2. Press **Enter**.
-    You see that the screen clears. Then you see the line `T4 test version=2026-11-25d`. Go on.
+    You see that the screen clears. Then you see the line `T4 test version=2026-11-25e`. Go on.
 12. If a window asks if you want to continue running scripts, click **Yes**. The window closes. Go on.
 13. If a sign-in window opens, sign in with your CAC. The window closes. The sign-in can take 2 minutes or more. Go on.
 14. In the ISE output pane, wait until the line **Done.** shows. Do not copy before then.
@@ -70,4 +70,4 @@ start, choose 1 file on your team site that people opened in the last 90 days.
 ## Results
 
 - Test 3: not run. The PAM, 2026-11-24: build with fallback; the header line "Parallel downloads" of a normal Ion run
-  is the evidence (docs/reviews/2026-11-24-parallel-downloads-design.md). Test 4: as a .txt file since 2026-11-25; version 2026-11-25d takes the folder from the address of the folder page and asks for the file name only (the web page shows the library as "Documents", the address has "Shared Documents"; review of PR 125). Stub run on PowerShell 7.4 with invented data: 4 cases end with "Done.". Waiting on the PAM's run.
+  is the evidence (docs/reviews/2026-11-24-parallel-downloads-design.md). Test 4: as a .txt file since 2026-11-25; version 2026-11-25e takes the folder from the address of the folder page and asks for the file name only (the web page shows the library as "Documents", the address has "Shared Documents"; review of PR 125). Stub run on PowerShell 7.4 with invented data: 4 cases end with "Done.". Waiting on the PAM's run.
