@@ -1,5 +1,5 @@
 <#
-  Ion - DoD365 PII Reporter, build 627c3e1b (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
+  Ion - DoD365 PII Reporter, build 4f053807 (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
 
   HOW TO RUN
     1. Optional: read this text first (Open the script shows it as a .txt in your browser).
@@ -45,7 +45,7 @@
     src/SiteTarget.psm1, sha256 2e693a68f413
     src/ChannelScan.psm1, sha256 2c367cf77f5c
     src/DriveScan.psm1, sha256 58850f316f96
-    src/Find-ChannelPII.ps1, sha256 9733144ccfcd
+    src/Find-ChannelPII.ps1, sha256 cfc3f07031c2
 
   Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.
   Run target: Windows PowerShell 5.1 with PnP.PowerShell 1.12.0; no admin rights, no file to unblock.
@@ -97,12 +97,12 @@ $SiteUrl = ''            # the team's Teams link, or its site https://usaf.dps.m
 $OutputFolder = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Ion')   # results: a folder per site, then per day
 $MaxFileMB = 25          # files larger than this are reported as NOT SCANNED
 
-$IonPasteHash = '43fab96e87258cce8b13776c4e2afac56a1473112126d7d5854ad6128089e0ce'   # the SHA-256 of the text from the line Paste check to the end (do not edit)
+$IonPasteHash = 'eec07688306564bf38233837edc543f62a124189b8d03c1d4cee7cecd71f42ee'   # the SHA-256 of the text from the line Paste check to the end (do not edit)
 
 # ==== Paste check ==== (the text from this line to the end must be the published text, or nothing runs)
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
-$IonBuild = '627c3e1b'       # the build ID: Ion shows it at the start (do not edit)
+$IonBuild = '4f053807'       # the build ID: Ion shows it at the start (do not edit)
 $IonPasteCheck = 'not read'
 $pasteText = ''
 try { $pastePath = $PSCommandPath } catch { $pastePath = '' }   # no script path: read the ISE pane
@@ -9117,7 +9117,7 @@ try {
     # Speed, asked once per run (the PAM, 2026-11-25): Normal (Enter) = half the processors and 2 downloads; Fast = one reader per
     # processor (at most 8) and 3 downloads.
     if ($targets.Count -gt 0) {
-        # A note on each mode, so the person can decide (the PAM's words, 2026-11-25).
+        # A note on each mode, so the person can decide (from the PAM's words, 2026-11-25).
         Write-Ui 'Choose how much of this computer Ion uses:' 'Text'
         Write-Ui '  Normal: uses less power and memory.' 'Muted'
         Write-Ui '  Fast:   resource intensive.' 'Muted'

@@ -251,7 +251,7 @@ try {
     # Speed, asked once per run (the PAM, 2026-11-25): Normal (Enter) = half the processors and 2 downloads; Fast = one reader per
     # processor (at most 8) and 3 downloads.
     if ($targets.Count -gt 0) {
-        # A note on each mode, so the person can decide (the PAM's words, 2026-11-25).
+        # A note on each mode, so the person can decide (from the PAM's words, 2026-11-25).
         Write-Ui 'Choose how much of this computer Ion uses:' 'Text'
         Write-Ui '  Normal: uses less power and memory.' 'Muted'
         Write-Ui '  Fast:   resource intensive.' 'Muted'
