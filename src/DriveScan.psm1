@@ -8,12 +8,15 @@ DriveScan.psm1 - scans a folder on a mapped or network drive (X:\<folder> or \\<
   Outputs:     report rows; the results workbook (Report.psm1 Publish-ScanReport).
   How to run:  imported by Find-ChannelPII.ps1; Invoke-DriveScan runs when the pasted target is a folder path.
   Depends on:  PiiDetectors.psm1, PiiMasking.psm1, TextExtract.psm1 (Test-SupportedFile), Report.psm1,
-               ScanMeter.psm1, ScanQueue.psm1 and ChannelScan.psm1 (Get-ShownItem), imported first.
+               ScanMeter.psm1, ScanQueue.psm1, ChannelScan.psm1 (Get-ShownItem, Get-FileBytes, Get-FieldValue,
+               Get-SafeLink), Accountability.psm1 and OneDriveWeb.psm1 (Connect-OneDriveWeb), imported first.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7, where the tests run on a temporary folder).
-  Network:     only the given folder's server, through the person's Windows logon (SMB); in a OneDrive folder, OneDrive
-               downloads an online-only file only after the person answers y (Select-OnlineFiles).
+  Network:     only the given folder's server, through the person's Windows logon (SMB). In a OneDrive folder
+               (OneDriveWeb.psm1): its own site, for the who/when history and to read online-only and web-only files
+               into memory; when the web is not used, OneDrive downloads an online-only file only after the person
+               answers y (Select-OnlineFiles).
   Writes:      only the results workbook under the results folder (a downloaded OneDrive file is written by OneDrive).
-  Credentials: none (the Windows logon).
+  Credentials: none stored (the Windows logon; in a OneDrive folder, the person's own CAC sign-in).
 #>
 
 Set-StrictMode -Version 2.0
@@ -128,8 +131,9 @@ function Select-OnlineFiles {
       The size limit.
     #>
     param([object[]]$Groups, $Rows, [int]$MaxFileMB)
+    # A file that OneDrive on the web gives (Add-OneDriveWebFiles) is read from there, into memory: not asked about.
     $online = @(foreach ($group in $Groups) { foreach ($file in $group.Files) {
-                if ($file.Online -and (Test-SupportedFile $file.Name) -and $file.Size -le $MaxFileMB * 1MB) { $file } } })
+                if ($file.Online -and -not $file.ContainsKey('Web') -and (Test-SupportedFile $file.Name) -and $file.Size -le $MaxFileMB * 1MB) { $file } } })
     if ($online.Count -eq 0) { return }
     $megabytes = ($online | ForEach-Object { $_.Size } | Measure-Object -Sum).Sum / 1MB   # 5.1 reads no hashtable key here
     Write-Ui ('{0} files ({1:N1} MB) here are online only (OneDrive). To read them, Ion must download them to this computer.' -f $online.Count, $megabytes) 'Accent'
@@ -139,7 +143,8 @@ function Select-OnlineFiles {
         $keep = New-Object System.Collections.Generic.List[object]   # one pass per group, not one search per file
         $declined = New-Object System.Collections.Generic.List[object]
         foreach ($file in $group.Files) {
-            if ($file.Online -and (Test-SupportedFile $file.Name) -and $file.Size -le $MaxFileMB * 1MB) { $declined.Add($file) } else { $keep.Add($file) }
+            if ($file.Online -and -not $file.ContainsKey('Web') -and (Test-SupportedFile $file.Name) -and $file.Size -le $MaxFileMB * 1MB) { $declined.Add($file) }
+            else { $keep.Add($file) }
         }
         $group.Files.Clear(); $group.Files.AddRange($keep)
         foreach ($file in $declined) {
@@ -239,12 +244,70 @@ function Invoke-DriveFile {
     $rows = $Queue.Rows
     $channel = Protect-PiiName $Group
     $item = Get-ShownItem $Group $File.Inner
-    $link = Get-DriveLink $File.Path
+    $web = $null; if ($File.ContainsKey('Web')) { $web = $File.Web }
+    if ($web) { $link = Get-SafeLink $File.Origin (Get-FieldValue $web 'FileRef') (Get-FieldValue $web 'UniqueId') } else { $link = Get-DriveLink $File.Path }
     $info = @{ Channel = $channel; Item = $item; Link = $link; Modified = $File.Modified }
     if (-not (Add-FileStartRows $rows $info ($Group + '/' + $File.Inner) $File.Name $File.Size $MaxFileMB)) { return $false }
-    $info.DrivePath = $File.Path
-    Submit-ScanFile $Queue $info $File.Name $null $File.Path
+    if (-not $web) {   # no web copy: the disk only, and the Windows owner and times (as before)
+        $info.DrivePath = $File.Path
+        Submit-ScanFile $Queue $info $File.Name $null $File.Path
+        return $true
+    }
+    # The who/when history from the web copy, as for a team site (Find-PiiAddedVersion, Accountability.psm1).
+    $ref = Get-FieldValue $web 'FileRef'; $name = $File.Name
+    $who = Get-SharePointWho $web
+    $who.Modified = Get-FieldValue $web 'Modified'
+    $info.Who = $who
+    $info.Added = { param($hits) Find-PiiAddedVersion $ref $name $hits $who }.GetNewClosure()
+    if (-not $File.Online -and $File.Path) { Submit-ScanFile $Queue $info $name $null $File.Path; return $true }   # on the disk: read from the disk
+    # Online only, or on the web only: read from the web into memory (the PAM, 2026-11-24: nothing goes to the disk).
+    try { $bytes = Get-FileBytes $ref $File.Size }
+    catch {
+        $rows.Add((New-ReportRow 'File' $channel $item $link $File.Modified 'NOT SCANNED' '' '' (Protect-PiiText ('Download failed: ' + $_.Exception.Message))))
+        return $false
+    }
+    finally { Write-Progress -Id 2 -Activity 'Downloading' -Completed }
+    Submit-ScanFile $Queue $info $name $bytes ''
     return $true
+}
+
+function Add-OneDriveWebFiles {
+    <#
+    .SYNOPSIS
+      Joins the web files of the pasted folder (Connect-OneDriveWeb) to its local files: a local file with a web copy
+      gets it (Web, Origin: history, and the read of an online-only file); a web file that is not on the disk joins its
+      group (the PAM, 2026-11-24: read through PnP). The web side never adds a file outside the pasted folder.
+    .PARAMETER Groups
+      The groups of Get-DriveGroups (changed in place).
+    .PARAMETER Web
+      Output of Connect-OneDriveWeb with Used = $true.
+    .OUTPUTS
+      [int] the number of web-only files added.
+    #>
+    param([System.Collections.Generic.List[object]]$Groups, [hashtable]$Web)
+    $seen = @{}
+    foreach ($group in $Groups) {
+        foreach ($file in $group.Files) {
+            $rel = $file.Inner; if ($group.Name -ne $script:DriveTopGroup) { $rel = $group.Name + '/' + $file.Inner }
+            $key = $rel.ToLowerInvariant(); $seen[$key] = $true
+            if ($Web.Files.ContainsKey($key)) { $file.Web = $Web.Files[$key]; $file.Origin = $Web.Origin }
+        }
+    }
+    $added = 0
+    foreach ($key in @($Web.Files.Keys | Sort-Object)) {
+        if ($seen.ContainsKey($key)) { continue }
+        $item = $Web.Files[$key]
+        $rel = (Get-FieldValue $item 'FileRef').Substring($Web.Map.WebFolder.Length + 1)
+        $groupName = $script:DriveTopGroup; $inner = $rel
+        $cut = $rel.IndexOf('/'); if ($cut -gt 0) { $groupName = $rel.Substring(0, $cut); $inner = $rel.Substring($cut + 1) }
+        $group = $null; foreach ($g in $Groups) { if ($g.Name -ieq $groupName) { $group = $g; break } }
+        if (-not $group) { $group = @{ Name = $groupName; Files = (New-Object System.Collections.Generic.List[object]) }; $Groups.Add($group) }
+        $size = 0L; [void][long]::TryParse((Get-FieldValue $item 'File_x0020_Size'), [ref]$size)
+        $group.Files.Add(@{ Path = ''; Inner = $inner; Name = (Get-FieldValue $item 'FileLeafRef'); Size = $size; Modified = (Get-FieldValue $item 'Modified')
+            Online = $true; Web = $item; Origin = $Web.Origin })
+        $added++
+    }
+    return $added
 }
 
 function Add-DriveListRows {
@@ -289,18 +352,54 @@ function Get-DriveHeader {
       The time all workers spent reading.
     .PARAMETER Workers
       The number of files read at once at the end.
+    .PARAMETER WebNote
+      Connect-OneDriveWeb's note (empty for a folder that OneDrive does not sync).
     .OUTPUTS
       [System.Collections.Specialized.OrderedDictionary]
     #>
-    param([string]$Path, [object[]]$Groups, [TimeSpan]$Used, [TimeSpan]$Reading, [int]$Workers)
+    param([string]$Path, [object[]]$Groups, [TimeSpan]$Used, [TimeSpan]$Reading, [int]$Workers, [string]$WebNote = '')
     $header = [ordered]@{}
     $header['Folder'] = Protect-PiiName $Path
+    if ($WebNote) { $header['OneDrive on the web'] = $WebNote }
     $header['Folders'] = ($Groups | ForEach-Object { Protect-PiiName $_.Name }) -join ', '
     $header['Run'] = Get-Date -Format 'yyyy-MM-dd HH:mm'
     $header['Time used'] = Format-Duration $Used
     $header['Time reading files (all readers)'] = Format-Duration $Reading
     $header['Files read at the same time (at the end)'] = [string]$Workers
     return $header
+}
+
+function Get-DriveScanList {
+    <#
+    .SYNOPSIS
+      The files to scan: the folder's files, joined with their web copies in a OneDrive folder (plan step 4: one
+      sign-in; history, online-only and web-only files from the web; local only if that fails), the rows for blocked
+      folders and links, and the download question for online-only files with no web copy.
+    .PARAMETER Path
+      The folder.
+    .PARAMETER Rows
+      The list that receives the rows.
+    .PARAMETER MaxFileMB
+      The size limit.
+    .PARAMETER Run
+      Receives WebNote (Connect-OneDriveWeb's note for the Summary).
+    .PARAMETER SyncEntries
+      The OneDrive sync entries, or $null (the registry).
+    .PARAMETER OneDriveHomes
+      The own OneDrive folders, or $null (Windows).
+    .OUTPUTS
+      [object[]] the groups.
+    #>
+    param([string]$Path, $Rows, [int]$MaxFileMB, [hashtable]$Run, [object[]]$SyncEntries, [string[]]$OneDriveHomes)
+    Write-Ui 'Listing the files ...' 'Muted'
+    $found = Get-DriveGroups $Path
+    $web = Connect-OneDriveWeb $Path $SyncEntries $OneDriveHomes
+    $Run.WebNote = $web.Note
+    if ($web.Used) { $null = Add-OneDriveWebFiles $found.Groups $web }
+    $groups = $found.Groups.ToArray()
+    Add-DriveListRows $found $Rows
+    Select-OnlineFiles $groups $Rows $MaxFileMB
+    return , $groups
 }
 
 function Invoke-DriveScan {
@@ -319,24 +418,24 @@ function Invoke-DriveScan {
       How the reader workers load their code (New-ReaderPool).
     .PARAMETER AutoStart
       Do not ask "Scan now?" (the person said yes to a list of targets); the OneDrive question still asks.
+    .PARAMETER SyncEntries
+      The OneDrive sync entries; $null (the default) reads them from the registry. Tests give their own.
+    .PARAMETER OneDriveHomes
+      The person's own OneDrive folders; $null (the default) reads them from Windows. Tests give their own.
     .OUTPUTS
       [string] the workbook path.
     #>
-    param([string]$Path, [string]$OutputFolder, [int]$MaxFileMB, [hashtable]$Init, [switch]$AutoStart)
+    param([string]$Path, [string]$OutputFolder, [int]$MaxFileMB, [hashtable]$Init, [switch]$AutoStart, [object[]]$SyncEntries = $null, [string[]]$OneDriveHomes = $null)
     $clock = [Diagnostics.Stopwatch]::StartNew()
     $rows = New-Object System.Collections.Generic.List[object]
     $finished = $false
     $groups = @(); $workbook = $null
-    $run = @{ Meter = (New-ScanMeter 0); Reading = [TimeSpan]::Zero; Workers = 0; AutoStart = [bool]$AutoStart }   # filled by Invoke-ScanRun
+    $run = @{ Meter = (New-ScanMeter 0); Reading = [TimeSpan]::Zero; Workers = 0; AutoStart = [bool]$AutoStart; WebNote = '' }   # filled by Invoke-ScanRun
     try {
         if (-not (Test-Path -LiteralPath $Path -PathType Container)) { throw 'This folder cannot be opened (check the path, and that you can open it in File Explorer).' }
         # Own OneDrive folder: shortcuts to other teams' libraries ("No reconnaissance"); declined until a yes (a cancel too).
         $run.Declined = $true; if (-not (Confirm-OneDriveRoot $Path)) { return $null }; $run.Declined = $false
-        Write-Ui 'Listing the files ...' 'Muted'
-        $found = Get-DriveGroups $Path
-        $groups = $found.Groups.ToArray()
-        Add-DriveListRows $found $rows
-        Select-OnlineFiles $groups $rows $MaxFileMB
+        $groups = Get-DriveScanList $Path $rows $MaxFileMB $run $SyncEntries $OneDriveHomes
         # Starts one file (Invoke-GroupScan calls it).
         $start = { param($queue, $group, $file) Invoke-DriveFile $queue $group.Name $file $MaxFileMB }
         # The file's masked path inside its folder, for the progress bar.
@@ -356,7 +455,7 @@ function Invoke-DriveScan {
         if ($run.ContainsKey('Declined') -and $run.Declined) { Write-Ui 'Not scanned: nothing was saved.' 'Accent' }
         else {
             Add-IncompleteRow -Rows $rows -Finished $finished
-            $header = Get-DriveHeader $Path $groups $clock.Elapsed $run.Reading $run.Workers
+            $header = Get-DriveHeader $Path $groups $clock.Elapsed $run.Reading $run.Workers $run.WebNote
             $name = $Path.TrimEnd('\') -replace '\\', '/'   # the results folder is named after the folder's last part
             $workbook = Publish-ScanReport -Rows $rows.ToArray() -ItemsScanned $run.Meter.Read -Header $header -OutputFolder $OutputFolder -SiteUrl $name -FolderLabel 'Folder'
         }
@@ -365,4 +464,4 @@ function Invoke-DriveScan {
 }
 
 Export-ModuleMember -Function Get-DriveGroups, Invoke-DriveScan, Get-ReparseKind, Select-OnlineFiles, Get-OneDriveRoots,
-    Get-OneDriveHomes, Confirm-OneDriveRoot
+    Get-OneDriveHomes, Confirm-OneDriveRoot, Add-OneDriveWebFiles

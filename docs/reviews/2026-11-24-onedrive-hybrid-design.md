@@ -70,3 +70,11 @@ names in every new row.
 1. Probe line for a synced team library and a shortcut (Decision 2), as a .txt test snippet; the PAM runs it.
 2. Build with tests, fresh review, lane B. Open follow-ups of PR 105 (recall Score, MINOR): an exact-output test for a
    decomposed name; a soft hyphen (\p{Cf}) can split a word.
+
+## Build status (2026-11-25)
+
+- Built (PR after #107): `src/OneDriveWeb.psm1` (map, sign-in, web files), `src/DriveScan.psm1` (join, reads, history),
+  tests in `tests/OneDriveWeb.Tests.ps1`. Only the own OneDrive uses the web (`$script:WebKinds`); a synced library
+  and a shortcut join after probe 4 runs A and B pass. The Summary has the line "OneDrive on the web".
+- Not built: the History note "The disk copy is newer than the last synced version" (flow step 6). The local time and
+  the web time come in different time zones, so a compare could give wrong notes; it waits for a device sample.
