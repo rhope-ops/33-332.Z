@@ -1,0 +1,104 @@
+# Ion device probe 8 (2026-11-25): the permission reads of one team-site file, for plan step 5 (permission scope
+# column). Read-only, one site, one file. Prints only True/False, counts, kinds, error kinds and times: no name, no
+# address, no path, no group name and no value. It reads: unique permissions (True/False), the permission entries of
+# the file (counted by kind), and the sharing links of the file (counted by kind). It lists no other file, site or user.
+$ErrorActionPreference = 'Stop'
+'P8 probe version=2026-11-25a'
+$typed = (Read-Host 'Question 1: your team site address (usaf.dps.mil/sites/<name> or /teams/<name>)').Trim().Trim('"')
+$fileText = (Read-Host 'Question 2: the file path after the site (for example Shared Documents/General/Report.pdf)').Trim().Trim('"', '/')
+Clear-Host
+'P8 probe version=2026-11-25a'
+$signedIn = $false
+$step = 0; $stepName = 'start'
+try {
+function Get-Kind($err) {
+    $m = [string]$err.Exception.Message
+    $kind = 'Other'
+    if ($m -match '(?i)no connection|not connected|connect first|current connection') { $kind = 'NoConnection' }
+    elseif ($m -match '(?i)\(404\)|not found|does not exist') { $kind = 'NotFound' }
+    elseif ($m -match '(?i)\(401\)|\(403\)|forbidden|access denied|unauthori') { $kind = 'NoAccess' }
+    elseif ($m -match '(?i)cancel') { $kind = 'Cancelled' }
+    elseif ($m -match '(?i)time ?out|timed out') { $kind = 'Timeout' }
+    $inner = $err.Exception
+    while ($inner -is [System.Management.Automation.MethodInvocationException] -and $inner.InnerException) { $inner = $inner.InnerException }
+    '{0}/{1}' -f $inner.GetType().Name, $kind
+}
+$step = 1; $stepName = 'answers'
+if ($typed -notmatch '^https?://') { $typed = 'https://' + $typed }
+$siteMatch = [regex]::Match($typed, '^https://usaf\.dps\.mil/((?:sites|teams)/[^/?#\s]+)')
+if (-not $siteMatch.Success) { 'P8 answer 1 is a DoD365 site address=False'; return }   # 'finally' prints Done.
+if (-not $fileText) { 'P8 answer 2 given=False'; return }
+$site = 'https://usaf.dps.mil/' + $siteMatch.Groups[1].Value
+$path = '/' + $siteMatch.Groups[1].Value + '/' + [uri]::UnescapeDataString($fileText)
+$step = 2; $stepName = 'sign-in'
+$clock = [Diagnostics.Stopwatch]::StartNew()
+$signedIn = $true   # before the sign-in: a stop during it still signs out
+try { Connect-PnPOnline -Url $site -UseWebLogin -WarningAction SilentlyContinue; 'P8 sign-in ok=True ms={0}' -f $clock.ElapsedMilliseconds }
+catch { 'P8 sign-in ok=False {0} ms={1}' -f (Get-Kind $_), $clock.ElapsedMilliseconds; return }
+$step = 3; $stepName = 'file'
+$clock.Restart()
+$item = Get-PnPFile -Url $path -AsListItem
+'P8 file found={0} ms={1}' -f [bool]$item, $clock.ElapsedMilliseconds
+if (-not $item) { return }
+$listId = (Get-PnPProperty -ClientObject $item -Property ParentList).Id
+$step = 4; $stepName = 'unique permissions'
+$clock.Restart()
+try { $unique = Get-PnPProperty -ClientObject $item -Property HasUniqueRoleAssignments; 'P8 unique permissions read=True value={0} ms={1}' -f [bool]$unique, $clock.ElapsedMilliseconds }
+catch { 'P8 unique permissions read=False {0}' -f (Get-Kind $_) }
+$step = 5; $stepName = 'permission entries'
+# The site's own 3 groups (owners, members, visitors): their IDs only, to tell "site group" from another group.
+$siteGroups = @()
+try {
+    $web = Get-PnPWeb -Includes AssociatedOwnerGroup, AssociatedMemberGroup, AssociatedVisitorGroup
+    $siteGroups = @(@($web.AssociatedOwnerGroup, $web.AssociatedMemberGroup, $web.AssociatedVisitorGroup) | Where-Object { $_ } | ForEach-Object { $_.Id })
+    'P8 site groups read=True count={0}' -f $siteGroups.Count
+}
+catch { 'P8 site groups read=False {0}' -f (Get-Kind $_) }
+$clock.Restart()
+try {
+    $entries = @(Get-PnPProperty -ClientObject $item -Property RoleAssignments)
+    'P8 permission entries read=True count={0} ms={1}' -f $entries.Count, $clock.ElapsedMilliseconds
+    # Each entry by kind only (the name and the sign-in name are read to sort, never printed).
+    $kinds = @{}
+    $clock.Restart()
+    foreach ($entry in $entries) {
+        $member = Get-PnPProperty -ClientObject $entry -Property Member
+        $roles = @(Get-PnPProperty -ClientObject $entry -Property RoleDefinitionBindings)
+        $login = [string]$member.LoginName
+        $kind = switch ([int]$member.PrincipalType) { 1 { 'person' } 2 { 'mail list' } 4 { 'security group' } 8 { 'SharePoint group' } default { 'other' } }
+        if ($login -match '(?i)spo-grid-all-users|^c:0\(\.s\|true$') { $kind = 'whole organization' }
+        elseif ($kind -eq 'SharePoint group' -and $siteGroups -contains $member.Id) { $kind = 'site group' }
+        elseif ($kind -eq 'SharePoint group' -and $login -like 'SharingLinks.*') { $kind = 'sharing link group' }
+        # Limited Access only (role kind 1, Guest): the entry exists for a link or an item below; it gives no access here.
+        if ($roles.Count -gt 0 -and @($roles | Where-Object { [int]$_.RoleTypeKind -ne 1 }).Count -eq 0) { $kind += ' (limited access only)' }
+        $kinds[$kind] = 1 + [int]$kinds[$kind]
+    }
+    $text = @($kinds.Keys | Sort-Object | ForEach-Object { '{0}x {1}' -f $kinds[$_], $_ }) -join ', '
+    'P8 entry kinds read=True ms={0}: {1}' -f $clock.ElapsedMilliseconds, $(if ($text) { $text } else { 'none' })
+}
+catch { 'P8 permission entries read=False {0}' -f (Get-Kind $_) }
+$step = 6; $stepName = 'sharing links'
+$clock.Restart()
+try {
+    $info = Invoke-PnPSPRestMethod -Method Post -Url ("/_api/web/lists('{0}')/items({1})/GetSharingInformation?`$expand=sharingLinks" -f $listId, $item.Id)
+    $links = @(); if ($info.PSObject.Properties['sharingLinks']) { $links = @($info.sharingLinks) } elseif ($info.PSObject.Properties['d']) { $links = @($info.d.sharingLinks.results) }
+    $links = @($links | Where-Object { $_ -and $_.linkDetails -and $_.linkDetails.Url })   # only links that exist
+    $names = @{ 1 = 'organization view'; 2 = 'organization edit'; 3 = 'anyone view'; 4 = 'anyone edit'; 5 = 'specific people'; 6 = 'review'; 7 = 'block download'; 8 = 'view only' }
+    $linkKinds = @{}
+    foreach ($link in $links) {
+        $k = [int]$link.linkDetails.LinkKind
+        $name = if ($names.ContainsKey($k)) { $names[$k] } else { 'kind ' + $k }
+        $linkKinds[$name] = 1 + [int]$linkKinds[$name]
+    }
+    $text = @($linkKinds.Keys | Sort-Object | ForEach-Object { '{0}x {1}' -f $linkKinds[$_], $_ }) -join ', '
+    'P8 sharing links read=True count={0} ms={1}: {2}' -f $links.Count, $clock.ElapsedMilliseconds, $(if ($text) { $text } else { 'none' })
+}
+catch { 'P8 sharing links read=False {0}' -f (Get-Kind $_) }
+'P8 Get-PnPFileSharingLink exists={0}' -f [bool](Get-Command Get-PnPFileSharingLink -ErrorAction SilentlyContinue)
+$step = 7; $stepName = 'end'
+}
+catch { 'P8 stopped at step {0} ({1}) ok=False {2}' -f $step, $stepName, (Get-Kind $_) }
+finally {
+    if ($signedIn) { try { Disconnect-PnPOnline } catch { Write-Verbose 'Already signed out.' } }
+    Write-Host 'Done. The lines above show True/False, counts, kinds, error kinds and times only. Copy them into an e-mail to yourself.'
+}
