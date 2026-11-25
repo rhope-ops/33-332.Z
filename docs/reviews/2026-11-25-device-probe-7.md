@@ -28,6 +28,10 @@ to "local files".
 | P7 entry is the OneDrive home folder (second part) | folder is the synced folder itself: True when you gave the top folder of the shortcut or library |
 | P7 local files | the files directly in the folder you gave, and its depth below the synced folder; with 0 files the probe stops before the sign-in |
 | P7 value FullRemotePath, P7 value WebUrl | present; kind (https address, http address, rooted path, text, text with a colon, not text); same host as the library; path parts; where it is against the library root; depth below the root; if its last part is the synced folder's name, or the end of that name; if it is the library address |
+| P7 folder found=False | the folder you gave is not on this computer: the probe stops (fixed text) |
+| P7 no OneDrive entry holds this folder | the folder is not in OneDrive: the probe stops (fixed text) |
+| P7 the folder has no files | the folder has 0 files: the probe stops before the sign-in (fixed text) |
+| P7 FullRemotePath same as WebUrl | True when the 2 values are the same |
 | P7 candidates | the web folders to try: the probe 5 map, and 1 for each value that is below the library root |
 | P7 sign-in | the sign-in to the site of the folder |
 | P7 library found | the library by its address, and if its root is the mapped address |
@@ -73,17 +77,18 @@ steps 2 times: run A with a folder of a synced Teams library, run B with a short
 13. If a window asks if you want to continue running scripts, click **Yes**. The window closes. Go on.
 14. If a sign-in window opens, sign in with your CAC. The window closes. The sign-in can take 2 minutes or more. Go on.
 15. In the ISE output pane, wait until the line **Done.** shows. Do not copy before then.
-16. In the ISE output pane, do these actions:
+16. If the line **P7 the folder has no files** shows, start this list again with a folder of 5 or more files. You see this list from the top. Go on.
+17. In the ISE output pane, do these actions:
     1. Select the lines from the first line to **Done.**.
     2. Press **Ctrl+C**.
     You see the lines selected. Go on.
-17. In an e-mail to yourself, do these actions:
+18. In an e-mail to yourself, do these actions:
     1. Type `run A` or `run B` (for run B: under the lines of run A).
     2. Press **Enter**.
     3. Press **Ctrl+V**.
     You see the lines in the e-mail. Go on.
-18. If you did run A only, start this list again from the top for run B. You see this list from the top. Go on.
-19. In the e-mail with run A and run B, click **Send**. You see the message in your sent mail. The task is complete.
+19. If you did run A only, start this list again from the top for run B. You see this list from the top. Go on.
+20. In the e-mail with run A and run B, click **Send**. You see the message in your sent mail. The task is complete.
 
 ## Open (review of PR 122, MINOR, not verified)
 
