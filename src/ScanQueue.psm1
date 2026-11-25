@@ -149,9 +149,12 @@ function Invoke-GroupScan {
     for ($c = 0; $c -lt $Groups.Count; $c++) {
         $group = $Groups[$c]
         $before = $meter.Clone()
-        foreach ($file in $group.Files) {
+        $Queue.Activity = 'Folder {0} of {1}: {2}' -f ($c + 1), $Groups.Count, (Protect-PiiName $group.Name)
+        # A scan with its own way to start a folder's files (ChannelScan.psm1: parallel downloads in a planned order).
+        $files = $group.Files
+        if ($Queue.ContainsKey('GroupScan') -and $Queue.GroupScan) { & $Queue.GroupScan $Queue $group; $files = @() }
+        foreach ($file in $files) {
             # The file in work, with PII masked (the PAM, 2026-11-20: a slow file is then visible).
-            $Queue.Activity = 'Folder {0} of {1}: {2}' -f ($c + 1), $Groups.Count, (Protect-PiiName $group.Name)
             Write-ScanBar $Queue ('File: ' + (& $ShownFile $group $file))
             $firstRow = $Queue.Rows.Count
             if (-not (& $StartFile $Queue $group $file)) {
@@ -370,7 +373,8 @@ function Invoke-ScanRun {
       { param($Group, $File) } that gives the file's masked path for the progress bar.
     .PARAMETER Run
       Receives Meter, Reading ([TimeSpan]) and Workers; Declined = $true when the person answered no to "Scan now?".
-      AutoStart = $true (set by the caller): the counts show, but "Scan now?" is not asked.
+      AutoStart = $true (set by the caller): the counts show, but "Scan now?" is not asked. GroupScan (optional, set by
+      the caller): { param($Queue, $Group) } that starts all files of one folder in place of the per-file loop.
     .PARAMETER Facts
       { param($File) } that gives @(name, size in bytes) of one file, for the question before the scan.
     .PARAMETER MaxFileMB
@@ -388,6 +392,7 @@ function Invoke-ScanRun {
     $meter.NameWidth = Get-NameWidth @($Groups | ForEach-Object { Protect-PiiName $_.Name })
     $Run.Meter = $meter; $Run.Reading = [TimeSpan]::Zero; $Run.Workers = 0
     $queue = New-ScanQueue $Init $Rows $meter
+    if ($Run.ContainsKey('GroupScan')) { $queue.GroupScan = $Run.GroupScan }   # { param($Queue, $Group) }: see Invoke-GroupScan
     try { Invoke-GroupScan $queue $Groups $StartFile $ShownFile; $Run.Workers = Get-QueueWorkers $queue }
     finally { $Run.Reading = Close-ScanQueue $queue }
     # The folder rows form one table; the total closes it, under a rule.
@@ -396,4 +401,4 @@ function Invoke-ScanRun {
 }
 
 Export-ModuleMember -Function New-ScanQueue, Submit-ScanFile, Invoke-GroupScan, Wait-ScanQueue, Close-ScanQueue, Get-QueueWorkers, Add-FileStartRows,
-    Invoke-ScanRun
+    Invoke-ScanRun, Write-ScanBar

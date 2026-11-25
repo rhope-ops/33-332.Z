@@ -187,6 +187,7 @@ Assert-Equal $true ($copied -is [byte[]]) 'Stream copy: a byte array, not unroll
 $largeFile = New-Object byte[] (2MB); [System.Text.Encoding]::UTF8.GetBytes('Call ' + $Sample.Phone).CopyTo($largeFile, 0)
 $channelScan = Get-Module ChannelScan
 $normalOpener = & $channelScan { $script:OpenDirectStream }
+$normalCopy = & $channelScan { $script:CloneContext }
 # The fake stream opener: the file bytes, or (Short) fewer bytes than the list says, as a sign-in page would give.
 & $channelScan { $script:OpenDirectStream = { param($url) Get-FakeFileStream $url } }
 Reset-FakePnP @{ "$library/General/large.txt" = $largeFile }
@@ -321,7 +322,80 @@ Assert-Equal $live.IndexOf('| read') $wide.IndexOf('| read') 'Live line: columns
 Assert-Equal $live.IndexOf('| possible PII') $wide.IndexOf('| possible PII') 'Live line: PII column stays in place'
 $liveMeter.Clock = [pscustomobject]@{ Elapsed = [TimeSpan]::FromSeconds(25) }
 Assert-Equal '' ((Write-MeterLine $liveMeter 'file' 6>&1 | ForEach-Object { [string]$_ }) -join '') 'Live line: not again within 10 seconds'
-Assert-Equal 'Time downloading|Time reading files (all readers)' (@((Get-ScanTiming).Keys) -join '|') 'Timing: download and reading times'
+Assert-Equal 'Time downloading|Time reading files (all readers)|Parallel downloads' (@((Get-ScanTiming).Keys) -join '|') 'Timing: download and reading times, then the parallel downloads'
+Assert-Equal $true ((Get-ScanTiming)['Parallel downloads'] -match '^off \(\w+\)$') 'No copy of the connection (no PnP here): parallel downloads off, with the error type name only'
+
+# ---- Parallel downloads in a planned order (plan step 6, the PAM 2026-11-24) ----
+# The plan of one folder: the files to download first, largest first (equal sizes in list order), then the others.
+$planItem = { param($name, $size) @{ FileLeafRef = $name; FileRef = "$library/General/$name"; File_x0020_Size = [string]$size } }
+$planFiles = @((& $planItem 'small.txt' 10), (& $planItem 'big.docx' 3000), (& $planItem 'logo.exe' 5000), (& $planItem 'mid-a.txt' 200),
+    (& $planItem 'huge.pdf' (30MB)), (& $planItem 'mid-b.txt' 200))
+$plan = & $channelScan { param($files) Get-DownloadPlan $files 25 } $planFiles
+Assert-Equal 'big.docx|mid-a.txt|mid-b.txt|small.txt' (($plan.Download | ForEach-Object { $_.FileLeafRef }) -join '|') 'Plan: downloads largest first, equal sizes in list order'
+Assert-Equal 'logo.exe|huge.pdf' (($plan.Other | ForEach-Object { $_.FileLeafRef }) -join '|') 'Plan: files not downloaded (type, over the limit) after, in list order'
+# The download bar for several files at once.
+Reset-FakePnP @{}
+Write-DownloadsStep 3 ([long](30.1 * 1MB)) ([long](12.4 * 1MB)) ([TimeSpan]::FromSeconds(5.9)) 'Downloading..'
+Assert-Equal $true ((Get-FakeProgressText) -match 'Downloading\.\. 3 files: 12\.4 of 30\.1 MB \(41%\) \| 2\.1 MB/s') 'Download bar: files in flight, total MB, percent, speed'
+Reset-FakePnP @{}
+Write-DownloadsStep 2 (500KB) (100KB) ([TimeSpan]::FromSeconds(2)) 'Downloading..'
+Assert-Equal '' (Get-FakeProgressText) 'Download bar: none under 1 MB, as for one file'
+# A scan with fake copies of the connection: 3 workers at once, the same rows as one at a time.
+$parallelFiles = @{}
+for ($n = 1; $n -le 6; $n++) {
+    $bytes = New-Object byte[] (1MB + $n * 1000); [System.Text.Encoding]::UTF8.GetBytes('Call ' + $Sample.Phone).CopyTo($bytes, 0)
+    $parallelFiles["$library/General/part$n.txt"] = $bytes
+}
+$parallelFiles["$library/General/tool.exe"] = $Txt
+# The fake copy of the connection, in place of PnP.Framework's.
+& $channelScan { $script:CloneContext = { param($context, $site) New-FakeConnectionCopy } }
+[IonFake.Copy]::Reset()
+Reset-FakePnP $parallelFiles
+$parallelRows = New-Object System.Collections.Generic.List[object]
+Assert-Equal 6 (Invoke-FileScan -Library $lib -Channels @('General') -SiteUrl $Sample.Site -MaxFileMB 25 -Rows $parallelRows 6>$null) 'Parallel: every file is read'
+Assert-Equal 6 @($parallelRows | Where-Object { $_.Detector -eq 'Phone' }).Count 'Parallel: the PII of each file is found'
+Assert-Equal 1 @($parallelRows | Where-Object { $_.Detector -eq 'NOT SCANNED' -and $_.Item -eq 'tool.exe' }).Count 'Parallel: a file not read keeps its row'
+Assert-Equal 3 ([IonFake.Copy]::MaxActive) 'Parallel: 3 downloads at once, not more'
+Assert-Equal '3' ((Get-ScanTiming)['Parallel downloads']) 'Parallel: the header says 3'
+Assert-Equal 3 ([IonFake.Copy]::Disposed) 'Parallel: the 3 copies of the connection are closed after the scan'
+Assert-Equal $true ((Get-FakeProgressText) -match 'Downloading\.\. \d files: [\d.]+ of [\d.]+ MB') 'Parallel: one bar for the files in flight'
+# Two folders: the download bar shows in the second folder too (review of PR 115: it stayed blank after the first).
+$twoFolders = @{}
+foreach ($key in $parallelFiles.Keys) { $twoFolders[$key] = $parallelFiles[$key] }
+$twoFolders["$library/Ops/other1.txt"] = $parallelFiles["$library/General/part1.txt"]
+$twoFolders["$library/Ops/other2.txt"] = $parallelFiles["$library/General/part2.txt"]
+[IonFake.Copy]::Reset()
+Reset-FakePnP $twoFolders
+$twoRows = New-Object System.Collections.Generic.List[object]
+Assert-Equal 8 (Invoke-FileScan -Library $lib -Channels @('General', 'Ops') -SiteUrl $Sample.Site -MaxFileMB 25 -Rows $twoRows 6>$null) 'Two folders: every file is read'
+Assert-Equal $true ((Get-FakeProgressText) -match '(?s)Folder 2 of 2.*Downloading\.\. \d files?: ') 'Two folders: the download bar shows in folder 2'
+# A copy gives a web page (wrong size): the main thread downloads the file, and parallel downloads stop.
+[IonFake.Copy]::Reset(); [IonFake.Copy]::Modes["$library/General/part6.txt"] = 'short'
+Reset-FakePnP $parallelFiles
+$shortRows = New-Object System.Collections.Generic.List[object]
+Assert-Equal 6 (Invoke-FileScan -Library $lib -Channels @('General') -SiteUrl $Sample.Site -MaxFileMB 25 -Rows $shortRows 6>$null) 'Wrong size in a worker: the file is still read'
+Assert-Equal 'off (WrongSize)' ((Get-ScanTiming)['Parallel downloads']) 'Wrong size in a worker: parallel downloads stop, the header says why'
+Assert-Equal 6 @($shortRows | Where-Object { $_.Detector -eq 'Phone' }).Count 'Wrong size in a worker: no hit is lost'
+# A file that fails in the worker and on the main thread: its row; parallel downloads go on.
+& $channelScan { $script:OpenDirectStream = { param($url) throw 'FAKE: no stream' } }
+[IonFake.Copy]::Reset(); [IonFake.Copy]::Modes["$library/General/part5.txt"] = 'throw'
+Reset-FakePnP $parallelFiles
+Set-FakeRefusedFile "$library/General/part5.txt"
+$badRows = New-Object System.Collections.Generic.List[object]
+Assert-Equal 5 (Invoke-FileScan -Library $lib -Channels @('General') -SiteUrl $Sample.Site -MaxFileMB 25 -Rows $badRows 6>$null) 'A file refused everywhere: the others are read'
+Assert-Equal 1 @($badRows | Where-Object { $_.Detector -eq 'NOT SCANNED' -and $_.Item -eq 'part5.txt' -and $_.Context -like 'Download failed*' }).Count 'A file refused everywhere: its NOT SCANNED row'
+Assert-Equal '3' ((Get-ScanTiming)['Parallel downloads']) 'A file refused everywhere: parallel downloads go on'
+# A worker over the time limit: stopped without waiting; the main thread downloads the file.
+& $channelScan { $script:DownloadSecondsLimit = 1 }
+[IonFake.Copy]::Reset(); [IonFake.Copy]::Modes["$library/General/part1.txt"] = 'hang'
+Reset-FakePnP $parallelFiles
+$slowRows = New-Object System.Collections.Generic.List[object]
+Assert-Equal 6 (Invoke-FileScan -Library $lib -Channels @('General') -SiteUrl $Sample.Site -MaxFileMB 25 -Rows $slowRows 6>$null) 'A download over the time limit: the scan goes on'
+Assert-Equal 'off (TimeoutException)' ((Get-ScanTiming)['Parallel downloads']) 'A download over the time limit: tried on the main thread, then one at a time'
+Assert-Equal 1 @($slowRows | Where-Object { $_.Item -eq 'part1.txt' -and $_.Detector -eq 'Phone' }).Count 'A download over the time limit: its PII is still found'
+& $channelScan { $script:DownloadSecondsLimit = 180 }
+& $channelScan { param($opener) $script:OpenDirectStream = $opener } $normalOpener
+& $channelScan { param($copy) $script:CloneContext = $copy } $normalCopy
 
 # ---- Team or plain site: names the folder column ----
 Reset-FakePnP @{}
