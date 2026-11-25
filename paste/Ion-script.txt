@@ -1,5 +1,5 @@
 <#
-  Ion - DoD365 PII Reporter, build 5f4437a0 (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
+  Ion - DoD365 PII Reporter, build b3fb53b8 (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
 
   HOW TO RUN
     1. Optional: read this text first (Open the script shows it as a .txt in your browser).
@@ -35,7 +35,7 @@
     src/PdfContent.psm1, sha256 85ee6cfeaf8f
     src/PdfText.psm1, sha256 dffef7dc6f8b
     src/TextExtract.psm1, sha256 18f1eb17ebf9
-    src/ReaderPool.psm1, sha256 32b2e4cfb2ae
+    src/ReaderPool.psm1, sha256 d97506392b5b
     src/XlsxWriter.psm1, sha256 56c1ec673d09
     src/Report.psm1, sha256 ef3a24aa8a55
     src/ReportBook.psm1, sha256 36823a05d39b
@@ -43,9 +43,9 @@
     src/ScanQueue.psm1, sha256 994908e5db1b
     src/Accountability.psm1, sha256 8bf31404f723
     src/SiteTarget.psm1, sha256 2e693a68f413
-    src/ChannelScan.psm1, sha256 b7e7a0d2e42d
+    src/ChannelScan.psm1, sha256 3ece514b7407
     src/DriveScan.psm1, sha256 58850f316f96
-    src/Find-ChannelPII.ps1, sha256 6f7aac5ba0d3
+    src/Find-ChannelPII.ps1, sha256 c1386afb27fc
 
   Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.
   Run target: Windows PowerShell 5.1 with PnP.PowerShell 1.12.0; no admin rights, no file to unblock.
@@ -73,18 +73,18 @@
     line  3814  Module PdfText.psm1
     line  4006  Module TextExtract.psm1
     line  4447  Module ReaderPool.psm1
-    line  4772  Reader block end
-    line  4776  Module XlsxWriter.psm1
-    line  5213  Module Report.psm1
-    line  5589  Module ReportBook.psm1
-    line  5893  Module ScanMeter.psm1
-    line  6315  Module ScanQueue.psm1
-    line  6717  Module Accountability.psm1
-    line  7101  Module SiteTarget.psm1
-    line  7458  Module ChannelScan.psm1
-    line  8280  Module DriveScan.psm1
-    line  8895  Body of Find-ChannelPII.ps1
-    line  9101  Clean-up
+    line  4810  Reader block end
+    line  4814  Module XlsxWriter.psm1
+    line  5251  Module Report.psm1
+    line  5627  Module ReportBook.psm1
+    line  5931  Module ScanMeter.psm1
+    line  6353  Module ScanQueue.psm1
+    line  6755  Module Accountability.psm1
+    line  7139  Module SiteTarget.psm1
+    line  7496  Module ChannelScan.psm1
+    line  8322  Module DriveScan.psm1
+    line  8937  Body of Find-ChannelPII.ps1
+    line  9148  Clean-up
 #>
 
 # ISE runs pasted text in your session: keep its error setting so the Clean-up block at the end can put it back.
@@ -97,12 +97,12 @@ $SiteUrl = ''            # the team's Teams link, or its site https://usaf.dps.m
 $OutputFolder = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Ion')   # results: a folder per site, then per day
 $MaxFileMB = 25          # files larger than this are reported as NOT SCANNED
 
-$IonPasteHash = '4f23963ce607b5a14137cf7f1b37e5a5875ffb4935e94ac5992bcaa351b27f47'   # the SHA-256 of the text from the line Paste check to the end (do not edit)
+$IonPasteHash = '89e68f21b17727e201b67a141f2a2457ce9932f26fe4ba54841b18ee2f0ff38c'   # the SHA-256 of the text from the line Paste check to the end (do not edit)
 
 # ==== Paste check ==== (the text from this line to the end must be the published text, or nothing runs)
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
-$IonBuild = '5f4437a0'       # the build ID: Ion shows it at the start (do not edit)
+$IonBuild = 'b3fb53b8'       # the build ID: Ion shows it at the start (do not edit)
 $IonPasteCheck = 'not read'
 $pasteText = ''
 try { $pastePath = $PSCommandPath } catch { $pastePath = '' }   # no script path: read the ISE pane
@@ -4468,6 +4468,9 @@ ReaderPool.psm1 - reads several files at once in PowerShell runspaces, and each 
 # Workers: at most this many (and at most one per processor); the first target is 2.
 $script:MaxWorkers = 8
 $script:FirstWorkers = 2
+# The run's speed (the PAM, 2026-11-25: a Fast run made the fan loud): 'Normal' uses at most half the processors for
+# readers; 'Fast' one per processor. In both, workers run at below-normal Windows priority, so other programs come first.
+$script:ScanSpeed = 'Normal'
 # The target is reviewed after every this many finished files: up one when the MB per second rose by more than
 # $GrowthStep, down one when it fell by more than $DropStep.
 $script:ReviewEvery = 6
@@ -4491,6 +4494,7 @@ $script:ReaderModules = @('PiiPatterns', 'PiiSignedIds', 'PiiDetectors', 'PiiMas
 
 # The scripts each runspace runs (a worker per file; Invoke-LimitedRead per old version): load the reader code, then read.
 $script:ReaderLoader = @'
+[System.Threading.Thread]::CurrentThread.Priority = [System.Threading.ThreadPriority]::BelowNormal
 if (-not $global:IonReaderReady) {
     if ($Init.ContainsKey('Code')) { New-Module -Name IonReaders -ScriptBlock ([scriptblock]::Create($Init.Code)) | Import-Module -Global }
     else { Import-Module $Init.Paths -Global -Force }
@@ -4588,10 +4592,44 @@ function Invoke-PooledRead {
     return $result
 }
 
+function Set-ScanSpeed {
+    <#
+    .SYNOPSIS
+      Sets the run's speed: 'Normal' (half the processors for readers) or 'Fast' (one per processor).
+    .PARAMETER Speed
+      'Normal' or 'Fast'.
+    #>
+    param([ValidateSet('Normal', 'Fast')][string]$Speed)
+    $script:ScanSpeed = $Speed
+}
+
+function Get-ScanSpeed {
+    # The run's speed: 'Normal' or 'Fast'.
+    return $script:ScanSpeed
+}
+
+function Get-ReaderLimit {
+    <#
+    .SYNOPSIS
+      The most readers at one time: Fast = one per processor; Normal = half the processors (rounded down, at least 1);
+      never more than $MaxWorkers.
+    .PARAMETER Speed
+      'Normal' or 'Fast'.
+    .PARAMETER Processors
+      The number of processors.
+    .OUTPUTS
+      [int]
+    #>
+    param([string]$Speed, [int]$Processors)
+    $limit = $Processors
+    if ($Speed -ne 'Fast') { $limit = [Math]::Floor($Processors / 2) }
+    return [int][Math]::Max(1, [Math]::Min($script:MaxWorkers, $limit))
+}
+
 function New-ReaderPool {
     <#
     .SYNOPSIS
-      Opens the worker pool: up to $MaxWorkers runspaces (at most one per processor), $FirstWorkers busy at first.
+      Opens the worker pool: up to Get-ReaderLimit runspaces (the run's speed), $FirstWorkers busy at first.
     .PARAMETER Init
       How a worker loads the reader code: @{ Code = <text> } (the paste bundle) or @{ Paths = <module files> }; when
       empty, the files of the reader modules loaded now (a development run).
@@ -4601,7 +4639,7 @@ function New-ReaderPool {
     param([hashtable]$Init)
     if (-not $Init) { $Init = @{ Paths = @(Get-Module $script:ReaderModules | ForEach-Object { $_.Path }) } }
     $script:LastInit = $Init
-    $max = [Math]::Max(1, [Math]::Min($script:MaxWorkers, [Environment]::ProcessorCount))
+    $max = Get-ReaderLimit $script:ScanSpeed ([Environment]::ProcessorCount)
     $pool = [runspacefactory]::CreateRunspacePool(1, $max)
     $pool.Open()
     return @{ Pool = $pool; Init = $Init; Jobs = (New-Object System.Collections.Generic.List[object]); Max = $max
@@ -7510,8 +7548,10 @@ $script:OpenDirectStream = {
     return $fileType::OpenBinaryDirect((Get-PnPContext), $ServerRelativeUrl).Stream
 }
 
-# Parallel downloads (the PAM, 2026-11-24): 3 at once, each in a worker with its own copy of the signed-in connection.
+# Parallel downloads (the PAM, 2026-11-24): 3 at once in a Fast run, 2 in a Normal run (the PAM, 2026-11-25), each in a
+# worker with its own copy of the signed-in connection.
 $script:ParallelDownloads = 3
+$script:NormalDownloads = 2
 # The longest one download may take in a worker (seconds; as the reader limit, ReaderPool.psm1). Over it, the file is
 # tried on the main thread.
 $script:DownloadSecondsLimit = 180
@@ -7530,6 +7570,7 @@ $script:CloneContext = {
 # bytes done in the shared table. It gives back the bytes, or the error's type name only (a message can hold a path).
 $script:DownloadWorkerScript = @'
 param($Copy, $Path, $Progress, $Key)
+[System.Threading.Thread]::CurrentThread.Priority = [System.Threading.ThreadPriority]::BelowNormal
 $answer = @{ Bytes = $null; Error = '' }
 try {
     $binary = $Copy.Web.GetFileByServerRelativeUrl($Path).OpenBinaryStream()
@@ -7926,7 +7967,8 @@ function New-DownloadPool {
       [hashtable] the pool state (On, State: the header text "3" or "off (<error type>)").
     #>
     param([string]$SiteUrl)
-    $count = $script:ParallelDownloads
+    $count = $script:NormalDownloads
+    if ((Get-ScanSpeed) -eq 'Fast') { $count = $script:ParallelDownloads }
     $state = @{ On = $false; State = ''; Count = $count; Copies = @{}; Pool = $null; Stuck = 0; SiteUrl = $SiteUrl
         Jobs = (New-Object System.Collections.Generic.List[object]); Free = (New-Object System.Collections.Generic.Stack[int])
         Progress = [hashtable]::Synchronized(@{}); Busy = (New-Object Diagnostics.Stopwatch)
@@ -9071,6 +9113,11 @@ $script:IonSignInTried = $false   # true after the first site sign-in is tried: 
 # the run signs out once here, at its end, also after an error or Ctrl+C ('finally' runs on both).
 try {
     $targets = @(Read-ScanTargetList $SiteUrl 'What to scan')
+    # Speed, asked once per run (the PAM, 2026-11-25): Normal (Enter) = half the processors and 2 downloads; Fast = all.
+    if ($targets.Count -gt 0) {
+        $speed = Read-Host 'Speed: [N]ormal or [F]ast?'
+        if ($speed -and $speed.Trim() -match '^(f|fast)$') { Set-ScanSpeed 'Fast' } else { Set-ScanSpeed 'Normal' }
+    }
     while ($targets.Count -gt 0) {
         $list = $targets.Count -gt 1
         $go = $true

@@ -22,6 +22,9 @@ Set-StrictMode -Version 2.0
 # Workers: at most this many (and at most one per processor); the first target is 2.
 $script:MaxWorkers = 8
 $script:FirstWorkers = 2
+# The run's speed (the PAM, 2026-11-25: a Fast run made the fan loud): 'Normal' uses at most half the processors for
+# readers; 'Fast' one per processor. In both, workers run at below-normal Windows priority, so other programs come first.
+$script:ScanSpeed = 'Normal'
 # The target is reviewed after every this many finished files: up one when the MB per second rose by more than
 # $GrowthStep, down one when it fell by more than $DropStep.
 $script:ReviewEvery = 6
@@ -45,6 +48,7 @@ $script:ReaderModules = @('PiiPatterns', 'PiiSignedIds', 'PiiDetectors', 'PiiMas
 
 # The scripts each runspace runs (a worker per file; Invoke-LimitedRead per old version): load the reader code, then read.
 $script:ReaderLoader = @'
+[System.Threading.Thread]::CurrentThread.Priority = [System.Threading.ThreadPriority]::BelowNormal
 if (-not $global:IonReaderReady) {
     if ($Init.ContainsKey('Code')) { New-Module -Name IonReaders -ScriptBlock ([scriptblock]::Create($Init.Code)) | Import-Module -Global }
     else { Import-Module $Init.Paths -Global -Force }
@@ -142,10 +146,44 @@ function Invoke-PooledRead {
     return $result
 }
 
+function Set-ScanSpeed {
+    <#
+    .SYNOPSIS
+      Sets the run's speed: 'Normal' (half the processors for readers) or 'Fast' (one per processor).
+    .PARAMETER Speed
+      'Normal' or 'Fast'.
+    #>
+    param([ValidateSet('Normal', 'Fast')][string]$Speed)
+    $script:ScanSpeed = $Speed
+}
+
+function Get-ScanSpeed {
+    # The run's speed: 'Normal' or 'Fast'.
+    return $script:ScanSpeed
+}
+
+function Get-ReaderLimit {
+    <#
+    .SYNOPSIS
+      The most readers at one time: Fast = one per processor; Normal = half the processors (rounded down, at least 1);
+      never more than $MaxWorkers.
+    .PARAMETER Speed
+      'Normal' or 'Fast'.
+    .PARAMETER Processors
+      The number of processors.
+    .OUTPUTS
+      [int]
+    #>
+    param([string]$Speed, [int]$Processors)
+    $limit = $Processors
+    if ($Speed -ne 'Fast') { $limit = [Math]::Floor($Processors / 2) }
+    return [int][Math]::Max(1, [Math]::Min($script:MaxWorkers, $limit))
+}
+
 function New-ReaderPool {
     <#
     .SYNOPSIS
-      Opens the worker pool: up to $MaxWorkers runspaces (at most one per processor), $FirstWorkers busy at first.
+      Opens the worker pool: up to Get-ReaderLimit runspaces (the run's speed), $FirstWorkers busy at first.
     .PARAMETER Init
       How a worker loads the reader code: @{ Code = <text> } (the paste bundle) or @{ Paths = <module files> }; when
       empty, the files of the reader modules loaded now (a development run).
@@ -155,7 +193,7 @@ function New-ReaderPool {
     param([hashtable]$Init)
     if (-not $Init) { $Init = @{ Paths = @(Get-Module $script:ReaderModules | ForEach-Object { $_.Path }) } }
     $script:LastInit = $Init
-    $max = [Math]::Max(1, [Math]::Min($script:MaxWorkers, [Environment]::ProcessorCount))
+    $max = Get-ReaderLimit $script:ScanSpeed ([Environment]::ProcessorCount)
     $pool = [runspacefactory]::CreateRunspacePool(1, $max)
     $pool.Open()
     return @{ Pool = $pool; Init = $Init; Jobs = (New-Object System.Collections.Generic.List[object]); Max = $max
@@ -324,4 +362,4 @@ function Close-ReaderPool {
 }
 
 Export-ModuleMember -Function Read-LocalFileBytes, Get-ContentHash, Invoke-PooledRead, New-ReaderPool, Add-PoolJob, Receive-PoolResult, Close-ReaderPool,
-    Invoke-LimitedRead
+    Invoke-LimitedRead, Set-ScanSpeed, Get-ScanSpeed, Get-ReaderLimit

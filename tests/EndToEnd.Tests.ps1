@@ -35,6 +35,7 @@ Assert-Equal $false ((Get-FakeProgressText).Contains([string][char]0x3B3)) 'The 
 Assert-Equal $false ((Get-FakeProgressText) -match 'Downloading [\d.]+ (of|MB)') 'Small files: no per-file bar (it would only slow the scan)'
 
 Assert-Equal $true (Test-FakePnPCall 'Scan question') 'Before the scan: "Scan now?" is asked'
+Assert-Equal 1 (Get-FakeCallCount 'Speed question') 'Speed: asked one time, after the targets'
 
 # ---- "No" to "Scan now?": nothing read, nothing saved, signed out (the PAM, 2026-11-21) ----
 Reset-FakePnP @{ "$library/General/notes.txt" = $Txt; "$library/Ops/scan.exe" = $Txt }

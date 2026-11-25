@@ -33,7 +33,8 @@ permissions as scope only ("No reconnaissance": no user names listed); month-nam
   listing works at any depth, but the map is wrong for shortcuts and synced libraries: they stay local only.
   Device test 2026-11-25 (build 3d16ddec, own OneDrive): web used for 12 files, history from the web, 1 sign-in, no error.
 - Step 5 (permission scope): waits on probe 3 (no permission read ran yet). Step 6 (parallel downloads): merged 2026-11-24 (PR 115): 3 at once,
-  per folder largest first; waits on the next device run's header line "Parallel downloads" ("3" or "off (<type>)").
+  per folder largest first; device run 2026-11-25: 3, time used 68:45 -> 39:36.
+  Follow-up: speed modes Normal/Fast (docs/DECISIONS.md 2026-11-25).
 - Added 2026-11-24: seeded recall test (PR 87; local baseline 46/53 found, 87%); roster header fix merged
   (PR 96) and passport rule merged (PR 97): local recall 53/53, false 0. Build ID on the start screen (PR 95).
   Roster follow-ups (review of PR 96, MINOR): a csv/tsv row that starts with an empty field loses its columns; the

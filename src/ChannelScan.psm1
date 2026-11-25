@@ -53,8 +53,10 @@ $script:OpenDirectStream = {
     return $fileType::OpenBinaryDirect((Get-PnPContext), $ServerRelativeUrl).Stream
 }
 
-# Parallel downloads (the PAM, 2026-11-24): 3 at once, each in a worker with its own copy of the signed-in connection.
+# Parallel downloads (the PAM, 2026-11-24): 3 at once in a Fast run, 2 in a Normal run (the PAM, 2026-11-25), each in a
+# worker with its own copy of the signed-in connection.
 $script:ParallelDownloads = 3
+$script:NormalDownloads = 2
 # The longest one download may take in a worker (seconds; as the reader limit, ReaderPool.psm1). Over it, the file is
 # tried on the main thread.
 $script:DownloadSecondsLimit = 180
@@ -73,6 +75,7 @@ $script:CloneContext = {
 # bytes done in the shared table. It gives back the bytes, or the error's type name only (a message can hold a path).
 $script:DownloadWorkerScript = @'
 param($Copy, $Path, $Progress, $Key)
+[System.Threading.Thread]::CurrentThread.Priority = [System.Threading.ThreadPriority]::BelowNormal
 $answer = @{ Bytes = $null; Error = '' }
 try {
     $binary = $Copy.Web.GetFileByServerRelativeUrl($Path).OpenBinaryStream()
@@ -469,7 +472,8 @@ function New-DownloadPool {
       [hashtable] the pool state (On, State: the header text "3" or "off (<error type>)").
     #>
     param([string]$SiteUrl)
-    $count = $script:ParallelDownloads
+    $count = $script:NormalDownloads
+    if ((Get-ScanSpeed) -eq 'Fast') { $count = $script:ParallelDownloads }
     $state = @{ On = $false; State = ''; Count = $count; Copies = @{}; Pool = $null; Stuck = 0; SiteUrl = $SiteUrl
         Jobs = (New-Object System.Collections.Generic.List[object]); Free = (New-Object System.Collections.Generic.Stack[int])
         Progress = [hashtable]::Synchronized(@{}); Busy = (New-Object Diagnostics.Stopwatch)

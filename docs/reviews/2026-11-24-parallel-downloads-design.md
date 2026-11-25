@@ -80,3 +80,18 @@ file. On a slow tenant, the main thread waits on the network and the readers wai
 - No tests for: "off (NoWorker)", the list-size fault, the per-job byte keys, the timing.
 - "NoWorker" is not an error type name (like "WrongSize" and "NoResult" before it).
 - The synopsis of Complete-Download does not name the list-size exception.
+
+## Device result (the PAM, 2026-11-25, same site as the day before; counts only)
+
+| | 2026-11-24 (one at a time) | 2026-11-25 (build 5f4437a0, 3 at once) |
+|---|---|---|
+| Time used | 68:45 | 39:36 (42% less) |
+| Time downloading | 45:44 | 38:49 |
+| Time reading files (all readers) | not sent | 64:54 |
+| Parallel downloads | none | 3 |
+
+The copy of the sign-in works in a worker on DoD365 (the low assumption above is now proven). Downloads still run in
+38:49 of 39:36: the network is still the slowest part. The PAM: "much more demanding" (the fan or heat), so speed
+modes follow (docs/DECISIONS.md, 2026-11-25): Normal (Enter) = 2 downloads and half the processors for readers; Fast =
+3 downloads and one reader per processor; both at below-normal priority.
+
