@@ -24,5 +24,5 @@ Title: 33-332.Z · <task> · <date>. Read AGENTS.md first.
     step 3 = parallel downloads in a planned order, and version-history reads off the main thread (slow run 28:49).
 17. 2026-11-24 merged: PRs 58-88. Excel and local OneDrive tests open.
 18. Plan approved 2026-11-24, continue it: docs/reviews/2026-11-24-no-persistence-plan.md (Status).
-19. 2026-11-24: PRs 89-97, 105 merged. Recall on the device: run 3 53/53 (run 2: Purview labels). Next:
-    build step 4 (design: docs/reviews/2026-11-24-onedrive-hybrid-design.md).
+19. 2026-11-25: PRs 105-112 merged. Recall on the device 53/53. Step 4 (OneDrive hybrid) works on the device for the
+    own OneDrive; shortcuts and synced libraries stay local only (probe 5). Next: plan step 6, or the shortcut map.
