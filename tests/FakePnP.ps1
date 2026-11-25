@@ -61,6 +61,12 @@ function Set-FakePnPOption {
     $global:FakePnP[$Name] = $Value
 }
 
+function Set-FakeSpeedAnswer {
+    # The answer to "Speed: [N]ormal or [F]ast?" ('' = Enter = Normal).
+    param([string]$Answer)
+    $global:FakePnP.SpeedAnswer = $Answer
+}
+
 function Set-FakeRefusedFile {
     # One file path that the fake Get-PnPFile refuses (also on the main connection); '' for none.
     param([string]$Path)

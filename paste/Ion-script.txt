@@ -1,5 +1,5 @@
 <#
-  Ion - DoD365 PII Reporter, build b3fb53b8 (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
+  Ion - DoD365 PII Reporter, build b78a2118 (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
 
   HOW TO RUN
     1. Optional: read this text first (Open the script shows it as a .txt in your browser).
@@ -35,7 +35,7 @@
     src/PdfContent.psm1, sha256 85ee6cfeaf8f
     src/PdfText.psm1, sha256 dffef7dc6f8b
     src/TextExtract.psm1, sha256 18f1eb17ebf9
-    src/ReaderPool.psm1, sha256 d97506392b5b
+    src/ReaderPool.psm1, sha256 1b209514ad6b
     src/XlsxWriter.psm1, sha256 56c1ec673d09
     src/Report.psm1, sha256 ef3a24aa8a55
     src/ReportBook.psm1, sha256 36823a05d39b
@@ -43,7 +43,7 @@
     src/ScanQueue.psm1, sha256 994908e5db1b
     src/Accountability.psm1, sha256 8bf31404f723
     src/SiteTarget.psm1, sha256 2e693a68f413
-    src/ChannelScan.psm1, sha256 3ece514b7407
+    src/ChannelScan.psm1, sha256 2c367cf77f5c
     src/DriveScan.psm1, sha256 58850f316f96
     src/Find-ChannelPII.ps1, sha256 c1386afb27fc
 
@@ -73,18 +73,18 @@
     line  3814  Module PdfText.psm1
     line  4006  Module TextExtract.psm1
     line  4447  Module ReaderPool.psm1
-    line  4810  Reader block end
-    line  4814  Module XlsxWriter.psm1
-    line  5251  Module Report.psm1
-    line  5627  Module ReportBook.psm1
-    line  5931  Module ScanMeter.psm1
-    line  6353  Module ScanQueue.psm1
-    line  6755  Module Accountability.psm1
-    line  7139  Module SiteTarget.psm1
-    line  7496  Module ChannelScan.psm1
-    line  8322  Module DriveScan.psm1
-    line  8937  Body of Find-ChannelPII.ps1
-    line  9148  Clean-up
+    line  4811  Reader block end
+    line  4815  Module XlsxWriter.psm1
+    line  5252  Module Report.psm1
+    line  5628  Module ReportBook.psm1
+    line  5932  Module ScanMeter.psm1
+    line  6354  Module ScanQueue.psm1
+    line  6756  Module Accountability.psm1
+    line  7140  Module SiteTarget.psm1
+    line  7497  Module ChannelScan.psm1
+    line  8323  Module DriveScan.psm1
+    line  8938  Body of Find-ChannelPII.ps1
+    line  9149  Clean-up
 #>
 
 # ISE runs pasted text in your session: keep its error setting so the Clean-up block at the end can put it back.
@@ -97,12 +97,12 @@ $SiteUrl = ''            # the team's Teams link, or its site https://usaf.dps.m
 $OutputFolder = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Ion')   # results: a folder per site, then per day
 $MaxFileMB = 25          # files larger than this are reported as NOT SCANNED
 
-$IonPasteHash = '89e68f21b17727e201b67a141f2a2457ce9932f26fe4ba54841b18ee2f0ff38c'   # the SHA-256 of the text from the line Paste check to the end (do not edit)
+$IonPasteHash = '957c8e349e2a878bc0ecb269539c59cd8ec40baaf55867c7f022786ea3be35e9'   # the SHA-256 of the text from the line Paste check to the end (do not edit)
 
 # ==== Paste check ==== (the text from this line to the end must be the published text, or nothing runs)
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
-$IonBuild = 'b3fb53b8'       # the build ID: Ion shows it at the start (do not edit)
+$IonBuild = 'b78a2118'       # the build ID: Ion shows it at the start (do not edit)
 $IonPasteCheck = 'not read'
 $pasteText = ''
 try { $pastePath = $PSCommandPath } catch { $pastePath = '' }   # no script path: read the ISE pane
@@ -4448,7 +4448,8 @@ function Add-ContainerParts {
 <#
 ReaderPool.psm1 - reads several files at once in PowerShell runspaces, and each identical file only once per run.
 
-  Purpose:     Speed (the PAM, 2026-11-21): files are read and checked for PII by 1 to 8 workers at a time, while the
+  Purpose:     Speed (the PAM, 2026-11-21): files are read and checked for PII by 1 to 8 workers at a time (Normal speed: at most half
+               the processors; Fast: one per processor; the PAM, 2026-11-25), while the
                main thread lists, downloads (SharePoint) and reports. The number of workers follows the load: it
                grows while the throughput grows and shrinks when it falls. A file whose content (SHA-256) was
                already read in this run is not read again: it gets the same hits. Nothing is kept after the run.
@@ -7558,7 +7559,7 @@ $script:DownloadSecondsLimit = 180
 # How long the main thread waits between bar updates while downloads run (milliseconds).
 $script:DownloadWaitMs = 250
 $script:DownloadBarMs = 250
-# The header line "Parallel downloads" of the last site scan: "3", or "off (<error type>)"; empty before a scan.
+# The header line "Parallel downloads" of the last site scan: "2" or "3" (the speed), or "off (<error type>)"; empty before a scan.
 $script:ParallelState = ''
 # Makes a copy of the signed-in connection (PnP.Framework; test 3 of docs/reviews/2026-11-21-ion-round2-tests.md).
 # Tests replace it.
@@ -7964,7 +7965,7 @@ function New-DownloadPool {
     .PARAMETER SiteUrl
       The signed-in site.
     .OUTPUTS
-      [hashtable] the pool state (On, State: the header text "3" or "off (<error type>)").
+      [hashtable] the pool state (On, State: the header text "2" or "3", or "off (<error type>)").
     #>
     param([string]$SiteUrl)
     $count = $script:NormalDownloads
@@ -8211,7 +8212,7 @@ function Close-DownloadPool {
 
 function Get-ScanTiming {
     # The time of the last file scan spent downloading (wall time with a download in flight) and spent reading, as
-    # minutes:seconds text, and its parallel downloads ("3" or "off (<error type>)").
+    # minutes:seconds text, and its parallel downloads ("2" or "3", or "off (<error type>)").
     $timing = [ordered]@{ 'Time downloading' = (Format-Duration $script:Timing.Download); 'Time reading files (all readers)' = (Format-Duration $script:Timing.Check) }
     if ($script:ParallelState) { $timing['Parallel downloads'] = $script:ParallelState }
     return $timing

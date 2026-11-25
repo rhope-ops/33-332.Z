@@ -1,7 +1,8 @@
 <#
 ReaderPool.psm1 - reads several files at once in PowerShell runspaces, and each identical file only once per run.
 
-  Purpose:     Speed (the PAM, 2026-11-21): files are read and checked for PII by 1 to 8 workers at a time, while the
+  Purpose:     Speed (the PAM, 2026-11-21): files are read and checked for PII by 1 to 8 workers at a time (Normal speed: at most half
+               the processors; Fast: one per processor; the PAM, 2026-11-25), while the
                main thread lists, downloads (SharePoint) and reports. The number of workers follows the load: it
                grows while the throughput grows and shrinks when it falls. A file whose content (SHA-256) was
                already read in this run is not read again: it gets the same hits. Nothing is kept after the run.
