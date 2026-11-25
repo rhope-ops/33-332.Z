@@ -10,7 +10,8 @@ that call on the gov device, and it checks the other OneDrive list for a synced 
 - Read-only. It writes nothing and changes no setting.
 - It prints only True or False, counts, error kinds and times. It prints no name, no address, no path and no value.
 - It asks 1 question first, then clears the screen.
-- It touches only the folder you give, the one library of that folder, and at most 20 files of that folder.
+- It touches only the folder you give, the one library of that folder, and at most 20 files of that folder. It reads 1 file of at most 5 MB into memory.
+- It reads the OneDrive app's 2 lists in the registry (read-only).
 
 | Line | It shows |
 |---|---|
@@ -20,10 +21,12 @@ that call on the gov device, and it checks the other OneDrive list for a synced 
 | P5 entry is the OneDrive home folder | True: your own OneDrive; False: a shortcut or a synced library |
 | P5 local files | the files on the disk, and how many are online only |
 | P5 sign-in | the sign-in to the site of the folder |
-| P5 library by its address | the library is found by its address, and its root is the mapped address |
+| P5 library by its address | the library is found by its address, and its root is the mapped address (another root: no listing) |
 | P5 folder listing | the items that SharePoint gives for the one folder: all, under the folder, files at any depth, files in the folder itself |
 | P5 names | the file names on both sides, on the web only, on the disk only |
 | P5 web files checked | of at most 20 web files: at the mapped local path, same size, found by web path, errors |
+| P5 folder found=False, P5 no web listing, P5 stopped | the probe stops at this line; it prints the error kind only |
+| P5 entries with the chosen folder, P5 web read, P5 disk read | as in probe 4: entries for the same folder; 1 file of at most 5 MB read into memory |
 
 ## How to run it
 
@@ -66,7 +69,7 @@ steps 2 times: run A with a shortcut folder in your OneDrive, run B with a folde
     2. Press **Enter**.
     3. Press **Ctrl+V**.
     You see the lines in the e-mail. Go on.
-18. If you did run A only, start this list again from the top for run B. You see the window **File Explorer**. Go on.
+18. If you did run A only, start this list again from the top for run B. You see this list from the top. Go on.
 19. In the e-mail with run A and run B, click **Send**. You see the message in your sent mail. The task is complete.
 
 ## Result

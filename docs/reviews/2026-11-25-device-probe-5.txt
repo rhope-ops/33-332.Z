@@ -60,8 +60,11 @@ try { Connect-PnPOnline -Url $site -UseWebLogin -WarningAction SilentlyContinue;
 catch { 'P5 sign-in ok=False {0} ms={1}' -f (Get-Kind $_), $clock.ElapsedMilliseconds; return }
     $script:lib = $null; $script:web = @(); $script:listed = $false
     Test-Step 'P5 library by its address' {
-        $script:lib = Get-PnPList -Identity $nsPath.Substring($sitePath.Length).TrimStart('/') -Includes RootFolder
-        'found={0} root matches={1}' -f [bool]$script:lib, ([bool]$script:lib -and $script:lib.RootFolder.ServerRelativeUrl.TrimEnd('/') -eq $nsPath)
+        # The same calls as Ion (src/DriveScan.psm1 Get-OneDriveWebFiles): the list by its address, then its root folder.
+        $found = Get-PnPList -Identity $nsPath.Substring($sitePath.Length).TrimStart('/')
+        $root = ''; if ($found) { $root = (Get-PnPProperty -ClientObject $found -Property RootFolder).ServerRelativeUrl.TrimEnd('/') }
+        if ($found -and $root -eq $nsPath) { $script:lib = $found }   # another root: not listed (Ion stops the same way)
+        'found={0} root matches={1}' -f [bool]$found, ($root -eq $nsPath)
     }
     if ($script:lib) {
         Test-Step 'P5 folder listing' {
