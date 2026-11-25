@@ -95,19 +95,19 @@ class BuildPasteTest(unittest.TestCase):
         self.assertIn('function Get-B {}', code)
 
     def test_paste_hash_line(self):
-        """The hash line holds paste_hash(); the try, the Settings, the hash line, the mark and the reader block are in that order."""
+        """The hash line holds paste_hash(); the try, Settings, hash line, mark, strict mode, build ID and reader block are in that order."""
         found = re.search(r"^\$IonPasteHash = '([0-9a-f]{64})'", self.text, re.M)
         self.assertTrue(found)
         self.assertEqual(found.group(1), bp.paste_hash(self.text))
         self.assertEqual(len(re.findall('^' + re.escape(bp.CHECK_MARK), self.text, re.M)), 1)
         order = [self.text.index(mark) for mark in ('\ntry {\n', '# ==== Settings ====', '$IonPasteHash = ', '\n' + bp.CHECK_MARK,
-                                                    '$IonReaderBlock = {')]
+                                                    '\n' + bp.STRICT_LINE + '\n', "\n$IonBuild = '", '$IonReaderBlock = {')]
         self.assertEqual(order, sorted(order))
 
     def test_paste_hash_scope(self):
         """A Settings edit, CRLF line ends and spaces at line ends keep the hash; one changed character below the mark does not."""
         base = bp.paste_hash(self.text)
-        self.assertEqual(base, bp.paste_hash(self.text.replace("$SiteUrl = ''", "$SiteUrl = 'https://usaf.dps.mil/teams/x'")))
+        self.assertEqual(base, bp.paste_hash(self.text.replace("$SiteUrl = ''", "$SiteUrl = 'https://usaf.dps.mil/teams/<team-site>'")))
         self.assertEqual(base, bp.paste_hash(self.text.replace('\n', ' \t\r\n') + '\r\n\r\n'))
         self.assertNotEqual(base, bp.paste_hash(self.text.replace('# ==== Reader modules ====', '# ==== Reader module ====')))
         self.assertEqual('', bp.paste_hash('no mark\n'))
