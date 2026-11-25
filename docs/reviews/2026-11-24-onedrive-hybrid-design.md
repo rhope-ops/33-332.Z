@@ -86,3 +86,10 @@ names in every new row.
   synced library or a shortcut". Not verified here (PnP source not reachable): `Get-PnPListItem -FolderServerRelativeUrl`
   with `-Fields` lists subfolders too: probe 5 run A shows it does (3898 files at any depth).
 
+## Device result (2026-11-25)
+
+The PAM ran Ion build 3d16ddec (origin/main) on the folder RecallTest2 in the own OneDrive (by e-mail; counts only):
+Summary row "OneDrive on the web": "Used: 12 files in this folder on the web; history from the web." Column "PII first
+saved by": filled from the web history ("history yes"). 1 sign-in window, no PIN, the "continue to run scripts" prompt;
+no download question; no error. What it proves: plan step 4 works on the gov device for the own OneDrive.
+
