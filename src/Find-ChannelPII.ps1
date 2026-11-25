@@ -63,7 +63,7 @@ $IonBuild = 'src'   # run from src/; the paste bundle sets its build ID here (sc
 $readerModules = @('PiiPatterns.psm1', 'PiiSignedIds.psm1', 'PiiDetectors.psm1', 'PiiMasking.psm1', 'OcrText.psm1', 'OleText.psm1', 'ContainerText.psm1',
     'PdfCore.psm1', 'PdfObjects.psm1', 'PdfFonts.psm1', 'PdfShown.psm1', 'PdfLayout.psm1', 'PdfContent.psm1', 'PdfText.psm1', 'TextExtract.psm1', 'ReaderPool.psm1')
 $otherModules = @('XlsxWriter.psm1', 'Report.psm1', 'ReportBook.psm1',
-    'ScanMeter.psm1', 'ScanQueue.psm1', 'Accountability.psm1', 'SiteTarget.psm1', 'ChannelScan.psm1', 'OneDriveWeb.psm1', 'DriveScan.psm1')
+    'ScanMeter.psm1', 'ScanQueue.psm1', 'Accountability.psm1', 'SiteTarget.psm1', 'ChannelScan.psm1', 'DriveScan.psm1')
 foreach ($module in $readerModules + $otherModules) {
     Import-Module (Join-Path $PSScriptRoot $module) -Force
 }
@@ -266,7 +266,7 @@ try {
     }
 }
 finally {
-    if (Test-OneDriveSignIn) { $script:IonSignInTried = $true }   # a OneDrive folder signed in too (OneDriveWeb.psm1)
+    if (Test-OneDriveSignIn) { $script:IonSignInTried = $true }   # a OneDrive folder signed in too (DriveScan.psm1)
     if ($script:IonSignInTried) {
         try { Disconnect-PnPOnline }
         catch { Write-Verbose 'Already signed out.' }  # nothing to sign out of: not an error for the person

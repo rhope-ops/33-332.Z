@@ -73,8 +73,12 @@ names in every new row.
 
 ## Build status (2026-11-25)
 
-- Built (PR after #107): `src/OneDriveWeb.psm1` (map, sign-in, web files), `src/DriveScan.psm1` (join, reads, history),
+- Built (PR 109): `src/DriveScan.psm1` (map, sign-in, web files of the pasted folder only, join, reads, history),
   tests in `tests/OneDriveWeb.Tests.ps1`. Only the own OneDrive uses the web (`$script:WebKinds`); a synced library
   and a shortcut join after probe 4 runs A and B pass. The Summary has the line "OneDrive on the web".
 - Not built: the History note "The disk copy is newer than the last synced version" (flow step 6). The local time and
   the web time come in different time zones, so a compare could give wrong notes; it waits for a device sample.
+- Step 5 "on the disk only": the History note "Not on the web yet (not synced): no version history".
+- Open (review of PR 109, MINOR): a web link names the OneDrive owner's folder (/personal/<owner>/...), as a file link
+  names the local profile folder. Assumption A7, medium: `Get-PnPListItem -FolderServerRelativeUrl` in PnP.PowerShell
+  1.12.0 lists the folder at any depth; the device test shows it (if not: the scan is local only, with a note).

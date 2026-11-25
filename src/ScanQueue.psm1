@@ -179,7 +179,10 @@ function Add-WhoToRows {
     #>
     param([hashtable]$Info, [hashtable]$Result, [object[]]$FileRows)
     $props = $null; if ($Result.ContainsKey('Props')) { $props = $Result.Props }
-    if ($Info.ContainsKey('DrivePath')) { $who = Get-DriveWho $Info.DrivePath $props }
+    if ($Info.ContainsKey('DrivePath')) {
+        $who = Get-DriveWho $Info.DrivePath $props
+        if ($Info.ContainsKey('DriveNote')) { $who.HistoryNote = $Info.DriveNote }   # a OneDrive file not synced yet (DriveScan.psm1)
+    }
     elseif ($Info.ContainsKey('Who')) {
         $who = $Info.Who.Clone()
         if ($Info.ContainsKey('Added') -and $Result.Hits.Count -gt 0) { $who.ByHit = Get-AddedByHit $Info $Result.Hits }

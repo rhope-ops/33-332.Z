@@ -1,5 +1,5 @@
 <#
-OneDriveWeb.Tests.ps1 - tests the OneDrive hybrid (plan step 4): the local-to-web map, the kinds of OneDrive folder,
+OneDriveWeb.Tests.ps1 - tests the OneDrive hybrid (src/DriveScan.psm1, the OneDrive web part) (plan step 4): the local-to-web map, the kinds of OneDrive folder,
 the fall-back to a local scan, and a scan that reads the history and a web-only file from the (fake) web.
 
   Purpose:     The map follows probe 4 (web path = UrlNamespace path + the local path after MountPoint; the longest
@@ -69,6 +69,8 @@ try {
     $hits = @($sheets['Hits'] | Select-Object -Skip 1)
     $files = @($hits | ForEach-Object { $_[4] } | Sort-Object -Unique)
     Assert-Equal 'notes.txt|webonly.txt' ($files -join '|') 'OneDrive scan: the disk file and the web-only file are read; the file outside the folder is not'
+    Assert-Equal '1|0|1' ('{0}|{1}|{2}' -f (Get-FakeCallCount 'Get-PnPList Shared Documents'), (Get-FakeCallCount 'Get-PnPList'),
+            (Get-FakeCallCount ('Items in ' + $lib + '/Ops'))) 'OneDrive scan: one library by its address, items of the pasted folder only'
     Assert-Equal 'https://tenant.example.com/sites/TeamA' (@(Get-FakePnPConnection) -join ' ') 'OneDrive scan: one sign-in, to the site of the folder'
     $outsideReads = @($odVersionUrls | Where-Object { $_ -like '*outside.txt' }).Count
     Assert-Equal '0|0' ('{0}|{1}' -f $outsideReads, (Get-FakeCallCount 'Online question')) 'OneDrive scan: nothing outside the folder is read, no download question'
