@@ -2,8 +2,11 @@
 
 A record, read on demand: a decision binds the task or thing it names. A decision that must bind every session is a line in AGENTS.md "Project rules". Newest first. Why the kit defaults are what they are: https://github.com/rhope-ops/archimedes_lever/blob/main/docs/DECISIONS.md. "By" = the PAM for a decision. "By" = Agent for a recommendation that the PAM has not approved yet. Times are America/Chicago.
 
+<!-- approval-quote-exempt-from: Probe 6 scope (the PAM, question dialog, REC; rule "No reconnaissance": any doubt, ask the PAM): probe 6 may try up to 21 candidate folders, all in the one library of the pasted folder, and print counts only. Ion itself uses only the one path that fits. Scope: probe 6. -->
+
 | Date | Decision | By | Replaces |
 |---|---|---|---|
+| 2026-11-24 | Kit sync to 11.1.0 (merge commit a629550; tag v11.1.0 not made yet): T6 marker for this table (kit #179); strict gate measures Python lines without ruff/pylint, as ruff E501 (#178, #183); hook verify order (#180). Scope: this repo. | Agent | — |
 | 2026-11-25 | Probe 6 scope (the PAM, question dialog, REC; rule "No reconnaissance": any doubt, ask the PAM): probe 6 may try up to 21 candidate folders, all in the one library of the pasted folder, and print counts only. Ion itself uses only the one path that fits. Scope: probe 6. | the PAM | - |
 | 2026-11-25 | Ion OneDrive hybrid (the PAM, question dialog, REC): a file on the computer that is not on the web yet gets the History note "Not on the web yet (not synced): no version history" (replaces the design text "Not recorded (not synced yet)"). Scope: plan step 4. | the PAM | design step 5 text |
 | 2026-11-24 | Kit 11.0.1 at 790d832 (untagged; kit main after #171, #173, #174), package mode: SessionStart hook installs the kit package at startup, DoD test-sample fix, reviewer delete block. Kept: all project rules and the project layer. Removed the 2 `.check` workaround lines of PR 103 (DoD test number allow and `skip: scripts/check_content_test.py`) on the Maintainer's OK (coordinator brief, 2026-11-24); the content check finds 0 in the kit test files without them. Session load 5,484 tokens (cap 5,500, unchanged). Scope: this sync. | Agent | |
