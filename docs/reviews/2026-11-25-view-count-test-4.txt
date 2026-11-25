@@ -2,27 +2,64 @@
 # usaf.dps.mil only. Read-only, one site, one file. Prints only counts, True/False and error type names: no address,
 # no file name and no error message. No Microsoft Graph call: the addresses are on usaf.dps.mil only.
 $ErrorActionPreference = 'Stop'
-'T4 test version=2026-11-25a'
-$typed = (Read-Host 'Question 1: your team site address (usaf.dps.mil/sites/<name> or /teams/<name>)').Trim().Trim('"')
-$fileText = (Read-Host 'Question 2: the file path after the site (for example Shared Documents/General/Report.pdf)').Trim().Trim('"', '/')
+'T4 test version=2026-11-25e'
+$typed = (Read-Host 'Question 1: the address of the folder page in your web browser').Trim().Trim('"')
+$fileText = (Read-Host 'Question 2: the file name with its type (for example Report.pdf)').Trim().Trim('"', '/')
 Clear-Host
-'T4 test version=2026-11-25a'
+'T4 test version=2026-11-25e'
+$tag = 'T4'
 $signedIn = $false
 try {
+    function Get-Kind($err) { $err.Exception.GetType().Name }   # the error type name only, never the message
     if ($typed -notmatch '^https?://') { $typed = 'https://' + $typed }
-    $siteMatch = [regex]::Match($typed, '^https://usaf\.dps\.mil/((?:sites|teams)/[^/?#\s]+)')
+    $siteMatch = [regex]::Match($typed, '^https://usaf\.dps\.mil/((?:sites|teams)/[A-Za-z0-9_-][A-Za-z0-9_.-]*)(?=[/?#]|$)')
     if (-not $siteMatch.Success) { 'T4 answer 1 is a DoD365 site address=False'; return }   # 'finally' prints Done.
     if (-not $fileText) { 'T4 answer 2 given=False'; return }
     $site = 'https://usaf.dps.mil/' + $siteMatch.Groups[1].Value
-    $path = '/' + $siteMatch.Groups[1].Value + '/' + [uri]::UnescapeDataString($fileText)
+    # The folder of the file, from the address of the folder page in the web browser: its 'id=' part (a folder), or the
+    # part before '/Forms/' (the library), or the path of the address. Only a folder of this one site is used.
+    $sitePath = '/' + $siteMatch.Groups[1].Value
+    $u = [uri]$typed
+    $folderPath = ''; $folderFrom = 'none'
+    $q = [regex]::Match($u.Query, '(?i)(?:^\?|&)(?:id|RootFolder)=([^&]+)')
+    if ($q.Success) { $folderPath = [uri]::UnescapeDataString($q.Groups[1].Value); $folderFrom = 'id' }
+    else {
+        $p = [uri]::UnescapeDataString($u.AbsolutePath).TrimEnd('/')
+        $i = $p.IndexOf('/Forms/', [StringComparison]::OrdinalIgnoreCase)
+        if ($i -gt 0) { $folderPath = $p.Substring(0, $i); $folderFrom = 'library page' }
+        elseif ($p.Length -gt $sitePath.Length) { $folderPath = $p; $folderFrom = 'path' }
+    }
+    $folderPath = $folderPath.TrimEnd('/')
+    $name = [uri]::UnescapeDataString($fileText)
+    # Only the one site: no part of only dots and spaces ('..'), no '\', and nothing still encoded after the one decode ('%252e').
+    if (([uri]::UnescapeDataString($typed) + '/' + $folderPath + '/' + $name) -match '(^|/)[.\s]+(/|$|[?#&])|\\|%[0-9A-Fa-f]{2}') { '{0} answer with .. or \ found=True: stopped' -f $tag; return }
+    if ($name.Contains('/')) { $folderFrom = 'answer 2 (a path)'; $path = $sitePath + '/' + $name.TrimStart('/') }
+    elseif (-not $folderPath.StartsWith($sitePath + '/', [StringComparison]::OrdinalIgnoreCase)) { '{0} folder in the address found=False' -f $tag; return }
+    else { $path = $folderPath + '/' + $name }
+    '{0} folder from={1}' -f $tag, $folderFrom
     $signedIn = $true   # before the sign-in: a stop during it still signs out
     $clock = [Diagnostics.Stopwatch]::StartNew()
     Connect-PnPOnline -Url $site -UseWebLogin -WarningAction SilentlyContinue
     'T4 sign-in ok=True ms={0}' -f $clock.ElapsedMilliseconds
-    $item = Get-PnPFile -Url $path -AsListItem
+    $clock.Restart()
+    $item = $null; $by = 'name'
+    # A file that is not there gives nothing (PnP 1.12.0) or an error: both go on to the search below.
+    try { $item = Get-PnPFile -Url $path -AsListItem } catch { $item = $null }
+    # The web page can show a name without its type: only then, the files of that one folder by the name without its type.
+    if (-not $item -and $folderFrom -ne 'answer 2 (a path)' -and -not [IO.Path]::GetExtension($name)) {
+        try {
+            $inFolder = Get-PnPFolderItem -FolderSiteRelativeUrl $folderPath.Substring($sitePath.Length + 1) -ItemType File
+            $same = @(foreach ($one in $inFolder) { $one }) | Where-Object { [IO.Path]::GetFileNameWithoutExtension($_.Name) -ieq $name }
+            $same = @($same)
+            if ($same.Count -eq 1) { $item = Get-PnPFile -Url $same[0].ServerRelativeUrl -AsListItem; $by = 'name without its type' }
+            else { 'T4 files with this name in the folder={0}' -f $same.Count }
+        }
+        catch { 'T4 folder read ok=False {0}' -f (Get-Kind $_) }
+    }
+    'T4 file found={0} by={1} ms={2}' -f [bool]$item, $by, $clock.ElapsedMilliseconds
+    if (-not $item) { return }
     $list = Get-PnPProperty -ClientObject $item -Property ParentList
     $siteId = (Get-PnPSite -Includes Id).Id; $webId = (Get-PnPWeb -Includes Id).Id
-    'T4 file found={0}' -f [bool]$item
     $address = '/_api/v2.1/sites/usaf.dps.mil,{0},{1}/lists/{2}/items/{3}' -f $siteId, $webId, $list.Id, $item.Id
     # Method 1: all-time count (the SharePoint item analytics, as Graph's itemAnalytics).
     try {
