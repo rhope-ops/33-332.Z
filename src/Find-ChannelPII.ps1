@@ -266,6 +266,7 @@ try {
     }
 }
 finally {
+    if (Test-OneDriveSignIn) { $script:IonSignInTried = $true }   # a OneDrive folder signed in too (DriveScan.psm1)
     if ($script:IonSignInTried) {
         try { Disconnect-PnPOnline }
         catch { Write-Verbose 'Already signed out.' }  # nothing to sign out of: not an error for the person

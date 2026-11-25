@@ -137,8 +137,17 @@ function global:Get-PnPList {
     <#
     .SYNOPSIS
       Fake: the site's lists: its libraries (Set-FakeLibraries), a hidden library and SharePoint's Style Library.
+    .PARAMETER Identity
+      One library by its site-relative address; $null when the site has none with that address.
+    .OUTPUTS
+      [pscustomobject] Title, BaseTemplate, Hidden, Url (one per list).
     #>
-    [CmdletBinding()] param()
+    [CmdletBinding()] param($Identity)
+    if ($Identity) {   # one library by its site-relative address (the OneDrive web side asks so: no list of all lists)
+        $global:FakePnP.Calls.Add('Get-PnPList ' + $Identity)
+        if ($global:FakePnP.Libraries -contains $Identity) { return [pscustomobject]@{ Title = $Identity; BaseTemplate = 101; Hidden = $false; Url = '/sites/TeamA/' + $Identity } }
+        return $null
+    }
     $global:FakePnP.Calls.Add('Get-PnPList')
     foreach ($name in $global:FakePnP.Libraries) {
         $title = $name; if ($name -eq 'Shared Documents') { $title = 'Documents' }
@@ -177,12 +186,16 @@ function global:Get-PnPListItem {
       Not used.
     .PARAMETER Fields
       Not used (every field is given).
+    .PARAMETER FolderServerRelativeUrl
+      Only the items under this folder (any depth), as SharePoint gives them; recorded as a call.
     #>
-    [CmdletBinding()] param($List, $PageSize, $Fields)
+    [CmdletBinding()] param($List, $PageSize, $Fields, $FolderServerRelativeUrl)
     if ($global:FakePnP.ListFails) { throw 'FAKE: list read refused' }
     if ($List.Title -eq 'Preservation Hold Library') { throw 'Access denied.' }   # members often cannot open it
-    @{ FileLeafRef = 'General'; FileRef = '/sites/TeamA/Shared Documents/General'; FSObjType = 1 }
+    if ($FolderServerRelativeUrl) { $global:FakePnP.Calls.Add('Items in ' + $FolderServerRelativeUrl) }
+    else { @{ FileLeafRef = 'General'; FileRef = '/sites/TeamA/Shared Documents/General'; FSObjType = 1 } }
     foreach ($path in $global:FakePnP.Files.Keys) {
+        if ($FolderServerRelativeUrl -and -not $path.StartsWith($FolderServerRelativeUrl + '/')) { continue }
         @{ FileLeafRef = ($path -split '/')[-1]; FileRef = $path; FSObjType = 0
            File_x0020_Size = [string]$global:FakePnP.Files[$path].Length; Modified = [datetime]'2026-11-01'
            UniqueId = [guid]'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' }

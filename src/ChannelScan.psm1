@@ -401,4 +401,4 @@ function Test-TeamSite {
 }
 
 Export-ModuleMember -Function Get-SiteDocumentLibraries, Get-ChannelFolderNames,
-Invoke-FileScan, Get-ScanTiming, Test-TeamSite, Get-ShownItem
+Invoke-FileScan, Get-ScanTiming, Test-TeamSite, Get-ShownItem, Get-FileBytes, Get-FieldValue, Get-SafeLink   # the last 3: OneDrive web files (DriveScan.psm1)

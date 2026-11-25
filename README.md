@@ -73,7 +73,9 @@ The steps to run it are at the top of the script.
 | A link (symbolic link or junction) to another folder or file inside a scanned drive folder | Listed as NOT SCANNED (a link can lead outside the folder): check it by hand |
 | Other reparse points: deduplicated or Azure File Sync files, and any outside a OneDrive folder | Listed as NOT SCANNED (a link can lead outside the folder): check it by hand |
 | Your whole OneDrive folder (it can hold shortcuts to other teams' libraries) | Ion lists its top folders and asks before it scans them all; to scan one team, paste that team's folder |
-| OneDrive files that are online only (not on this computer) | Ion shows how many and their MB, and asks before it downloads them; on "no" they are listed as NOT SCANNED. Downloaded files stay on the computer until you click Free up space |
+| A folder in your own OneDrive | Ion signs in once (a CAC sign-in window can open) to that OneDrive only. It reads the files on this computer from the disk. It reads online-only files and files that are only on the web into memory: nothing is saved to the computer. "PII first saved" and "PII first saved by" come from the web version history. If the sign-in fails, Ion reads the files on this computer only, and the Summary says so |
+| A synced team library or a shortcut in OneDrive | Scanned on this computer only, as for any folder, until a device test shows that the web part works for them; the Summary says so |
+| OneDrive files that are online only, when the web part is not used | Ion shows how many and their MB, and asks before it downloads them; on "no" they are listed as NOT SCANNED. Downloaded files stay on the computer until you click Free up space |
 | Style Library and Form Templates | SharePoint's own files, not people's: skipped on purpose |
 | Files with a sensitivity label that encrypts them (Microsoft Purview) | Listed as NOT SCANNED, in a group of their own: open them and check by hand |
 | Encrypted or password-protected files, and PDFs with limits set by their author | Listed as NOT SCANNED, in a group of their own: check them by hand |
