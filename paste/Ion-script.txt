@@ -1,5 +1,5 @@
 <#
-  Ion - DoD365 PII Reporter, build 0c0a85ff (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
+  Ion - DoD365 PII Reporter, build 6258bd49 (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
 
   HOW TO RUN
     1. Optional: read this text first (Open the script shows it as a .txt in your browser).
@@ -33,7 +33,7 @@
     src/PdfShown.psm1, sha256 abcac9ee7a8f
     src/PdfLayout.psm1, sha256 feafecd946b7
     src/PdfContent.psm1, sha256 85ee6cfeaf8f
-    src/PdfText.psm1, sha256 ef67b09c1d15
+    src/PdfText.psm1, sha256 942549438528
     src/TextExtract.psm1, sha256 18f1eb17ebf9
     src/ReaderPool.psm1, sha256 e5865e4bc160
     src/XlsxWriter.psm1, sha256 56c1ec673d09
@@ -71,20 +71,20 @@
     line  3346  Module PdfLayout.psm1
     line  3486  Module PdfContent.psm1
     line  3816  Module PdfText.psm1
-    line  4145  Module TextExtract.psm1
-    line  4586  Module ReaderPool.psm1
-    line  4953  Reader block end
-    line  4957  Module XlsxWriter.psm1
-    line  5394  Module Report.psm1
-    line  5771  Module ReportBook.psm1
-    line  6078  Module ScanMeter.psm1
-    line  6500  Module ScanQueue.psm1
-    line  6917  Module Accountability.psm1
-    line  7412  Module SiteTarget.psm1
-    line  7769  Module ChannelScan.psm1
-    line  8605  Module DriveScan.psm1
-    line  9266  Body of Find-ChannelPII.ps1
-    line  9482  Clean-up
+    line  4162  Module TextExtract.psm1
+    line  4603  Module ReaderPool.psm1
+    line  4970  Reader block end
+    line  4974  Module XlsxWriter.psm1
+    line  5411  Module Report.psm1
+    line  5788  Module ReportBook.psm1
+    line  6095  Module ScanMeter.psm1
+    line  6517  Module ScanQueue.psm1
+    line  6934  Module Accountability.psm1
+    line  7429  Module SiteTarget.psm1
+    line  7786  Module ChannelScan.psm1
+    line  8622  Module DriveScan.psm1
+    line  9283  Body of Find-ChannelPII.ps1
+    line  9499  Clean-up
 #>
 
 # ISE runs pasted text in your session: keep its error setting so the Clean-up block at the end can put it back.
@@ -97,12 +97,12 @@ $SiteUrl = ''            # the team's Teams link, or its site https://usaf.dps.m
 $OutputFolder = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Ion')   # results: a folder per site, then per day
 $MaxFileMB = 25          # files larger than this are reported as NOT SCANNED
 
-$IonPasteHash = '986501a1eac618d49ec88d363262f008de2465aac3d093c0b6086e5ab05303e6'   # the SHA-256 of the text from the line Paste check to the end (do not edit)
+$IonPasteHash = 'e501b8a23784265f8ad4acf029394d9186b028a0cd63761ae8c987a5bc048eae'   # the SHA-256 of the text from the line Paste check to the end (do not edit)
 
 # ==== Paste check ==== (the text from this line to the end must be the published text, or nothing runs)
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
-$IonBuild = '0c0a85ff'       # the build ID: Ion shows it at the start (do not edit)
+$IonBuild = '6258bd49'       # the build ID: Ion shows it at the start (do not edit)
 $IonPasteCheck = 'not read'
 $pasteText = ''
 try { $pastePath = $PSCommandPath } catch { $pastePath = '' }   # no script path: read the ISE pane
@@ -4080,6 +4080,29 @@ function Get-PdfResourceImages {
     }
 }
 
+function Add-PdfScanImages {
+    <#
+    .SYNOPSIS
+      Adds a page's scanned images to the OCR list: none for a page with a text layer (hidden text); for a page with
+      visible text, only its page-size images (Test-PdfPageImage); for a page with no text, all its images.
+    .PARAMETER Kinds
+      The text kinds of the page and of the forms it names (Get-PdfTextKind, Get-PdfFormKinds).
+    .PARAMETER Resources
+      The page's resources dictionary text.
+    .PARAMETER Objects
+      Output of Get-PdfObjects.
+    .PARAMETER List
+      The image objects to read with OCR (changed in place; each image once).
+    #>
+    param([string[]]$Kinds, [string]$Resources, $Objects, $List)
+    if ($Kinds -contains 'hidden') { return }
+    $anyText = $Kinds -contains 'visible'
+    foreach ($image in @(Get-PdfResourceImages $Resources $Objects)) {
+        if ($anyText -and -not (Test-PdfPageImage $image.Dict)) { continue }
+        if (-not $List.Contains($image)) { $List.Add($image) }
+    }
+}
+
 function Get-PdfAllText {
     <#
     .SYNOPSIS
@@ -4119,13 +4142,7 @@ function Get-PdfAllText {
         }
         $pageText = ''; for ($i = $first; $i -lt $parts.Count; $i++) { $pageText += $parts[$i] }
         $kinds = @(Get-PdfTextKind $pageRaw $pageText) + @(Get-PdfFormKinds $resources $objects $allFonts $formKinds)
-        if ($kinds -notcontains 'hidden') {   # no text layer: the images of a page with no text, the big ones of a page with text
-            $anyText = $kinds -contains 'visible'
-            foreach ($image in @(Get-PdfResourceImages $resources $objects)) {
-                if ($anyText -and -not (Test-PdfPageImage $image.Dict)) { continue }
-                if (-not $pageImages.Contains($image)) { $pageImages.Add($image) }
-            }
-        }
+        Add-PdfScanImages $kinds $resources $objects $pageImages
     }
     $script:PdfPageImages = @(foreach ($image in $pageImages) { $image.Image })   # a loop: '@()' of a New-Object list throws (probe 6)
     # Form XObjects (/Subtype /Form, drawn with "Do"): reusable page parts that can hold text of their own. Read each

@@ -265,6 +265,29 @@ function Get-PdfResourceImages {
     }
 }
 
+function Add-PdfScanImages {
+    <#
+    .SYNOPSIS
+      Adds a page's scanned images to the OCR list: none for a page with a text layer (hidden text); for a page with
+      visible text, only its page-size images (Test-PdfPageImage); for a page with no text, all its images.
+    .PARAMETER Kinds
+      The text kinds of the page and of the forms it names (Get-PdfTextKind, Get-PdfFormKinds).
+    .PARAMETER Resources
+      The page's resources dictionary text.
+    .PARAMETER Objects
+      Output of Get-PdfObjects.
+    .PARAMETER List
+      The image objects to read with OCR (changed in place; each image once).
+    #>
+    param([string[]]$Kinds, [string]$Resources, $Objects, $List)
+    if ($Kinds -contains 'hidden') { return }
+    $anyText = $Kinds -contains 'visible'
+    foreach ($image in @(Get-PdfResourceImages $Resources $Objects)) {
+        if ($anyText -and -not (Test-PdfPageImage $image.Dict)) { continue }
+        if (-not $List.Contains($image)) { $List.Add($image) }
+    }
+}
+
 function Get-PdfAllText {
     <#
     .SYNOPSIS
@@ -304,13 +327,7 @@ function Get-PdfAllText {
         }
         $pageText = ''; for ($i = $first; $i -lt $parts.Count; $i++) { $pageText += $parts[$i] }
         $kinds = @(Get-PdfTextKind $pageRaw $pageText) + @(Get-PdfFormKinds $resources $objects $allFonts $formKinds)
-        if ($kinds -notcontains 'hidden') {   # no text layer: the images of a page with no text, the big ones of a page with text
-            $anyText = $kinds -contains 'visible'
-            foreach ($image in @(Get-PdfResourceImages $resources $objects)) {
-                if ($anyText -and -not (Test-PdfPageImage $image.Dict)) { continue }
-                if (-not $pageImages.Contains($image)) { $pageImages.Add($image) }
-            }
-        }
+        Add-PdfScanImages $kinds $resources $objects $pageImages
     }
     $script:PdfPageImages = @(foreach ($image in $pageImages) { $image.Image })   # a loop: '@()' of a New-Object list throws (probe 6)
     # Form XObjects (/Subtype /Form, drawn with "Do"): reusable page parts that can hold text of their own. Read each
