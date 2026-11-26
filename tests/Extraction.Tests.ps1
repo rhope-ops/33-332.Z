@@ -328,6 +328,16 @@ $layerPage = '<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 5 0 R >> /
 $layerContent = "<< /Length 52 >> stream`nq /Im1 Do Q BT /F1 12 Tf 72 700 Td (Layer text) Tj ET`nendstream"
 $layer = Get-TextFromBytes -Bytes (New-PdfBytes $textPage -Plain -Extra @($scanImage, $layerPage, $layerContent)) -FileName 'l.pdf'
 Assert-Equal $true ($layer.Text -match 'Layer text' -and -not $layer.Note) 'A page with an image and a text layer: its text is read, no OCR, no note'
+# The same, with the image and the text layer inside a form XObject the page draws (review 2 of step 3).
+$formPage = '<< /Type /Page /Parent 2 0 R /Resources << /XObject << /Fm1 10 0 R >> >> /Contents 9 0 R >>'
+$formCall = "<< /Length 11 >> stream`nq /Fm1 Do Q`nendstream"
+$formBody = "<< /Type /XObject /Subtype /Form /Resources << /Font << /F1 5 0 R >> /XObject << /Im1 7 0 R >> >> /Length 52 >> stream`nq /Im1 Do Q BT /F1 12 Tf 72 700 Td (Layer text) Tj ET`nendstream"
+$formLayer = Get-TextFromBytes -Bytes (New-PdfBytes $textPage -Plain -Extra @($scanImage, $formPage, $formCall, $formBody)) -FileName 'f.pdf'
+Assert-Equal $true ($formLayer.Text -match 'Layer text' -and -not $formLayer.Note) 'A text layer inside a form: its text is read, no OCR, no note'
+# A pure scan wrapped in a form (no text in it): still read with OCR (here: the no-OCR note).
+$formScan = "<< /Type /XObject /Subtype /Form /Resources << /XObject << /Im1 7 0 R >> >> /Length 11 >> stream`nq /Im1 Do Q`nendstream"
+$wrapped = Get-TextFromBytes -Bytes (New-PdfBytes $textPage -Plain -Extra @($scanImage, $formPage, $formCall, $formScan)) -FileName 'w.pdf'
+Assert-Equal $true ($wrapped.Note -match 'its pages with no text\): check by hand$') 'A scan wrapped in a form with no text: read with OCR'
 # Where Windows has OCR (the ps51 CI runner): a real image with an invented SSN drawn in it is read and the SSN found.
 $ocrHere = (Get-TextFromBytes -Bytes ([byte[]](1, 2, 3)) -FileName 'x.png').Reason -notmatch 'not available'
 if ($ocrHere -and $PSVersionTable.PSVersion.Major -eq 5) {

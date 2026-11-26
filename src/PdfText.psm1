@@ -156,6 +156,54 @@ function Get-PdfLooseText {
     }
 }
 
+function Get-PdfXObjects {
+    <#
+    .SYNOPSIS
+      The objects that a resources dictionary names under /XObject (inline, or a dictionary by reference).
+    .PARAMETER Resources
+      The resources dictionary text.
+    .PARAMETER Objects
+      Output of Get-PdfObjects.
+    .OUTPUTS
+      [object[]]
+    #>
+    param([string]$Resources, $Objects)
+    $list = ''
+    $inline = [regex]::Match($Resources, '/XObject\s*<<([^>]*)>>')
+    if ($inline.Success) { $list = $inline.Groups[1].Value }
+    else {
+        $ref = [regex]::Match($Resources, '/XObject\s+(\d+)\s+\d+\s+R')
+        if ($ref.Success -and $Objects.Contains($ref.Groups[1].Value)) { $list = $Objects[$ref.Groups[1].Value].Dict }
+    }
+    foreach ($name in [regex]::Matches($list, '(\d+)\s+\d+\s+R')) {
+        if ($Objects.Contains($name.Groups[1].Value)) { $Objects[$name.Groups[1].Value] }
+    }
+}
+
+function Test-PdfFormText {
+    <#
+    .SYNOPSIS
+      True when a form XObject that the resources name holds text (a scanned page with its text layer in a form: it
+      is read from that text, not with OCR; review of step 3).
+    .PARAMETER Resources
+      The page's resources dictionary text.
+    .PARAMETER Objects
+      Output of Get-PdfObjects.
+    .PARAMETER AllFonts
+      The fonts of the whole file, for a form that names none.
+    .OUTPUTS
+      [bool]
+    #>
+    param([string]$Resources, $Objects, $AllFonts)
+    foreach ($form in @(Get-PdfXObjects $Resources $Objects)) {
+        if (-not $form.Stream -or $form.Dict -notmatch '/Subtype\s*/Form\b') { continue }
+        $fonts = Get-PdfFontTable (Get-PdfPageResources $form $Objects) $Objects
+        if ($fonts.Count -eq 0) { $fonts = $AllFonts }
+        if ((Convert-PdfContentToText $form.Stream $fonts).Trim()) { return $true }
+    }
+    return $false
+}
+
 function Get-PdfResourceImages {
     <#
     .SYNOPSIS
@@ -171,16 +219,7 @@ function Get-PdfResourceImages {
       [object[]] the image objects (each with Image).
     #>
     param([string]$Resources, $Objects, [int]$Depth = 0)
-    $list = ''
-    $inline = [regex]::Match($Resources, '/XObject\s*<<([^>]*)>>')
-    if ($inline.Success) { $list = $inline.Groups[1].Value }
-    else {
-        $ref = [regex]::Match($Resources, '/XObject\s+(\d+)\s+\d+\s+R')
-        if ($ref.Success -and $Objects.Contains($ref.Groups[1].Value)) { $list = $Objects[$ref.Groups[1].Value].Dict }
-    }
-    foreach ($name in [regex]::Matches($list, '(\d+)\s+\d+\s+R')) {
-        $object = $null; if ($Objects.Contains($name.Groups[1].Value)) { $object = $Objects[$name.Groups[1].Value] }
-        if (-not $object) { continue }
+    foreach ($object in @(Get-PdfXObjects $Resources $Objects)) {
         if ($object.ContainsKey('Image') -and $object.Image) { $object; continue }
         if ($Depth -eq 0 -and $object.Dict -match '/Subtype\s*/Form\b') { Get-PdfResourceImages (Get-PdfPageResources $object $Objects) $Objects 1 }
     }
@@ -223,7 +262,7 @@ function Get-PdfAllText {
             }
         }
         $pageText = ''; for ($i = $first; $i -lt $parts.Count; $i++) { $pageText += $parts[$i] }
-        if (-not $pageText.Trim()) {
+        if (-not $pageText.Trim() -and -not (Test-PdfFormText $resources $objects $allFonts)) {
             foreach ($image in @(Get-PdfResourceImages $resources $objects)) { if (-not $pageImages.Contains($image)) { $pageImages.Add($image) } }
         }
     }
