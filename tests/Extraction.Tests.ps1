@@ -314,6 +314,15 @@ $unreadable = '^(Image: Windows OCR is not available|Image: its text could not b
 Assert-Equal $true ((Get-TextFromBytes -Bytes ([byte[]](1, 2, 3)) -FileName 'scan.png').Reason -match $unreadable) 'Image: no OCR or no image gives a reason'
 $scanPdf = New-PdfBytes 'q /Im1 Do Q' -Plain -Extra @("<< /Type /XObject /Subtype /Image /Filter /DCTDecode /Length 4 >> stream`nJPEG`nendstream")
 Assert-Equal $true ((Get-TextFromBytes -Bytes $scanPdf -FileName 's.pdf').Reason -match ('^Scanned PDF: ' + $unreadable.Substring(1))) 'Scanned PDF: no OCR or a damaged page image gives a reason'
+# A PDF with a text page and a page-size scan (plan step 3, 2026-11-26): the text is kept, the scan is read with OCR too.
+$pageImage = "<< /Type /XObject /Subtype /Image /Width 1275 /Height 1650 /Filter /DCTDecode /Length 4 >> stream`nJPEG`nendstream"
+$logoImage = "<< /Type /XObject /Subtype /Image /Width 120 /Height 40 /Filter /DCTDecode /Length 4 >> stream`nJPEG`nendstream"
+$mixedPdf = New-PdfBytes 'BT /F1 12 Tf 72 700 Td (Meeting notes) Tj ET q /Im1 Do Q' -Plain -Extra @($pageImage)
+$mixed = Get-TextFromBytes -Bytes $mixedPdf -FileName 'm.pdf'
+Assert-Equal $true ($mixed.Text -match 'Meeting notes' -and -not $mixed.Reason -and $mixed.Note -match 'its scanned pages\): check by hand') `
+    'Text and a scanned page, no OCR: the text is read and a note asks to check the scanned pages'
+$logo = Get-TextFromBytes -Bytes (New-PdfBytes 'BT /F1 12 Tf 72 700 Td (Meeting notes) Tj ET q /Im1 Do Q' -Plain -Extra @($logoImage)) -FileName 'l.pdf'
+Assert-Equal $true ($logo.Text -match 'Meeting notes' -and -not $logo.Note) 'Text and a logo-size image: no OCR, no note'
 # Where Windows has OCR (the ps51 CI runner): a real image with an invented SSN drawn in it is read and the SSN found.
 $ocrHere = (Get-TextFromBytes -Bytes ([byte[]](1, 2, 3)) -FileName 'x.png').Reason -notmatch 'not available'
 if ($ocrHere -and $PSVersionTable.PSVersion.Major -eq 5) {
@@ -332,4 +341,7 @@ if ($ocrHere -and $PSVersionTable.PSVersion.Major -eq 5) {
 & (Get-Module OcrText) { param($line) $script:OcrOverride = [scriptblock]::Create("param(`$b) @{ Text = '$line'; Reason = ''; Note = '' }") } $ssnLine
 Assert-Equal 'SSN' (@(Find-PiiInText (Get-TextFromBytes -Bytes ([byte[]](1, 2, 3)) -FileName 'scan.png').Text) | Select-Object -First 1).Detector 'Image: OCR text checked'
 Assert-Equal 'SSN' (@(Find-PiiInText (Get-TextFromBytes -Bytes $scanPdf -FileName 's.pdf').Text) | Select-Object -First 1).Detector 'Scanned PDF: page images read with OCR'
+$mixedRead = Get-TextFromBytes -Bytes $mixedPdf -FileName 'm.pdf'
+Assert-Equal $true ($mixedRead.Text -match 'Meeting notes' -and @(Find-PiiInText $mixedRead.Text | ForEach-Object { $_.Detector }) -contains 'SSN') `
+    'Text and a scanned page, with OCR: the text and the scanned page are both checked'
 & (Get-Module OcrText) { $script:OcrOverride = $null }

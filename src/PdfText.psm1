@@ -27,6 +27,10 @@ $script:PdfLatin1 = [System.Text.Encoding]::GetEncoding(28591)
 $script:PdfNoTextReason = 'No text in this PDF (a scanned image?): check by hand'
 # A scanned PDF's JPEG page images, found by Get-PdfAllText: read with Windows OCR when the PDF has no text.
 $script:PdfScanImages = @()
+# Of these, the ones of page size (both sides at least $PdfPageImageMin pixels; a logo is smaller): read with Windows OCR
+# also when the PDF has text, for a PDF with text pages and scanned pages (the PAM, 2026-11-26: plan step 3).
+$script:PdfPageImages = @()
+$script:PdfPageImageMin = 800
 # Not-scanned reasons, each its own group on the Not scanned tab (the PAM, 2026-11-21: tell labels from passwords, and
 # a time limit from damage: many PDFs called damaged open fine). The limits are $PdfSecondsLimit and $PdfRegexTimeout of PdfCore.psm1.
 $script:PdfSlowReason = 'This PDF took longer than the time limit to read (2 minutes; the file may be fine): check by hand'
@@ -57,7 +61,7 @@ function Get-PdfText {
     if ($text -match $script:PdfLabelPattern) { return @{ Text = ''; Reason = $script:PdfLabelReason } }
     if ($text -match '/Encrypt\s*(?:\d+\s+\d+\s+R|<<)') { return @{ Text = ''; Reason = $script:PdfEncryptedReason } }
     Reset-PdfOldObjects   # this PDF's own older versions only
-    $script:PdfScanImages = @()   # and its own scanned pages
+    $script:PdfScanImages = @(); $script:PdfPageImages = @()   # and its own scanned pages
     Start-PdfBudget
     try { $all = Get-PdfAllText $text }
     catch {
@@ -82,6 +86,12 @@ function Get-PdfText {
         }
         $reason = $script:PdfNoTextReason; if ($note) { $reason = $note }
         return @{ Text = ''; Reason = $reason; Note = '' }
+    }
+    if ($script:PdfPageImages.Count -gt 0) {   # text pages and scanned pages: OCR the scanned ones too
+        $scan = Get-ScanPagesText $script:PdfPageImages ''
+        if ($scan.Reason) { $notes = @($note, ($scan.Reason + ' (its scanned pages): check by hand')) }
+        else { $all = $all + "`n" + $scan.Text; $notes = @($note, $scan.Note) }
+        $note = (@($notes | Where-Object { $_ }) -join '; ')
     }
     return @{ Text = $all; Reason = ''; Note = $note }
 }
@@ -142,6 +152,21 @@ function Get-PdfLooseText {
     }
 }
 
+function Test-PdfPageImage {
+    <#
+    .SYNOPSIS
+      True for an image of page size: its /Width and /Height are both at least $PdfPageImageMin pixels (a scanned
+      page; a logo or a signature is smaller).
+    .PARAMETER Dict
+      The image object's dictionary text.
+    .OUTPUTS
+      [bool]
+    #>
+    param([string]$Dict)
+    $w = [regex]::Match($Dict, '/Width\s+(\d{1,6})\b'); $h = [regex]::Match($Dict, '/Height\s+(\d{1,6})\b')
+    return ($w.Success -and $h.Success -and [int]$w.Groups[1].Value -ge $script:PdfPageImageMin -and [int]$h.Groups[1].Value -ge $script:PdfPageImageMin)
+}
+
 function Get-PdfAllText {
     <#
     .SYNOPSIS
@@ -155,7 +180,9 @@ function Get-PdfAllText {
     #>
     param([string]$Text)
     $objects = Get-PdfObjects $Text
-    $script:PdfScanImages = @($objects.Values | Where-Object { $_.ContainsKey('Image') -and $_.Image } | ForEach-Object { $_.Image })
+    $images = @($objects.Values | Where-Object { $_.ContainsKey('Image') -and $_.Image })
+    $script:PdfScanImages = @($images | ForEach-Object { $_.Image })
+    $script:PdfPageImages = @($images | Where-Object { Test-PdfPageImage $_.Dict } | ForEach-Object { $_.Image })
     Assert-PdfTime
     $allFonts = Get-PdfFonts $objects
     Assert-PdfTime

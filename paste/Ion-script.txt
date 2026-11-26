@@ -1,5 +1,5 @@
 <#
-  Ion - DoD365 PII Reporter, build cc588473 (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
+  Ion - DoD365 PII Reporter, build e77d0b98 (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
 
   HOW TO RUN
     1. Optional: read this text first (Open the script shows it as a .txt in your browser).
@@ -33,7 +33,7 @@
     src/PdfShown.psm1, sha256 abcac9ee7a8f
     src/PdfLayout.psm1, sha256 feafecd946b7
     src/PdfContent.psm1, sha256 85ee6cfeaf8f
-    src/PdfText.psm1, sha256 dffef7dc6f8b
+    src/PdfText.psm1, sha256 dfda5a2493b5
     src/TextExtract.psm1, sha256 18f1eb17ebf9
     src/ReaderPool.psm1, sha256 e5865e4bc160
     src/XlsxWriter.psm1, sha256 56c1ec673d09
@@ -71,20 +71,20 @@
     line  3344  Module PdfLayout.psm1
     line  3484  Module PdfContent.psm1
     line  3814  Module PdfText.psm1
-    line  4006  Module TextExtract.psm1
-    line  4447  Module ReaderPool.psm1
-    line  4814  Reader block end
-    line  4818  Module XlsxWriter.psm1
-    line  5255  Module Report.psm1
-    line  5632  Module ReportBook.psm1
-    line  5939  Module ScanMeter.psm1
-    line  6361  Module ScanQueue.psm1
-    line  6778  Module Accountability.psm1
-    line  7273  Module SiteTarget.psm1
-    line  7630  Module ChannelScan.psm1
-    line  8466  Module DriveScan.psm1
-    line  9127  Body of Find-ChannelPII.ps1
-    line  9343  Clean-up
+    line  4033  Module TextExtract.psm1
+    line  4474  Module ReaderPool.psm1
+    line  4841  Reader block end
+    line  4845  Module XlsxWriter.psm1
+    line  5282  Module Report.psm1
+    line  5659  Module ReportBook.psm1
+    line  5966  Module ScanMeter.psm1
+    line  6388  Module ScanQueue.psm1
+    line  6805  Module Accountability.psm1
+    line  7300  Module SiteTarget.psm1
+    line  7657  Module ChannelScan.psm1
+    line  8493  Module DriveScan.psm1
+    line  9154  Body of Find-ChannelPII.ps1
+    line  9370  Clean-up
 #>
 
 # ISE runs pasted text in your session: keep its error setting so the Clean-up block at the end can put it back.
@@ -97,12 +97,12 @@ $SiteUrl = ''            # the team's Teams link, or its site https://usaf.dps.m
 $OutputFolder = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Ion')   # results: a folder per site, then per day
 $MaxFileMB = 25          # files larger than this are reported as NOT SCANNED
 
-$IonPasteHash = '1943d350798f87830b46fd1f857fbec61c80790cd50ac80110aefcd40cd8b5a1'   # the SHA-256 of the text from the line Paste check to the end (do not edit)
+$IonPasteHash = '584f31bebd9851185df1f9f235c419bd9c27ddf495a8aa1b764418162a128fa9'   # the SHA-256 of the text from the line Paste check to the end (do not edit)
 
 # ==== Paste check ==== (the text from this line to the end must be the published text, or nothing runs)
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
-$IonBuild = 'cc588473'       # the build ID: Ion shows it at the start (do not edit)
+$IonBuild = 'e77d0b98'       # the build ID: Ion shows it at the start (do not edit)
 $IonPasteCheck = 'not read'
 $pasteText = ''
 try { $pastePath = $PSCommandPath } catch { $pastePath = '' }   # no script path: read the ISE pane
@@ -3840,6 +3840,10 @@ $script:PdfLatin1 = [System.Text.Encoding]::GetEncoding(28591)
 $script:PdfNoTextReason = 'No text in this PDF (a scanned image?): check by hand'
 # A scanned PDF's JPEG page images, found by Get-PdfAllText: read with Windows OCR when the PDF has no text.
 $script:PdfScanImages = @()
+# Of these, the ones of page size (both sides at least $PdfPageImageMin pixels; a logo is smaller): read with Windows OCR
+# also when the PDF has text, for a PDF with text pages and scanned pages (the PAM, 2026-11-26: plan step 3).
+$script:PdfPageImages = @()
+$script:PdfPageImageMin = 800
 # Not-scanned reasons, each its own group on the Not scanned tab (the PAM, 2026-11-21: tell labels from passwords, and
 # a time limit from damage: many PDFs called damaged open fine). The limits are $PdfSecondsLimit and $PdfRegexTimeout of PdfCore.psm1.
 $script:PdfSlowReason = 'This PDF took longer than the time limit to read (2 minutes; the file may be fine): check by hand'
@@ -3870,7 +3874,7 @@ function Get-PdfText {
     if ($text -match $script:PdfLabelPattern) { return @{ Text = ''; Reason = $script:PdfLabelReason } }
     if ($text -match '/Encrypt\s*(?:\d+\s+\d+\s+R|<<)') { return @{ Text = ''; Reason = $script:PdfEncryptedReason } }
     Reset-PdfOldObjects   # this PDF's own older versions only
-    $script:PdfScanImages = @()   # and its own scanned pages
+    $script:PdfScanImages = @(); $script:PdfPageImages = @()   # and its own scanned pages
     Start-PdfBudget
     try { $all = Get-PdfAllText $text }
     catch {
@@ -3895,6 +3899,12 @@ function Get-PdfText {
         }
         $reason = $script:PdfNoTextReason; if ($note) { $reason = $note }
         return @{ Text = ''; Reason = $reason; Note = '' }
+    }
+    if ($script:PdfPageImages.Count -gt 0) {   # text pages and scanned pages: OCR the scanned ones too
+        $scan = Get-ScanPagesText $script:PdfPageImages ''
+        if ($scan.Reason) { $notes = @($note, ($scan.Reason + ' (its scanned pages): check by hand')) }
+        else { $all = $all + "`n" + $scan.Text; $notes = @($note, $scan.Note) }
+        $note = (@($notes | Where-Object { $_ }) -join '; ')
     }
     return @{ Text = $all; Reason = ''; Note = $note }
 }
@@ -3955,6 +3965,21 @@ function Get-PdfLooseText {
     }
 }
 
+function Test-PdfPageImage {
+    <#
+    .SYNOPSIS
+      True for an image of page size: its /Width and /Height are both at least $PdfPageImageMin pixels (a scanned
+      page; a logo or a signature is smaller).
+    .PARAMETER Dict
+      The image object's dictionary text.
+    .OUTPUTS
+      [bool]
+    #>
+    param([string]$Dict)
+    $w = [regex]::Match($Dict, '/Width\s+(\d{1,6})\b'); $h = [regex]::Match($Dict, '/Height\s+(\d{1,6})\b')
+    return ($w.Success -and $h.Success -and [int]$w.Groups[1].Value -ge $script:PdfPageImageMin -and [int]$h.Groups[1].Value -ge $script:PdfPageImageMin)
+}
+
 function Get-PdfAllText {
     <#
     .SYNOPSIS
@@ -3968,7 +3993,9 @@ function Get-PdfAllText {
     #>
     param([string]$Text)
     $objects = Get-PdfObjects $Text
-    $script:PdfScanImages = @($objects.Values | Where-Object { $_.ContainsKey('Image') -and $_.Image } | ForEach-Object { $_.Image })
+    $images = @($objects.Values | Where-Object { $_.ContainsKey('Image') -and $_.Image })
+    $script:PdfScanImages = @($images | ForEach-Object { $_.Image })
+    $script:PdfPageImages = @($images | Where-Object { Test-PdfPageImage $_.Dict } | ForEach-Object { $_.Image })
     Assert-PdfTime
     $allFonts = Get-PdfFonts $objects
     Assert-PdfTime
