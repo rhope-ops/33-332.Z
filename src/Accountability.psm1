@@ -485,7 +485,6 @@ function Get-MethodRows {
         'that the full value first appears in that version.'))
     , @('By account tab', ('How many files and hits each "PII first saved by" account first saved, most first: a list of whom to contact first. ' +
         'It has the same limits as that column: evidence, not proof.'))
-    , @('')
     , @('Own permissions, Access entries', $script:AccessMethodText)
     , @('')
     , @('Review columns', ('Is it PII?, Action taken, Reported to Privacy Manager, Reviewed by and Review date (Hits tab) are for you to fill in as you ' +

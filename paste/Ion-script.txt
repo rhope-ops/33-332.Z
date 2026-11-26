@@ -1,5 +1,5 @@
 <#
-  Ion - DoD365 PII Reporter, build bd40cfc7 (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
+  Ion - DoD365 PII Reporter, build 7e5586c0 (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
 
   HOW TO RUN
     1. Optional: read this text first (Open the script shows it as a .txt in your browser).
@@ -41,7 +41,7 @@
     src/ReportBook.psm1, sha256 73718dce4fc2
     src/ScanMeter.psm1, sha256 d887bd7d283a
     src/ScanQueue.psm1, sha256 1742151e9c9f
-    src/Accountability.psm1, sha256 f9dbac1fca7f
+    src/Accountability.psm1, sha256 5a7dfb2af61c
     src/SiteTarget.psm1, sha256 2e693a68f413
     src/ChannelScan.psm1, sha256 bc6ea04dbc70
     src/DriveScan.psm1, sha256 3badff7a3b3d
@@ -80,11 +80,11 @@
     line  5938  Module ScanMeter.psm1
     line  6360  Module ScanQueue.psm1
     line  6766  Module Accountability.psm1
-    line  7260  Module SiteTarget.psm1
-    line  7617  Module ChannelScan.psm1
-    line  8453  Module DriveScan.psm1
-    line  9113  Body of Find-ChannelPII.ps1
-    line  9329  Clean-up
+    line  7259  Module SiteTarget.psm1
+    line  7616  Module ChannelScan.psm1
+    line  8452  Module DriveScan.psm1
+    line  9112  Body of Find-ChannelPII.ps1
+    line  9328  Clean-up
 #>
 
 # ISE runs pasted text in your session: keep its error setting so the Clean-up block at the end can put it back.
@@ -97,12 +97,12 @@ $SiteUrl = ''            # the team's Teams link, or its site https://usaf.dps.m
 $OutputFolder = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Ion')   # results: a folder per site, then per day
 $MaxFileMB = 25          # files larger than this are reported as NOT SCANNED
 
-$IonPasteHash = '390f220bcff2c899e1734940076e109bb02b6092931e68fdfd65470df5bb673a'   # the SHA-256 of the text from the line Paste check to the end (do not edit)
+$IonPasteHash = '85ca8adb1b5e1c21fcf83c01c0b931bd6810579bc48853b58dafb33c8cdef001'   # the SHA-256 of the text from the line Paste check to the end (do not edit)
 
 # ==== Paste check ==== (the text from this line to the end must be the published text, or nothing runs)
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
-$IonBuild = 'bd40cfc7'       # the build ID: Ion shows it at the start (do not edit)
+$IonBuild = '7e5586c0'       # the build ID: Ion shows it at the start (do not edit)
 $IonPasteCheck = 'not read'
 $pasteText = ''
 try { $pastePath = $PSCommandPath } catch { $pastePath = '' }   # no script path: read the ISE pane
@@ -7250,7 +7250,6 @@ function Get-MethodRows {
         'that the full value first appears in that version.'))
     , @('By account tab', ('How many files and hits each "PII first saved by" account first saved, most first: a list of whom to contact first. ' +
         'It has the same limits as that column: evidence, not proof.'))
-    , @('')
     , @('Own permissions, Access entries', $script:AccessMethodText)
     , @('')
     , @('Review columns', ('Is it PII?, Action taken, Reported to Privacy Manager, Reviewed by and Review date (Hits tab) are for you to fill in as you ' +
