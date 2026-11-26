@@ -189,6 +189,10 @@ function Add-WhoToRows {
     elseif ($Info.ContainsKey('Who')) {
         $who = $Info.Who.Clone()
         if ($Info.ContainsKey('Added') -and $Result.Hits.Count -gt 0) { $who.ByHit = Get-AddedByHit $Info $Result.Hits }
+        if ($Info.ContainsKey('Access') -and $Result.Hits.Count -gt 0) {   # plan step 5: who has access, for a web file with a hit
+            $access = & $Info.Access
+            $who.OwnPermissions = $access.OwnPermissions; $who.AccessEntries = $access.AccessEntries
+        }
     }
     else { return }
     Set-RowAccountability $FileRows $who

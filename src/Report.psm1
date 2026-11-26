@@ -94,7 +94,7 @@ function New-ReportRow {
     .OUTPUTS
       [pscustomobject] Source, Channel, Item, Detector, Confidence, MaskedValue, Context, Modified, Link, and the
       accountability fields (empty until Set-RowAccountability fills them): ModifiedBy, Created, CreatedBy, AddedOn, AddedBy,
-      HistoryNote.
+      HistoryNote, OwnPermissions, AccessEntries (plan step 5: a web file with a hit).
     #>
     param(
         [string]$Source, [string]$Channel, [string]$Item, [string]$Link, [string]$Modified,
@@ -104,6 +104,7 @@ function New-ReportRow {
         Source = $Source; Channel = $Channel; Item = $Item; Detector = $Detector; Confidence = $Confidence
         MaskedValue = $MaskedValue; Context = $Context; Modified = $Modified; Link = $Link
         ModifiedBy = ''; Created = ''; CreatedBy = ''; AddedOn = ''; AddedBy = ''; HistoryNote = ''
+        OwnPermissions = ''; AccessEntries = ''
     }
 }
 
@@ -326,13 +327,13 @@ function Set-RowAccountability {
     .PARAMETER Rows
       The file's rows (New-ReportRow).
     .PARAMETER Who
-      @{ ModifiedBy; Created; CreatedBy; AddedOn; AddedBy; HistoryNote; ByHit } (any may be missing); ByHit:
+      @{ ModifiedBy; Created; CreatedBy; AddedOn; AddedBy; HistoryNote; OwnPermissions; AccessEntries; ByHit } (any may be missing); ByHit:
       "type|masked value" -> @{ AddedOn; AddedBy; Note } for each hit dated from the file's history.
     #>
     param([object[]]$Rows, [hashtable]$Who)
     if (-not $Who) { return }
     foreach ($row in $Rows) {
-        foreach ($key in @('ModifiedBy', 'Created', 'CreatedBy', 'AddedOn', 'AddedBy', 'HistoryNote')) {
+        foreach ($key in @('ModifiedBy', 'Created', 'CreatedBy', 'AddedOn', 'AddedBy', 'HistoryNote', 'OwnPermissions', 'AccessEntries')) {
             if ($Who.ContainsKey($key) -and $Who[$key]) { $row.$key = [string]$Who[$key] }
         }
         $hitKey = $row.Detector + '|' + $row.MaskedValue

@@ -1,5 +1,5 @@
 <#
-  Ion - DoD365 PII Reporter, build c24b76f1 (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
+  Ion - DoD365 PII Reporter, build 05971278 (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
 
   HOW TO RUN
     1. Optional: read this text first (Open the script shows it as a .txt in your browser).
@@ -37,14 +37,14 @@
     src/TextExtract.psm1, sha256 18f1eb17ebf9
     src/ReaderPool.psm1, sha256 e5865e4bc160
     src/XlsxWriter.psm1, sha256 56c1ec673d09
-    src/Report.psm1, sha256 ef3a24aa8a55
-    src/ReportBook.psm1, sha256 36823a05d39b
+    src/Report.psm1, sha256 8886eccd4dc5
+    src/ReportBook.psm1, sha256 73718dce4fc2
     src/ScanMeter.psm1, sha256 d887bd7d283a
-    src/ScanQueue.psm1, sha256 994908e5db1b
-    src/Accountability.psm1, sha256 8bf31404f723
+    src/ScanQueue.psm1, sha256 1742151e9c9f
+    src/Accountability.psm1, sha256 0d91d3a650df
     src/SiteTarget.psm1, sha256 2e693a68f413
-    src/ChannelScan.psm1, sha256 55f485157624
-    src/DriveScan.psm1, sha256 6861661befeb
+    src/ChannelScan.psm1, sha256 bc6ea04dbc70
+    src/DriveScan.psm1, sha256 3badff7a3b3d
     src/Find-ChannelPII.ps1, sha256 485aca86fc94
 
   Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.
@@ -76,15 +76,15 @@
     line  4814  Reader block end
     line  4818  Module XlsxWriter.psm1
     line  5255  Module Report.psm1
-    line  5631  Module ReportBook.psm1
-    line  5935  Module ScanMeter.psm1
-    line  6357  Module ScanQueue.psm1
-    line  6759  Module Accountability.psm1
-    line  7143  Module SiteTarget.psm1
-    line  7500  Module ChannelScan.psm1
-    line  8334  Module DriveScan.psm1
-    line  8993  Body of Find-ChannelPII.ps1
-    line  9209  Clean-up
+    line  5632  Module ReportBook.psm1
+    line  5938  Module ScanMeter.psm1
+    line  6360  Module ScanQueue.psm1
+    line  6766  Module Accountability.psm1
+    line  7258  Module SiteTarget.psm1
+    line  7615  Module ChannelScan.psm1
+    line  8451  Module DriveScan.psm1
+    line  9111  Body of Find-ChannelPII.ps1
+    line  9327  Clean-up
 #>
 
 # ISE runs pasted text in your session: keep its error setting so the Clean-up block at the end can put it back.
@@ -97,12 +97,12 @@ $SiteUrl = ''            # the team's Teams link, or its site https://usaf.dps.m
 $OutputFolder = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Ion')   # results: a folder per site, then per day
 $MaxFileMB = 25          # files larger than this are reported as NOT SCANNED
 
-$IonPasteHash = 'ac737ba4331407e989d15dbbda788eb0f9814a1ca05ac670ecce2dcc631c53d4'   # the SHA-256 of the text from the line Paste check to the end (do not edit)
+$IonPasteHash = '26744f20d5ae31cbc56dfdd28e85790dbc1d996d0aaed79cb1eb985c94d1b74a'   # the SHA-256 of the text from the line Paste check to the end (do not edit)
 
 # ==== Paste check ==== (the text from this line to the end must be the published text, or nothing runs)
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
-$IonBuild = 'c24b76f1'       # the build ID: Ion shows it at the start (do not edit)
+$IonBuild = '05971278'       # the build ID: Ion shows it at the start (do not edit)
 $IonPasteCheck = 'not read'
 $pasteText = ''
 try { $pastePath = $PSCommandPath } catch { $pastePath = '' }   # no script path: read the ISE pane
@@ -5348,7 +5348,7 @@ function New-ReportRow {
     .OUTPUTS
       [pscustomobject] Source, Channel, Item, Detector, Confidence, MaskedValue, Context, Modified, Link, and the
       accountability fields (empty until Set-RowAccountability fills them): ModifiedBy, Created, CreatedBy, AddedOn, AddedBy,
-      HistoryNote.
+      HistoryNote, OwnPermissions, AccessEntries (plan step 5: a web file with a hit).
     #>
     param(
         [string]$Source, [string]$Channel, [string]$Item, [string]$Link, [string]$Modified,
@@ -5358,6 +5358,7 @@ function New-ReportRow {
         Source = $Source; Channel = $Channel; Item = $Item; Detector = $Detector; Confidence = $Confidence
         MaskedValue = $MaskedValue; Context = $Context; Modified = $Modified; Link = $Link
         ModifiedBy = ''; Created = ''; CreatedBy = ''; AddedOn = ''; AddedBy = ''; HistoryNote = ''
+        OwnPermissions = ''; AccessEntries = ''
     }
 }
 
@@ -5580,13 +5581,13 @@ function Set-RowAccountability {
     .PARAMETER Rows
       The file's rows (New-ReportRow).
     .PARAMETER Who
-      @{ ModifiedBy; Created; CreatedBy; AddedOn; AddedBy; HistoryNote; ByHit } (any may be missing); ByHit:
+      @{ ModifiedBy; Created; CreatedBy; AddedOn; AddedBy; HistoryNote; OwnPermissions; AccessEntries; ByHit } (any may be missing); ByHit:
       "type|masked value" -> @{ AddedOn; AddedBy; Note } for each hit dated from the file's history.
     #>
     param([object[]]$Rows, [hashtable]$Who)
     if (-not $Who) { return }
     foreach ($row in $Rows) {
-        foreach ($key in @('ModifiedBy', 'Created', 'CreatedBy', 'AddedOn', 'AddedBy', 'HistoryNote')) {
+        foreach ($key in @('ModifiedBy', 'Created', 'CreatedBy', 'AddedOn', 'AddedBy', 'HistoryNote', 'OwnPermissions', 'AccessEntries')) {
             if ($Who.ContainsKey($key) -and $Who[$key]) { $row.$key = [string]$Who[$key] }
         }
         $hitKey = $row.Detector + '|' + $row.MaskedValue
@@ -5723,7 +5724,8 @@ function Get-HitCells {
     param($Hit, [int]$Number)
     @(('H{0:000}' -f $Number), $Hit.Detector, $Hit.Confidence, $Hit.Channel, $Hit.Item, $Hit.MaskedValue, $Hit.Context) +
         @('') * $script:ReviewColumns.Count +
-        @($Hit.Modified, $Hit.ModifiedBy, $Hit.AddedOn, $Hit.AddedBy, $Hit.Created, $Hit.CreatedBy, $Hit.HistoryNote, $Hit.Source, $Hit.Link)
+        @($Hit.Modified, $Hit.ModifiedBy, $Hit.AddedOn, $Hit.AddedBy, $Hit.Created, $Hit.CreatedBy, $Hit.HistoryNote, $Hit.OwnPermissions,
+            $Hit.AccessEntries, $Hit.Source, $Hit.Link)
 }
 
 function Get-FileRows {
@@ -5752,7 +5754,7 @@ function Get-FileRows {
         $row++
         $reviewed = New-XlsxFormula ('SUMPRODUCT((tblHits[{0}]=A{1})*(tblHits[File]=B{1})*(tblHits[Is it PII?]<>""))' -f $FolderLabel, $row) 0
         , @($f.First.Channel, $f.First.Item, [long]$f.Count, [long]$f.High, [long]$f.Medium, [long]$f.Low, $f.Types, $reviewed,
-            $f.First.Modified, $f.First.ModifiedBy, $f.AddedBy, $f.First.Link)
+            $f.First.Modified, $f.First.ModifiedBy, $f.AddedBy, $f.First.OwnPermissions, $f.First.AccessEntries, $f.First.Link)
     }
 }
 
@@ -5777,8 +5779,9 @@ function Get-WorkbookSheets {
         Sort-Object @{ Expression = { Get-ConfidenceRank $_.Confidence }; Descending = $true }, @{ Expression = { Get-SeverityIndex $_.Detector } }, Channel, Item)
     # The review columns right after the hit, then who and when (accountability names: the PAM, 2026-11-21; the Method tab explains them).
     $columns = @('ID', 'Type', 'Confidence', $FolderLabel, 'File', 'Masked value', 'Context') + @($script:ReviewColumns.Keys) +
-        @('Last saved', 'Last saved by', 'PII first saved', 'PII first saved by', 'Created', 'Created by', 'History note', 'Found in', 'Link')
-    $widths = @(7, 15, 11, 16, 40, 16, 50) + @(16) * $script:ReviewColumns.Count + @(16, 22, 16, 22, 16, 22, 40, 10, 50)
+        @('Last saved', 'Last saved by', 'PII first saved', 'PII first saved by', 'Created', 'Created by', 'History note', 'Own permissions',
+            'Access entries', 'Found in', 'Link')
+    $widths = @(7, 15, 11, 16, 40, 16, 50) + @(16) * $script:ReviewColumns.Count + @(16, 22, 16, 22, 16, 22, 40, 12, 34, 10, 50)
     $choices = @{}; $offset = 7
     foreach ($name in @($script:ReviewColumns.Keys)) { if ($script:ReviewColumns[$name]) { $choices[$offset] = $script:ReviewColumns[$name] }; $offset++ }
     $after = 7 + $script:ReviewColumns.Count   # the first column after the review columns
@@ -5791,8 +5794,8 @@ function Get-WorkbookSheets {
             -DateChecks @(7 + @($script:ReviewColumns.Keys).IndexOf('Review date')) `
             -FreezeColumns 5 -FillColumn 2))
         $sheets.Add((New-XlsxSheet 'Files' @($FolderLabel, 'File', 'Hits', 'High', 'Medium', 'Low', 'Types', 'Reviewed', 'Last saved',
-            'Last saved by', 'PII first saved by', 'Link') @(Get-FileRows $hits $FolderLabel) @(16, 40, 7, 7, 9, 7, 40, 10, 16, 22, 30, 50) `
-            -List -Table 'tblFiles' -LinkColumn 1 -LinkTarget 11 -DateColumns @(8) -FreezeColumns 2))
+            'Last saved by', 'PII first saved by', 'Own permissions', 'Access entries', 'Link') @(Get-FileRows $hits $FolderLabel) `
+            @(16, 40, 7, 7, 9, 7, 40, 10, 16, 22, 30, 12, 34, 50) -List -Table 'tblFiles' -LinkColumn 1 -LinkTarget 13 -DateColumns @(8) -FreezeColumns 2))
     }
     $notes = @($Rows | Where-Object { (Get-ConfidenceRank $_.Confidence) -eq 0 })
     if ($notes.Count -gt 0) {
@@ -6545,6 +6548,10 @@ function Add-WhoToRows {
     elseif ($Info.ContainsKey('Who')) {
         $who = $Info.Who.Clone()
         if ($Info.ContainsKey('Added') -and $Result.Hits.Count -gt 0) { $who.ByHit = Get-AddedByHit $Info $Result.Hits }
+        if ($Info.ContainsKey('Access') -and $Result.Hits.Count -gt 0) {   # plan step 5: who has access, for a web file with a hit
+            $access = & $Info.Access
+            $who.OwnPermissions = $access.OwnPermissions; $who.AccessEntries = $access.AccessEntries
+        }
     }
     else { return }
     Set-RowAccountability $FileRows $who
@@ -6773,7 +6780,7 @@ Accountability.psm1 - who made and changed a file with PII, and who put the PII 
   Depends on:  TextExtract.psm1 and ReaderPool.psm1 (Invoke-LimitedRead), PiiDetectors.psm1 (Find-PiiInText) and, for SharePoint,
                PnP.PowerShell 1.12.0 (Get-PnPFileVersion, Get-PnPContext; read-only), imported first.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7).
-  Network:     only the signed-in site (version history of files with a hit).
+  Network:     only the signed-in site (version history and permissions of files with a hit; the site's own 3 groups).
   Writes:      none. Old versions are read in memory only.
   Credentials: none (the PnP sign-in of the scan).
 #>
@@ -6791,6 +6798,17 @@ $script:DriveNoHistory = 'A drive keeps no file history'
 # The two fallbacks of "PII first saved by" say so in the History note (review of PR 41).
 $script:NoOlderVersion = "No older version: the file's creator is named"
 $script:OnlyCurrentVersion = 'In no older version: the current version is named'
+# Plan step 5 (the PAM, 2026-11-26: docs/DECISIONS.md): who has access to a web file with PII, as counts of entry kinds.
+$script:NotReadable = 'Not readable'
+$script:NotReadableEntries = 'Not readable (owner only)'
+# Each entry kind: its name for 1 and for more (in this order on the cell).
+$script:AccessKinds = [ordered]@{
+    'whole organization' = 'whole organization'; 'sharing link group' = 'sharing link groups'; 'person' = 'people'
+    'team owners group' = 'team owners groups'; 'team members group' = 'team members groups'; 'site group' = 'site groups'
+    'SharePoint group' = 'SharePoint groups'; 'security group' = 'security groups'; 'mail list' = 'mail lists'; 'other' = 'others'
+}
+# The site's own 3 groups (owners, members, visitors) by site path: read once per site.
+$script:SiteGroupIds = @{}
 
 function Get-PersonText {
     <#
@@ -6829,6 +6847,97 @@ function Get-SharePointWho {
     #>
     param($File)
     return @{ ModifiedBy = (Get-PersonText $File['Editor']); Created = (Get-DateText $File['Created']); CreatedBy = (Get-PersonText $File['Author']) }
+}
+
+function Get-AccessKind {
+    <#
+    .SYNOPSIS
+      The kind of one permission entry (probe 8): from its type and sign-in name, read in memory only and never shown.
+    .PARAMETER Member
+      The entry's member (PrincipalType, LoginName, Id).
+    .PARAMETER SiteGroups
+      The IDs of the site's own 3 groups.
+    .OUTPUTS
+      [string] a key of $script:AccessKinds.
+    #>
+    param($Member, [object[]]$SiteGroups)
+    $login = [string]$Member.LoginName
+    if ($login -match '(?i)spo-grid-all-users|^c:0\(\.s\|true$') { return 'whole organization' }
+    if ($login -match '(?i)federateddirectoryclaimprovider\|[0-9a-f-]+_o$') { return 'team owners group' }
+    if ($login -match '(?i)federateddirectoryclaimprovider') { return 'team members group' }
+    switch ([int]$Member.PrincipalType) {
+        1 { return 'person' }
+        2 { return 'mail list' }
+        4 { return 'security group' }
+        8 {
+            if ($SiteGroups -contains $Member.Id) { return 'site group' }
+            if ($login -like 'SharingLinks.*') { return 'sharing link group' }
+            return 'SharePoint group'
+        }
+    }
+    return 'other'
+}
+
+function Get-SiteGroupIds {
+    <#
+    .SYNOPSIS
+      The IDs of the site's own 3 groups (owners, members, visitors), read once per site; none when they cannot be read.
+    .PARAMETER FileRef
+      A file's server-relative path (its site part is the cache key).
+    .OUTPUTS
+      [object[]]
+    #>
+    param([string]$FileRef)
+    $site = $FileRef; if ($FileRef -match '^/(personal|sites|teams)/[^/]+') { $site = $Matches[0] }
+    if (-not $script:SiteGroupIds.ContainsKey($site)) {
+        $ids = @()
+        try {
+            $web = Get-PnPWeb -Includes AssociatedOwnerGroup, AssociatedMemberGroup, AssociatedVisitorGroup -ErrorAction Stop
+            $ids = @(@($web.AssociatedOwnerGroup, $web.AssociatedMemberGroup, $web.AssociatedVisitorGroup) | Where-Object { $_ } | ForEach-Object { $_.Id })
+        }
+        catch { $ids = @() }   # the entries are still counted; a site group then counts as a SharePoint group
+        $script:SiteGroupIds[$site] = $ids
+    }
+    return $script:SiteGroupIds[$site]
+}
+
+function Get-SharePointAccess {
+    <#
+    .SYNOPSIS
+      Who has access to one web file (plan step 5; read only for a file with a hit): if it has its own permissions, and
+      its permission entries as counts of kinds (for example "1 person, 3 site groups"). An entry that gives Limited
+      Access only gives no access to this file and is not counted. No name is kept or shown ("No reconnaissance").
+    .PARAMETER File
+      The list item.
+    .OUTPUTS
+      [hashtable] OwnPermissions ('Yes', 'No' or 'Not readable'), AccessEntries (the counts, 'None', or
+      'Not readable (owner only)': probe 8 read them only as a team owner).
+    #>
+    param($File)
+    $access = @{ OwnPermissions = $script:NotReadable; AccessEntries = $script:NotReadableEntries }
+    try { if ([bool](Get-PnPProperty -ClientObject $File -Property HasUniqueRoleAssignments -ErrorAction Stop)) { $access.OwnPermissions = 'Yes' } else { $access.OwnPermissions = 'No' } }
+    catch { Write-Verbose 'The unique permissions of this file could not be read.' }
+    try {
+        $siteGroups = @(Get-SiteGroupIds ([string]$File['FileRef']))
+        $assignments = Get-PnPProperty -ClientObject $File -Property RoleAssignments -ErrorAction Stop
+        $counts = @{}
+        foreach ($entry in $assignments) {   # a loop, not '@()': Get-PnPProperty gives the collection as one object (probe 6)
+            $bindings = Get-PnPProperty -ClientObject $entry -Property RoleDefinitionBindings -ErrorAction Stop
+            $roles = @(foreach ($one in $bindings) { $one })
+            if ($roles.Count -gt 0 -and @($roles | Where-Object { [int]$_.RoleTypeKind -ne 1 }).Count -eq 0) { continue }   # Limited Access only
+            $kind = Get-AccessKind (Get-PnPProperty -ClientObject $entry -Property Member -ErrorAction Stop) $siteGroups
+            $counts[$kind] = 1 + [int]$counts[$kind]
+        }
+        $parts = @(foreach ($kind in $script:AccessKinds.Keys) {
+            if (-not $counts.ContainsKey($kind)) { continue }
+            if ($kind -eq 'whole organization') { $kind; continue }
+            $name = $kind; if ($counts[$kind] -gt 1) { $name = $script:AccessKinds[$kind] }
+            '{0} {1}' -f $counts[$kind], $name
+        })
+        $access.AccessEntries = 'None'; if ($parts.Count -gt 0) { $access.AccessEntries = $parts -join ', ' }
+    }
+    catch { $access.AccessEntries = $script:NotReadableEntries }
+    return $access
 }
 
 function Get-HitKey {
@@ -7135,6 +7244,12 @@ function Get-MethodRows {
         'that the full value first appears in that version.'))
     , @('By account tab', ('How many files and hits each "PII first saved by" account first saved, most first: a list of whom to contact first. ' +
         'It has the same limits as that column: evidence, not proof.'))
+    , @('')
+    , @('Own permissions, Access entries', ('For a file on SharePoint or OneDrive on the web with 1 or more hits: "Own permissions" says if the file ' +
+        'has its own permissions (Yes) or those of its folder or library (No). "Access entries" counts who has access by kind (people, site ' +
+        'groups, team groups, sharing link groups, the whole organization), never by name. An entry for Limited Access only is not counted. ' +
+        'SharePoint shows the entries only to a site owner: for others the cell says "Not readable (owner only)". A file on this computer only ' +
+        'has empty cells. Sharing links are not read (PnP.PowerShell 1.12.0 cannot).'))
     , @('')
     , @('Review columns', ('Is it PII?, Action taken, Reported to Privacy Manager, Reviewed by and Review date (Hits tab) are for you to fill in as you ' +
         'check each hit. Ion leaves them empty. The first three have a dropdown list.'))
@@ -7855,6 +7970,8 @@ function Complete-FileScan {
     $who.Modified = $info.Modified
     $info.Who = $who
     $info.Added = { param($hits) Find-PiiAddedVersion $ref $name $hits $who }.GetNewClosure()
+    $file = $Prepared.File
+    $info.Access = { Get-SharePointAccess $file }.GetNewClosure()
     Submit-ScanFile $Queue $info $name $Bytes ''
 }
 
@@ -8594,6 +8711,7 @@ function Invoke-DriveFile {
     $who.Modified = Get-FieldValue $web 'Modified'
     $info.Who = $who
     $info.Added = { param($hits) Find-PiiAddedVersion $ref $name $hits $who }.GetNewClosure()
+    $info.Access = { Get-SharePointAccess $web }.GetNewClosure()
     if (-not $File.Online -and $File.Path) { Submit-ScanFile $Queue $info $name $null $File.Path; return $true }   # on the disk: read from the disk
     # Online only, or on the web only: read from the web into memory (the PAM, 2026-11-24: nothing goes to the disk).
     try { $bytes = Get-FileBytes $ref $File.Size }

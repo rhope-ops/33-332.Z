@@ -26,6 +26,16 @@ Assert-Equal 1 $results.Count 'Script saved one workbook'
 Assert-Equal 0 @(Get-ChildItem -LiteralPath $runFolder -Recurse | Where-Object { $_.Extension -in @('.txt', '.csv') }).Count 'No .txt or .csv any more'
 Assert-Equal 'NOT SCANNED Phone SSN' (Get-WorkbookTypes $results[0].FullName) 'Script found every planted type'
 Assert-Equal 'Channel' (Get-XlsxSheets $results[0].FullName)['Hits'][0][3] 'A team: the folder column is named Channel'
+# Plan step 5: who has access, for each web file with a hit (counts of kinds; the Limited Access entry is not counted).
+$e2eBook = Get-XlsxSheets $results[0].FullName
+$e2eHeader = @($e2eBook['Hits'][0]); $ownColumn = [array]::IndexOf($e2eHeader, 'Own permissions')
+$e2eHits = @($e2eBook['Hits'] | Select-Object -Skip 1)
+$e2eFiles = @($e2eHits | ForEach-Object { $_[3] + '/' + $_[4] } | Sort-Object -Unique)
+Assert-Equal 'No|1 person, 3 site groups' (@($e2eHits | ForEach-Object { $_[$ownColumn] + '|' + $_[$ownColumn + 1] } | Sort-Object -Unique) -join ';') `
+    'Permissions: each hit shows Own permissions and the counted Access entries'
+Assert-Equal $e2eFiles.Count (Get-FakeCallCount 'Property HasUniqueRoleAssignments') 'Permissions: read once for each file with a hit, not for files without one'
+$filesHeader = @($e2eBook['Files'][0])
+Assert-Equal 'Own permissions|Access entries|Link' (@($filesHeader[11], $filesHeader[12], $filesHeader[13]) -join '|') 'Permissions: the Files tab has the 2 columns before Link'
 Assert-Equal 1 (Get-FakeCallCount 'Read-Host') 'With the site given, one address question only (another site or exit); "Scan now?" and "Open" are their own'
 Assert-Equal $true ((Test-FakePnPCall 'Open question') -and (Test-FakePnPCall ('Open ' + $results[0].FullName))) 'Enter at the open question opens the workbook'
 Assert-Equal 1 @(Get-FakePnPConnection).Count 'One sign-in only: no posts sign-in'

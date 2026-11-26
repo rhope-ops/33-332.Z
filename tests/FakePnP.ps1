@@ -52,6 +52,15 @@ function Reset-FakePnP {
         SpeedBefore = ''                                          # a speed set right before that answer ('' = none)
         RefusedFile = @()                                         # the paths that Get-PnPFile refuses (none = empty)
         ListSizes   = @{}                                         # a list size per path that differs from its bytes (none = empty)
+        UniquePerms = $false                                      # a file has its own permissions (plan step 5)
+        AccessFails = $false                                      # the permission entries are refused (not a site owner: probe 8 run B)
+        # The permission entries of every file: the site's 3 groups, 1 person, and 1 entry for Limited Access only (not counted).
+        Access      = @(
+            @{ Member = [pscustomobject]@{ PrincipalType = 8; LoginName = 'Team A Owners'; Id = 3 }; Roles = @([pscustomobject]@{ RoleTypeKind = 5 }) },
+            @{ Member = [pscustomobject]@{ PrincipalType = 8; LoginName = 'Team A Members'; Id = 4 }; Roles = @([pscustomobject]@{ RoleTypeKind = 3 }) },
+            @{ Member = [pscustomobject]@{ PrincipalType = 8; LoginName = 'Team A Visitors'; Id = 5 }; Roles = @([pscustomobject]@{ RoleTypeKind = 2 }) },
+            @{ Member = [pscustomobject]@{ PrincipalType = 1; LoginName = 'i:0#.f|membership|person@example.com'; Id = 9 }; Roles = @([pscustomobject]@{ RoleTypeKind = 3 }) },
+            @{ Member = [pscustomobject]@{ PrincipalType = 8; LoginName = 'SharingLinks.x.Flexible.y'; Id = 12 }; Roles = @([pscustomobject]@{ RoleTypeKind = 1 }) })
         Calls       = New-Object System.Collections.Generic.List[string]
         Progress    = New-Object System.Collections.Generic.List[string]
     }
@@ -59,7 +68,7 @@ function Reset-FakePnP {
 
 function Set-FakePnPOption {
     # Changes one switch of the fake site: one of the names in the ValidateSet below (Reset-FakePnP says what each does).
-    param([ValidateSet('ListFails', 'ConnectFails', 'SiteFails', 'NoAccess', 'StopInFolder2', 'StaleWeb', 'StaleHost')][string]$Name, [bool]$Value)
+    param([ValidateSet('ListFails', 'ConnectFails', 'SiteFails', 'NoAccess', 'StopInFolder2', 'StaleWeb', 'StaleHost', 'UniquePerms', 'AccessFails')][string]$Name, [bool]$Value)
     $global:FakePnP[$Name] = $Value
 }
 
@@ -189,8 +198,21 @@ function Set-FakeLibraries {
 }
 
 function global:Get-PnPProperty {
-    # Fake: the library's root folder.
+    # Fake: the library's root folder; for a file (plan step 5) its unique permissions and permission entries, and for an
+    # entry its member and roles. The calls are recorded by property name.
     [CmdletBinding()] param($ClientObject, $Property)
+    switch ($Property) {
+        'HasUniqueRoleAssignments' { $global:FakePnP.Calls.Add('Property ' + $Property); return $global:FakePnP.UniquePerms }
+        'RoleAssignments' {
+            $global:FakePnP.Calls.Add('Property ' + $Property)
+            if ($global:FakePnP.AccessFails) { throw 'Access denied. You do not have permission to perform this action or access this resource.' }
+            $list = New-Object System.Collections.Generic.List[object]
+            foreach ($entry in $global:FakePnP.Access) { $list.Add([pscustomobject]$entry) }
+            return , $list   # one object, as PnP.PowerShell 1.12.0 gives a collection (probe 6)
+        }
+        'Member' { return $ClientObject.Member }
+        'RoleDefinitionBindings' { return , $ClientObject.Roles }
+    }
     [pscustomobject]@{ ServerRelativeUrl = $ClientObject.Url }
 }
 
@@ -325,7 +347,8 @@ function global:Get-PnPWeb {
     if ($last.Count) { $url = $last[0] }
     if ($global:FakePnP.StaleHost) { $url = 'https://otherhost.example.com' + ([uri]$url).AbsolutePath }   # same path, other host
     elseif ($global:FakePnP.StaleWeb) { $url = 'https://tenant.example.com/sites/SomeOtherSite' }
-    [pscustomobject]@{ Title = 'Team A'; Url = $url }
+    [pscustomobject]@{ Title = 'Team A'; Url = $url; AssociatedOwnerGroup = [pscustomobject]@{ Id = 3 }
+        AssociatedMemberGroup = [pscustomobject]@{ Id = 4 }; AssociatedVisitorGroup = [pscustomobject]@{ Id = 5 } }
 }
 
 function global:Get-PnPSite {
