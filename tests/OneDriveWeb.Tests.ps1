@@ -2,8 +2,9 @@
 OneDriveWeb.Tests.ps1 - tests the OneDrive hybrid (src/DriveScan.psm1, the OneDrive web part) (plan step 4): the local-to-web map, the kinds of OneDrive folder,
 the fall-back to a local scan, and a scan that reads the history and a web-only file from the (fake) web.
 
-  Purpose:     The map follows probe 4 (web path = UrlNamespace path + the local path after MountPoint; the longest
-               MountPoint wins). Only the own OneDrive folder uses the web until probe 4 runs A and B pass. A failed
+  Purpose:     The map follows probes 4 and 7 (web path = UrlNamespace path, then for a shortcut or a synced library
+               the part of FullRemotePath below it, then the local path after MountPoint; the longest MountPoint wins).
+               No usable FullRemotePath, or a '.' or '..' part: no web folder (local only, with a note). A failed
                sign-in scans local only and says so. The web side reads only files under the pasted folder.
   Inputs:      $Txt, $Sample (TestKit.ps1); the fake PnP (FakePnP.ps1). Invented paths and files only.
   Outputs:     passes and failures counted by Assert-Equal.
@@ -45,6 +46,18 @@ foreach ($case in @(@('', 'no FullRemotePath'), @('https://other.example.com/sit
     $m = Get-OneDriveWebMap ($shortcut + '\x') @(@{ MountPoint = $shortcut; UrlNamespace = $space; FullRemotePath = $case[0] }) @($odHome)
     Assert-Equal 'Shortcut|' ('{0}|{1}' -f $m.Kind, $m.WebFolder) ('OneDrive map: a shortcut with ' + $case[1] + ' has no web folder')
 }
+$libMount = 'C:\Users\me\Org\Team W - Docs'
+$libSpace = 'https://org.example.com/sites/TeamW/Shared Documents'
+$m = Get-OneDriveWebMap ($libMount + '\b') @(@{ MountPoint = $libMount; UrlNamespace = $libSpace; FullRemotePath = 'HTTPS://ORG.example.com/sites/teamw/shared%20documents/A/' }) @($odHome)
+Assert-Equal 'Library|/sites/TeamW/Shared Documents/A/b' ('{0}|{1}' -f $m.Kind, $m.WebFolder) 'OneDrive map: a synced library below the root, in another case, uses its FullRemotePath folder'
+$m = Get-OneDriveWebMap ($libMount + '\b') @(@{ MountPoint = $libMount; UrlNamespace = $libSpace }) @($odHome)
+Assert-Equal 'Library|' ('{0}|{1}' -f $m.Kind, $m.WebFolder) 'OneDrive map: a synced library with no FullRemotePath has no web folder'
+foreach ($dots in @('\..', '\..\..\x', '\a\.\b', '\a\..')) {
+    $m = Get-OneDriveWebMap ($libMount + $dots) @(@{ MountPoint = $libMount; UrlNamespace = $libSpace; FullRemotePath = $libSpace + '/A' }) @($odHome)
+    Assert-Equal '' $m.WebFolder ('OneDrive map: a pasted path with a dot part (' + $dots + ') has no web folder')
+}
+$m = Get-OneDriveWebMap ($odHome + '\..\x') $odEntries @($odHome)
+Assert-Equal '' $m.WebFolder 'OneDrive map: a dot part also stops the own OneDrive web folder'
 
 # ---- Kinds and fall-back (no scan) ----
 Reset-FakePnP @{}
