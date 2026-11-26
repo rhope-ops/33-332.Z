@@ -189,7 +189,8 @@ function Add-WhoToRows {
     elseif ($Info.ContainsKey('Who')) {
         $who = $Info.Who.Clone()
         if ($Info.ContainsKey('Added') -and $Result.Hits.Count -gt 0) { $who.ByHit = Get-AddedByHit $Info $Result.Hits }
-        if ($Info.ContainsKey('Access') -and $Result.Hits.Count -gt 0) {   # plan step 5: who has access, for a web file with a hit
+        # Plan step 5: who has access, for a web file with a hit in its text or in a part (a file in a zip or an e-mail).
+        if ($Info.ContainsKey('Access') -and @($FileRows | Where-Object { (Get-ConfidenceRank $_.Confidence) -gt 0 }).Count -gt 0) {
             $access = & $Info.Access
             $who.OwnPermissions = $access.OwnPermissions; $who.AccessEntries = $access.AccessEntries
         }

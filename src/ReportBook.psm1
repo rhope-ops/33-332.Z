@@ -97,6 +97,24 @@ function Get-HitCells {
             $Hit.AccessEntries, $Hit.Source, $Hit.Link)
 }
 
+function Complete-AccessCells {
+    <#
+    .SYNOPSIS
+      Gives every hit row of a file the file's Own permissions and Access entries (plan step 5): they are read for the
+      file's text and part rows, so its rows for a hit in the file name get the same values here (review of step 5).
+    .PARAMETER Hits
+      The hit rows (changed in place).
+    #>
+    param([object[]]$Hits)
+    foreach ($group in @($Hits | Group-Object { $_.Channel + "`n" + $_.Item })) {
+        $known = @($group.Group | Where-Object { $_.OwnPermissions -or $_.AccessEntries } | Select-Object -First 1)
+        if ($known.Count -eq 0) { continue }
+        foreach ($row in $group.Group) {
+            if (-not $row.OwnPermissions -and -not $row.AccessEntries) { $row.OwnPermissions = $known[0].OwnPermissions; $row.AccessEntries = $known[0].AccessEntries }
+        }
+    }
+}
+
 function Get-FileRows {
     <#
     .SYNOPSIS
@@ -146,11 +164,12 @@ function Get-WorkbookSheets {
     param([object[]]$Rows, [int]$ItemsScanned, [System.Collections.IDictionary]$Header, [string]$FolderLabel)
     $hits = @($Rows | Where-Object { (Get-ConfidenceRank $_.Confidence) -gt 0 } |
         Sort-Object @{ Expression = { Get-ConfidenceRank $_.Confidence }; Descending = $true }, @{ Expression = { Get-SeverityIndex $_.Detector } }, Channel, Item)
+    Complete-AccessCells $hits
     # The review columns right after the hit, then who and when (accountability names: the PAM, 2026-11-21; the Method tab explains them).
     $columns = @('ID', 'Type', 'Confidence', $FolderLabel, 'File', 'Masked value', 'Context') + @($script:ReviewColumns.Keys) +
         @('Last saved', 'Last saved by', 'PII first saved', 'PII first saved by', 'Created', 'Created by', 'History note', 'Own permissions',
             'Access entries', 'Found in', 'Link')
-    $widths = @(7, 15, 11, 16, 40, 16, 50) + @(16) * $script:ReviewColumns.Count + @(16, 22, 16, 22, 16, 22, 40, 12, 34, 10, 50)
+    $widths = @(7, 15, 11, 16, 40, 16, 50) + @(16) * $script:ReviewColumns.Count + @(16, 22, 16, 22, 16, 22, 40, 17, 34, 10, 50)
     $choices = @{}; $offset = 7
     foreach ($name in @($script:ReviewColumns.Keys)) { if ($script:ReviewColumns[$name]) { $choices[$offset] = $script:ReviewColumns[$name] }; $offset++ }
     $after = 7 + $script:ReviewColumns.Count   # the first column after the review columns
@@ -164,7 +183,7 @@ function Get-WorkbookSheets {
             -FreezeColumns 5 -FillColumn 2))
         $sheets.Add((New-XlsxSheet 'Files' @($FolderLabel, 'File', 'Hits', 'High', 'Medium', 'Low', 'Types', 'Reviewed', 'Last saved',
             'Last saved by', 'PII first saved by', 'Own permissions', 'Access entries', 'Link') @(Get-FileRows $hits $FolderLabel) `
-            @(16, 40, 7, 7, 9, 7, 40, 10, 16, 22, 30, 12, 34, 50) -List -Table 'tblFiles' -LinkColumn 1 -LinkTarget 13 -DateColumns @(8) -FreezeColumns 2))
+            @(16, 40, 7, 7, 9, 7, 40, 10, 16, 22, 30, 17, 34, 50) -List -Table 'tblFiles' -LinkColumn 1 -LinkTarget 13 -DateColumns @(8) -FreezeColumns 2))
     }
     $notes = @($Rows | Where-Object { (Get-ConfidenceRank $_.Confidence) -eq 0 })
     if ($notes.Count -gt 0) {

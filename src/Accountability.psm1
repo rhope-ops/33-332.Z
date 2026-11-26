@@ -46,8 +46,9 @@ $script:AccessKinds = [ordered]@{
 $script:AccessMethodText = ('For a file on SharePoint or OneDrive on the web with 1 or more hits: "Own permissions" says if the file ' +
     'has its own permissions (Yes) or those of its folder or library (No). "Access entries" counts who has access by kind (people, site ' +
     'groups, team groups, sharing link groups, the whole organization), never by name. An entry for Limited Access only is not counted. ' +
-    'SharePoint shows the entries only to a site owner: for others the cell says "Not readable (owner only)". A file on this computer only ' +
-    'has empty cells. Sharing links are not read (PnP.PowerShell 1.12.0 cannot).')
+    'SharePoint shows the entries only to a site owner: for others the cell says "Not readable (owner only)"; "Own permissions" says "Not ' +
+    'readable" when that read fails. Empty cells: a file on this computer only, or a web file whose only hit is in its name (check its ' +
+    'permissions by hand). Sharing links are not read (PnP.PowerShell 1.12.0 cannot).')
 # The site's own 3 groups (owners, members, visitors) by site path: read once per site.
 $script:SiteGroupIds = @{}
 
@@ -122,7 +123,8 @@ function Get-AccessKind {
 function Get-SiteGroupIds {
     <#
     .SYNOPSIS
-      The IDs of the site's own 3 groups (owners, members, visitors), read once per site; none when they cannot be read.
+      The IDs of the site's own 3 groups (owners, members, visitors), read once per site; none when they cannot be read
+      (then read again for the next file).
     .PARAMETER FileRef
       A file's server-relative path (its site part is the cache key).
     .OUTPUTS
@@ -130,16 +132,14 @@ function Get-SiteGroupIds {
     #>
     param([string]$FileRef)
     $site = $FileRef; if ($FileRef -match '^/(personal|sites|teams)/[^/]+') { $site = $Matches[0] }
-    if (-not $script:SiteGroupIds.ContainsKey($site)) {
-        $ids = @()
-        try {
-            $web = Get-PnPWeb -Includes AssociatedOwnerGroup, AssociatedMemberGroup, AssociatedVisitorGroup -ErrorAction Stop
-            $ids = @(@($web.AssociatedOwnerGroup, $web.AssociatedMemberGroup, $web.AssociatedVisitorGroup) | Where-Object { $_ } | ForEach-Object { $_.Id })
-        }
-        catch { $ids = @() }   # the entries are still counted; a site group then counts as a SharePoint group
-        $script:SiteGroupIds[$site] = $ids
+    if ($script:SiteGroupIds.ContainsKey($site)) { return $script:SiteGroupIds[$site] }
+    try {
+        $web = Get-PnPWeb -Includes AssociatedOwnerGroup, AssociatedMemberGroup, AssociatedVisitorGroup -ErrorAction Stop
+        $ids = @(@($web.AssociatedOwnerGroup, $web.AssociatedMemberGroup, $web.AssociatedVisitorGroup) | Where-Object { $_ } | ForEach-Object { $_.Id })
+        $script:SiteGroupIds[$site] = $ids   # kept only after a good read: a failed read is tried again for the next file
+        return $ids
     }
-    return $script:SiteGroupIds[$site]
+    catch { return @() }   # the entries are still counted; a site group then counts as a SharePoint group
 }
 
 function Get-SharePointAccess {

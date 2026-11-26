@@ -76,6 +76,17 @@ Assert-Equal $false $allCells.Contains($Sample.Ssn) 'Workbook has no full SSN'
 $again = Publish-ScanReport -Rows $reportRows -ItemsScanned 2 -Header $header -OutputFolder $reportFolder -SiteUrl $header.Site 6>$null
 Assert-Equal $true ($again -ne $path) 'A second run never overwrites the first'
 Assert-Equal 'Folder' (Get-XlsxSheets $again)['Hits'][0][3] 'Folder column named Folder for a plain site'
+# Plan step 5: a file's hit in its name gets the file's permission cells from its other hit rows (review of step 5).
+$nameHit = New-ReportRow 'File name' 'General' 'Mixed.docx' '' '' 'SSN' 'High' '***-**-1234' 'Mixed.docx'
+$textHit = New-ReportRow 'File' 'General' 'Mixed.docx' '' '' 'Phone' 'Medium' '***-***-0142' 'call'
+$textHit.OwnPermissions = 'No'; $textHit.AccessEntries = '1 person'
+$accessPath = Publish-ScanReport -Rows @($nameHit, $textHit) -ItemsScanned 1 -Header $header -OutputFolder $reportFolder -SiteUrl $header.Site 6>$null
+$accessBook = Get-XlsxSheets $accessPath
+$own = [array]::IndexOf(@($accessBook['Hits'][0]), 'Own permissions')
+Assert-Equal 'No|1 person;No|1 person' (@($accessBook['Hits'] | Select-Object -Skip 1 | ForEach-Object { $_[$own] + '|' + $_[$own + 1] }) -join ';') `
+    'Permissions: a hit in the file name gets the cells of the file''s other hits'
+$filesOwn = [array]::IndexOf(@($accessBook['Files'][0]), 'Own permissions')
+Assert-Equal 'No|1 person' ($accessBook['Files'][1][$filesOwn] + '|' + $accessBook['Files'][1][$filesOwn + 1]) 'Permissions: the Files row shows them when its first hit is the name hit'
 $plain = @(Get-WorkbookSheets @() 0 ([ordered]@{}) 'Folder')
 Assert-Equal 'Summary|Method' (@($plain | ForEach-Object { $_.Name }) -join '|') 'No hits: only the Summary and Method tabs'
 
