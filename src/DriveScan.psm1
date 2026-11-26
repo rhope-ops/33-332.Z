@@ -261,6 +261,7 @@ function Invoke-DriveFile {
     $who.Modified = Get-FieldValue $web 'Modified'
     $info.Who = $who
     $info.Added = { param($hits) Find-PiiAddedVersion $ref $name $hits $who }.GetNewClosure()
+    $info.Access = { Get-SharePointAccess $web }.GetNewClosure()
     if (-not $File.Online -and $File.Path) { Submit-ScanFile $Queue $info $name $null $File.Path; return $true }   # on the disk: read from the disk
     # Online only, or on the web only: read from the web into memory (the PAM, 2026-11-24: nothing goes to the disk).
     try { $bytes = Get-FileBytes $ref $File.Size }

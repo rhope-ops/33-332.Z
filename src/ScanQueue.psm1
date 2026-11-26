@@ -124,7 +124,8 @@ function Add-QueuedRows {
             $rows.Add((New-ReportRow 'File' $info.Channel $info.Item $info.Link $info.Modified $hit.Detector $hit.Confidence $hit.MaskedValue $hit.Context))
         }
         foreach ($part in $Result.Parts) { Add-PartRows $part $info.Channel $info.Item $info.Link $info.Modified $rows }
-        if ($Result.Hits.Count -gt 0 -or $rows.Count -gt $first) { Add-WhoToRows $info $Result @($rows | Select-Object -Skip $first) }
+        $nameHit = $info.ContainsKey('NameRows') -and $info.NameRows.Count -gt 0
+        if ($Result.Hits.Count -gt 0 -or $rows.Count -gt $first -or $nameHit) { Add-WhoToRows $info $Result @($rows | Select-Object -Skip $first) }
     }
     Update-ScanMeter $Queue.Meter $rows $first $read
     Write-MeterLine $Queue.Meter 'file'
@@ -189,6 +190,14 @@ function Add-WhoToRows {
     elseif ($Info.ContainsKey('Who')) {
         $who = $Info.Who.Clone()
         if ($Info.ContainsKey('Added') -and $Result.Hits.Count -gt 0) { $who.ByHit = Get-AddedByHit $Info $Result.Hits }
+        # Plan step 5: who has access, for a web file with a hit in its text, a part (a file in a zip or an e-mail) or its name.
+        # A loop, not '@()': '@()' of a New-Object list throws "Argument types do not match" (probe 6).
+        $nameRows = @(); if ($Info.ContainsKey('NameRows')) { $nameRows = @(foreach ($row in $Info.NameRows) { $row }) }
+        if ($Info.ContainsKey('Access') -and @(@($FileRows) + $nameRows | Where-Object { $_ -and (Get-ConfidenceRank $_.Confidence) -gt 0 }).Count -gt 0) {
+            $access = & $Info.Access
+            $who.OwnPermissions = $access.OwnPermissions; $who.AccessEntries = $access.AccessEntries
+            foreach ($row in $nameRows) { $row.OwnPermissions = $access.OwnPermissions; $row.AccessEntries = $access.AccessEntries }
+        }
     }
     else { return }
     Set-RowAccountability $FileRows $who
@@ -297,7 +306,7 @@ function Add-FileStartRows {
     .PARAMETER Rows
       The list that receives the rows.
     .PARAMETER Info
-      @{ Channel; Item; Link; Modified } as the report shows the file (already masked).
+      @{ Channel; Item; Link; Modified } as the report shows the file (already masked); NameRows is added (its name-hit rows).
     .PARAMETER RawPath
       The folder and file path as written (checked for PII; never shown).
     .PARAMETER Name
@@ -310,9 +319,12 @@ function Add-FileStartRows {
       [bool] true when the file is to be read; false when it got its NOT SCANNED row.
     #>
     param($Rows, [hashtable]$Info, [string]$RawPath, [string]$Name, [long]$Size, [int]$MaxFileMB)
+    $nameRows = New-Object System.Collections.Generic.List[object]
     foreach ($hit in @(Find-PiiInText $RawPath)) {
-        $Rows.Add((New-ReportRow 'File name' $Info.Channel $Info.Item $Info.Link $Info.Modified $hit.Detector $hit.Confidence $hit.MaskedValue 'In the file or folder name'))
+        $row = New-ReportRow 'File name' $Info.Channel $Info.Item $Info.Link $Info.Modified $hit.Detector $hit.Confidence $hit.MaskedValue 'In the file or folder name'
+        $Rows.Add($row); $nameRows.Add($row)
     }
+    $Info.NameRows = $nameRows   # the file's name-hit rows: they get its permission cells after the read (plan step 5)
     $reason = ''
     if (-not (Test-SupportedFile $Name)) { $reason = 'File type is not read by this script: check by hand' }
     elseif ($Size -gt ($MaxFileMB * 1MB)) { $reason = "Larger than $MaxFileMB MB: check by hand" }

@@ -51,7 +51,7 @@ try {
     Assert-Equal 3 $phoneItems.Count 'Drive: a file with the same content as another still gets its own rows'
     $pdfRow = @($sheets['Not scanned'] | Where-Object { $_[2] -eq 'scan.pdf' })
     Assert-Equal 1 $pdfRow.Count 'Drive: a fake PDF with the bytes of a text file is not taken as its duplicate'
-    Assert-Equal $true (@($phoneRows | Where-Object { $_[20] -like 'file:///*' }).Count -ge 1) 'Drive: rows link to the file'
+    Assert-Equal $true (@($phoneRows | Where-Object { $_[22] -like 'file:///*' }).Count -ge 1) 'Drive: rows link to the file'
 }
 finally {
     Remove-Item -LiteralPath $driveRoot -Recurse -Force -ErrorAction SilentlyContinue

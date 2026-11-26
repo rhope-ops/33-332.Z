@@ -26,6 +26,16 @@ Assert-Equal 1 $results.Count 'Script saved one workbook'
 Assert-Equal 0 @(Get-ChildItem -LiteralPath $runFolder -Recurse | Where-Object { $_.Extension -in @('.txt', '.csv') }).Count 'No .txt or .csv any more'
 Assert-Equal 'NOT SCANNED Phone SSN' (Get-WorkbookTypes $results[0].FullName) 'Script found every planted type'
 Assert-Equal 'Channel' (Get-XlsxSheets $results[0].FullName)['Hits'][0][3] 'A team: the folder column is named Channel'
+# Plan step 5: who has access, for each web file with a hit (counts of kinds; the Limited Access entry is not counted).
+$e2eBook = Get-XlsxSheets $results[0].FullName
+$e2eHeader = @($e2eBook['Hits'][0]); $ownColumn = [array]::IndexOf($e2eHeader, 'Own permissions')
+$e2eHits = @($e2eBook['Hits'] | Select-Object -Skip 1)
+$e2eFiles = @($e2eHits | ForEach-Object { $_[3] + '/' + $_[4] } | Sort-Object -Unique)
+Assert-Equal 'No|1 person, 3 site groups' (@($e2eHits | ForEach-Object { $_[$ownColumn] + '|' + $_[$ownColumn + 1] } | Sort-Object -Unique) -join ';') `
+    'Permissions: each hit shows Own permissions and the counted Access entries'
+Assert-Equal $e2eFiles.Count (Get-FakeCallCount 'Property HasUniqueRoleAssignments') 'Permissions: read once for each file with a hit, not for files without one'
+$filesHeader = @($e2eBook['Files'][0])
+Assert-Equal 'Own permissions|Access entries|Link' (@($filesHeader[11], $filesHeader[12], $filesHeader[13]) -join '|') 'Permissions: the Files tab has the 2 columns before Link'
 Assert-Equal 1 (Get-FakeCallCount 'Read-Host') 'With the site given, one address question only (another site or exit); "Scan now?" and "Open" are their own'
 Assert-Equal $true ((Test-FakePnPCall 'Open question') -and (Test-FakePnPCall ('Open ' + $results[0].FullName))) 'Enter at the open question opens the workbook'
 Assert-Equal 1 @(Get-FakePnPConnection).Count 'One sign-in only: no posts sign-in'
@@ -56,6 +66,33 @@ Assert-Equal $true ($cancelShown -match 'Not scanned: nothing was saved' -and (T
 Reset-FakePnP @{}
 & $script -SiteUrl $Sample.Site -OutputFolder (Join-Path $runFolder 'empty') 6>$null
 Assert-Equal $false (Test-FakePnPCall 'Scan question') 'No files: no "Scan now?" question'
+
+# ---- Plan step 5: a zip with PII in its name and in a part ----
+# A file with PII in its name and in a zip part only: its name row and its part row get the same cells (review of step 5).
+$zipName = 'Roster ' + $Sample.Ssn + '.zip'
+Reset-FakePnP @{ "$library/General/$zipName" = (New-ZipBytes @{ 'inner/a.txt' = $Txt }) }
+$zipFolder = Join-Path $runFolder 'zip'
+& $script -SiteUrl $Sample.Site -OutputFolder $zipFolder 6>$null
+$zipBook = Get-XlsxSheets (Get-ResultFiles $zipFolder)[0].FullName
+$zipHeader = @($zipBook['Hits'][0]); $zipOwn = [array]::IndexOf($zipHeader, 'Own permissions'); $zipFound = [array]::IndexOf($zipHeader, 'Found in')
+$zipRows = @($zipBook['Hits'] | Select-Object -Skip 1)
+Assert-Equal 'File|File name' (@($zipRows | ForEach-Object { $_[$zipFound] } | Sort-Object -Unique) -join '|') 'Zip: a name hit and a part hit'
+Assert-Equal 'No|1 person, 3 site groups' (@($zipRows | ForEach-Object { $_[$zipOwn] + '|' + $_[$zipOwn + 1] } | Sort-Object -Unique) -join ';') 'Zip: name and part rows show the cells'
+Assert-Equal 1 (Get-FakeCallCount 'Property HasUniqueRoleAssignments') 'Zip: one read for the file'
+# A file Ion cannot read at all (damaged): its name row keeps empty cells, as the Method tab says (review 3 of step 5).
+Reset-FakePnP @{ "$library/General/$zipName" = [System.Text.Encoding]::UTF8.GetBytes('not a zip') }
+$badFolder = Join-Path $runFolder 'badzip'
+& $script -SiteUrl $Sample.Site -OutputFolder $badFolder 6>$null
+$badBook = Get-XlsxSheets (Get-ResultFiles $badFolder)[0].FullName
+$badOwn = [array]::IndexOf(@($badBook['Hits'][0]), 'Own permissions')
+Assert-Equal '|' (@($badBook['Hits'] | Select-Object -Skip 1 | ForEach-Object { $_[$badOwn] + '|' + $_[$badOwn + 1] } | Sort-Object -Unique) -join ';') `
+    'Unread file: the name hit has empty permission cells'
+$method = (@($badBook['Method']) | ForEach-Object { @($_) -join ' ' }) -join ' '
+$badFile = [array]::IndexOf(@($badBook['Not scanned'][0]), 'File')
+$badNotes = @($badBook['Not scanned'] | Select-Object -Skip 1 | Where-Object { $_[$badFile] -like 'Roster *.zip' }).Count
+Assert-Equal $true ($method -match 'could not read at all: the Not scanned tab gives the cause' -and $badNotes -ge 1) `
+    'Unread file: the Method text names it, and this file is on the Not scanned tab'
+Assert-Equal 0 (Get-FakeCallCount 'Property HasUniqueRoleAssignments') 'Unread file: no permission read'
 
 # ---- A plain SharePoint site (no team): Folder column, top-of-library files ----
 Reset-FakePnP @{ "$library/top.txt" = $Txt }

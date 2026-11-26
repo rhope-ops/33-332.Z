@@ -31,7 +31,7 @@ Assert-Equal $true ((Split-Path $path -Leaf) -match ('^Ion TeamA ' + (Get-Date -
 $book = Get-XlsxSheets $path
 Assert-Equal 'Summary|Hits|Files|Not scanned|Method' (@($book.Keys) -join '|') 'Tabs: Summary, Hits, Files, Not scanned, Method last'
 $hitHeader = 'ID|Type|Confidence|Channel|File|Masked value|Context|Is it PII?|Action taken|Reported to Privacy Manager|Reviewed by|Review date|' +
-    'Last saved|Last saved by|PII first saved|PII first saved by|Created|Created by|History note|Found in|Link'
+    'Last saved|Last saved by|PII first saved|PII first saved by|Created|Created by|History note|Own permissions|Access entries|Found in|Link'
 Assert-Equal $hitHeader ($book['Hits'][0] -join '|') 'Hits header: the review columns right after the hit; folder column named Channel for a team'
 Assert-Equal 'H001|SSN|High|General|Roster.docx|***-**-6789' (($book['Hits'][1] | Select-Object -First 6) -join '|') 'Hits row: ID, type, confidence, folder, file, value'
 $order = ($book['Hits'][2][0], $book['Hits'][2][1], $book['Hits'][3][0], $book['Hits'][3][1], $book['Hits'][3][2]) -join '|'
@@ -58,7 +58,7 @@ try {
 finally { $zipBook.Dispose(); $zipStream.Dispose() }
 Assert-Equal $true ($sheetXml -match '<hyperlink ref="E2" r:id="rId1"/>' -and $rels -match 'Target="https://x/y" TargetMode="External"') 'The file name is a clickable link'
 Assert-Equal $false ($sheetXml -match '<f>') 'No formula in the Hits tab'
-Assert-Equal $true ($tableXml -match 'displayName="tblHits" ref="A1:U4"' -and $tableXml -match '<tableColumn id="8" name="Is it PII\?"/>' -and
+Assert-Equal $true ($tableXml -match 'displayName="tblHits" ref="A1:W4"' -and $tableXml -match '<tableColumn id="8" name="Is it PII\?"/>' -and
     $rels -match 'Target="../tables/table1.xml"' -and $sheetXml -match '<tablePart r:id="rIdTable"/>' -and $sheetXml -notmatch '<autoFilter') 'Hits is an Excel Table'
 Assert-Equal $true ($sheetXml -match '<c r="M2" s="4"><v>\d+(\.\d+)?</v></c>') 'Last saved is a date cell'
 Assert-Equal $true ($sheetXml -match '<c r="C2" s="5"' -and $sheetXml -match '<c r="C4" s="7"') 'Confidence cells get the High and Low fill'

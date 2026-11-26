@@ -14,7 +14,7 @@ Accountability.psm1 - who made and changed a file with PII, and who put the PII 
   Depends on:  TextExtract.psm1 and ReaderPool.psm1 (Invoke-LimitedRead), PiiDetectors.psm1 (Find-PiiInText) and, for SharePoint,
                PnP.PowerShell 1.12.0 (Get-PnPFileVersion, Get-PnPContext; read-only), imported first.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7).
-  Network:     only the signed-in site (version history of files with a hit).
+  Network:     only the signed-in site (version history and permissions of files with a hit; the site's own 3 groups).
   Writes:      none. Old versions are read in memory only.
   Credentials: none (the PnP sign-in of the scan).
 #>
@@ -33,6 +33,26 @@ $script:DriveNoHistory = 'A drive keeps no file history'
 # The two fallbacks of "PII first saved by" say so in the History note (review of PR 41).
 $script:NoOlderVersion = "No older version: the file's creator is named"
 $script:OnlyCurrentVersion = 'In no older version: the current version is named'
+# Plan step 5 (the PAM, 2026-11-26: docs/DECISIONS.md): who has access to a web file with PII, as counts of entry kinds.
+$script:NotReadable = 'Not readable'
+$script:NotReadableEntries = 'Not readable (owner only)'
+# Each entry kind: its name for 1 and for more (in this order on the cell).
+$script:AccessKinds = [ordered]@{
+    'whole organization' = 'whole organization'; 'sharing link group' = 'sharing link groups'; 'person' = 'people'
+    'team owners group' = 'team owners groups'; 'team members group' = 'team members groups'; 'site group' = 'site groups'
+    'SharePoint group' = 'SharePoint groups'; 'security group' = 'security groups'; 'mail list' = 'mail lists'; 'other' = 'others'
+}
+# The Method tab's row for the 2 permission columns.
+$script:AccessMethodText = ('For a file on SharePoint or OneDrive on the web with 1 or more hits: "Own permissions" says if the file ' +
+    'has its own permissions (Yes) or those of its folder or library (No). "Access entries" counts who has access by kind (people, site ' +
+    'groups, team groups, sharing link groups, the whole organization), never by name. An entry for Limited Access only is not counted. ' +
+    'SharePoint shows the entries only to a site owner: for others the cell says "Not readable (owner only)"; "Own permissions" says "Not ' +
+    'readable" when that read fails. The cells are empty for a file that has no copy on the web: a file on a drive, a file in a ' +
+    'OneDrive folder when Ion did not use OneDrive on the web, or a file that is not synced yet (its History note says so). They are ' +
+    'also empty for a file that Ion could not read at all: the Not scanned tab gives the cause. Check the permissions of these files ' +
+    'by hand. Sharing links are not read (PnP.PowerShell 1.12.0 cannot).')
+# The site's own 3 groups (owners, members, visitors) by site path: read once per site.
+$script:SiteGroupIds = @{}
 
 function Get-PersonText {
     <#
@@ -71,6 +91,96 @@ function Get-SharePointWho {
     #>
     param($File)
     return @{ ModifiedBy = (Get-PersonText $File['Editor']); Created = (Get-DateText $File['Created']); CreatedBy = (Get-PersonText $File['Author']) }
+}
+
+function Get-AccessKind {
+    <#
+    .SYNOPSIS
+      The kind of one permission entry (probe 8): from its type and sign-in name, read in memory only and never shown.
+    .PARAMETER Member
+      The entry's member (PrincipalType, LoginName, Id).
+    .PARAMETER SiteGroups
+      The IDs of the site's own 3 groups.
+    .OUTPUTS
+      [string] a key of $script:AccessKinds.
+    #>
+    param($Member, [object[]]$SiteGroups)
+    $login = [string]$Member.LoginName
+    if ($login -match '(?i)spo-grid-all-users|^c:0\(\.s\|true$') { return 'whole organization' }
+    if ($login -match '(?i)federateddirectoryclaimprovider\|[0-9a-f-]+_o$') { return 'team owners group' }
+    if ($login -match '(?i)federateddirectoryclaimprovider') { return 'team members group' }
+    switch ([int]$Member.PrincipalType) {
+        1 { return 'person' }
+        2 { return 'mail list' }
+        4 { return 'security group' }
+        8 {
+            if ($SiteGroups -contains $Member.Id) { return 'site group' }
+            if ($login -like 'SharingLinks.*') { return 'sharing link group' }
+            return 'SharePoint group'
+        }
+    }
+    return 'other'
+}
+
+function Get-SiteGroupIds {
+    <#
+    .SYNOPSIS
+      The IDs of the site's own 3 groups (owners, members, visitors), read once per site; none when they cannot be read
+      (then read again for the next file).
+    .PARAMETER FileRef
+      A file's server-relative path (its site part is the cache key).
+    .OUTPUTS
+      [object[]]
+    #>
+    param([string]$FileRef)
+    $site = $FileRef; if ($FileRef -match '^/(personal|sites|teams)/[^/]+') { $site = $Matches[0] }
+    if ($script:SiteGroupIds.ContainsKey($site)) { return $script:SiteGroupIds[$site] }
+    try {
+        $web = Get-PnPWeb -Includes AssociatedOwnerGroup, AssociatedMemberGroup, AssociatedVisitorGroup -ErrorAction Stop
+        $ids = @(@($web.AssociatedOwnerGroup, $web.AssociatedMemberGroup, $web.AssociatedVisitorGroup) | Where-Object { $_ } | ForEach-Object { $_.Id })
+        $script:SiteGroupIds[$site] = $ids   # kept only after a good read: a failed read is tried again for the next file
+        return $ids
+    }
+    catch { return @() }   # the entries are still counted; a site group then counts as a SharePoint group
+}
+
+function Get-SharePointAccess {
+    <#
+    .SYNOPSIS
+      Who has access to one web file (plan step 5; read only for a file with a hit): if it has its own permissions, and
+      its permission entries as counts of kinds (for example "1 person, 3 site groups"). An entry that gives Limited
+      Access only gives no access to this file and is not counted. No name is kept or shown ("No reconnaissance").
+    .PARAMETER File
+      The list item.
+    .OUTPUTS
+      [hashtable] OwnPermissions ('Yes', 'No' or 'Not readable'), AccessEntries (the counts, 'None', or
+      'Not readable (owner only)': probe 8 read them only as a team owner).
+    #>
+    param($File)
+    $access = @{ OwnPermissions = $script:NotReadable; AccessEntries = $script:NotReadableEntries }
+    try { if ([bool](Get-PnPProperty -ClientObject $File -Property HasUniqueRoleAssignments -ErrorAction Stop)) { $access.OwnPermissions = 'Yes' } else { $access.OwnPermissions = 'No' } }
+    catch { Write-Verbose 'The unique permissions of this file could not be read.' }
+    try {
+        $siteGroups = @(Get-SiteGroupIds ([string]$File['FileRef']))
+        $assignments = Get-PnPProperty -ClientObject $File -Property RoleAssignments -ErrorAction Stop
+        $counts = @{}
+        foreach ($entry in $assignments) {   # a loop, not '@()': Get-PnPProperty gives the collection as one object (probe 6)
+            $bindings = Get-PnPProperty -ClientObject $entry -Property RoleDefinitionBindings -ErrorAction Stop
+            $roles = @(foreach ($one in $bindings) { $one })
+            if ($roles.Count -gt 0 -and @($roles | Where-Object { [int]$_.RoleTypeKind -ne 1 }).Count -eq 0) { continue }   # Limited Access only
+            $kind = Get-AccessKind (Get-PnPProperty -ClientObject $entry -Property Member -ErrorAction Stop) $siteGroups
+            $counts[$kind] = 1 + [int]$counts[$kind]
+        }
+        $parts = @(foreach ($kind in $script:AccessKinds.Keys) {
+            if (-not $counts.ContainsKey($kind)) { continue }
+            if ($kind -eq 'whole organization') { $kind; continue }
+            $name = $kind; if ($counts[$kind] -gt 1) { $name = $script:AccessKinds[$kind] }
+            '{0} {1}' -f $counts[$kind], $name
+        })
+        $access.AccessEntries = 'None'; if ($parts.Count -gt 0) { $access.AccessEntries = $parts -join ', ' }
+    }
+    catch { $access.AccessEntries = $script:NotReadableEntries }
+    return $access
 }
 
 function Get-HitKey {
@@ -377,9 +487,11 @@ function Get-MethodRows {
         'that the full value first appears in that version.'))
     , @('By account tab', ('How many files and hits each "PII first saved by" account first saved, most first: a list of whom to contact first. ' +
         'It has the same limits as that column: evidence, not proof.'))
+    , @('Own permissions, Access entries', $script:AccessMethodText)
     , @('')
     , @('Review columns', ('Is it PII?, Action taken, Reported to Privacy Manager, Reviewed by and Review date (Hits tab) are for you to fill in as you ' +
         'check each hit. Ion leaves them empty. The first three have a dropdown list.'))
 }
 
-Export-ModuleMember -Function Get-PersonText, Get-SharePointWho, Find-PiiAddedVersion, Get-DriveWho, Get-AccountRows, Get-MethodRows
+Export-ModuleMember -Function Get-PersonText, Get-SharePointWho, Find-PiiAddedVersion, Get-DriveWho, Get-AccountRows, Get-MethodRows,
+    Get-SharePointAccess

@@ -356,6 +356,8 @@ function Complete-FileScan {
     $who.Modified = $info.Modified
     $info.Who = $who
     $info.Added = { param($hits) Find-PiiAddedVersion $ref $name $hits $who }.GetNewClosure()
+    $file = $Prepared.File
+    $info.Access = { Get-SharePointAccess $file }.GetNewClosure()
     Submit-ScanFile $Queue $info $name $Bytes ''
 }
 
