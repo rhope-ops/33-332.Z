@@ -21,6 +21,6 @@ Title: 33-332.Z · <task> · <date>. Read AGENTS.md first.
 18. Plan approved 2026-11-24, continue it: docs/reviews/2026-11-24-no-persistence-plan.md (Status).
 19. 2026-11-25/26: PRs 105-134 merged; audit not now (the PAM). Next: device runs of the probe 7 map fix
     (probe-7.md Result) and of step 5 (permission columns, built 2026-11-26); no views column (test 4).
-20. Plan approved 2026-11-26 (DECISIONS newest row; 1 PR each): map MINORs, step 5 MINORs, PDF scan OCR,
-    reader time limit (already built: ReaderPool.psm1, 3 minutes per file), old-version size cap (25 MB). Status: the PR titles. Open, not planned: version-history reads off
+20. Plan of 2026-11-26 done (PRs 138-142): map MINORs, step 5 MINORs, PDF scan OCR (known misses accepted,
+    PR 140), small-scan note, old-version cap 25 MB; the reader time limit already existed. Open, not planned: version-history reads off
     the main thread (slow run 28:49; the 2026-11-24 parallel-downloads design kept them on it).
