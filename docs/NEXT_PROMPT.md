@@ -24,6 +24,6 @@ Title: 33-332.Z · <task> · <date>. Read AGENTS.md first.
     step 3 = parallel downloads in a planned order, and version-history reads off the main thread (slow run 28:49).
 17. 2026-11-24 merged: PRs 58-88. Excel and local OneDrive tests open.
 18. Plan approved 2026-11-24, continue it: docs/reviews/2026-11-24-no-persistence-plan.md (Status).
-19. 2026-11-25: PRs 105-125 merged. Audit: not now (the PAM). Device results (intake 2026-11-26): probe 7: use
+19. 2026-11-25: PRs 105-125 merged. Audit: not now (the PAM). Device results (intake 2026-11-25): probe 7: use
     FullRemotePath (next: map fix, probe-7.md Result); test 4: both failed, no views column; probe 8: stopped at
     the address check in both runs (next: the Maintainer decides on a probe 8 that prints the address shape).
