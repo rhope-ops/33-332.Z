@@ -48,3 +48,7 @@ Test 3 does not run (Results, below); its text is in the git history of this fil
 
 - Test 3: not run. The PAM, 2026-11-24: build with fallback; the header line "Parallel downloads" of a normal Ion run
   is the evidence (docs/reviews/2026-11-24-parallel-downloads-design.md). Test 4: as a .txt file since 2026-11-25; version 2026-11-25e takes the folder from the address of the folder page and asks for the file name only (the web page shows the library as "Documents", the address has "Shared Documents"; review of PR 125). Stub run on PowerShell 7.4 with invented data: 4 cases end with "Done.". Waiting on the PAM's run.
+- Test 4 result (version 2026-11-25e, the PAM's e-mail, received 2026-11-25 19:51): folder from id, sign-in ok,
+  file found by name; `T4a failed: PSInvalidOperationException`, `T4b failed: PSInvalidOperationException`. By the
+  table above: no view counts on DoD365 through usaf.dps.mil, so no views column. Confidence: medium (1 run, 1 file;
+  the test prints the error type only, so a 403 and a 404 look the same).

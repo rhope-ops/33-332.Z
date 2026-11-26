@@ -83,4 +83,20 @@ steps 2 times: run A with a folder of a synced Teams library, run B with a short
 
 ## Result
 
-Waits on the PAM's runs.
+Runs A and B of version 2026-11-25a (the PAM's e-mail, received 2026-11-25 19:51; counts only). Both runs: sign-in
+ok, library found, root matches, 2 candidates, no stop.
+
+| Line | Run A (synced Teams library, subfolder) | Run B (shortcut, the synced folder itself) |
+|---|---|---|
+| local files, depth below the synced folder | 7, 1 | 8, 0 |
+| FullRemotePath | https, same host, 4 parts, below the library root, depth 1, last part ends the synced folder name | same as run A |
+| WebUrl | https, same host, 2 parts, not below the library root | same as run A |
+| candidate 1 (probe 5 map) | 0 items, names on both 0 of 7 | 500 items (stopped at 500), 3 files, 0 of 8 |
+| candidate 2 (FullRemotePath) | 45 items, 7 files, names on both 7 of 7 | 500 items (stopped at 500), 8 files, 8 of 8 |
+
+- Result: the folder map fix uses `FullRemotePath` (its candidate has "names on both" equal to "local files" in both
+  runs). `WebUrl` is not below the library root and gives no candidate. The probe 5 map is wrong for both kinds
+  (0 names on both). Confidence: high (2 of 2 runs, 15 of 15 names).
+- Run B listed 500 items for a folder with 8 files: the list includes items below the folder (the "Open" item above
+  is now likely: confidence medium; the probe does not split files from subfolder items). The fix in
+  `src/DriveScan.psm1` must not depend on the first 500 items: filter to the folder itself, or page past 500.

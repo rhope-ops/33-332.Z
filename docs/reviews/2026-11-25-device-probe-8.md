@@ -81,4 +81,13 @@ your team site.
 
 ## Result
 
-Waits on the PAM's runs.
+Runs A and B of version 2026-11-25f (the PAM's e-mail, received 2026-11-25 19:51): both runs printed only
+`P8 answer 1 is a DoD365 site address=False`. The probe stopped at step 1: no sign-in and no permission read.
+
+- Test 4 in the same e-mail passed the same address check (same pattern) with a folder page address. So the probe
+  code is likely not the cause; the text pasted at Question 1 likely had another form. Confidence: medium.
+- Possible forms (not verified; the probe prints no shape of the address): a sharing link
+  (`https://usaf.dps.mil/:w:/s/...`, run A uses a shared file), an address on another host (for example the OneDrive
+  host), or a page that is not a folder page of the team site (for example "Shared with me").
+- Step 5 still has no permission result. Next: a probe 8 version that prints the shape of answer 1 (host kind, first
+  path part kind, counts only) and accepts the folder page form only after that (the Maintainer to decide).
