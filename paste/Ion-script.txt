@@ -1,5 +1,5 @@
 <#
-  Ion - DoD365 PII Reporter, build 10cd9e75 (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
+  Ion - DoD365 PII Reporter, build e0062f34 (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
 
   HOW TO RUN
     1. Optional: read this text first (Open the script shows it as a .txt in your browser).
@@ -41,7 +41,7 @@
     src/ReportBook.psm1, sha256 e6b91e1d763c
     src/ScanMeter.psm1, sha256 d887bd7d283a
     src/ScanQueue.psm1, sha256 7b052e7e6ff3
-    src/Accountability.psm1, sha256 1aef180d601f
+    src/Accountability.psm1, sha256 085d1b5b7b76
     src/SiteTarget.psm1, sha256 2e693a68f413
     src/ChannelScan.psm1, sha256 bc6ea04dbc70
     src/DriveScan.psm1, sha256 7df37c0a89fa
@@ -80,11 +80,11 @@
     line  6133  Module ScanMeter.psm1
     line  6555  Module ScanQueue.psm1
     line  6972  Module Accountability.psm1
-    line  7473  Module SiteTarget.psm1
-    line  7830  Module ChannelScan.psm1
-    line  8666  Module DriveScan.psm1
-    line  9327  Body of Find-ChannelPII.ps1
-    line  9543  Clean-up
+    line  7474  Module SiteTarget.psm1
+    line  7831  Module ChannelScan.psm1
+    line  8667  Module DriveScan.psm1
+    line  9328  Body of Find-ChannelPII.ps1
+    line  9544  Clean-up
 #>
 
 # ISE runs pasted text in your session: keep its error setting so the Clean-up block at the end can put it back.
@@ -97,12 +97,12 @@ $SiteUrl = ''            # the team's Teams link, or its site https://usaf.dps.m
 $OutputFolder = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Ion')   # results: a folder per site, then per day
 $MaxFileMB = 25          # files larger than this are reported as NOT SCANNED
 
-$IonPasteHash = '3b5b5dee329aad313486401e59bc632afd704f2d592568005e496ac20087a453'   # the SHA-256 of the text from the line Paste check to the end (do not edit)
+$IonPasteHash = '00efc58d1f2049fe141e943cb06d658d781ddf7bace1977852d2e4765650f760'   # the SHA-256 of the text from the line Paste check to the end (do not edit)
 
 # ==== Paste check ==== (the text from this line to the end must be the published text, or nothing runs)
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
-$IonBuild = '10cd9e75'       # the build ID: Ion shows it at the start (do not edit)
+$IonBuild = 'e0062f34'       # the build ID: Ion shows it at the start (do not edit)
 $IonPasteCheck = 'not read'
 $pasteText = ''
 try { $pastePath = $PSCommandPath } catch { $pastePath = '' }   # no script path: read the ISE pane
@@ -6994,8 +6994,8 @@ Accountability.psm1 - who made and changed a file with PII, and who put the PII 
 
 # Old versions read per file with a hit, oldest first (a file with more is dated from the oldest ones read).
 $script:MaxVersionsRead = 30
-# An old version larger than this is not downloaded: it counts as a version that could not be read (the PAM, 2026-11-26:
-# plan step 5 of the next build; the same as the default file limit, -MaxFileMB 25).
+# An old version larger than this is not downloaded: it counts as a version that could not be read (plan step 5 of the
+# next build, the PAM, 2026-11-26, approved a cap; the value is the author's choice: the default file limit, -MaxFileMB 25).
 $script:MaxVersionBytes = 25MB
 $script:NotRecorded = 'Not recorded'
 $script:NoHistory = 'The file has no version history'
@@ -7232,9 +7232,10 @@ function Read-VersionText {
       Output of Get-TextFromBytes, or $null.
     #>
     param($Version, $Context, [string]$Name)
-    # Too large: not downloaded (memory and time; the history then says a version could not be read).
-    if ($Version.PSObject.Properties['Size'] -and [long]$Version.Size -gt $script:MaxVersionBytes) { return $null }
     try {
+        # Too large: not downloaded (memory and time; the history then says a version could not be read). Inside the
+        # 'try': a Size that PnP did not load throws, and that version then counts as not read (review of the cap).
+        if ($Version.PSObject.Properties['Size'] -and [long]$Version.Size -gt $script:MaxVersionBytes) { return $null }
         $stream = $Version.OpenBinaryStream(); $Context.ExecuteQuery()
         $memory = New-Object System.IO.MemoryStream
         try { $stream.Value.CopyTo($memory); $bytes = $memory.ToArray() } finally { $memory.Dispose() }

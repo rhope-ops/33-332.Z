@@ -23,8 +23,8 @@ Set-StrictMode -Version 2.0
 
 # Old versions read per file with a hit, oldest first (a file with more is dated from the oldest ones read).
 $script:MaxVersionsRead = 30
-# An old version larger than this is not downloaded: it counts as a version that could not be read (the PAM, 2026-11-26:
-# plan step 5 of the next build; the same as the default file limit, -MaxFileMB 25).
+# An old version larger than this is not downloaded: it counts as a version that could not be read (plan step 5 of the
+# next build, the PAM, 2026-11-26, approved a cap; the value is the author's choice: the default file limit, -MaxFileMB 25).
 $script:MaxVersionBytes = 25MB
 $script:NotRecorded = 'Not recorded'
 $script:NoHistory = 'The file has no version history'
@@ -261,9 +261,10 @@ function Read-VersionText {
       Output of Get-TextFromBytes, or $null.
     #>
     param($Version, $Context, [string]$Name)
-    # Too large: not downloaded (memory and time; the history then says a version could not be read).
-    if ($Version.PSObject.Properties['Size'] -and [long]$Version.Size -gt $script:MaxVersionBytes) { return $null }
     try {
+        # Too large: not downloaded (memory and time; the history then says a version could not be read). Inside the
+        # 'try': a Size that PnP did not load throws, and that version then counts as not read (review of the cap).
+        if ($Version.PSObject.Properties['Size'] -and [long]$Version.Size -gt $script:MaxVersionBytes) { return $null }
         $stream = $Version.OpenBinaryStream(); $Context.ExecuteQuery()
         $memory = New-Object System.IO.MemoryStream
         try { $stream.Value.CopyTo($memory); $bytes = $memory.ToArray() } finally { $memory.Dispose() }
