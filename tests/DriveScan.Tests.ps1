@@ -236,6 +236,15 @@ try {
     $gapAdded = $byHit[$hits[0].Detector + '|' + $hits[0].MaskedValue]
     Assert-Equal 'later.saver|An older version could not be read: it may have been added earlier' ($gapAdded.AddedBy + '|' + $gapAdded.Note) `
         'Who: after an unread version, the person alone in "PII first saved by", and the note says it may be earlier'
+    # An old version over the size cap (30 MB): not downloaded, so it counts as not read (plan step 5, 2026-11-26).
+    $bigVersion = New-FakeVersion ([datetime]'2026-01-01') 'big.saver' $withSsn
+    $bigVersion | Add-Member -NotePropertyName Size -NotePropertyValue (30MB)
+    $bigVersion | Add-Member -NotePropertyName Opened -NotePropertyValue $false
+    $bigVersion | Add-Member -MemberType ScriptMethod -Name OpenBinaryStream -Value { $this.Opened = $true; throw 'should not be downloaded' } -Force
+    $versionList = @($bigVersion, (New-FakeVersion ([datetime]'2026-01-05') 'later.saver' $withSsn))
+    $bigEntry = (Find-PiiAddedVersion '/sites/x/Shared Documents/a.txt' 'a.txt' $hits $who)[$hits[0].Detector + '|' + $hits[0].MaskedValue]
+    Assert-Equal 'False|later.saver|An older version could not be read: it may have been added earlier' `
+        ('{0}|{1}|{2}' -f $bigVersion.Opened, $bigEntry.AddedBy, $bigEntry.Note) 'Who: an old version over 25 MB is not downloaded and counts as not read'
     # More old versions than are read, all readable, the SSN in the oldest: a plain credit, no "could not be read".
     $versionList = @(New-FakeVersion ([datetime]'2026-01-01') 'true.adder' $withSsn) + @(2..31 | ForEach-Object { New-FakeVersion ([datetime]'2026-01-01').AddDays($_) 'other' $withSsn })
     $plainEntry = (Find-PiiAddedVersion '/sites/x/Shared Documents/a.txt' 'a.txt' $hits $who)[$hits[0].Detector + '|' + $hits[0].MaskedValue]
