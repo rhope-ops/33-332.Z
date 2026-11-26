@@ -1,5 +1,5 @@
 <#
-  Ion - DoD365 PII Reporter, build 6f5918d5 (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
+  Ion - DoD365 PII Reporter, build ee207f26 (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
 
   HOW TO RUN
     1. Optional: read this text first (Open the script shows it as a .txt in your browser).
@@ -41,7 +41,7 @@
     src/ReportBook.psm1, sha256 982e73612af3
     src/ScanMeter.psm1, sha256 d887bd7d283a
     src/ScanQueue.psm1, sha256 83f1e9c7628c
-    src/Accountability.psm1, sha256 f6e9ad32bcfc
+    src/Accountability.psm1, sha256 5e685983da50
     src/SiteTarget.psm1, sha256 2e693a68f413
     src/ChannelScan.psm1, sha256 bc6ea04dbc70
     src/DriveScan.psm1, sha256 3badff7a3b3d
@@ -80,11 +80,11 @@
     line  5938  Module ScanMeter.psm1
     line  6360  Module ScanQueue.psm1
     line  6774  Module Accountability.psm1
-    line  7268  Module SiteTarget.psm1
-    line  7625  Module ChannelScan.psm1
-    line  8461  Module DriveScan.psm1
-    line  9121  Body of Find-ChannelPII.ps1
-    line  9337  Clean-up
+    line  7269  Module SiteTarget.psm1
+    line  7626  Module ChannelScan.psm1
+    line  8462  Module DriveScan.psm1
+    line  9122  Body of Find-ChannelPII.ps1
+    line  9338  Clean-up
 #>
 
 # ISE runs pasted text in your session: keep its error setting so the Clean-up block at the end can put it back.
@@ -97,12 +97,12 @@ $SiteUrl = ''            # the team's Teams link, or its site https://usaf.dps.m
 $OutputFolder = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Ion')   # results: a folder per site, then per day
 $MaxFileMB = 25          # files larger than this are reported as NOT SCANNED
 
-$IonPasteHash = 'dc7a18bf9e329b271ab48d8586fa90d2973ea4eaddd6240a8c65598e0542966d'   # the SHA-256 of the text from the line Paste check to the end (do not edit)
+$IonPasteHash = '77dacdf0d4346eb9b7d4dfff87c6a2b515342a375aa15f3be455030de5ed1ddf'   # the SHA-256 of the text from the line Paste check to the end (do not edit)
 
 # ==== Paste check ==== (the text from this line to the end must be the published text, or nothing runs)
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
-$IonBuild = '6f5918d5'       # the build ID: Ion shows it at the start (do not edit)
+$IonBuild = 'ee207f26'       # the build ID: Ion shows it at the start (do not edit)
 $IonPasteCheck = 'not read'
 $pasteText = ''
 try { $pastePath = $PSCommandPath } catch { $pastePath = '' }   # no script path: read the ISE pane
@@ -6820,9 +6820,10 @@ $script:AccessMethodText = ('For a file on SharePoint or OneDrive on the web wit
     'has its own permissions (Yes) or those of its folder or library (No). "Access entries" counts who has access by kind (people, site ' +
     'groups, team groups, sharing link groups, the whole organization), never by name. An entry for Limited Access only is not counted. ' +
     'SharePoint shows the entries only to a site owner: for others the cell says "Not readable (owner only)"; "Own permissions" says "Not ' +
-    'readable" when that read fails. The cells are empty for a file that Ion read from this computer, not from the web (the Summary ' +
-    'says if Ion used OneDrive on the web). They are also empty for a file that Ion could not read at all: the Not scanned tab gives the ' +
-    'cause. Check the permissions of these files by hand. Sharing links are not read (PnP.PowerShell 1.12.0 cannot).')
+    'readable" when that read fails. The cells are empty for a file that has no copy on the web: a file on a drive, a file in a ' +
+    'OneDrive folder when Ion did not use OneDrive on the web, or a file that is not synced yet (its History note says so). They are ' +
+    'also empty for a file that Ion could not read at all: the Not scanned tab gives the cause. Check the permissions of these files ' +
+    'by hand. Sharing links are not read (PnP.PowerShell 1.12.0 cannot).')
 # The site's own 3 groups (owners, members, visitors) by site path: read once per site.
 $script:SiteGroupIds = @{}
 
