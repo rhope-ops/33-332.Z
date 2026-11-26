@@ -278,13 +278,22 @@ function Add-PdfScanImages {
       Output of Get-PdfObjects.
     .PARAMETER List
       The image objects to read with OCR (changed in place; each image once).
+    .PARAMETER Cache
+      Resources text -> its images (changed in place).
+    .PARAMETER Seen
+      The images already in List (a HashSet; changed in place).
     #>
-    param([string[]]$Kinds, [string]$Resources, $Objects, $List)
+    param([string[]]$Kinds, [string]$Resources, $Objects, $List, $Cache, $Seen)
     if ($Kinds -contains 'hidden') { return }
     $anyText = $Kinds -contains 'visible'
-    foreach ($image in @(Get-PdfResourceImages $Resources $Objects)) {
+    # Shared resources (one dictionary for 300 pages) are looked into once (review 4 of step 3: 415 s without this).
+    if (-not $Cache.ContainsKey($Resources)) {   # each image once: forms that name the same shared resources repeat them
+        $unique = New-Object 'System.Collections.Generic.HashSet[object]'
+        $Cache[$Resources] = @(foreach ($image in @(Get-PdfResourceImages $Resources $Objects)) { if ($unique.Add($image)) { $image } })
+    }
+    foreach ($image in $Cache[$Resources]) {
         if ($anyText -and -not (Test-PdfPageImage $image.Dict)) { continue }
-        if (-not $List.Contains($image)) { $List.Add($image) }
+        if ($Seen.Add($image)) { $List.Add($image) }   # a set: 300 pages x 300 shared images stay fast (review 4 of step 3)
     }
 }
 
@@ -304,6 +313,9 @@ function Get-PdfAllText {
     $script:PdfScanImages = @($objects.Values | Where-Object { $_.ContainsKey('Image') -and $_.Image } | ForEach-Object { $_.Image })
     $pageImages = New-Object System.Collections.Generic.List[object]   # the scanned images of pages with no text layer
     $formKinds = New-Object 'System.Collections.Generic.Dictionary[object,string]'   # form object -> text kind (Get-PdfFormKinds)
+    $resourceImages = @{}   # resources text -> its images (Add-PdfScanImages)
+    $pageImageSet = New-Object 'System.Collections.Generic.HashSet[object]'   # the images already in $pageImages
+    $resourceKinds = @{}   # resources text -> the text kinds of the forms it names (shared resources: worked out once)
     Assert-PdfTime
     $allFonts = Get-PdfFonts $objects
     Assert-PdfTime
@@ -326,8 +338,9 @@ function Get-PdfAllText {
             }
         }
         $pageText = ''; for ($i = $first; $i -lt $parts.Count; $i++) { $pageText += $parts[$i] }
-        $kinds = @(Get-PdfTextKind $pageRaw $pageText) + @(Get-PdfFormKinds $resources $objects $allFonts $formKinds)
-        Add-PdfScanImages $kinds $resources $objects $pageImages
+        if (-not $resourceKinds.ContainsKey($resources)) { $resourceKinds[$resources] = @(Get-PdfFormKinds $resources $objects $allFonts $formKinds) }
+        $kinds = @(Get-PdfTextKind $pageRaw $pageText) + $resourceKinds[$resources]
+        Add-PdfScanImages $kinds $resources $objects $pageImages $resourceImages $pageImageSet
     }
     $script:PdfPageImages = @(foreach ($image in $pageImages) { $image.Image })   # a loop: '@()' of a New-Object list throws (probe 6)
     # Form XObjects (/Subtype /Form, drawn with "Do"): reusable page parts that can hold text of their own. Read each
