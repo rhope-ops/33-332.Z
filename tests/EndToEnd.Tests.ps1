@@ -88,8 +88,11 @@ $badOwn = [array]::IndexOf(@($badBook['Hits'][0]), 'Own permissions')
 Assert-Equal '|' (@($badBook['Hits'] | Select-Object -Skip 1 | ForEach-Object { $_[$badOwn] + '|' + $_[$badOwn + 1] } | Sort-Object -Unique) -join ';') `
     'Unread file: the name hit has empty permission cells'
 $method = (@($badBook['Method']) | ForEach-Object { @($_) -join ' ' }) -join ' '
-$badNotes = @($badBook['Not scanned'] | Select-Object -Skip 1).Count
-Assert-Equal $true ($method -match 'could not read at all' -and $badNotes -ge 1) 'Unread file: the Method text names it, and it is on the Not scanned tab'
+$badFile = [array]::IndexOf(@($badBook['Not scanned'][0]), 'File')
+$badNotes = @($badBook['Not scanned'] | Select-Object -Skip 1 | Where-Object { $_[$badFile] -like 'Roster *.zip' }).Count
+Assert-Equal $true ($method -match 'could not read at all: the Not scanned tab gives the cause' -and $badNotes -ge 1) `
+    'Unread file: the Method text names it, and this file is on the Not scanned tab'
+Assert-Equal 0 (Get-FakeCallCount 'Property HasUniqueRoleAssignments') 'Unread file: no permission read'
 
 # ---- A plain SharePoint site (no team): Folder column, top-of-library files ----
 Reset-FakePnP @{ "$library/top.txt" = $Txt }
