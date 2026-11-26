@@ -185,7 +185,10 @@ function Add-WhoToRows {
     $props = $null; if ($Result.ContainsKey('Props')) { $props = $Result.Props }
     if ($Info.ContainsKey('DrivePath')) {
         $who = Get-DriveWho $Info.DrivePath $props
-        if ($Info.ContainsKey('DriveNote')) { $who.HistoryNote = $Info.DriveNote }   # a OneDrive file not synced yet (DriveScan.psm1)
+        if ($Info.ContainsKey('DriveNote')) {   # a OneDrive file not synced yet (DriveScan.psm1): its name-hit rows say so too
+            $who.HistoryNote = $Info.DriveNote
+            if ($Info.ContainsKey('NameRows')) { foreach ($row in $Info.NameRows) { $row.HistoryNote = $Info.DriveNote } }
+        }
     }
     elseif ($Info.ContainsKey('Who')) {
         $who = $Info.Who.Clone()

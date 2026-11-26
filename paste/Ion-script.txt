@@ -1,5 +1,5 @@
 <#
-  Ion - DoD365 PII Reporter, build f97dbb33 (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
+  Ion - DoD365 PII Reporter, build cc588473 (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
 
   HOW TO RUN
     1. Optional: read this text first (Open the script shows it as a .txt in your browser).
@@ -38,9 +38,9 @@
     src/ReaderPool.psm1, sha256 e5865e4bc160
     src/XlsxWriter.psm1, sha256 56c1ec673d09
     src/Report.psm1, sha256 8886eccd4dc5
-    src/ReportBook.psm1, sha256 982e73612af3
+    src/ReportBook.psm1, sha256 e6b91e1d763c
     src/ScanMeter.psm1, sha256 d887bd7d283a
-    src/ScanQueue.psm1, sha256 83f1e9c7628c
+    src/ScanQueue.psm1, sha256 7b052e7e6ff3
     src/Accountability.psm1, sha256 5e685983da50
     src/SiteTarget.psm1, sha256 2e693a68f413
     src/ChannelScan.psm1, sha256 bc6ea04dbc70
@@ -77,14 +77,14 @@
     line  4818  Module XlsxWriter.psm1
     line  5255  Module Report.psm1
     line  5632  Module ReportBook.psm1
-    line  5938  Module ScanMeter.psm1
-    line  6360  Module ScanQueue.psm1
-    line  6774  Module Accountability.psm1
-    line  7269  Module SiteTarget.psm1
-    line  7626  Module ChannelScan.psm1
-    line  8462  Module DriveScan.psm1
-    line  9123  Body of Find-ChannelPII.ps1
-    line  9339  Clean-up
+    line  5939  Module ScanMeter.psm1
+    line  6361  Module ScanQueue.psm1
+    line  6778  Module Accountability.psm1
+    line  7273  Module SiteTarget.psm1
+    line  7630  Module ChannelScan.psm1
+    line  8466  Module DriveScan.psm1
+    line  9127  Body of Find-ChannelPII.ps1
+    line  9343  Clean-up
 #>
 
 # ISE runs pasted text in your session: keep its error setting so the Clean-up block at the end can put it back.
@@ -97,12 +97,12 @@ $SiteUrl = ''            # the team's Teams link, or its site https://usaf.dps.m
 $OutputFolder = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Ion')   # results: a folder per site, then per day
 $MaxFileMB = 25          # files larger than this are reported as NOT SCANNED
 
-$IonPasteHash = 'e85a014735111cc07dae80105680fe4da1486f8ef697427d2cbb90b7a72d1c4e'   # the SHA-256 of the text from the line Paste check to the end (do not edit)
+$IonPasteHash = '1943d350798f87830b46fd1f857fbec61c80790cd50ac80110aefcd40cd8b5a1'   # the SHA-256 of the text from the line Paste check to the end (do not edit)
 
 # ==== Paste check ==== (the text from this line to the end must be the published text, or nothing runs)
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
-$IonBuild = 'f97dbb33'       # the build ID: Ion shows it at the start (do not edit)
+$IonBuild = 'cc588473'       # the build ID: Ion shows it at the start (do not edit)
 $IonPasteCheck = 'not read'
 $pasteText = ''
 try { $pastePath = $PSCommandPath } catch { $pastePath = '' }   # no script path: read the ISE pane
@@ -5732,7 +5732,7 @@ function Get-FileRows {
     <#
     .SYNOPSIS
       The rows of the Files tab: one per file with hits, worst first: its counts, its types, how many hits a reviewer
-      has answered "Is it PII?" for (a formula on the Hits table), and who saved it.
+      has answered "Is it PII?" for (a formula on the Hits table), who saved it, its history notes and who has access.
     .PARAMETER Hits
       The hit rows, in the Hits tab's order.
     .PARAMETER FolderLabel
@@ -5746,7 +5746,8 @@ function Get-FileRows {
         [pscustomobject]@{ First = $g[0]; Count = $g.Count; High = @($g | Where-Object { $_.Confidence -eq 'High' }).Count
             Medium = @($g | Where-Object { $_.Confidence -eq 'Medium' }).Count; Low = @($g | Where-Object { $_.Confidence -eq 'Low' }).Count
             Types = (@($g | ForEach-Object { $_.Detector } | Select-Object -Unique) -join ', ')
-            AddedBy = (@($g | ForEach-Object { $_.AddedBy } | Where-Object { $_ } | Select-Object -Unique) -join ', ') }
+            AddedBy = (@($g | ForEach-Object { $_.AddedBy } | Where-Object { $_ } | Select-Object -Unique) -join ', ')
+            Notes = (@($g | ForEach-Object { $_.HistoryNote } | Where-Object { $_ } | Select-Object -Unique) -join '; ') }
     } | Sort-Object @{ Expression = 'High'; Descending = $true }, @{ Expression = 'Medium'; Descending = $true },
         @{ Expression = 'Low'; Descending = $true }, @{ Expression = { $_.First.Channel } }, @{ Expression = { $_.First.Item } })
     $row = 1
@@ -5754,7 +5755,7 @@ function Get-FileRows {
         $row++
         $reviewed = New-XlsxFormula ('SUMPRODUCT((tblHits[{0}]=A{1})*(tblHits[File]=B{1})*(tblHits[Is it PII?]<>""))' -f $FolderLabel, $row) 0
         , @($f.First.Channel, $f.First.Item, [long]$f.Count, [long]$f.High, [long]$f.Medium, [long]$f.Low, $f.Types, $reviewed,
-            $f.First.Modified, $f.First.ModifiedBy, $f.AddedBy, $f.First.OwnPermissions, $f.First.AccessEntries, $f.First.Link)
+            $f.First.Modified, $f.First.ModifiedBy, $f.AddedBy, $f.Notes, $f.First.OwnPermissions, $f.First.AccessEntries, $f.First.Link)
     }
 }
 
@@ -5794,8 +5795,8 @@ function Get-WorkbookSheets {
             -DateChecks @(7 + @($script:ReviewColumns.Keys).IndexOf('Review date')) `
             -FreezeColumns 5 -FillColumn 2))
         $sheets.Add((New-XlsxSheet 'Files' @($FolderLabel, 'File', 'Hits', 'High', 'Medium', 'Low', 'Types', 'Reviewed', 'Last saved',
-            'Last saved by', 'PII first saved by', 'Own permissions', 'Access entries', 'Link') @(Get-FileRows $hits $FolderLabel) `
-            @(16, 40, 7, 7, 9, 7, 40, 10, 16, 22, 30, 17, 34, 50) -List -Table 'tblFiles' -LinkColumn 1 -LinkTarget 13 -DateColumns @(8) -FreezeColumns 2))
+            'Last saved by', 'PII first saved by', 'History note', 'Own permissions', 'Access entries', 'Link') @(Get-FileRows $hits $FolderLabel) `
+            @(16, 40, 7, 7, 9, 7, 40, 10, 16, 22, 30, 40, 17, 34, 50) -List -Table 'tblFiles' -LinkColumn 1 -LinkTarget 14 -DateColumns @(8) -FreezeColumns 2))
     }
     $notes = @($Rows | Where-Object { (Get-ConfidenceRank $_.Confidence) -eq 0 })
     if ($notes.Count -gt 0) {
@@ -6544,7 +6545,10 @@ function Add-WhoToRows {
     $props = $null; if ($Result.ContainsKey('Props')) { $props = $Result.Props }
     if ($Info.ContainsKey('DrivePath')) {
         $who = Get-DriveWho $Info.DrivePath $props
-        if ($Info.ContainsKey('DriveNote')) { $who.HistoryNote = $Info.DriveNote }   # a OneDrive file not synced yet (DriveScan.psm1)
+        if ($Info.ContainsKey('DriveNote')) {   # a OneDrive file not synced yet (DriveScan.psm1): its name-hit rows say so too
+            $who.HistoryNote = $Info.DriveNote
+            if ($Info.ContainsKey('NameRows')) { foreach ($row in $Info.NameRows) { $row.HistoryNote = $Info.DriveNote } }
+        }
     }
     elseif ($Info.ContainsKey('Who')) {
         $who = $Info.Who.Clone()
