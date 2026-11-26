@@ -1,5 +1,5 @@
 <#
-  Ion - DoD365 PII Reporter, build 8bcd0352 (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
+  Ion - DoD365 PII Reporter, build 77a3808d (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
 
   HOW TO RUN
     1. Optional: read this text first (Open the script shows it as a .txt in your browser).
@@ -38,10 +38,10 @@
     src/ReaderPool.psm1, sha256 e5865e4bc160
     src/XlsxWriter.psm1, sha256 56c1ec673d09
     src/Report.psm1, sha256 8886eccd4dc5
-    src/ReportBook.psm1, sha256 707c37493d74
+    src/ReportBook.psm1, sha256 982e73612af3
     src/ScanMeter.psm1, sha256 d887bd7d283a
-    src/ScanQueue.psm1, sha256 ea9f89d11be0
-    src/Accountability.psm1, sha256 212acbdcbb41
+    src/ScanQueue.psm1, sha256 83f1e9c7628c
+    src/Accountability.psm1, sha256 c5051f3eca73
     src/SiteTarget.psm1, sha256 2e693a68f413
     src/ChannelScan.psm1, sha256 bc6ea04dbc70
     src/DriveScan.psm1, sha256 3badff7a3b3d
@@ -77,14 +77,14 @@
     line  4818  Module XlsxWriter.psm1
     line  5255  Module Report.psm1
     line  5632  Module ReportBook.psm1
-    line  5957  Module ScanMeter.psm1
-    line  6379  Module ScanQueue.psm1
-    line  6786  Module Accountability.psm1
-    line  7279  Module SiteTarget.psm1
-    line  7636  Module ChannelScan.psm1
-    line  8472  Module DriveScan.psm1
-    line  9132  Body of Find-ChannelPII.ps1
-    line  9348  Clean-up
+    line  5938  Module ScanMeter.psm1
+    line  6360  Module ScanQueue.psm1
+    line  6774  Module Accountability.psm1
+    line  7267  Module SiteTarget.psm1
+    line  7624  Module ChannelScan.psm1
+    line  8460  Module DriveScan.psm1
+    line  9120  Body of Find-ChannelPII.ps1
+    line  9336  Clean-up
 #>
 
 # ISE runs pasted text in your session: keep its error setting so the Clean-up block at the end can put it back.
@@ -97,12 +97,12 @@ $SiteUrl = ''            # the team's Teams link, or its site https://usaf.dps.m
 $OutputFolder = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Ion')   # results: a folder per site, then per day
 $MaxFileMB = 25          # files larger than this are reported as NOT SCANNED
 
-$IonPasteHash = 'bd600a6d40b5be6fa283e960a5e6a6292c923f7a4af79229d967cbb4258b1cf8'   # the SHA-256 of the text from the line Paste check to the end (do not edit)
+$IonPasteHash = '3f6598c2e46898ce8076207aa316b25c396c6e9e9995c9c8b7a552eb99e0a6c4'   # the SHA-256 of the text from the line Paste check to the end (do not edit)
 
 # ==== Paste check ==== (the text from this line to the end must be the published text, or nothing runs)
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
-$IonBuild = '8bcd0352'       # the build ID: Ion shows it at the start (do not edit)
+$IonBuild = '77a3808d'       # the build ID: Ion shows it at the start (do not edit)
 $IonPasteCheck = 'not read'
 $pasteText = ''
 try { $pastePath = $PSCommandPath } catch { $pastePath = '' }   # no script path: read the ISE pane
@@ -5728,24 +5728,6 @@ function Get-HitCells {
             $Hit.AccessEntries, $Hit.Source, $Hit.Link)
 }
 
-function Complete-AccessCells {
-    <#
-    .SYNOPSIS
-      Gives every hit row of a file the file's Own permissions and Access entries (plan step 5): they are read for the
-      file's text and part rows, so its rows for a hit in the file name get the same values here (review of step 5).
-    .PARAMETER Hits
-      The hit rows (changed in place).
-    #>
-    param([object[]]$Hits)
-    foreach ($group in @($Hits | Group-Object { $_.Channel + "`n" + $_.Item })) {
-        $known = @($group.Group | Where-Object { $_.OwnPermissions -or $_.AccessEntries } | Select-Object -First 1)
-        if ($known.Count -eq 0) { continue }
-        foreach ($row in $group.Group) {
-            if (-not $row.OwnPermissions -and -not $row.AccessEntries) { $row.OwnPermissions = $known[0].OwnPermissions; $row.AccessEntries = $known[0].AccessEntries }
-        }
-    }
-}
-
 function Get-FileRows {
     <#
     .SYNOPSIS
@@ -5795,7 +5777,6 @@ function Get-WorkbookSheets {
     param([object[]]$Rows, [int]$ItemsScanned, [System.Collections.IDictionary]$Header, [string]$FolderLabel)
     $hits = @($Rows | Where-Object { (Get-ConfidenceRank $_.Confidence) -gt 0 } |
         Sort-Object @{ Expression = { Get-ConfidenceRank $_.Confidence }; Descending = $true }, @{ Expression = { Get-SeverityIndex $_.Detector } }, Channel, Item)
-    Complete-AccessCells $hits
     # The review columns right after the hit, then who and when (accountability names: the PAM, 2026-11-21; the Method tab explains them).
     $columns = @('ID', 'Type', 'Confidence', $FolderLabel, 'File', 'Masked value', 'Context') + @($script:ReviewColumns.Keys) +
         @('Last saved', 'Last saved by', 'PII first saved', 'PII first saved by', 'Created', 'Created by', 'History note', 'Own permissions',
@@ -6502,7 +6483,8 @@ function Add-QueuedRows {
             $rows.Add((New-ReportRow 'File' $info.Channel $info.Item $info.Link $info.Modified $hit.Detector $hit.Confidence $hit.MaskedValue $hit.Context))
         }
         foreach ($part in $Result.Parts) { Add-PartRows $part $info.Channel $info.Item $info.Link $info.Modified $rows }
-        if ($Result.Hits.Count -gt 0 -or $rows.Count -gt $first) { Add-WhoToRows $info $Result @($rows | Select-Object -Skip $first) }
+        $nameHit = $info.ContainsKey('NameRows') -and $info.NameRows.Count -gt 0
+        if ($Result.Hits.Count -gt 0 -or $rows.Count -gt $first -or $nameHit) { Add-WhoToRows $info $Result @($rows | Select-Object -Skip $first) }
     }
     Update-ScanMeter $Queue.Meter $rows $first $read
     Write-MeterLine $Queue.Meter 'file'
@@ -6567,10 +6549,13 @@ function Add-WhoToRows {
     elseif ($Info.ContainsKey('Who')) {
         $who = $Info.Who.Clone()
         if ($Info.ContainsKey('Added') -and $Result.Hits.Count -gt 0) { $who.ByHit = Get-AddedByHit $Info $Result.Hits }
-        # Plan step 5: who has access, for a web file with a hit in its text or in a part (a file in a zip or an e-mail).
-        if ($Info.ContainsKey('Access') -and @($FileRows | Where-Object { (Get-ConfidenceRank $_.Confidence) -gt 0 }).Count -gt 0) {
+        # Plan step 5: who has access, for a web file with a hit in its text, a part (a file in a zip or an e-mail) or its name.
+        # A loop, not '@()': '@()' of a New-Object list throws "Argument types do not match" (probe 6).
+        $nameRows = @(); if ($Info.ContainsKey('NameRows')) { $nameRows = @(foreach ($row in $Info.NameRows) { $row }) }
+        if ($Info.ContainsKey('Access') -and @(@($FileRows) + $nameRows | Where-Object { $_ -and (Get-ConfidenceRank $_.Confidence) -gt 0 }).Count -gt 0) {
             $access = & $Info.Access
             $who.OwnPermissions = $access.OwnPermissions; $who.AccessEntries = $access.AccessEntries
+            foreach ($row in $nameRows) { $row.OwnPermissions = $access.OwnPermissions; $row.AccessEntries = $access.AccessEntries }
         }
     }
     else { return }
@@ -6680,7 +6665,7 @@ function Add-FileStartRows {
     .PARAMETER Rows
       The list that receives the rows.
     .PARAMETER Info
-      @{ Channel; Item; Link; Modified } as the report shows the file (already masked).
+      @{ Channel; Item; Link; Modified } as the report shows the file (already masked); NameRows is added (its name-hit rows).
     .PARAMETER RawPath
       The folder and file path as written (checked for PII; never shown).
     .PARAMETER Name
@@ -6693,9 +6678,12 @@ function Add-FileStartRows {
       [bool] true when the file is to be read; false when it got its NOT SCANNED row.
     #>
     param($Rows, [hashtable]$Info, [string]$RawPath, [string]$Name, [long]$Size, [int]$MaxFileMB)
+    $nameRows = New-Object System.Collections.Generic.List[object]
     foreach ($hit in @(Find-PiiInText $RawPath)) {
-        $Rows.Add((New-ReportRow 'File name' $Info.Channel $Info.Item $Info.Link $Info.Modified $hit.Detector $hit.Confidence $hit.MaskedValue 'In the file or folder name'))
+        $row = New-ReportRow 'File name' $Info.Channel $Info.Item $Info.Link $Info.Modified $hit.Detector $hit.Confidence $hit.MaskedValue 'In the file or folder name'
+        $Rows.Add($row); $nameRows.Add($row)
     }
+    $Info.NameRows = $nameRows   # the file's name-hit rows: they get its permission cells after the read (plan step 5)
     $reason = ''
     if (-not (Test-SupportedFile $Name)) { $reason = 'File type is not read by this script: check by hand' }
     elseif ($Size -gt ($MaxFileMB * 1MB)) { $reason = "Larger than $MaxFileMB MB: check by hand" }
@@ -6832,8 +6820,8 @@ $script:AccessMethodText = ('For a file on SharePoint or OneDrive on the web wit
     'has its own permissions (Yes) or those of its folder or library (No). "Access entries" counts who has access by kind (people, site ' +
     'groups, team groups, sharing link groups, the whole organization), never by name. An entry for Limited Access only is not counted. ' +
     'SharePoint shows the entries only to a site owner: for others the cell says "Not readable (owner only)"; "Own permissions" says "Not ' +
-    'readable" when that read fails. Empty cells: a file on this computer only, or a web file whose only hit is in its name (check its ' +
-    'permissions by hand). Sharing links are not read (PnP.PowerShell 1.12.0 cannot).')
+    'readable" when that read fails. Empty cells: a file on this computer only, or a file Ion did not read (its type or size: Not ' +
+    'scanned tab); check its permissions by hand. Sharing links are not read (PnP.PowerShell 1.12.0 cannot).')
 # The site's own 3 groups (owners, members, visitors) by site path: read once per site.
 $script:SiteGroupIds = @{}
 

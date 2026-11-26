@@ -67,6 +67,19 @@ Reset-FakePnP @{}
 & $script -SiteUrl $Sample.Site -OutputFolder (Join-Path $runFolder 'empty') 6>$null
 Assert-Equal $false (Test-FakePnPCall 'Scan question') 'No files: no "Scan now?" question'
 
+# ---- Plan step 5: a zip with PII in its name and in a part ----
+# A file with PII in its name and in a zip part only: its name row and its part row get the same cells (review of step 5).
+$zipName = 'Roster ' + $Sample.Ssn + '.zip'
+Reset-FakePnP @{ "$library/General/$zipName" = (New-ZipBytes @{ 'inner/a.txt' = $Txt }) }
+$zipFolder = Join-Path $runFolder 'zip'
+& $script -SiteUrl $Sample.Site -OutputFolder $zipFolder 6>$null
+$zipBook = Get-XlsxSheets (Get-ResultFiles $zipFolder)[0].FullName
+$zipHeader = @($zipBook['Hits'][0]); $zipOwn = [array]::IndexOf($zipHeader, 'Own permissions'); $zipFound = [array]::IndexOf($zipHeader, 'Found in')
+$zipRows = @($zipBook['Hits'] | Select-Object -Skip 1)
+Assert-Equal 'File|File name' (@($zipRows | ForEach-Object { $_[$zipFound] } | Sort-Object -Unique) -join '|') 'Zip: a name hit and a part hit'
+Assert-Equal 'No|1 person, 3 site groups' (@($zipRows | ForEach-Object { $_[$zipOwn] + '|' + $_[$zipOwn + 1] } | Sort-Object -Unique) -join ';') 'Zip: name and part rows show the cells'
+Assert-Equal 1 (Get-FakeCallCount 'Property HasUniqueRoleAssignments') 'Zip: one read for the file'
+
 # ---- A plain SharePoint site (no team): Folder column, top-of-library files ----
 Reset-FakePnP @{ "$library/top.txt" = $Txt }
 Set-FakeSiteAnswer -TypedSite '' -SiteGroupId ([guid]::Empty)
