@@ -498,6 +498,32 @@ function Get-OneDriveSyncEntries {
     return $entries
 }
 
+function Get-RemoteSubFolder {
+    <#
+    .SYNOPSIS
+      The synced folder's place below the library root, from FullRemotePath (probe 7): '' for the root itself, for
+      example '/Plans' for a folder below it; $null when the value is missing, not https, on another host, outside the
+      library, or has a '.' or '..' part (then no web folder).
+    .PARAMETER Remote
+      The FullRemotePath value ('' when missing).
+    .PARAMETER LibraryHost
+      The host of the library address (UrlNamespace).
+    .PARAMETER Library
+      The library root, server-relative, decoded.
+    .OUTPUTS
+      [string] or $null.
+    #>
+    param([string]$Remote, [string]$LibraryHost, [string]$Library)
+    $uri = $null
+    if (-not [uri]::TryCreate($Remote.Trim().TrimEnd('/'), [UriKind]::Absolute, [ref]$uri) -or $uri.Scheme -ne 'https' -or $uri.Host -ine $LibraryHost) { return $null }
+    $remotePath = [uri]::UnescapeDataString($uri.AbsolutePath).TrimEnd('/')
+    if ($remotePath -ieq $Library) { return '' }
+    if (-not $remotePath.StartsWith($Library + '/', [StringComparison]::OrdinalIgnoreCase)) { return $null }
+    $sub = $remotePath.Substring($Library.Length)
+    if ($sub -match '(^|/)\.\.?(/|$)') { return $null }
+    return $sub
+}
+
 function Get-OneDriveWebMap {
     <#
     .SYNOPSIS
@@ -548,16 +574,8 @@ function Get-OneDriveWebMap {
     if ($rest -match '(^|/)\.\.?(/|$)') { return @{ Mount = $best.Mount; LibraryPath = $library; Site = $origin + $sitePath; Origin = $origin; WebFolder = ''; Kind = $kind } }
     $sub = ''
     if ($kind -ne 'Home') {
-        # The synced folder's place below the library root: FullRemotePath on the same host, below the root (probe 7).
-        $remote = $null; $sub = $null
-        if ([uri]::TryCreate($best.Remote.Trim().TrimEnd('/'), [UriKind]::Absolute, [ref]$remote) -and $remote.Scheme -eq 'https' -and $remote.Host -ieq $address.Host) {
-            $remotePath = [uri]::UnescapeDataString($remote.AbsolutePath).TrimEnd('/')
-            if ($remotePath -ieq $library) { $sub = '' }
-            elseif ($remotePath.StartsWith($library + '/', [StringComparison]::OrdinalIgnoreCase)) { $sub = $remotePath.Substring($library.Length) }
-        }
-        if ($null -eq $sub -or $sub -match '(^|/)\.\.?(/|$)') {   # no usable place, or a '.' or '..' part: no web folder
-            return @{ Mount = $best.Mount; LibraryPath = $library; Site = $origin + $sitePath; Origin = $origin; WebFolder = ''; Kind = $kind }
-        }
+        $sub = Get-RemoteSubFolder $best.Remote $address.Host $library
+        if ($null -eq $sub) { return @{ Mount = $best.Mount; LibraryPath = $library; Site = $origin + $sitePath; Origin = $origin; WebFolder = ''; Kind = $kind } }
     }
     return @{ Mount = $best.Mount; LibraryPath = $library; Site = $origin + $sitePath; Origin = $origin; WebFolder = ($library + $sub + $rest).TrimEnd('/'); Kind = $kind }
 }

@@ -1,5 +1,5 @@
 <#
-  Ion - DoD365 PII Reporter, build 13cffacf (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
+  Ion - DoD365 PII Reporter, build c24b76f1 (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
 
   HOW TO RUN
     1. Optional: read this text first (Open the script shows it as a .txt in your browser).
@@ -44,7 +44,7 @@
     src/Accountability.psm1, sha256 8bf31404f723
     src/SiteTarget.psm1, sha256 2e693a68f413
     src/ChannelScan.psm1, sha256 55f485157624
-    src/DriveScan.psm1, sha256 0de4b38a985f
+    src/DriveScan.psm1, sha256 6861661befeb
     src/Find-ChannelPII.ps1, sha256 485aca86fc94
 
   Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.
@@ -83,8 +83,8 @@
     line  7143  Module SiteTarget.psm1
     line  7500  Module ChannelScan.psm1
     line  8334  Module DriveScan.psm1
-    line  8975  Body of Find-ChannelPII.ps1
-    line  9191  Clean-up
+    line  8993  Body of Find-ChannelPII.ps1
+    line  9209  Clean-up
 #>
 
 # ISE runs pasted text in your session: keep its error setting so the Clean-up block at the end can put it back.
@@ -97,12 +97,12 @@ $SiteUrl = ''            # the team's Teams link, or its site https://usaf.dps.m
 $OutputFolder = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Ion')   # results: a folder per site, then per day
 $MaxFileMB = 25          # files larger than this are reported as NOT SCANNED
 
-$IonPasteHash = '25957c1582698c09fb8db3ab1d90324a6f5e778c7518e7b366d1554c88410a54'   # the SHA-256 of the text from the line Paste check to the end (do not edit)
+$IonPasteHash = 'ac737ba4331407e989d15dbbda788eb0f9814a1ca05ac670ecce2dcc631c53d4'   # the SHA-256 of the text from the line Paste check to the end (do not edit)
 
 # ==== Paste check ==== (the text from this line to the end must be the published text, or nothing runs)
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
-$IonBuild = '13cffacf'       # the build ID: Ion shows it at the start (do not edit)
+$IonBuild = 'c24b76f1'       # the build ID: Ion shows it at the start (do not edit)
 $IonPasteCheck = 'not read'
 $pasteText = ''
 try { $pastePath = $PSCommandPath } catch { $pastePath = '' }   # no script path: read the ISE pane
@@ -8831,6 +8831,32 @@ function Get-OneDriveSyncEntries {
     return $entries
 }
 
+function Get-RemoteSubFolder {
+    <#
+    .SYNOPSIS
+      The synced folder's place below the library root, from FullRemotePath (probe 7): '' for the root itself, for
+      example '/Plans' for a folder below it; $null when the value is missing, not https, on another host, outside the
+      library, or has a '.' or '..' part (then no web folder).
+    .PARAMETER Remote
+      The FullRemotePath value ('' when missing).
+    .PARAMETER LibraryHost
+      The host of the library address (UrlNamespace).
+    .PARAMETER Library
+      The library root, server-relative, decoded.
+    .OUTPUTS
+      [string] or $null.
+    #>
+    param([string]$Remote, [string]$LibraryHost, [string]$Library)
+    $uri = $null
+    if (-not [uri]::TryCreate($Remote.Trim().TrimEnd('/'), [UriKind]::Absolute, [ref]$uri) -or $uri.Scheme -ne 'https' -or $uri.Host -ine $LibraryHost) { return $null }
+    $remotePath = [uri]::UnescapeDataString($uri.AbsolutePath).TrimEnd('/')
+    if ($remotePath -ieq $Library) { return '' }
+    if (-not $remotePath.StartsWith($Library + '/', [StringComparison]::OrdinalIgnoreCase)) { return $null }
+    $sub = $remotePath.Substring($Library.Length)
+    if ($sub -match '(^|/)\.\.?(/|$)') { return $null }
+    return $sub
+}
+
 function Get-OneDriveWebMap {
     <#
     .SYNOPSIS
@@ -8881,16 +8907,8 @@ function Get-OneDriveWebMap {
     if ($rest -match '(^|/)\.\.?(/|$)') { return @{ Mount = $best.Mount; LibraryPath = $library; Site = $origin + $sitePath; Origin = $origin; WebFolder = ''; Kind = $kind } }
     $sub = ''
     if ($kind -ne 'Home') {
-        # The synced folder's place below the library root: FullRemotePath on the same host, below the root (probe 7).
-        $remote = $null; $sub = $null
-        if ([uri]::TryCreate($best.Remote.Trim().TrimEnd('/'), [UriKind]::Absolute, [ref]$remote) -and $remote.Scheme -eq 'https' -and $remote.Host -ieq $address.Host) {
-            $remotePath = [uri]::UnescapeDataString($remote.AbsolutePath).TrimEnd('/')
-            if ($remotePath -ieq $library) { $sub = '' }
-            elseif ($remotePath.StartsWith($library + '/', [StringComparison]::OrdinalIgnoreCase)) { $sub = $remotePath.Substring($library.Length) }
-        }
-        if ($null -eq $sub -or $sub -match '(^|/)\.\.?(/|$)') {   # no usable place, or a '.' or '..' part: no web folder
-            return @{ Mount = $best.Mount; LibraryPath = $library; Site = $origin + $sitePath; Origin = $origin; WebFolder = ''; Kind = $kind }
-        }
+        $sub = Get-RemoteSubFolder $best.Remote $address.Host $library
+        if ($null -eq $sub) { return @{ Mount = $best.Mount; LibraryPath = $library; Site = $origin + $sitePath; Origin = $origin; WebFolder = ''; Kind = $kind } }
     }
     return @{ Mount = $best.Mount; LibraryPath = $library; Site = $origin + $sitePath; Origin = $origin; WebFolder = ($library + $sub + $rest).TrimEnd('/'); Kind = $kind }
 }
