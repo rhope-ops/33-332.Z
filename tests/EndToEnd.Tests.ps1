@@ -79,6 +79,16 @@ $zipRows = @($zipBook['Hits'] | Select-Object -Skip 1)
 Assert-Equal 'File|File name' (@($zipRows | ForEach-Object { $_[$zipFound] } | Sort-Object -Unique) -join '|') 'Zip: a name hit and a part hit'
 Assert-Equal 'No|1 person, 3 site groups' (@($zipRows | ForEach-Object { $_[$zipOwn] + '|' + $_[$zipOwn + 1] } | Sort-Object -Unique) -join ';') 'Zip: name and part rows show the cells'
 Assert-Equal 1 (Get-FakeCallCount 'Property HasUniqueRoleAssignments') 'Zip: one read for the file'
+# A file Ion cannot read at all (damaged): its name row keeps empty cells, as the Method tab says (review 3 of step 5).
+Reset-FakePnP @{ "$library/General/$zipName" = [System.Text.Encoding]::UTF8.GetBytes('not a zip') }
+$badFolder = Join-Path $runFolder 'badzip'
+& $script -SiteUrl $Sample.Site -OutputFolder $badFolder 6>$null
+$badBook = Get-XlsxSheets (Get-ResultFiles $badFolder)[0].FullName
+$badOwn = [array]::IndexOf(@($badBook['Hits'][0]), 'Own permissions')
+Assert-Equal '|' (@($badBook['Hits'] | Select-Object -Skip 1 | ForEach-Object { $_[$badOwn] + '|' + $_[$badOwn + 1] } | Sort-Object -Unique) -join ';') `
+    'Unread file: the name hit has empty permission cells'
+$method = (@($badBook['Method']) | ForEach-Object { @($_) -join ' ' }) -join ' '
+Assert-Equal $true ($method -match 'could not read at all' -and @($badBook['Not scanned'] | Select-Object -Skip 1).Count -ge 1) 'Unread file: the Method text names it, and it is on the Not scanned tab'
 
 # ---- A plain SharePoint site (no team): Folder column, top-of-library files ----
 Reset-FakePnP @{ "$library/top.txt" = $Txt }

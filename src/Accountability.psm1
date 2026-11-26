@@ -47,8 +47,8 @@ $script:AccessMethodText = ('For a file on SharePoint or OneDrive on the web wit
     'has its own permissions (Yes) or those of its folder or library (No). "Access entries" counts who has access by kind (people, site ' +
     'groups, team groups, sharing link groups, the whole organization), never by name. An entry for Limited Access only is not counted. ' +
     'SharePoint shows the entries only to a site owner: for others the cell says "Not readable (owner only)"; "Own permissions" says "Not ' +
-    'readable" when that read fails. Empty cells: a file on this computer only, or a file Ion did not read (its type or size: Not ' +
-    'scanned tab); check its permissions by hand. Sharing links are not read (PnP.PowerShell 1.12.0 cannot).')
+    'readable" when that read fails. Empty cells: a file on this computer only, or a file Ion could not read at all (its type, its ' +
+    'size, a damaged or protected file, or a failed download: see the Not scanned tab); check its permissions by hand. Sharing links are not read (PnP.PowerShell 1.12.0 cannot).')
 # The site's own 3 groups (owners, members, visitors) by site path: read once per site.
 $script:SiteGroupIds = @{}
 
