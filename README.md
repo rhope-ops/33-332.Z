@@ -89,7 +89,9 @@ The steps to run it are at the top of the script.
 | An archive or e-mail nested more than two levels deep | Listed as NOT SCANNED: open it and check by hand |
 | Attachments of an Outlook .msg | A note says they were not read: open them and check by hand |
 | Images and scanned PDFs on a computer without Windows OCR | Listed as NOT SCANNED: check them by hand |
-| Scanned PDF pages not stored as JPEG images, and the scanned pages of a PDF that also has text | Not read with OCR: check them by hand |
+| Scanned PDF pages not stored as JPEG images | Not read with OCR: check them by hand |
+| A scanned page with a hidden text layer (a searchable scan) | Ion reads its text layer only, not the image |
+| A picture on a typed PDF page that is less than 800 pixels wide or high (a logo, or a small scan such as an ID card) | Not read with OCR: check such pages by hand |
 | Symbols in picture fonts (Wingdings, Webdings, Dingbats, Marlett, Symbol) in a PDF | Not read as text, so not checked for PII |
 | Text in a PDF font with no character map and made-up glyph names (such as g12) | Not read; the file gets the note "A font in this PDF could not be read": check it by hand |
 | Old .doc .xls .ppt and Outlook .msg | Read in part (numbers in an old .xls are not read): check these files by hand |

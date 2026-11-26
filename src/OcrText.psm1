@@ -19,7 +19,8 @@ Set-StrictMode -Version 2.0
 # Seconds one WinRT step (decode, read) may take; frames read from one multi-page TIFF.
 $script:OcrStepMilliseconds = 30000
 $script:MaxImageFrames = 30
-# A scanned PDF (no text layer): its JPEG page images are read, at most this many (Get-ScanPagesText).
+# A scanned PDF (no text layer), or the pages with no text of a PDF with text: their JPEG images are read, at most this
+# many per PDF (Get-ScanPagesText).
 $script:MaxScanPages = 30
 $script:ScanLatin1 = [System.Text.Encoding]::GetEncoding(28591)
 
@@ -130,8 +131,9 @@ function Get-ImageText {
 function Get-ScanPagesText {
     <#
     .SYNOPSIS
-      The text of a scanned PDF (JPEG page images, no text layer) read with Windows OCR, page by page, at most
-      $MaxScanPages pages; more pages give a note, OCR that is not available a reason.
+      The text of a scanned PDF (JPEG page images, no text layer), or of the pages with no text of a PDF with text,
+      read with Windows OCR, image by image, at most $MaxScanPages; more images give a note, OCR that is not available
+      a reason.
     .PARAMETER Images
       The JPEG image streams (Latin-1 text).
     .PARAMETER Note

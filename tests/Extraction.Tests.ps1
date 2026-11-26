@@ -314,6 +314,43 @@ $unreadable = '^(Image: Windows OCR is not available|Image: its text could not b
 Assert-Equal $true ((Get-TextFromBytes -Bytes ([byte[]](1, 2, 3)) -FileName 'scan.png').Reason -match $unreadable) 'Image: no OCR or no image gives a reason'
 $scanPdf = New-PdfBytes 'q /Im1 Do Q' -Plain -Extra @("<< /Type /XObject /Subtype /Image /Filter /DCTDecode /Length 4 >> stream`nJPEG`nendstream")
 Assert-Equal $true ((Get-TextFromBytes -Bytes $scanPdf -FileName 's.pdf').Reason -match ('^Scanned PDF: ' + $unreadable.Substring(1))) 'Scanned PDF: no OCR or a damaged page image gives a reason'
+# A PDF with a text page and a scanned page (plan step 3, 2026-11-26): the text is kept, the page with no text is read with OCR.
+$scanImage = "<< /Type /XObject /Subtype /Image /Width 1275 /Height 1650 /Filter /DCTDecode /Length 4 >> stream`nJPEG`nendstream"
+$scanPage = '<< /Type /Page /Parent 2 0 R /Resources << /XObject << /Im1 7 0 R >> >> /Contents 9 0 R >>'
+$scanContent = "<< /Length 11 >> stream`nq /Im1 Do Q`nendstream"
+$textPage = 'BT /F1 12 Tf 72 700 Td (Meeting notes) Tj ET'
+$mixedPdf = New-PdfBytes $textPage -Plain -Extra @($scanImage, $scanPage, $scanContent)
+$mixed = Get-TextFromBytes -Bytes $mixedPdf -FileName 'm.pdf'
+Assert-Equal $true ($mixed.Text -match 'Meeting notes' -and -not $mixed.Reason -and $mixed.Note -match 'its pages with no text\): check by hand$' -and
+    $mixed.Note -notmatch 'check by hand.*check by hand') 'Text and a scanned page, no OCR: the text is read and one note asks to check the scanned page'
+# A "searchable" scan: the page has the image and a hidden text layer: only the text is read (no OCR, no note).
+$layerPage = '<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 5 0 R >> /XObject << /Im1 7 0 R >> >> /Contents 9 0 R >>'
+$layerContent = "<< /Length 57 >> stream`nq /Im1 Do Q BT 3 Tr /F1 12 Tf 72 700 Td (Layer text) Tj ET`nendstream"
+$layer = Get-TextFromBytes -Bytes (New-PdfBytes $textPage -Plain -Extra @($scanImage, $layerPage, $layerContent)) -FileName 'l.pdf'
+Assert-Equal $true ($layer.Text -match 'Layer text' -and -not $layer.Note) 'A page with an image and a text layer: its text is read, no OCR, no note'
+# The same, with the image and the text layer inside a form XObject the page draws (review 2 of step 3).
+$formPage = '<< /Type /Page /Parent 2 0 R /Resources << /XObject << /Fm1 10 0 R >> >> /Contents 9 0 R >>'
+$formCall = "<< /Length 11 >> stream`nq /Fm1 Do Q`nendstream"
+$formBody = '<< /Type /XObject /Subtype /Form /Resources << /Font << /F1 5 0 R >> /XObject << /Im1 7 0 R >> >> /Length 57 >> ' +
+    "stream`nq /Im1 Do Q BT 3 Tr /F1 12 Tf 72 700 Td (Layer text) Tj ET`nendstream"
+$formLayer = Get-TextFromBytes -Bytes (New-PdfBytes $textPage -Plain -Extra @($scanImage, $formPage, $formCall, $formBody)) -FileName 'f.pdf'
+Assert-Equal $true ($formLayer.Text -match 'Layer text' -and -not $formLayer.Note) 'A text layer inside a form: its text is read, no OCR, no note'
+# A pure scan wrapped in a form (no text in it): still read with OCR (here: the no-OCR note).
+$formScan = "<< /Type /XObject /Subtype /Form /Resources << /XObject << /Im1 7 0 R >> >> /Length 11 >> stream`nq /Im1 Do Q`nendstream"
+$wrapped = Get-TextFromBytes -Bytes (New-PdfBytes $textPage -Plain -Extra @($scanImage, $formPage, $formCall, $formScan)) -FileName 'w.pdf'
+Assert-Equal $true ($wrapped.Note -match 'its pages with no text\): check by hand$') 'A scan wrapped in a form with no text: read with OCR'
+# A scan with a visible banner in a form (review 3 of step 3): the banner is read, and the page-size scan too (OCR).
+$bannerForm = "<< /Type /XObject /Subtype /Form /Resources << /Font << /F1 5 0 R >> >> /Length 36 >> stream`nBT /F1 12 Tf 72 760 Td (CUI) Tj ET`nendstream"
+$bannerPage = '<< /Type /Page /Parent 2 0 R /Resources << /XObject << /Im1 7 0 R /Fm0 10 0 R >> >> /Contents 9 0 R >>'
+$bannerCall = "<< /Length 22 >> stream`nq /Im1 Do Q /Fm0 Do`nendstream"
+$banner = Get-TextFromBytes -Bytes (New-PdfBytes $textPage -Plain -Extra @($scanImage, $bannerPage, $bannerCall, $bannerForm)) -FileName 'b.pdf'
+Assert-Equal $true ($banner.Text -match 'CUI' -and $banner.Note -match 'its pages with no text\): check by hand$') 'A scan with a visible banner: the scan is still read with OCR'
+# A typed page with a small logo: no OCR.
+$logoImage = "<< /Type /XObject /Subtype /Image /Width 120 /Height 40 /Filter /DCTDecode /Length 4 >> stream`nJPEG`nendstream"
+$logoPage = '<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 5 0 R >> /XObject << /Im1 7 0 R >> >> /Contents 9 0 R >>'
+$logoContent = "<< /Length 53 >> stream`nq /Im1 Do Q BT /F1 12 Tf 72 700 Td (Typed text) Tj ET`nendstream"
+$logo = Get-TextFromBytes -Bytes (New-PdfBytes $textPage -Plain -Extra @($logoImage, $logoPage, $logoContent)) -FileName 'g.pdf'
+Assert-Equal $true ($logo.Text -match 'Typed text' -and -not $logo.Note) 'A typed page with a small logo: no OCR, no note'
 # Where Windows has OCR (the ps51 CI runner): a real image with an invented SSN drawn in it is read and the SSN found.
 $ocrHere = (Get-TextFromBytes -Bytes ([byte[]](1, 2, 3)) -FileName 'x.png').Reason -notmatch 'not available'
 if ($ocrHere -and $PSVersionTable.PSVersion.Major -eq 5) {
@@ -332,4 +369,9 @@ if ($ocrHere -and $PSVersionTable.PSVersion.Major -eq 5) {
 & (Get-Module OcrText) { param($line) $script:OcrOverride = [scriptblock]::Create("param(`$b) @{ Text = '$line'; Reason = ''; Note = '' }") } $ssnLine
 Assert-Equal 'SSN' (@(Find-PiiInText (Get-TextFromBytes -Bytes ([byte[]](1, 2, 3)) -FileName 'scan.png').Text) | Select-Object -First 1).Detector 'Image: OCR text checked'
 Assert-Equal 'SSN' (@(Find-PiiInText (Get-TextFromBytes -Bytes $scanPdf -FileName 's.pdf').Text) | Select-Object -First 1).Detector 'Scanned PDF: page images read with OCR'
+$mixedRead = Get-TextFromBytes -Bytes $mixedPdf -FileName 'm.pdf'
+Assert-Equal $true ($mixedRead.Text -match 'Meeting notes' -and @(Find-PiiInText $mixedRead.Text | ForEach-Object { $_.Detector }) -contains 'SSN') `
+    'Text and a scanned page, with OCR: the text and the scanned page are both checked'
+$layerRead = Get-TextFromBytes -Bytes (New-PdfBytes $textPage -Plain -Extra @($scanImage, $layerPage, $layerContent)) -FileName 'l.pdf'
+Assert-Equal 0 @(Find-PiiInText $layerRead.Text | Where-Object { $_.Detector -eq 'SSN' }).Count 'A searchable scan, with OCR: the image is not read again (no double hit)'
 & (Get-Module OcrText) { $script:OcrOverride = $null }
