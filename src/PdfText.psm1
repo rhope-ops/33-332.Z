@@ -34,6 +34,11 @@ $script:PdfScanImages = @()
 $script:PdfPageImages = @()
 # On a page with visible text, only an image this big (pixels, both sides) is a scan.
 $script:PdfPageImageMin = 800
+# A smaller picture on such a page with a side of this many pixels or more, or of an unknown size, can be a small scan
+# (an ID card): it is not read with OCR, and the file gets a note (the PAM, 2026-11-26: "Merge, then a note").
+$script:PdfMaybeScanMin = 300
+$script:PdfMaybeScans = 0
+$script:PdfMaybeScanNote = 'Scanned PDF: an image on a page with text was not read with OCR (it can be a scanned page): check by hand'
 # Not-scanned reasons, each its own group on the Not scanned tab (the PAM, 2026-11-21: tell labels from passwords, and
 # a time limit from damage: many PDFs called damaged open fine). The limits are $PdfSecondsLimit and $PdfRegexTimeout of PdfCore.psm1.
 $script:PdfSlowReason = 'This PDF took longer than the time limit to read (2 minutes; the file may be fine): check by hand'
@@ -64,7 +69,7 @@ function Get-PdfText {
     if ($text -match $script:PdfLabelPattern) { return @{ Text = ''; Reason = $script:PdfLabelReason } }
     if ($text -match '/Encrypt\s*(?:\d+\s+\d+\s+R|<<)') { return @{ Text = ''; Reason = $script:PdfEncryptedReason } }
     Reset-PdfOldObjects   # this PDF's own older versions only
-    $script:PdfScanImages = @(); $script:PdfPageImages = @()   # and its own scanned pages
+    $script:PdfScanImages = @(); $script:PdfPageImages = @(); $script:PdfMaybeScans = 0   # and its own scanned pages
     Start-PdfBudget
     try { $all = Get-PdfAllText $text }
     catch {
@@ -90,6 +95,7 @@ function Get-PdfText {
         $reason = $script:PdfNoTextReason; if ($note) { $reason = $note }
         return @{ Text = ''; Reason = $reason; Note = '' }
     }
+    if ($script:PdfMaybeScans -gt 0) { $note = (@($note, $script:PdfMaybeScanNote) | Where-Object { $_ }) -join '; ' }
     if ($script:PdfPageImages.Count -gt 0) {   # text pages and scanned pages: OCR the pages with no text too
         $scan = Get-ScanPagesText $script:PdfPageImages ''
         if ($scan.Reason) {
@@ -292,9 +298,28 @@ function Add-PdfScanImages {
         $Cache[$Resources] = @(foreach ($image in @(Get-PdfResourceImages $Resources $Objects)) { if ($unique.Add($image)) { $image } })
     }
     foreach ($image in $Cache[$Resources]) {
-        if ($anyText -and -not (Test-PdfPageImage $image.Dict)) { continue }
+        if ($anyText -and -not (Test-PdfPageImage $image.Dict)) {
+            if (Test-PdfMaybeScan $image.Dict) { $script:PdfMaybeScans++ }
+            continue
+        }
         if ($Seen.Add($image)) { $List.Add($image) }   # a set: 300 pages x 300 shared images stay fast (review 4 of step 3)
     }
+}
+
+function Test-PdfMaybeScan {
+    <#
+    .SYNOPSIS
+      True for a picture that can be a small scan: a side of $PdfMaybeScanMin pixels or more, or a size that is not
+      written as a number (an indirect /Width). A logo or an icon is smaller.
+    .PARAMETER Dict
+      The image object's dictionary text.
+    .OUTPUTS
+      [bool]
+    #>
+    param([string]$Dict)
+    $w = [regex]::Match($Dict, '/Width\s+(\d{1,6})\b(?!\s+\d+\s+R)'); $h = [regex]::Match($Dict, '/Height\s+(\d{1,6})\b(?!\s+\d+\s+R)')
+    if (-not $w.Success -or -not $h.Success) { return $true }
+    return ([int]$w.Groups[1].Value -ge $script:PdfMaybeScanMin -or [int]$h.Groups[1].Value -ge $script:PdfMaybeScanMin)
 }
 
 function Get-PdfAllText {
@@ -313,9 +338,9 @@ function Get-PdfAllText {
     $script:PdfScanImages = @($objects.Values | Where-Object { $_.ContainsKey('Image') -and $_.Image } | ForEach-Object { $_.Image })
     $pageImages = New-Object System.Collections.Generic.List[object]   # the scanned images of pages with no text layer
     $formKinds = New-Object 'System.Collections.Generic.Dictionary[object,string]'   # form object -> text kind (Get-PdfFormKinds)
-    $resourceImages = @{}   # resources text -> its images (Add-PdfScanImages)
+    $resourceImages = New-Object 'System.Collections.Generic.Dictionary[string,object]'   # resources text -> its images; case counts
     $pageImageSet = New-Object 'System.Collections.Generic.HashSet[object]'   # the images already in $pageImages
-    $resourceKinds = @{}   # resources text -> the text kinds of the forms it names (shared resources: worked out once)
+    $resourceKinds = New-Object 'System.Collections.Generic.Dictionary[string,object]'   # resources text -> form kinds; case counts
     Assert-PdfTime
     $allFonts = Get-PdfFonts $objects
     Assert-PdfTime
