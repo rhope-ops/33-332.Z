@@ -27,10 +27,13 @@ $script:PdfLatin1 = [System.Text.Encoding]::GetEncoding(28591)
 $script:PdfNoTextReason = 'No text in this PDF (a scanned image?): check by hand'
 # A scanned PDF's JPEG page images, found by Get-PdfAllText: read with Windows OCR when the PDF has no text.
 $script:PdfScanImages = @()
-# The images drawn on a page that has no text of its own (a scanned page in a PDF with text pages): read with Windows
-# OCR also when the PDF has text (the PAM, 2026-11-26: plan step 3). A page with a hidden text layer (a "searchable"
-# scan) is read from its text only, so its hits are not found twice and its OCR time is not spent (review of step 3).
+# The scanned images of a PDF that also has text (the PAM, 2026-11-26: plan step 3), read with Windows OCR: every image of
+# a page with no text, and a page-size image of a page with visible text (a scan with a banner or a stamp). A page with
+# invisible text (render mode 3: a "searchable" scan's text layer) is read from that text only, so its hits are not
+# found twice and no OCR time is spent (reviews of step 3).
 $script:PdfPageImages = @()
+# On a page with visible text, only an image this big (pixels, both sides) is a scan.
+$script:PdfPageImageMin = 800
 # Not-scanned reasons, each its own group on the Not scanned tab (the PAM, 2026-11-21: tell labels from passwords, and
 # a time limit from damage: many PDFs called damaged open fine). The limits are $PdfSecondsLimit and $PdfRegexTimeout of PdfCore.psm1.
 $script:PdfSlowReason = 'This PDF took longer than the time limit to read (2 minutes; the file may be fine): check by hand'
@@ -180,28 +183,65 @@ function Get-PdfXObjects {
     }
 }
 
-function Test-PdfFormText {
+function Get-PdfTextKind {
     <#
     .SYNOPSIS
-      True when a form XObject that the resources name holds text (a scanned page with its text layer in a form: it
-      is read from that text, not with OCR; review of step 3).
+      What text a content stream gives: 'none'; 'hidden' when it draws invisible text (render mode 3: the text layer of
+      a searchable scan); 'visible' for other text (a banner, a header, a stamp, a typed page).
+    .PARAMETER Raw
+      The content stream as written.
+    .PARAMETER Text
+      Its text (Convert-PdfContentToText).
+    .OUTPUTS
+      [string]
+    #>
+    param([string]$Raw, [string]$Text)
+    if (-not $Text.Trim()) { return 'none' }
+    if ($Raw -match '(^|\s)3\s+Tr\b') { return 'hidden' }
+    return 'visible'
+}
+
+function Get-PdfFormKinds {
+    <#
+    .SYNOPSIS
+      The text kinds (Get-PdfTextKind) of the form XObjects that a page's resources name, one level; each form is
+      worked out once per PDF (a cache: a PDF of 500 pages with shared resources stays fast; review of step 3).
     .PARAMETER Resources
       The page's resources dictionary text.
     .PARAMETER Objects
       Output of Get-PdfObjects.
     .PARAMETER AllFonts
       The fonts of the whole file, for a form that names none.
+    .PARAMETER Cache
+      Form object -> kind (changed in place).
+    .OUTPUTS
+      [string[]]
+    #>
+    param([string]$Resources, $Objects, $AllFonts, $Cache)
+    foreach ($form in @(Get-PdfXObjects $Resources $Objects)) {
+        if (-not $form.Stream -or $form.Dict -notmatch '/Subtype\s*/Form\b') { continue }
+        if (-not $Cache.ContainsKey($form)) {
+            $fonts = Get-PdfFontTable (Get-PdfPageResources $form $Objects) $Objects
+            if ($fonts.Count -eq 0) { $fonts = $AllFonts }
+            $Cache[$form] = Get-PdfTextKind $form.Stream (Convert-PdfContentToText $form.Stream $fonts)
+        }
+        $Cache[$form]
+    }
+}
+
+function Test-PdfPageImage {
+    <#
+    .SYNOPSIS
+      True for an image of page size: /Width and /Height both at least $PdfPageImageMin pixels (a scan; a logo is
+      smaller). Used only on a page with visible text, to tell a scan with a banner from a typed page with a logo.
+    .PARAMETER Dict
+      The image object's dictionary text.
     .OUTPUTS
       [bool]
     #>
-    param([string]$Resources, $Objects, $AllFonts)
-    foreach ($form in @(Get-PdfXObjects $Resources $Objects)) {
-        if (-not $form.Stream -or $form.Dict -notmatch '/Subtype\s*/Form\b') { continue }
-        $fonts = Get-PdfFontTable (Get-PdfPageResources $form $Objects) $Objects
-        if ($fonts.Count -eq 0) { $fonts = $AllFonts }
-        if ((Convert-PdfContentToText $form.Stream $fonts).Trim()) { return $true }
-    }
-    return $false
+    param([string]$Dict)
+    $w = [regex]::Match($Dict, '/Width\s+(\d{1,6})\b'); $h = [regex]::Match($Dict, '/Height\s+(\d{1,6})\b')
+    return ($w.Success -and $h.Success -and [int]$w.Groups[1].Value -ge $script:PdfPageImageMin -and [int]$h.Groups[1].Value -ge $script:PdfPageImageMin)
 }
 
 function Get-PdfResourceImages {
@@ -239,7 +279,8 @@ function Get-PdfAllText {
     param([string]$Text)
     $objects = Get-PdfObjects $Text
     $script:PdfScanImages = @($objects.Values | Where-Object { $_.ContainsKey('Image') -and $_.Image } | ForEach-Object { $_.Image })
-    $pageImages = New-Object System.Collections.Generic.List[object]   # the image objects of pages with no text
+    $pageImages = New-Object System.Collections.Generic.List[object]   # the scanned images of pages with no text layer
+    $formKinds = New-Object 'System.Collections.Generic.Dictionary[object,string]'   # form object -> text kind (Get-PdfFormKinds)
     Assert-PdfTime
     $allFonts = Get-PdfFonts $objects
     Assert-PdfTime
@@ -247,23 +288,28 @@ function Get-PdfAllText {
     $read = New-Object System.Collections.Generic.HashSet[object]   # the content streams read as pages or forms
     foreach ($page in @($objects.Values | Where-Object { $_.Dict -match '/Type\s*/Page(?![s\w])' })) {
         $resources = Get-PdfPageResources $page $objects
-        $first = $parts.Count
+        $first = $parts.Count; $pageRaw = ''
         $fonts = Get-PdfFontTable $resources $objects
         if ($fonts.Count -eq 0) { $fonts = $allFonts }
         $contents = [regex]::Match($page.Dict, '/Contents\s*(\[[^\]]*\]|\d+\s+\d+\s+R)').Groups[1].Value
         foreach ($content in [regex]::Matches($contents, '(\d+)\s+\d+\s+R')) {
             $stream = $objects[$content.Groups[1].Value]
             if (-not $stream) { continue }
-            if ($stream.Stream) { [void]$read.Add($stream); $parts.Add((Convert-PdfContentToText $stream.Stream $fonts)); continue }
+            if ($stream.Stream) { [void]$read.Add($stream); $pageRaw += $stream.Stream + "`n"; $parts.Add((Convert-PdfContentToText $stream.Stream $fonts)); continue }
             # /Contents 5 0 R where object 5 is an array of streams ([6 0 R 7 0 R]): read each of them.
             foreach ($inner in [regex]::Matches($stream.Dict, '(\d+)\s+\d+\s+R')) {
                 $part = $objects[$inner.Groups[1].Value]
-                if ($part -and $part.Stream) { [void]$read.Add($part); $parts.Add((Convert-PdfContentToText $part.Stream $fonts)) }
+                if ($part -and $part.Stream) { [void]$read.Add($part); $pageRaw += $part.Stream + "`n"; $parts.Add((Convert-PdfContentToText $part.Stream $fonts)) }
             }
         }
         $pageText = ''; for ($i = $first; $i -lt $parts.Count; $i++) { $pageText += $parts[$i] }
-        if (-not $pageText.Trim() -and -not (Test-PdfFormText $resources $objects $allFonts)) {
-            foreach ($image in @(Get-PdfResourceImages $resources $objects)) { if (-not $pageImages.Contains($image)) { $pageImages.Add($image) } }
+        $kinds = @(Get-PdfTextKind $pageRaw $pageText) + @(Get-PdfFormKinds $resources $objects $allFonts $formKinds)
+        if ($kinds -notcontains 'hidden') {   # no text layer: the images of a page with no text, the big ones of a page with text
+            $anyText = $kinds -contains 'visible'
+            foreach ($image in @(Get-PdfResourceImages $resources $objects)) {
+                if ($anyText -and -not (Test-PdfPageImage $image.Dict)) { continue }
+                if (-not $pageImages.Contains($image)) { $pageImages.Add($image) }
+            }
         }
     }
     $script:PdfPageImages = @(foreach ($image in $pageImages) { $image.Image })   # a loop: '@()' of a New-Object list throws (probe 6)
