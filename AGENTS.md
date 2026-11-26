@@ -72,4 +72,5 @@ These are defaults: how work normally goes here. The method is yours unless the 
 - Platform (2026-11-20): Windows PowerShell 5.1 and PnP.PowerShell 1.12.0 only; own CAC sign-in, read-only, no admin, no service account, no stored credentials; a tool reaches the gov device as one generated text pasted into PowerShell ISE (ISSM ruling 2026-11-13), never with an execution-policy change or unblocked files.
 - Paste format (2026-11-23; cannot be changed): every script a person pastes on a gov device (Ion and each test snippet) is a .txt file opened by a raw link; never a .ps1 file and never only a code block in a page.
 - Code standard (2026-11-20): docs/code-standard-33-332.md.
+- Results e-mail (2026-11-26): after all device results of a PAM e-mail are on origin/main, move that message to the Gmail trash in the same task (the Maintainer's own request for this action, 2026-11-26, under "The Maintainer's approval"; the message holds a gov sender's name and unit).
 - Project log (2026-11-20): in the private doc https://claude.ai/artifact/AczuD9hQ8NkU7UMUEUTgCA, never in this repo.
