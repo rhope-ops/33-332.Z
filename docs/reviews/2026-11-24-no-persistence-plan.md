@@ -35,8 +35,9 @@ permissions as scope only ("No reconnaissance": no user names listed); month-nam
   shape of the registry values FullRemotePath and WebUrl): runs A and B (2026-11-25): FullRemotePath maps both kinds
   (7 of 7, 8 of 8 names); next: the folder map fix in src/DriveScan.psm1 (docs/reviews/2026-11-25-device-probe-7.md, Result).
   Device test 2026-11-25 (build 3d16ddec, own OneDrive): web used for 12 files, history from the web, 1 sign-in, no error.
-- Step 5 (permission scope): probe 8 runs A and B (2026-11-25) stopped at the address check: no permission read yet
-  (docs/reviews/2026-11-25-device-probe-8.md, Result; the PAM's choice 2026-11-25). Probe 3 ran (2 runs, 2026-11-24) but tested sign-in and paths only; no probe has read a permission yet. Step 6 (parallel downloads): merged 2026-11-24 (PR 115): 3 at once,
+- Step 5 (permission scope): probe 8 v2026-11-25h runs A and B (2026-11-26): unique permissions read in both runs;
+  permission entries only as a team owner (run B: NoAccess); sharing links not read (docs/reviews/2026-11-25-device-probe-8.md,
+  Result). Waits on the Maintainer's step 5 scope decision. Probe 3 ran (2 runs, 2026-11-24) but tested sign-in and paths only; no probe has read a permission yet. Step 6 (parallel downloads): merged 2026-11-24 (PR 115): 3 at once,
   per folder largest first; device run 2026-11-25: 3, time used 68:45 -> 39:36.
   Follow-up: speed modes Normal/Fast (docs/DECISIONS.md 2026-11-25).
 - Added 2026-11-24: seeded recall test (PR 87; local baseline 46/53 found, 87%); roster header fix merged

@@ -112,5 +112,23 @@ Runs A and B of version 2026-11-25f (the PAM's e-mail, received 2026-11-25 19:51
   So answer 1 had the form `/:x:/...`, not a folder page. Both runs had the same length: run B possibly pasted the
   same address again (confidence: medium). 6 parts fit the form `/:x:/r/sites/<name>/<library>/<folder or file>`.
 - The Maintainer chose (2026-11-25): version 2026-11-25h also reads the form `/:x:/r/sites/...`; a link with a token
-  stops with a line that says to copy the folder page address; step 3 says to open the folder, not the file. It
-  waits on the PAM's runs A and B.
+  stops with a line that says to copy the folder page address; step 3 says to open the folder, not the file.
+- Runs A and B of version 2026-11-25h (the PAM's e-mail, received 2026-11-26 07:29): both read answer 1 as a link to
+  a folder, signed in, and found the file by name. Run A: a shared file on a team where the PAM is an owner. Run B:
+  a file that is not shared, on another team where the PAM is possibly not an owner.
+
+| Read | Run A | Run B |
+|---|---|---|
+| unique permissions | read=True, value True | read=True, value False |
+| site groups | read=True, 3 | read=True, 3 |
+| permission entries | read=True, 4: 1 person, 3 site groups | read=False, `PSInvalidOperationException/NoAccess` |
+| sharing links | read=False, `PSInvalidOperationException/Other` | read=False, same |
+| Get-PnPFileSharingLink exists | False | False |
+
+- What Ion can use in step 5 (confidence: medium, 2 runs, 2 files): "unique permissions" (True/False) works for both
+  runs. The permission entries work in run A only: the cause of `NoAccess` in run B is likely the PAM's role on that
+  team (an owner can read the entries, a member possibly cannot); not verified. The sharing link read failed in both
+  runs, and PnP.PowerShell 1.12.0 has no `Get-PnPFileSharingLink`: Ion cannot count link kinds with these reads.
+- Run A counted no sharing link group, though the file was shared with a link (not explained: the probe prints only
+  counts).
+- Next: the Maintainer decides the scope of step 5 from these results.
