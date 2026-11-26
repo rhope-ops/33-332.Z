@@ -498,13 +498,14 @@ Set-FakePnPOption 'AccessFails' $true
 $access = Get-SharePointAccess $accessItem
 Assert-Equal 'Yes|Not readable (owner only)' ('{0}|{1}' -f $access.OwnPermissions, $access.AccessEntries) 'Access: own permissions; entries refused (not an owner)'
 Reset-FakePnP @{}
-$global:FakePnP.Access = @(
+$owners = 'c:0o.c|federateddirectoryclaimprovider|0000aaaa-0000-0000-0000-000000000000_o'
+Set-FakeAccess @(
     @{ Member = [pscustomobject]@{ PrincipalType = 4; LoginName = 'c:0-.f|rolemanager|spo-grid-all-users/x'; Id = 20 }; Roles = @([pscustomobject]@{ RoleTypeKind = 2 }) },
     @{ Member = [pscustomobject]@{ PrincipalType = 1; LoginName = 'i:0#.f|membership|a@example.com'; Id = 21 }; Roles = @([pscustomobject]@{ RoleTypeKind = 2 }) },
     @{ Member = [pscustomobject]@{ PrincipalType = 1; LoginName = 'i:0#.f|membership|b@example.com'; Id = 22 }; Roles = @([pscustomobject]@{ RoleTypeKind = 3 }) },
     @{ Member = [pscustomobject]@{ PrincipalType = 8; LoginName = 'SharingLinks.x.OrganizationView.y'; Id = 23 }; Roles = @([pscustomobject]@{ RoleTypeKind = 2 }) },
-    @{ Member = [pscustomobject]@{ PrincipalType = 4; LoginName = 'c:0o.c|federateddirectoryclaimprovider|0000aaaa-0000-0000-0000-000000000000_o'; Id = 24 }; Roles = @([pscustomobject]@{ RoleTypeKind = 5 }) })
+    @{ Member = [pscustomobject]@{ PrincipalType = 4; LoginName = $owners; Id = 24 }; Roles = @([pscustomobject]@{ RoleTypeKind = 5 }) })
 $access = Get-SharePointAccess $accessItem
 Assert-Equal 'whole organization, 1 sharing link group, 2 people, 1 team owners group' $access.AccessEntries 'Access: kinds in a fixed order, plural for more than 1, no name in the text'
-$global:FakePnP.Access = @()
+Set-FakeAccess @()
 Assert-Equal 'None' (Get-SharePointAccess $accessItem).AccessEntries 'Access: no entry gives "None"'

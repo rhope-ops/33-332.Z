@@ -197,9 +197,31 @@ function Set-FakeLibraries {
     $global:FakePnP.Libraries = $Names
 }
 
+function Set-FakeAccess {
+    <#
+    .SYNOPSIS
+      Sets the permission entries that every fake file gives (plan step 5).
+    .PARAMETER Entries
+      Each @{ Member = @{ PrincipalType; LoginName; Id }; Roles = @(@{ RoleTypeKind }) }; none = no entry.
+    .OUTPUTS
+      None (changes $global:FakePnP).
+    #>
+    param([object[]]$Entries = @())
+    $global:FakePnP.Access = $Entries
+}
+
 function global:Get-PnPProperty {
-    # Fake: the library's root folder; for a file (plan step 5) its unique permissions and permission entries, and for an
-    # entry its member and roles. The calls are recorded by property name.
+    <#
+    .SYNOPSIS
+      Fake: the library's root folder; for a file (plan step 5) its unique permissions and permission entries, and
+      for an entry its member and roles. The permission reads are recorded by property name.
+    .PARAMETER ClientObject
+      The library, file or entry.
+    .PARAMETER Property
+      The property to read.
+    .OUTPUTS
+      The property value; throws for RoleAssignments when AccessFails is set (not a site owner).
+    #>
     [CmdletBinding()] param($ClientObject, $Property)
     switch ($Property) {
         'HasUniqueRoleAssignments' { $global:FakePnP.Calls.Add('Property ' + $Property); return $global:FakePnP.UniquePerms }

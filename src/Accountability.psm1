@@ -42,6 +42,12 @@ $script:AccessKinds = [ordered]@{
     'team owners group' = 'team owners groups'; 'team members group' = 'team members groups'; 'site group' = 'site groups'
     'SharePoint group' = 'SharePoint groups'; 'security group' = 'security groups'; 'mail list' = 'mail lists'; 'other' = 'others'
 }
+# The Method tab's row for the 2 permission columns.
+$script:AccessMethodText = ('For a file on SharePoint or OneDrive on the web with 1 or more hits: "Own permissions" says if the file ' +
+    'has its own permissions (Yes) or those of its folder or library (No). "Access entries" counts who has access by kind (people, site ' +
+    'groups, team groups, sharing link groups, the whole organization), never by name. An entry for Limited Access only is not counted. ' +
+    'SharePoint shows the entries only to a site owner: for others the cell says "Not readable (owner only)". A file on this computer only ' +
+    'has empty cells. Sharing links are not read (PnP.PowerShell 1.12.0 cannot).')
 # The site's own 3 groups (owners, members, visitors) by site path: read once per site.
 $script:SiteGroupIds = @{}
 
@@ -480,11 +486,7 @@ function Get-MethodRows {
     , @('By account tab', ('How many files and hits each "PII first saved by" account first saved, most first: a list of whom to contact first. ' +
         'It has the same limits as that column: evidence, not proof.'))
     , @('')
-    , @('Own permissions, Access entries', ('For a file on SharePoint or OneDrive on the web with 1 or more hits: "Own permissions" says if the file ' +
-        'has its own permissions (Yes) or those of its folder or library (No). "Access entries" counts who has access by kind (people, site ' +
-        'groups, team groups, sharing link groups, the whole organization), never by name. An entry for Limited Access only is not counted. ' +
-        'SharePoint shows the entries only to a site owner: for others the cell says "Not readable (owner only)". A file on this computer only ' +
-        'has empty cells. Sharing links are not read (PnP.PowerShell 1.12.0 cannot).'))
+    , @('Own permissions, Access entries', $script:AccessMethodText)
     , @('')
     , @('Review columns', ('Is it PII?, Action taken, Reported to Privacy Manager, Reviewed by and Review date (Hits tab) are for you to fill in as you ' +
         'check each hit. Ion leaves them empty. The first three have a dropdown list.'))
