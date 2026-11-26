@@ -27,10 +27,10 @@ $script:PdfLatin1 = [System.Text.Encoding]::GetEncoding(28591)
 $script:PdfNoTextReason = 'No text in this PDF (a scanned image?): check by hand'
 # A scanned PDF's JPEG page images, found by Get-PdfAllText: read with Windows OCR when the PDF has no text.
 $script:PdfScanImages = @()
-# Of these, the ones of page size (both sides at least $PdfPageImageMin pixels; a logo is smaller): read with Windows OCR
-# also when the PDF has text, for a PDF with text pages and scanned pages (the PAM, 2026-11-26: plan step 3).
+# The images drawn on a page that has no text of its own (a scanned page in a PDF with text pages): read with Windows
+# OCR also when the PDF has text (the PAM, 2026-11-26: plan step 3). A page with a hidden text layer (a "searchable"
+# scan) is read from its text only, so its hits are not found twice and its OCR time is not spent (review of step 3).
 $script:PdfPageImages = @()
-$script:PdfPageImageMin = 800
 # Not-scanned reasons, each its own group on the Not scanned tab (the PAM, 2026-11-21: tell labels from passwords, and
 # a time limit from damage: many PDFs called damaged open fine). The limits are $PdfSecondsLimit and $PdfRegexTimeout of PdfCore.psm1.
 $script:PdfSlowReason = 'This PDF took longer than the time limit to read (2 minutes; the file may be fine): check by hand'
@@ -87,9 +87,13 @@ function Get-PdfText {
         $reason = $script:PdfNoTextReason; if ($note) { $reason = $note }
         return @{ Text = ''; Reason = $reason; Note = '' }
     }
-    if ($script:PdfPageImages.Count -gt 0) {   # text pages and scanned pages: OCR the scanned ones too
+    if ($script:PdfPageImages.Count -gt 0) {   # text pages and scanned pages: OCR the pages with no text too
         $scan = Get-ScanPagesText $script:PdfPageImages ''
-        if ($scan.Reason) { $notes = @($note, ($scan.Reason + ' (its scanned pages): check by hand')) }
+        if ($scan.Reason) {
+            $why = $scan.Reason; $hand = ': check by hand'   # said once, at the end
+            if ($why.EndsWith($hand)) { $why = $why.Substring(0, $why.Length - $hand.Length) }
+            $notes = @($note, ($why + ' (its pages with no text)' + $hand))
+        }
         else { $all = $all + "`n" + $scan.Text; $notes = @($note, $scan.Note) }
         $note = (@($notes | Where-Object { $_ }) -join '; ')
     }
@@ -152,19 +156,34 @@ function Get-PdfLooseText {
     }
 }
 
-function Test-PdfPageImage {
+function Get-PdfResourceImages {
     <#
     .SYNOPSIS
-      True for an image of page size: its /Width and /Height are both at least $PdfPageImageMin pixels (a scanned
-      page; a logo or a signature is smaller).
-    .PARAMETER Dict
-      The image object's dictionary text.
+      The JPEG image objects that a resources dictionary names under /XObject (inline or by reference), and those of a
+      form XObject it names (one level: a scanner can wrap the page image in a form).
+    .PARAMETER Resources
+      The resources dictionary text (Get-PdfPageResources).
+    .PARAMETER Objects
+      Output of Get-PdfObjects.
+    .PARAMETER Depth
+      0 for a page; 1 inside a form XObject (no deeper).
     .OUTPUTS
-      [bool]
+      [object[]] the image objects (each with Image).
     #>
-    param([string]$Dict)
-    $w = [regex]::Match($Dict, '/Width\s+(\d{1,6})\b'); $h = [regex]::Match($Dict, '/Height\s+(\d{1,6})\b')
-    return ($w.Success -and $h.Success -and [int]$w.Groups[1].Value -ge $script:PdfPageImageMin -and [int]$h.Groups[1].Value -ge $script:PdfPageImageMin)
+    param([string]$Resources, $Objects, [int]$Depth = 0)
+    $list = ''
+    $inline = [regex]::Match($Resources, '/XObject\s*<<([^>]*)>>')
+    if ($inline.Success) { $list = $inline.Groups[1].Value }
+    else {
+        $ref = [regex]::Match($Resources, '/XObject\s+(\d+)\s+\d+\s+R')
+        if ($ref.Success -and $Objects.Contains($ref.Groups[1].Value)) { $list = $Objects[$ref.Groups[1].Value].Dict }
+    }
+    foreach ($name in [regex]::Matches($list, '(\d+)\s+\d+\s+R')) {
+        $object = $null; if ($Objects.Contains($name.Groups[1].Value)) { $object = $Objects[$name.Groups[1].Value] }
+        if (-not $object) { continue }
+        if ($object.ContainsKey('Image') -and $object.Image) { $object; continue }
+        if ($Depth -eq 0 -and $object.Dict -match '/Subtype\s*/Form\b') { Get-PdfResourceImages (Get-PdfPageResources $object $Objects) $Objects 1 }
+    }
 }
 
 function Get-PdfAllText {
@@ -180,16 +199,17 @@ function Get-PdfAllText {
     #>
     param([string]$Text)
     $objects = Get-PdfObjects $Text
-    $images = @($objects.Values | Where-Object { $_.ContainsKey('Image') -and $_.Image })
-    $script:PdfScanImages = @($images | ForEach-Object { $_.Image })
-    $script:PdfPageImages = @($images | Where-Object { Test-PdfPageImage $_.Dict } | ForEach-Object { $_.Image })
+    $script:PdfScanImages = @($objects.Values | Where-Object { $_.ContainsKey('Image') -and $_.Image } | ForEach-Object { $_.Image })
+    $pageImages = New-Object System.Collections.Generic.List[object]   # the image objects of pages with no text
     Assert-PdfTime
     $allFonts = Get-PdfFonts $objects
     Assert-PdfTime
     $parts = New-Object System.Collections.Generic.List[string]
     $read = New-Object System.Collections.Generic.HashSet[object]   # the content streams read as pages or forms
     foreach ($page in @($objects.Values | Where-Object { $_.Dict -match '/Type\s*/Page(?![s\w])' })) {
-        $fonts = Get-PdfFontTable (Get-PdfPageResources $page $objects) $objects
+        $resources = Get-PdfPageResources $page $objects
+        $first = $parts.Count
+        $fonts = Get-PdfFontTable $resources $objects
         if ($fonts.Count -eq 0) { $fonts = $allFonts }
         $contents = [regex]::Match($page.Dict, '/Contents\s*(\[[^\]]*\]|\d+\s+\d+\s+R)').Groups[1].Value
         foreach ($content in [regex]::Matches($contents, '(\d+)\s+\d+\s+R')) {
@@ -202,7 +222,12 @@ function Get-PdfAllText {
                 if ($part -and $part.Stream) { [void]$read.Add($part); $parts.Add((Convert-PdfContentToText $part.Stream $fonts)) }
             }
         }
+        $pageText = ''; for ($i = $first; $i -lt $parts.Count; $i++) { $pageText += $parts[$i] }
+        if (-not $pageText.Trim()) {
+            foreach ($image in @(Get-PdfResourceImages $resources $objects)) { if (-not $pageImages.Contains($image)) { $pageImages.Add($image) } }
+        }
     }
+    $script:PdfPageImages = @(foreach ($image in $pageImages) { $image.Image })   # a loop: '@()' of a New-Object list throws (probe 6)
     # Form XObjects (/Subtype /Form, drawn with "Do"): reusable page parts that can hold text of their own. Read each
     # once; a form field's appearance can repeat its value, so a hit may show twice (better than a miss).
     foreach ($form in @($objects.Values | Where-Object { $_.Stream -and $_.Dict -match '/Subtype\s*/Form\b' })) {

@@ -89,7 +89,7 @@ The steps to run it are at the top of the script.
 | An archive or e-mail nested more than two levels deep | Listed as NOT SCANNED: open it and check by hand |
 | Attachments of an Outlook .msg | A note says they were not read: open them and check by hand |
 | Images and scanned PDFs on a computer without Windows OCR | Listed as NOT SCANNED: check them by hand |
-| Scanned PDF pages not stored as JPEG images, and scanned pages smaller than 800 by 800 pixels in a PDF that also has text | Not read with OCR: check them by hand |
+| Scanned PDF pages not stored as JPEG images, and the scanned pages of a PDF that also has text when the page also has a hidden text layer (only that text is read) | Not read with OCR: check them by hand if the text layer can be wrong |
 | Symbols in picture fonts (Wingdings, Webdings, Dingbats, Marlett, Symbol) in a PDF | Not read as text, so not checked for PII |
 | Text in a PDF font with no character map and made-up glyph names (such as g12) | Not read; the file gets the note "A font in this PDF could not be read": check it by hand |
 | Old .doc .xls .ppt and Outlook .msg | Read in part (numbers in an old .xls are not read): check these files by hand |
