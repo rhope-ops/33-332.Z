@@ -351,6 +351,18 @@ $logoPage = '<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 5 0 R >> /X
 $logoContent = "<< /Length 53 >> stream`nq /Im1 Do Q BT /F1 12 Tf 72 700 Td (Typed text) Tj ET`nendstream"
 $logo = Get-TextFromBytes -Bytes (New-PdfBytes $textPage -Plain -Extra @($logoImage, $logoPage, $logoContent)) -FileName 'g.pdf'
 Assert-Equal $true ($logo.Text -match 'Typed text' -and -not $logo.Note) 'A typed page with a small logo: no OCR, no note'
+# A small scan on a typed page (an ID card, 1012 x 638), or a picture of unknown size: no OCR, but a note (2026-11-26).
+$cardImage = "<< /Type /XObject /Subtype /Image /Width 1012 /Height 638 /Filter /DCTDecode /Length 4 >> stream`nJPEG`nendstream"
+$card = Get-TextFromBytes -Bytes (New-PdfBytes $textPage -Plain -Extra @($cardImage, $logoPage, $logoContent)) -FileName 'c.pdf'
+Assert-Equal $true ($card.Text -match 'Typed text' -and $card.Note -match '^Scanned PDF: an image on a page with text was not read with OCR') 'A small scan on a typed page: a note asks to check it'
+$unknownImage = "<< /Type /XObject /Subtype /Image /Width 11 0 R /Height 12 0 R /Filter /DCTDecode /Length 4 >> stream`nJPEG`nendstream"
+$unknown = Get-TextFromBytes -Bytes (New-PdfBytes $textPage -Plain -Extra @($unknownImage, $logoPage, $logoContent)) -FileName 'u.pdf'
+Assert-Equal $true ($unknown.Note -match 'it can be a scanned page') 'A picture of unknown size on a typed page: a note'
+# Two pages whose resources differ only in letter case each get their own result (review 5 of step 3).
+$lowerPage = '<< /Type /Page /Parent 2 0 R /Resources << /xobject << /Im1 7 0 R >> >> /Contents 9 0 R >>'
+$upperPage = '<< /Type /Page /Parent 2 0 R /Resources << /XObject << /Im1 7 0 R >> >> /Contents 9 0 R >>'
+$cased = Get-TextFromBytes -Bytes (New-PdfBytes $textPage -Plain -Extra @($scanImage, $lowerPage, $scanContent, $upperPage)) -FileName 'k.pdf'
+Assert-Equal $true ($cased.Note -match 'its pages with no text\): check by hand') 'Resources that differ only in case: the page with /XObject still gets OCR'
 # Where Windows has OCR (the ps51 CI runner): a real image with an invented SSN drawn in it is read and the SSN found.
 $ocrHere = (Get-TextFromBytes -Bytes ([byte[]](1, 2, 3)) -FileName 'x.png').Reason -notmatch 'not available'
 if ($ocrHere -and $PSVersionTable.PSVersion.Major -eq 5) {
