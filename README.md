@@ -1,4 +1,4 @@
-![33-332.Z: Privacy Act Management](docs/assets/33-332.Z-social-preview.png)
+![Ion: 33-332.Z · Privacy Act Management](docs/assets/33-332.Z-social-preview.png)
 
 # Ion
 **DoD365 PII Reporter**
