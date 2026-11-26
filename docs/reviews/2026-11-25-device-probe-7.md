@@ -100,3 +100,7 @@ ok, library found, root matches, 2 candidates, no stop.
 - Run B listed 500 items for a folder with 8 files: the list includes items below the folder (the "Open" item above
   is now likely: confidence medium; the probe does not split files from subfolder items). The fix in
   `src/DriveScan.psm1` must not depend on the first 500 items: filter to the folder itself, or page past 500.
+- Fix built 2026-11-26: Get-OneDriveWebMap takes the part of FullRemotePath below the library root for a shortcut or a
+  synced library (WebKinds: Home, Library, Shortcut); no usable value: local only, with a Summary note. Ion's
+  Get-PnPListItem has no 500 cap (PageSize pages through all items) and keeps only files under the folder.
+  Waits on a device run of Ion on a synced library and a shortcut.

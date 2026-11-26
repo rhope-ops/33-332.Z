@@ -467,11 +467,12 @@ function Invoke-DriveScan {
 
 # ---- OneDrive on the web (plan step 4, the OneDrive hybrid; the PAM, 2026-11-24: docs/reviews/2026-11-24-onedrive-hybrid-design.md) ----
 
-# The OneDrive app's list of synced folders (one key per folder: MountPoint, UrlNamespace).
+# The OneDrive app's list of synced folders (one key per folder: MountPoint, UrlNamespace, FullRemotePath).
 $script:SyncEnginesKey = 'HKCU:\Software\SyncEngines\Providers\OneDrive'
 # The folder kinds that use the web (the PAM, 2026-11-24: all three, with a probe first for the 2 not tested). Probe 4
-# tested 'Home' (runs 1 and 2). 'Library' and 'Shortcut' join when probe 4 runs A and B pass on the gov device.
-$script:WebKinds = @('Home')
+# tested 'Home' (runs 1 and 2); probe 7 (2026-11-25, runs A and B) tested 'Library' and 'Shortcut' with the web folder
+# from FullRemotePath (7 of 7 and 8 of 8 names on both sides): docs/reviews/2026-11-25-device-probe-7.md.
+$script:WebKinds = @('Home', 'Library', 'Shortcut')
 # The list fields read for each web file (as ChannelScan.psm1 reads them for a team site).
 $script:WebFields = @('FileLeafRef', 'FileRef', 'FSObjType', 'File_x0020_Size', 'Modified', 'UniqueId', 'Created', 'Author', 'Editor')
 # True after a sign-in to a OneDrive site was tried: Find-ChannelPII.ps1 then signs out at the end of the run.
@@ -482,7 +483,8 @@ $script:NotSyncedNote = 'Not on the web yet (not synced): no version history'
 function Get-OneDriveSyncEntries {
     <#
     .SYNOPSIS
-      The folders the OneDrive app syncs, from its registry list (read-only): each @{ MountPoint; UrlNamespace }.
+      The folders the OneDrive app syncs, from its registry list (read-only): each @{ MountPoint; UrlNamespace;
+      FullRemotePath } (FullRemotePath: '' when the key has none).
       None when the list is not there (not Windows, or no OneDrive account).
     .OUTPUTS
       [hashtable[]]
@@ -490,7 +492,8 @@ function Get-OneDriveSyncEntries {
     $entries = @()
     foreach ($key in @(Get-ChildItem -Path $script:SyncEnginesKey -ErrorAction SilentlyContinue)) {
         $mount = [string]$key.GetValue('MountPoint'); $space = [string]$key.GetValue('UrlNamespace')
-        if ($mount -and $space) { $entries += @{ MountPoint = $mount; UrlNamespace = $space } }
+        $remote = $key.GetValue('FullRemotePath'); if ($remote -isnot [string]) { $remote = '' }
+        if ($mount -and $space) { $entries += @{ MountPoint = $mount; UrlNamespace = $space; FullRemotePath = $remote } }
     }
     return $entries
 }
@@ -500,6 +503,8 @@ function Get-OneDriveWebMap {
     .SYNOPSIS
       The web place of a local folder: the sync entry whose MountPoint holds it (the longest one: probe 4 found 2
       entries with the same folder and address), its site, its web folder, and its kind. $null when no entry holds it.
+      UrlNamespace is the library root. For a shortcut or a synced library, the synced folder can be below that root:
+      its place is the part of FullRemotePath below the root (probe 7). Without such a part, WebFolder is '' (local only).
     .PARAMETER Folder
       The pasted folder (full path).
     .PARAMETER Entries
@@ -519,7 +524,12 @@ function Get-OneDriveWebMap {
         if (-not $mount -or -not $entry.UrlNamespace) { continue }
         $inside = $path -ieq $mount -or ($path.Length -gt $mount.Length -and
             $path.StartsWith($mount, [StringComparison]::OrdinalIgnoreCase) -and $slashes -contains $path[$mount.Length])
-        if ($inside -and (-not $best -or $mount.Length -gt $best.Mount.Length)) { $best = @{ Mount = $mount; Space = [string]$entry.UrlNamespace } }
+        if ($inside -and (-not $best -or $mount.Length -gt $best.Mount.Length)) {
+            $remote = ''   # an entry without FullRemotePath (an older OneDrive app, or a test) has no web place below the root
+            if ($entry -is [System.Collections.IDictionary]) { $remote = [string]$entry['FullRemotePath'] }
+            elseif ($entry.PSObject.Properties['FullRemotePath']) { $remote = [string]$entry.FullRemotePath }
+            $best = @{ Mount = $mount; Space = [string]$entry.UrlNamespace; Remote = $remote }
+        }
     }
     if (-not $best) { return $null }
     $address = $null
@@ -533,7 +543,20 @@ function Get-OneDriveWebMap {
         if ($best.Mount.StartsWith($oneDriveHome, [StringComparison]::OrdinalIgnoreCase) -and $slashes -contains $best.Mount[$oneDriveHome.Length]) { $kind = 'Shortcut' }
     }
     $rest = $path.Substring($best.Mount.Length) -replace '[\\/]+', '/'
-    return @{ Mount = $best.Mount; LibraryPath = $library; Site = $origin + $sitePath; Origin = $origin; WebFolder = ($library + $rest).TrimEnd('/'); Kind = $kind }
+    $sub = ''
+    if ($kind -ne 'Home') {
+        # The synced folder's place below the library root: FullRemotePath on the same host, below the root (probe 7).
+        $remote = $null; $sub = $null
+        if ([uri]::TryCreate($best.Remote.Trim().TrimEnd('/'), [UriKind]::Absolute, [ref]$remote) -and $remote.Scheme -eq 'https' -and $remote.Host -ieq $address.Host) {
+            $remotePath = [uri]::UnescapeDataString($remote.AbsolutePath).TrimEnd('/')
+            if ($remotePath -ieq $library) { $sub = '' }
+            elseif ($remotePath.StartsWith($library + '/', [StringComparison]::OrdinalIgnoreCase)) { $sub = $remotePath.Substring($library.Length) }
+        }
+        if ($null -eq $sub -or $sub -match '(^|/)\.\.?(/|$)') {   # no usable place, or a '.' or '..' part: no web folder
+            return @{ Mount = $best.Mount; LibraryPath = $library; Site = $origin + $sitePath; Origin = $origin; WebFolder = ''; Kind = $kind }
+        }
+    }
+    return @{ Mount = $best.Mount; LibraryPath = $library; Site = $origin + $sitePath; Origin = $origin; WebFolder = ($library + $sub + $rest).TrimEnd('/'); Kind = $kind }
 }
 
 function Get-OneDriveWebFiles {
@@ -588,6 +611,10 @@ function Connect-OneDriveWeb {
     $web.Map = $map; $web.Origin = $map.Origin
     if ($script:WebKinds -notcontains $map.Kind) {
         $web.Note = 'Not used: this kind of OneDrive folder (a synced library or a shortcut) is not tested yet. ' + $script:NoHistoryNote + '.'
+        return $web
+    }
+    if (-not $map.WebFolder) {
+        $web.Note = 'Not used: the OneDrive app gives no web place for this synced folder. ' + $script:NoHistoryNote + '.'
         return $web
     }
     try {

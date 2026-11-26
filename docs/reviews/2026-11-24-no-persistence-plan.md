@@ -33,7 +33,7 @@ permissions as scope only ("No reconnaissance": no user names listed); month-nam
   listing works at any depth, but the map is wrong for shortcuts and synced libraries: they stay local only.
   Probe 6 (2026-11-25) stopped before its candidates (cause: `@()` of a New-Object list); probe 7 (fixed, reads the
   shape of the registry values FullRemotePath and WebUrl): runs A and B (2026-11-25): FullRemotePath maps both kinds
-  (7 of 7, 8 of 8 names); next: the folder map fix in src/DriveScan.psm1 (docs/reviews/2026-11-25-device-probe-7.md, Result).
+  (7 of 7, 8 of 8 names); folder map fix built 2026-11-26 (probe-7.md Result): waits on a device run of Ion.
   Device test 2026-11-25 (build 3d16ddec, own OneDrive): web used for 12 files, history from the web, 1 sign-in, no error.
 - Step 5 (permission scope): probe 8 v2026-11-25h runs A and B (2026-11-26): unique permissions read in both runs;
   permission entries only as a team owner (run B: NoAccess); sharing links not read (docs/reviews/2026-11-25-device-probe-8.md,

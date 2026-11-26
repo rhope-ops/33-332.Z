@@ -19,8 +19,11 @@ $odHome = 'C:\Users\me\OneDrive - Org'
 $odEntries = @(
     @{ MountPoint = $odHome; UrlNamespace = 'https://org-my.example.com/personal/me_org/Documents/' },
     @{ MountPoint = 'C:\Users\me\OneDrive - Org\'; UrlNamespace = 'https://org-my.example.com/personal/me_org/Documents' },
-    @{ MountPoint = 'C:\Users\me\OneDrive - Org\Team X - Files'; UrlNamespace = 'https://org.example.com/sites/TeamX/Shared Documents/Plans' },
-    @{ MountPoint = 'C:\Users\me\Org\Team Y - Docs'; UrlNamespace = 'https://org.example.com/teams/TeamY/Shared%20Documents' })
+    # As on the device (probe 7): UrlNamespace is the library root; FullRemotePath is the synced folder.
+    @{ MountPoint = 'C:\Users\me\OneDrive - Org\Team X - Files'; UrlNamespace = 'https://org.example.com/sites/TeamX/Shared Documents'
+        FullRemotePath = 'https://org.example.com/sites/TeamX/Shared%20Documents/Plans' },
+    @{ MountPoint = 'C:\Users\me\Org\Team Y - Docs'; UrlNamespace = 'https://org.example.com/teams/TeamY/Shared%20Documents'
+        FullRemotePath = 'https://org.example.com/teams/TeamY/Shared%20Documents/' })
 $m = Get-OneDriveWebMap ($odHome + '\Ops\Q1') $odEntries @($odHome)
 Assert-Equal 'Home|https://org-my.example.com/personal/me_org|/personal/me_org/Documents|/personal/me_org/Documents/Ops/Q1' `
     ('{0}|{1}|{2}|{3}' -f $m.Kind, $m.Site, $m.LibraryPath, $m.WebFolder) 'OneDrive map: own OneDrive, site, library and web folder'
@@ -34,12 +37,31 @@ Assert-Equal $true ($null -eq (Get-OneDriveWebMap 'C:\Users\me\OneDrive - Orgx\a
 Assert-Equal $true ($null -eq (Get-OneDriveWebMap 'D:\Share\Ops' $odEntries @($odHome))) 'OneDrive map: a folder OneDrive does not sync has no map'
 Assert-Equal $true ($null -eq (Get-OneDriveWebMap ($odHome + '\a') @(@{ MountPoint = $odHome; UrlNamespace = 'not an address' }) @($odHome))) `
     'OneDrive map: an entry with no web address has no map'
+$shortcut = 'C:\Users\me\OneDrive - Org\Team Z'
+$space = 'https://org.example.com/sites/TeamZ/Shared Documents'
+foreach ($case in @(@('', 'no FullRemotePath'), @('https://other.example.com/sites/TeamZ/Shared Documents/A', 'FullRemotePath on another host'),
+        @('https://org.example.com/sites/TeamQ/Shared Documents/A', 'FullRemotePath outside the library'),
+        @('http://org.example.com/sites/TeamZ/Shared Documents/A', 'FullRemotePath not https'))) {
+    $m = Get-OneDriveWebMap ($shortcut + '\x') @(@{ MountPoint = $shortcut; UrlNamespace = $space; FullRemotePath = $case[0] }) @($odHome)
+    Assert-Equal 'Shortcut|' ('{0}|{1}' -f $m.Kind, $m.WebFolder) ('OneDrive map: a shortcut with ' + $case[1] + ' has no web folder')
+}
 
 # ---- Kinds and fall-back (no scan) ----
 Reset-FakePnP @{}
-$web = Connect-OneDriveWeb ($odHome + '\Team X - Files') $odEntries @($odHome) 6>$null
-Assert-Equal 'False|0' ('{0}|{1}' -f $web.Used, @(Get-FakePnPConnection).Count) 'OneDrive web: a shortcut is not used yet, no sign-in'
-Assert-Equal $true ($web.Note -like 'Not used: this kind of OneDrive folder*history is not available*') 'OneDrive web: the note says why'
+$web = Connect-OneDriveWeb ($shortcut + '\x') @(@{ MountPoint = $shortcut; UrlNamespace = $space; FullRemotePath = '' }) @($odHome) 6>$null
+Assert-Equal 'False|0' ('{0}|{1}' -f $web.Used, @(Get-FakePnPConnection).Count) 'OneDrive web: a shortcut with no web place is not used, no sign-in'
+Assert-Equal $true ($web.Note -like 'Not used: the OneDrive app gives no web place*history is not available*') 'OneDrive web: the note says why'
+Reset-FakePnP @{
+    '/sites/TeamA/Shared Documents/Plans/Week 2/a.txt' = $Txt
+    '/sites/TeamA/Shared Documents/Week 2/b.txt' = $Txt
+}
+Set-FakeSiteAnswer
+$teamA = @(@{ MountPoint = ($odHome + '\Team A - Files'); UrlNamespace = 'https://org.example.com/sites/TeamA/Shared Documents'
+        FullRemotePath = 'https://org.example.com/sites/TeamA/Shared%20Documents/Plans' })
+$web = Connect-OneDriveWeb ($odHome + '\Team A - Files\Week 2') $teamA @($odHome) 6>$null
+Assert-Equal 'True|a.txt|https://org.example.com/sites/TeamA' ('{0}|{1}|{2}' -f $web.Used, (@($web.Files.Keys) -join ','), (@(Get-FakePnPConnection) -join ' ')) `
+    'OneDrive web: a shortcut uses its FullRemotePath folder (not the library root), one sign-in to its site'
+Reset-FakePnP @{}
 $web = Connect-OneDriveWeb 'D:\Share\Ops' $odEntries @($odHome) 6>$null
 Assert-Equal 'False|' ('{0}|{1}' -f $web.Used, $web.Note) 'OneDrive web: a plain drive folder gets no note'
 Set-FakePnPOption 'ConnectFails' $true
