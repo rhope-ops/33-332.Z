@@ -16,8 +16,10 @@ did not find its file, and probe 3 tested sign-in and paths only. The PAM chose 
 
 | Line | It shows |
 |---|---|
-| P8 probe version | 2026-11-25f: the text you pasted is this version |
-| P8 answer 1 is a DoD365 site address=False | the address is not on usaf.dps.mil: the probe stops |
+| P8 probe version | 2026-11-25g: the text you pasted is this version |
+| P8 answer 1 is a DoD365 site address=False | the address is not on usaf.dps.mil: the probe stops, after the 2 lines below |
+| P8 answer 1 length, scheme, spaces or other characters, at | the count of characters; the scheme kind (https, http, not lower case, another scheme, text before the address, none); the count of spaces and characters outside printable ASCII, and where they are (start, end, inside) |
+| P8 answer 1 host, path parts, first part, site name | the host kind (the team site host, not lower case, with a port, another host of the same domain, another domain); the count of path parts; the first part kind (sites or teams, a sharing link part like `:w:`, personal, a part that starts with `_`, other); if the site name has only allowed characters, or the count of `%`, spaces and others |
 | P8 folder from | where the probe found the folder in the address: id (a folder page), library page, path |
 | P8 folder in the address found=False | the address does not name a folder of this site: the probe stops |
 | P8 sign-in | the sign-in to the site |
@@ -43,6 +45,12 @@ without its type, an answer with `..`, a site name `..`, and an answer with `\`.
 kinds, 3 links in 3 kinds), a name without its type, a library page address, each read refused (`NoAccess`), an
 address that is not on usaf.dps.mil, and a folder of another site (the probe stops).
 
+Stub run of version 2026-11-25g on PowerShell 7.4 (2026-11-25, invented data built at run time): 11 answers for
+Question 1, each ends with "Done." and prints no value. 10 fail the address check and print the shape lines: a
+sharing link, another host of the same domain, all upper case, `%20` in the site name, a hidden mark before the
+address, a label before the address, no scheme with a `_layouts` page, another domain, no site name, and an empty
+answer. 1 folder page address passes the check and goes on to the sign-in.
+
 ## How to run it
 
 The probe is a .txt file (Project rules, "Paste format"): `docs/reviews/2026-11-25-device-probe-8.txt`. Do the steps
@@ -60,11 +68,11 @@ your team site.
 9. In your web browser, click the tab of the folder page, click the address bar, then press `Ctrl+C`.
 10. In the **Console pane** of ISE, below **Question 1**, press `Ctrl+V`, then press **Enter**. **Question 2** shows.
 11. In the **Console pane**, below **Question 2**, type the file name that you wrote down for this run, then press **Enter**.
-12. Make sure that the **Console pane** clears and then shows `P8 probe version=2026-11-25f`. If it shows another version, close ISE and start this list again.
+12. Make sure that the **Console pane** clears and then shows `P8 probe version=2026-11-25g`. If it shows another version, close ISE and start this list again.
 13. While it runs, if a window asks if you want to continue running scripts, click **Yes**.
 14. While it runs, if a sign-in window opens, sign in with your CAC. This can take 2 minutes or more.
 15. Wait until the line **Done.** shows in the **Console pane** of ISE. Do not copy before then.
-16. In the **Console pane**, select the lines from `P8 probe version=2026-11-25f` to **Done.**, then press `Ctrl+C`.
+16. In the **Console pane**, select the lines from `P8 probe version=2026-11-25g` to **Done.**, then press `Ctrl+C`.
 17. For run A, in Outlook, click **New Email**, click in the body, then type `probe 8 run A`.
 18. For run B, in the open e-mail, click below the lines of run A, then type `probe 8 run B`.
 19. In the body of the e-mail, press **Enter**, then press `Ctrl+V`.
@@ -89,5 +97,6 @@ Runs A and B of version 2026-11-25f (the PAM's e-mail, received 2026-11-25 19:51
 - Possible forms (not verified; the probe prints no shape of the address): a sharing link
   (`https://usaf.dps.mil/:w:/s/...`, run A uses a shared file), an address on another host (for example the OneDrive
   host), or a page that is not a folder page of the team site (for example "Shared with me").
-- Step 5 still has no permission result. Next: a probe 8 version that prints the shape of answer 1 (host kind, first
-  path part kind, counts only) and accepts the folder page form only after that (the Maintainer to decide).
+- Step 5 still has no permission result. The Maintainer chose option A (2026-11-25): version 2026-11-25g prints the
+  shape of answer 1 when the address check fails (kinds and counts only), then stops as before. It waits on the
+  PAM's runs A and B.

@@ -26,4 +26,4 @@ Title: 33-332.Z · <task> · <date>. Read AGENTS.md first.
 18. Plan approved 2026-11-24, continue it: docs/reviews/2026-11-24-no-persistence-plan.md (Status).
 19. 2026-11-25: PRs 105-125 merged. Audit: not now (the PAM). Device results (intake 2026-11-25): probe 7: use
     FullRemotePath (next: map fix, probe-7.md Result); test 4: both failed, no views column; probe 8: stopped at
-    the address check in both runs (next: the Maintainer decides on a probe 8 that prints the address shape).
+    the address check in both runs; v2026-11-25g prints the address shape (option A): waits on the PAM's runs.
