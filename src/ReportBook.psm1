@@ -101,7 +101,7 @@ function Get-FileRows {
     <#
     .SYNOPSIS
       The rows of the Files tab: one per file with hits, worst first: its counts, its types, how many hits a reviewer
-      has answered "Is it PII?" for (a formula on the Hits table), and who saved it.
+      has answered "Is it PII?" for (a formula on the Hits table), who saved it, its history notes and who has access.
     .PARAMETER Hits
       The hit rows, in the Hits tab's order.
     .PARAMETER FolderLabel
@@ -115,7 +115,8 @@ function Get-FileRows {
         [pscustomobject]@{ First = $g[0]; Count = $g.Count; High = @($g | Where-Object { $_.Confidence -eq 'High' }).Count
             Medium = @($g | Where-Object { $_.Confidence -eq 'Medium' }).Count; Low = @($g | Where-Object { $_.Confidence -eq 'Low' }).Count
             Types = (@($g | ForEach-Object { $_.Detector } | Select-Object -Unique) -join ', ')
-            AddedBy = (@($g | ForEach-Object { $_.AddedBy } | Where-Object { $_ } | Select-Object -Unique) -join ', ') }
+            AddedBy = (@($g | ForEach-Object { $_.AddedBy } | Where-Object { $_ } | Select-Object -Unique) -join ', ')
+            Notes = (@($g | ForEach-Object { $_.HistoryNote } | Where-Object { $_ } | Select-Object -Unique) -join '; ') }
     } | Sort-Object @{ Expression = 'High'; Descending = $true }, @{ Expression = 'Medium'; Descending = $true },
         @{ Expression = 'Low'; Descending = $true }, @{ Expression = { $_.First.Channel } }, @{ Expression = { $_.First.Item } })
     $row = 1
@@ -123,7 +124,7 @@ function Get-FileRows {
         $row++
         $reviewed = New-XlsxFormula ('SUMPRODUCT((tblHits[{0}]=A{1})*(tblHits[File]=B{1})*(tblHits[Is it PII?]<>""))' -f $FolderLabel, $row) 0
         , @($f.First.Channel, $f.First.Item, [long]$f.Count, [long]$f.High, [long]$f.Medium, [long]$f.Low, $f.Types, $reviewed,
-            $f.First.Modified, $f.First.ModifiedBy, $f.AddedBy, $f.First.OwnPermissions, $f.First.AccessEntries, $f.First.Link)
+            $f.First.Modified, $f.First.ModifiedBy, $f.AddedBy, $f.Notes, $f.First.OwnPermissions, $f.First.AccessEntries, $f.First.Link)
     }
 }
 
@@ -163,8 +164,8 @@ function Get-WorkbookSheets {
             -DateChecks @(7 + @($script:ReviewColumns.Keys).IndexOf('Review date')) `
             -FreezeColumns 5 -FillColumn 2))
         $sheets.Add((New-XlsxSheet 'Files' @($FolderLabel, 'File', 'Hits', 'High', 'Medium', 'Low', 'Types', 'Reviewed', 'Last saved',
-            'Last saved by', 'PII first saved by', 'Own permissions', 'Access entries', 'Link') @(Get-FileRows $hits $FolderLabel) `
-            @(16, 40, 7, 7, 9, 7, 40, 10, 16, 22, 30, 17, 34, 50) -List -Table 'tblFiles' -LinkColumn 1 -LinkTarget 13 -DateColumns @(8) -FreezeColumns 2))
+            'Last saved by', 'PII first saved by', 'History note', 'Own permissions', 'Access entries', 'Link') @(Get-FileRows $hits $FolderLabel) `
+            @(16, 40, 7, 7, 9, 7, 40, 10, 16, 22, 30, 40, 17, 34, 50) -List -Table 'tblFiles' -LinkColumn 1 -LinkTarget 14 -DateColumns @(8) -FreezeColumns 2))
     }
     $notes = @($Rows | Where-Object { (Get-ConfidenceRank $_.Confidence) -eq 0 })
     if ($notes.Count -gt 0) {

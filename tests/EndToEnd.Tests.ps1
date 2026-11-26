@@ -35,7 +35,8 @@ Assert-Equal 'No|1 person, 3 site groups' (@($e2eHits | ForEach-Object { $_[$own
     'Permissions: each hit shows Own permissions and the counted Access entries'
 Assert-Equal $e2eFiles.Count (Get-FakeCallCount 'Property HasUniqueRoleAssignments') 'Permissions: read once for each file with a hit, not for files without one'
 $filesHeader = @($e2eBook['Files'][0])
-Assert-Equal 'Own permissions|Access entries|Link' (@($filesHeader[11], $filesHeader[12], $filesHeader[13]) -join '|') 'Permissions: the Files tab has the 2 columns before Link'
+Assert-Equal 'History note|Own permissions|Access entries|Link' (@($filesHeader[11], $filesHeader[12], $filesHeader[13], $filesHeader[14]) -join '|') `
+    'Files tab: the History note and the 2 permission columns before Link'
 Assert-Equal 1 (Get-FakeCallCount 'Read-Host') 'With the site given, one address question only (another site or exit); "Scan now?" and "Open" are their own'
 Assert-Equal $true ((Test-FakePnPCall 'Open question') -and (Test-FakePnPCall ('Open ' + $results[0].FullName))) 'Enter at the open question opens the workbook'
 Assert-Equal 1 @(Get-FakePnPConnection).Count 'One sign-in only: no posts sign-in'

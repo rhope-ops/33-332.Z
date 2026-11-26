@@ -43,7 +43,8 @@ $space = 'https://org.example.com/sites/TeamZ/Shared Documents'
 foreach ($case in @(@('', 'no FullRemotePath'), @('https://other.example.com/sites/TeamZ/Shared Documents/A', 'FullRemotePath on another host'),
         @('https://org.example.com/sites/TeamQ/Shared Documents/A', 'FullRemotePath outside the library'),
         @('http://org.example.com/sites/TeamZ/Shared Documents/A', 'FullRemotePath not https'),
-        @('https://org.example.com/sites/TeamZ/Shared Documents/A/%2e%2e/%2e%2e/B', 'an encoded dot part in FullRemotePath'),
+        @('https://org.example.com/sites/TeamZ/Shared Documents/A/%2e%2e/%2e%2e/B', 'an encoded dot part in FullRemotePath (out of the library)'),
+        @('https://org.example.com/sites/TeamZ/Shared Documents/A%2F..%2F..%2FB', 'a dot part behind encoded slashes in FullRemotePath'),
         @('https://org.example.com/sites/TeamZ/Shared Documents/A%5C..%5C..%5CB', 'an encoded backslash in FullRemotePath'))) {
     $m = Get-OneDriveWebMap ($shortcut + '\x') @(@{ MountPoint = $shortcut; UrlNamespace = $space; FullRemotePath = $case[0] }) @($odHome)
     Assert-Equal 'Shortcut|' ('{0}|{1}' -f $m.Kind, $m.WebFolder) ('OneDrive map: a shortcut with ' + $case[1] + ' has no web folder')
@@ -90,6 +91,8 @@ $odRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('piitest-onedrive-' + $le
 $odOut = Join-Path ([System.IO.Path]::GetTempPath()) ('piitest-onedriveout-' + [guid]::NewGuid())
 New-Item -ItemType Directory -Path (Join-Path $odRoot 'Ops') -Force | Out-Null
 [System.IO.File]::WriteAllBytes((Join-Path (Join-Path $odRoot 'Ops') 'notes.txt'), $Txt)
+$notSynced = 'Ref ' + $Sample.Ssn + '.txt'   # on the disk only (not on the web yet), PII in its name only
+[System.IO.File]::WriteAllBytes((Join-Path (Join-Path $odRoot 'Ops') $notSynced), [System.Text.Encoding]::UTF8.GetBytes('meeting at noon'))
 $lib = '/sites/TeamA/Shared Documents'
 Reset-FakePnP @{
     ($lib + '/Ops/notes.txt') = $Txt
@@ -105,6 +108,11 @@ try {
     $sheets = Get-XlsxSheets $book
     $hits = @($sheets['Hits'] | Select-Object -Skip 1)
     $files = @($hits | ForEach-Object { $_[4] } | Sort-Object -Unique)
+    $nameOnly = @($hits | Where-Object { $_[4] -like 'Ref *.txt' })
+    $noteAt = [array]::IndexOf(@($sheets['Hits'][0]), 'History note')
+    Assert-Equal 'Not on the web yet (not synced): no version history' (@($nameOnly | ForEach-Object { $_[$noteAt] } | Sort-Object -Unique) -join ';') `
+        'OneDrive scan: a not-synced file with PII in its name only says "not synced" on its name row'
+    $files = @($files | Where-Object { $_ -notlike 'Ref *.txt' })
     Assert-Equal 'notes.txt|webonly.txt' ($files -join '|') 'OneDrive scan: the disk file and the web-only file are read; the file outside the folder is not'
     Assert-Equal '1|0|1' ('{0}|{1}|{2}' -f (Get-FakeCallCount 'Get-PnPList Shared Documents'), (Get-FakeCallCount 'Get-PnPList'),
             (Get-FakeCallCount ('Items in ' + $lib + '/Ops'))) 'OneDrive scan: one library by its address, items of the pasted folder only'
