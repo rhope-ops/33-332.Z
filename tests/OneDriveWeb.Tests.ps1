@@ -42,7 +42,9 @@ $shortcut = 'C:\Users\me\OneDrive - Org\Team Z'
 $space = 'https://org.example.com/sites/TeamZ/Shared Documents'
 foreach ($case in @(@('', 'no FullRemotePath'), @('https://other.example.com/sites/TeamZ/Shared Documents/A', 'FullRemotePath on another host'),
         @('https://org.example.com/sites/TeamQ/Shared Documents/A', 'FullRemotePath outside the library'),
-        @('http://org.example.com/sites/TeamZ/Shared Documents/A', 'FullRemotePath not https'))) {
+        @('http://org.example.com/sites/TeamZ/Shared Documents/A', 'FullRemotePath not https'),
+        @('https://org.example.com/sites/TeamZ/Shared Documents/A/%2e%2e/%2e%2e/B', 'an encoded dot part in FullRemotePath'),
+        @('https://org.example.com/sites/TeamZ/Shared Documents/A%5C..%5C..%5CB', 'an encoded backslash in FullRemotePath'))) {
     $m = Get-OneDriveWebMap ($shortcut + '\x') @(@{ MountPoint = $shortcut; UrlNamespace = $space; FullRemotePath = $case[0] }) @($odHome)
     Assert-Equal 'Shortcut|' ('{0}|{1}' -f $m.Kind, $m.WebFolder) ('OneDrive map: a shortcut with ' + $case[1] + ' has no web folder')
 }
