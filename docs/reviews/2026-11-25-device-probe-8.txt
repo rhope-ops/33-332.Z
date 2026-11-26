@@ -3,11 +3,12 @@
 # address, no path, no group name and no value. It reads: unique permissions (True/False), the permission entries of
 # the file (counted by kind), and the sharing links of the file (counted by kind). It lists no other site or user.
 $ErrorActionPreference = 'Stop'
-'P8 probe version=2026-11-25f'
+'P8 probe version=2026-11-25g'
 $typed = (Read-Host 'Question 1: the address of the folder page in your web browser').Trim().Trim('"')
 $fileText = (Read-Host 'Question 2: the file name with its type (for example Report.pdf)').Trim().Trim('"', '/')
 Clear-Host
-'P8 probe version=2026-11-25f'
+$typedRaw = $typed   # answer 1 as typed: only its shape is printed, if the address check fails
+'P8 probe version=2026-11-25g'
 $tag = 'P8'
 $signedIn = $false
 $step = 0; $stepName = 'start'
@@ -27,7 +28,61 @@ function Get-Kind($err) {
 $step = 1; $stepName = 'answers'
 if ($typed -notmatch '^https?://') { $typed = 'https://' + $typed }
 $siteMatch = [regex]::Match($typed, '^https://usaf\.dps\.mil/((?:sites|teams)/[A-Za-z0-9_-][A-Za-z0-9_.-]*)(?=[/?#]|$)')
-if (-not $siteMatch.Success) { 'P8 answer 1 is a DoD365 site address=False'; return }   # 'finally' prints Done.
+if (-not $siteMatch.Success) {
+    'P8 answer 1 is a DoD365 site address=False'
+    # Why it failed: the shape of answer 1 only (kinds, counts, True/False), never its text (the Maintainer, 2026-11-25, option A).
+    $scheme = 'none (https:// added)'
+    if ($typedRaw -cmatch '^https://') { $scheme = 'https' }
+    elseif ($typedRaw -cmatch '^http://') { $scheme = 'http' }
+    elseif ($typedRaw -match '^https?://') { $scheme = 'https or http, not lower case' }
+    elseif ($typedRaw -match 'https?://') { $scheme = 'text before the address' }
+    elseif ($typedRaw -match '^[A-Za-z][A-Za-z0-9+.-]*:') { $scheme = 'another scheme' }
+    $odd = @([char[]]$typedRaw | Where-Object { [int]$_ -lt 33 -or [int]$_ -gt 126 })
+    $oddAt = @()
+    if ($typedRaw.Length -gt 0) {
+        if ([int]$typedRaw[0] -lt 33 -or [int]$typedRaw[0] -gt 126) { $oddAt += 'start' }
+        $last = $typedRaw[$typedRaw.Length - 1]
+        if ($typedRaw.Length -gt 1 -and ([int]$last -lt 33 -or [int]$last -gt 126)) { $oddAt += 'end' }
+    }
+    if ($odd.Count -gt $oddAt.Count) { $oddAt += 'inside' }
+    if (-not $oddAt) { $oddAt = @('none') }
+    'P8 answer 1 length={0} scheme={1} spaces or other characters={2} at={3}' -f $typedRaw.Length, $scheme, $odd.Count, ($oddAt -join ' and ')
+    $hostKind = 'none'; $parts = @()
+    $addr = $typed   # with text before the address: the shape from where the address starts
+    if ($scheme -eq 'text before the address') { $addr = $typedRaw.Substring(([regex]::Match($typedRaw, '(?i)https?://')).Index) }
+    $hm = [regex]::Match($addr, '^[^:/?#]+://([^/?#]*)(.*)$')
+    if ($hm.Success) {
+        $h = $hm.Groups[1].Value
+        if ($h -ceq 'usaf.dps.mil') { $hostKind = 'the team site host' }
+        elseif ($h -ieq 'usaf.dps.mil') { $hostKind = 'the team site host, not lower case' }
+        elseif ($h -imatch '^usaf\.dps\.mil:') { $hostKind = 'the team site host with a port' }
+        elseif ($h -imatch '\.dps\.mil(:\d+)?$') { $hostKind = 'another host of the same domain' }
+        elseif ($h) { $hostKind = 'another domain' }
+        $parts = @(($hm.Groups[2].Value -split '[?#]', 2)[0] -split '/' | Where-Object { $_ })
+    }
+    $first = 'none'
+    if ($parts.Count -gt 0) {
+        $f = $parts[0]
+        if ($f -ceq 'sites' -or $f -ceq 'teams') { $first = 'sites or teams' }
+        elseif ($f -ieq 'sites' -or $f -ieq 'teams') { $first = 'sites or teams, not lower case' }
+        elseif ($f -match '^:[A-Za-z]:$') { $first = 'a sharing link part (like :w:)' }
+        elseif ($f -ieq 'personal') { $first = 'personal' }
+        elseif ($f.StartsWith('_')) { $first = 'a part that starts with _ (like _layouts)' }
+        else { $first = 'other' }
+    }
+    $siteName = '-'
+    if ($first -like 'sites or teams*') {
+        if ($parts.Count -lt 2) { $siteName = 'missing' }
+        elseif ($parts[1] -cmatch '^[A-Za-z0-9_-][A-Za-z0-9_.-]*$') { $siteName = 'allowed characters only' }
+        else {
+            $n = $parts[1]
+            $siteName = 'other characters: percent {0}, space {1}, others {2}' -f ([regex]::Matches($n, '%')).Count, ([regex]::Matches($n, ' ')).Count, ([regex]::Matches($n, '[^A-Za-z0-9_.% -]')).Count
+            if ($n.StartsWith('.')) { $siteName += ', starts with a dot' }
+        }
+    }
+    'P8 answer 1 host={0} path parts={1} first part={2} site name={3}' -f $hostKind, $parts.Count, $first, $siteName
+    return   # 'finally' prints Done.
+}
 if (-not $fileText) { 'P8 answer 2 given=False'; return }
 $site = 'https://usaf.dps.mil/' + $siteMatch.Groups[1].Value
 # The folder of the file, from the address of the folder page in the web browser: its 'id=' part (a folder), or the
