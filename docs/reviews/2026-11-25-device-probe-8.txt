@@ -3,12 +3,12 @@
 # address, no path, no group name and no value. It reads: unique permissions (True/False), the permission entries of
 # the file (counted by kind), and the sharing links of the file (counted by kind). It lists no other site or user.
 $ErrorActionPreference = 'Stop'
-'P8 probe version=2026-11-25g'
+'P8 probe version=2026-11-25h'
 $typed = (Read-Host 'Question 1: the address of the folder page in your web browser').Trim().Trim('"')
 $fileText = (Read-Host 'Question 2: the file name with its type (for example Report.pdf)').Trim().Trim('"', '/')
 Clear-Host
 $typedRaw = $typed   # answer 1 as typed: only its shape is printed, if the address check fails
-'P8 probe version=2026-11-25g'
+'P8 probe version=2026-11-25h'
 $tag = 'P8'
 $signedIn = $false
 $step = 0; $stepName = 'start'
@@ -27,6 +27,16 @@ function Get-Kind($err) {
 }
 $step = 1; $stepName = 'answers'
 if ($typed -notmatch '^https?://') { $typed = 'https://' + $typed }
+# A link of the form '/:x:/r/sites/<name>/...' holds the full path of a folder (x = f) or a file (the Maintainer,
+# 2026-11-25): use the path after '/:x:/r'. A link with a token ('/:x:/s/...') is not read: it stops below.
+$linkForm = 'none'; $linkTo = ''
+$lf = [regex]::Match($typed, '^https?://[^/?#]*/:[A-Za-z]:/([^/?#]*)')
+if ($lf.Success) { $linkForm = 'other'; if ($lf.Groups[1].Value -ceq 'r') { $linkForm = 'r' } elseif ($lf.Groups[1].Value -ceq 's') { $linkForm = 's (with a token)' } }
+$lm = [regex]::Match($typed, '^(https://usaf\.dps\.mil)/:([A-Za-z]):/r/(.*)$')
+if ($lm.Success) {
+    $linkTo = 'file'; if ($lm.Groups[2].Value -ieq 'f') { $linkTo = 'folder' }
+    $typed = $lm.Groups[1].Value + '/' + $lm.Groups[3].Value
+}
 $siteMatch = [regex]::Match($typed, '^https://usaf\.dps\.mil/((?:sites|teams)/[A-Za-z0-9_-][A-Za-z0-9_.-]*)(?=[/?#]|$)')
 if (-not $siteMatch.Success) {
     'P8 answer 1 is a DoD365 site address=False'
@@ -80,7 +90,8 @@ if (-not $siteMatch.Success) {
             if ($n.StartsWith('.')) { $siteName += ', starts with a dot' }
         }
     }
-    'P8 answer 1 host={0} path parts={1} first part={2} site name={3}' -f $hostKind, $parts.Count, $first, $siteName
+    'P8 answer 1 host={0} path parts={1} first part={2} site name={3} link form={4}' -f $hostKind, $parts.Count, $first, $siteName, $linkForm
+    if ($linkForm -eq 's (with a token)') { 'P8 answer 1 is a sharing link: open the folder page of the file, then copy the address in the address bar' }
     return   # 'finally' prints Done.
 }
 if (-not $fileText) { 'P8 answer 2 given=False'; return }
@@ -96,7 +107,11 @@ else {
     $p = [uri]::UnescapeDataString($u.AbsolutePath).TrimEnd('/')
     $i = $p.IndexOf('/Forms/', [StringComparison]::OrdinalIgnoreCase)
     if ($i -gt 0) { $folderPath = $p.Substring(0, $i); $folderFrom = 'library page' }
+    elseif ($p -match '(?i)/_layouts/') { $folderFrom = 'a _layouts page' }   # no folder in it: stops below
     elseif ($p.Length -gt $sitePath.Length) { $folderPath = $p; $folderFrom = 'path' }
+    # A link to a file: its folder is the path without its last part.
+    if ($linkTo -eq 'file' -and $folderFrom -eq 'path') { $folderPath = $p.Substring(0, $p.LastIndexOf('/')); $folderFrom = 'link to a file' }
+    elseif ($linkTo -eq 'folder' -and $folderFrom -eq 'path') { $folderFrom = 'link to a folder' }
 }
 $folderPath = $folderPath.TrimEnd('/')
 $name = [uri]::UnescapeDataString($fileText)
