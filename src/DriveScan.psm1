@@ -504,7 +504,7 @@ function Get-RemoteSubFolder {
     .SYNOPSIS
       The synced folder's place below the library root, from FullRemotePath (probe 7): '' for the root itself, for
       example '/Plans' for a folder below it; $null when the value is missing, not https, on another host, outside the
-      library, or has a '.' or '..' part (then no web folder).
+      library, or has a '.' or '..' part or a '\' (then no web folder).
     .PARAMETER Remote
       The FullRemotePath value ('' when missing).
     .PARAMETER LibraryHost
@@ -521,7 +521,8 @@ function Get-RemoteSubFolder {
     if ($remotePath -ieq $Library) { return '' }
     if (-not $remotePath.StartsWith($Library + '/', [StringComparison]::OrdinalIgnoreCase)) { return $null }
     $sub = $remotePath.Substring($Library.Length)
-    if ($sub -match '(^|/)\.\.?(/|$)') { return $null }
+    # A '.' or '..' part, or a '\' (no SharePoint name has one; it can act as a separator), gives no web folder.
+    if ($sub -match '(^|/)\.\.?(/|$)' -or $sub.Contains('\')) { return $null }
     return $sub
 }
 

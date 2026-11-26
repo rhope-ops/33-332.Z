@@ -1,5 +1,5 @@
 <#
-  Ion - DoD365 PII Reporter, build ee207f26 (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
+  Ion - DoD365 PII Reporter, build f97dbb33 (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
 
   HOW TO RUN
     1. Optional: read this text first (Open the script shows it as a .txt in your browser).
@@ -44,7 +44,7 @@
     src/Accountability.psm1, sha256 5e685983da50
     src/SiteTarget.psm1, sha256 2e693a68f413
     src/ChannelScan.psm1, sha256 bc6ea04dbc70
-    src/DriveScan.psm1, sha256 3badff7a3b3d
+    src/DriveScan.psm1, sha256 7df37c0a89fa
     src/Find-ChannelPII.ps1, sha256 485aca86fc94
 
   Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.
@@ -83,8 +83,8 @@
     line  7269  Module SiteTarget.psm1
     line  7626  Module ChannelScan.psm1
     line  8462  Module DriveScan.psm1
-    line  9122  Body of Find-ChannelPII.ps1
-    line  9338  Clean-up
+    line  9123  Body of Find-ChannelPII.ps1
+    line  9339  Clean-up
 #>
 
 # ISE runs pasted text in your session: keep its error setting so the Clean-up block at the end can put it back.
@@ -97,12 +97,12 @@ $SiteUrl = ''            # the team's Teams link, or its site https://usaf.dps.m
 $OutputFolder = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Ion')   # results: a folder per site, then per day
 $MaxFileMB = 25          # files larger than this are reported as NOT SCANNED
 
-$IonPasteHash = '77dacdf0d4346eb9b7d4dfff87c6a2b515342a375aa15f3be455030de5ed1ddf'   # the SHA-256 of the text from the line Paste check to the end (do not edit)
+$IonPasteHash = 'e85a014735111cc07dae80105680fe4da1486f8ef697427d2cbb90b7a72d1c4e'   # the SHA-256 of the text from the line Paste check to the end (do not edit)
 
 # ==== Paste check ==== (the text from this line to the end must be the published text, or nothing runs)
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
-$IonBuild = 'ee207f26'       # the build ID: Ion shows it at the start (do not edit)
+$IonBuild = 'f97dbb33'       # the build ID: Ion shows it at the start (do not edit)
 $IonPasteCheck = 'not read'
 $pasteText = ''
 try { $pastePath = $PSCommandPath } catch { $pastePath = '' }   # no script path: read the ISE pane
@@ -8965,7 +8965,7 @@ function Get-RemoteSubFolder {
     .SYNOPSIS
       The synced folder's place below the library root, from FullRemotePath (probe 7): '' for the root itself, for
       example '/Plans' for a folder below it; $null when the value is missing, not https, on another host, outside the
-      library, or has a '.' or '..' part (then no web folder).
+      library, or has a '.' or '..' part or a '\' (then no web folder).
     .PARAMETER Remote
       The FullRemotePath value ('' when missing).
     .PARAMETER LibraryHost
@@ -8982,7 +8982,8 @@ function Get-RemoteSubFolder {
     if ($remotePath -ieq $Library) { return '' }
     if (-not $remotePath.StartsWith($Library + '/', [StringComparison]::OrdinalIgnoreCase)) { return $null }
     $sub = $remotePath.Substring($Library.Length)
-    if ($sub -match '(^|/)\.\.?(/|$)') { return $null }
+    # A '.' or '..' part, or a '\' (no SharePoint name has one; it can act as a separator), gives no web folder.
+    if ($sub -match '(^|/)\.\.?(/|$)' -or $sub.Contains('\')) { return $null }
     return $sub
 }
 
