@@ -89,8 +89,8 @@ $onlineEntry | Add-Member -MemberType ScriptProperty -Name Target -Value { $scri
 Assert-Equal 'Cloud' (Get-ReparseKind $onlineEntry $odRoots) 'Online-only OneDrive file: read as a cloud item'
 Assert-Equal 0 $script:linkReads 'Online-only OneDrive file: LinkType and Target not read (no download by Windows)'
 Assert-Equal 'Link' (Get-ReparseKind ([pscustomobject]@{ FullName = 'D:\Share\a.docx'; Attributes = 0x400400 }) $odRoots) 'Online-only attribute outside OneDrive: not read'
-$linkEntry = [pscustomobject]@{ FullName = $inOneDrive; Attributes = 0x400; LinkType = 'SymbolicLink'; Target = @('x') }
-Assert-Equal 'Link' (Get-ReparseKind $linkEntry $odRoots) 'Symbolic link (no online-only attribute) in OneDrive: not followed'
+$linkEntry = [pscustomobject]@{ FullName = $inOneDrive; Attributes = 0x1410; LinkType = 'Junction'; Target = @('C:\Users') }
+Assert-Equal 'Link' (Get-ReparseKind $linkEntry $odRoots) 'Junction with Offline set by hand in OneDrive: not followed'
 # Online-only files: asked first (the PAM, 2026-11-23: "Ask each run"); Enter (no) leaves them NOT SCANNED, y reads them.
 function New-OnlineGroups {
     # Two files in one group: one online only, one on the disk.

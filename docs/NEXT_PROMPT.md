@@ -23,4 +23,4 @@ Title: 33-332.Z · <task> · <date>. Read AGENTS.md first.
 20. Plan of 2026-11-26 done (PRs 138-142): map MINORs, step 5 MINORs, PDF scan OCR (known misses accepted,
     PR 140), small-scan note, old-version cap 25 MB; the reader time limit already existed. Open, not planned: version-history reads off
     the main thread (slow run 28:49; the 2026-11-24 parallel-downloads design kept them on it).
-21. 2026-11-27 device: tests 1-3 pass; fix: listing made Windows download online-only files (probe-7.md Result).
+21. 2026-11-27 device: tests 1-3 pass; Windows downloaded online-only files; fix (cause: medium) waits on a device run (probe-7.md).
