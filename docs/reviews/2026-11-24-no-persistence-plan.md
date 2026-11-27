@@ -33,12 +33,14 @@ permissions as scope only ("No reconnaissance": no user names listed); month-nam
   listing works at any depth, but the map is wrong for shortcuts and synced libraries: they stay local only.
   Probe 6 (2026-11-25) stopped before its candidates (cause: `@()` of a New-Object list); probe 7 (fixed, reads the
   shape of the registry values FullRemotePath and WebUrl): runs A and B (2026-11-25): FullRemotePath maps both kinds
-  (7 of 7, 8 of 8 names); folder map fix built 2026-11-26 (probe-7.md Result): waits on a device run of Ion.
+  (7 of 7, 8 of 8 names); folder map fix built 2026-11-26; device run 2026-11-27 works; the run made Windows
+  download online-only files (fix built 2026-11-27, waits on a device run; probe-7.md Result).
   Device test 2026-11-25 (build 3d16ddec, own OneDrive): web used for 12 files, history from the web, 1 sign-in, no error.
 - Step 5 (permission scope): probe 8 v2026-11-25h runs A and B (2026-11-26): unique permissions read in both runs;
   permission entries only as a team owner (run B: NoAccess); sharing links not read (docs/reviews/2026-11-25-device-probe-8.md,
   Result). Scope and layout decided 2026-11-26 (docs/DECISIONS.md); built 2026-11-26 (Get-SharePointAccess,
-  src/Accountability.psm1: "Own permissions" and "Access entries" on Hits and Files): waits on a device run of Ion. Probe 3 ran (2 runs, 2026-11-24) but tested sign-in and paths only; no probe has read a permission yet. Step 6 (parallel downloads): merged 2026-11-24 (PR 115): 3 at once,
+  src/Accountability.psm1: "Own permissions" and "Access entries" on Hits and Files): device run 2026-11-27 on a team
+  site as a member: "No" and "not readable (owner only)", as probe 8 run B (pass; an owner's counts not tested yet). Probe 3 ran (2 runs, 2026-11-24) but tested sign-in and paths only; no probe has read a permission yet. Step 6 (parallel downloads): merged 2026-11-24 (PR 115): 3 at once,
   per folder largest first; device run 2026-11-25: 3, time used 68:45 -> 39:36.
   Follow-up: speed modes Normal/Fast (docs/DECISIONS.md 2026-11-25).
 - Added 2026-11-24: seeded recall test (PR 87; local baseline 46/53 found, 87%); roster header fix merged

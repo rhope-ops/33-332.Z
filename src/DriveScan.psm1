@@ -31,6 +31,7 @@ $script:FileLinkReason = 'A link to another file is not followed (it can lead ou
 # is blocked). A file whose data is only in the cloud has one of these attributes: RecallOnDataAccess (0x400000),
 # RecallOnOpen (0x40000) or Offline (0x1000). Ion asks before it reads such files (the PAM, 2026-11-23: "Ask each run").
 $script:OnlineOnlyAttributes = 0x441000
+$script:RecallAttributes = 0x440000   # set only by the cloud files system (Get-ReparseKind)
 $script:OnlineReason = 'Online only (OneDrive), not downloaded: check by hand, or run Ion again and answer y to download'
 
 function Get-OneDriveHomes {
@@ -93,8 +94,8 @@ function Confirm-OneDriveRoot {
 function Get-ReparseKind {
     <#
     .SYNOPSIS
-      What a reparse point in the folder is: 'Cloud' only for an item inside a OneDrive sync folder that PowerShell
-      gives no LinkType and no Target (the file or folder itself: read); else 'Link' (a symbolic link, a junction,
+      What a reparse point in the folder is: 'Cloud' only for an item inside a OneDrive sync folder that is online only
+      (a Recall attribute) or that PowerShell gives no LinkType and no Target (the item itself: read); else 'Link' (a symbolic link, a junction,
       or any other kind such as a deduplicated or Azure File Sync file: not read, as before; review of PR 59).
     .PARAMETER Entry
       A FileInfo or DirectoryInfo (or, in tests, an object with FullName, LinkType and Target).
@@ -108,6 +109,13 @@ function Get-ReparseKind {
     try { foreach ($root in $Roots) { if ($Entry.FullName.StartsWith($root + '\', [System.StringComparison]::OrdinalIgnoreCase)) { $inside = $true } } }
     catch { return 'Link' }
     if (-not $inside) { return 'Link' }
+    # An online-only item has a Recall attribute (RecallOnDataAccess or RecallOnOpen, 0x440000): only the cloud files
+    # system sets these, so a link cannot have them (Offline, 0x1000, can be set by hand: not used here; review of
+    # PR 145). Its LinkType and Target are not read: the assumption (confidence medium) is that on Windows PowerShell
+    # 5.1 that read opens the file and OneDrive downloads it (device test 2026-11-27; the PAM, 2026-11-24: nothing
+    # goes to the disk).
+    $attributes = 0; try { $attributes = [int]$Entry.Attributes } catch { $attributes = 0 }
+    if (($attributes -band $script:RecallAttributes) -ne 0) { return 'Cloud' }
     try {
         $item = [psobject]$Entry
         $type = [string]$item.LinkType

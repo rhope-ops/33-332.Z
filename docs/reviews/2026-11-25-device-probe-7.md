@@ -103,4 +103,12 @@ ok, library found, root matches, 2 candidates, no stop.
 - Fix built 2026-11-26: Get-OneDriveWebMap takes the part of FullRemotePath below the library root for a shortcut or a
   synced library (WebKinds: Home, Library, Shortcut); no usable value: local only, with a Summary note. Ion's
   Get-PnPListItem has no 500 cap (PageSize pages through all items) and keeps only files under the folder.
-  Waits on a device run of Ion on a synced library and a shortcut.
+  Device run 2026-11-27 (the PAM, in chat): a folder of a synced team library or a shortcut: the Summary says Ion
+  used OneDrive on the web. The map fix works (1 run).
+- Found in that run (the PAM, question dialog, 2026-11-27): before the scan, Windows showed its own OneDrive window
+  "Downloading files" (Ion did not ask "Download and read them?", as expected for files with a web copy), and the files that were online only now show a green
+  check in File Explorer: Windows downloaded them to the disk. This is against the PAM's decision of 2026-11-24
+  (nothing goes to the disk). Cause (confidence: medium; only the folder listing touches the files before the scan):
+  `Get-ReparseKind` read `LinkType` and `Target` of each online-only file, and on Windows PowerShell 5.1 that read
+  opens the file. Fix built 2026-11-27: an online-only file in a sync folder is a cloud item by its attributes, and
+  those 2 values are not read. Waits on a device run: a folder with files that show a cloud icon must keep the icon.
