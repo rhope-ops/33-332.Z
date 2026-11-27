@@ -108,6 +108,11 @@ function Get-ReparseKind {
     try { foreach ($root in $Roots) { if ($Entry.FullName.StartsWith($root + '\', [System.StringComparison]::OrdinalIgnoreCase)) { $inside = $true } } }
     catch { return 'Link' }
     if (-not $inside) { return 'Link' }
+    # An online-only file is the cloud item itself (a link has none of these attributes). Its LinkType and Target are
+    # not read: on Windows PowerShell 5.1 that read opens the file, and OneDrive downloads it to the disk (device test
+    # 2026-11-27: "Downloading files" before the scan; the PAM, 2026-11-24: nothing goes to the disk).
+    $attributes = 0; try { $attributes = [int]$Entry.Attributes } catch { $attributes = 0 }
+    if (($attributes -band $script:OnlineOnlyAttributes) -ne 0) { return 'Cloud' }
     try {
         $item = [psobject]$Entry
         $type = [string]$item.LinkType

@@ -1,5 +1,5 @@
 <#
-  Ion - DoD365 PII Reporter, build e0062f34 (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
+  Ion - DoD365 PII Reporter, build 1131311a (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
 
   HOW TO RUN
     1. Optional: read this text first (Open the script shows it as a .txt in your browser).
@@ -44,7 +44,7 @@
     src/Accountability.psm1, sha256 085d1b5b7b76
     src/SiteTarget.psm1, sha256 2e693a68f413
     src/ChannelScan.psm1, sha256 bc6ea04dbc70
-    src/DriveScan.psm1, sha256 7df37c0a89fa
+    src/DriveScan.psm1, sha256 ee5b44e02ab6
     src/Find-ChannelPII.ps1, sha256 485aca86fc94
 
   Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.
@@ -83,8 +83,8 @@
     line  7474  Module SiteTarget.psm1
     line  7831  Module ChannelScan.psm1
     line  8667  Module DriveScan.psm1
-    line  9328  Body of Find-ChannelPII.ps1
-    line  9544  Clean-up
+    line  9333  Body of Find-ChannelPII.ps1
+    line  9549  Clean-up
 #>
 
 # ISE runs pasted text in your session: keep its error setting so the Clean-up block at the end can put it back.
@@ -97,12 +97,12 @@ $SiteUrl = ''            # the team's Teams link, or its site https://usaf.dps.m
 $OutputFolder = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Ion')   # results: a folder per site, then per day
 $MaxFileMB = 25          # files larger than this are reported as NOT SCANNED
 
-$IonPasteHash = '00efc58d1f2049fe141e943cb06d658d781ddf7bace1977852d2e4765650f760'   # the SHA-256 of the text from the line Paste check to the end (do not edit)
+$IonPasteHash = '91ea49e9d2bef230bcce60e082501ef3ce78ce813dbec8ce13e1810b124f8e05'   # the SHA-256 of the text from the line Paste check to the end (do not edit)
 
 # ==== Paste check ==== (the text from this line to the end must be the published text, or nothing runs)
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
-$IonBuild = 'e0062f34'       # the build ID: Ion shows it at the start (do not edit)
+$IonBuild = '1131311a'       # the build ID: Ion shows it at the start (do not edit)
 $IonPasteCheck = 'not read'
 $pasteText = ''
 try { $pastePath = $PSCommandPath } catch { $pastePath = '' }   # no script path: read the ISE pane
@@ -8774,6 +8774,11 @@ function Get-ReparseKind {
     try { foreach ($root in $Roots) { if ($Entry.FullName.StartsWith($root + '\', [System.StringComparison]::OrdinalIgnoreCase)) { $inside = $true } } }
     catch { return 'Link' }
     if (-not $inside) { return 'Link' }
+    # An online-only file is the cloud item itself (a link has none of these attributes). Its LinkType and Target are
+    # not read: on Windows PowerShell 5.1 that read opens the file, and OneDrive downloads it to the disk (device test
+    # 2026-11-27: "Downloading files" before the scan; the PAM, 2026-11-24: nothing goes to the disk).
+    $attributes = 0; try { $attributes = [int]$Entry.Attributes } catch { $attributes = 0 }
+    if (($attributes -band $script:OnlineOnlyAttributes) -ne 0) { return 'Cloud' }
     try {
         $item = [psobject]$Entry
         $type = [string]$item.LinkType

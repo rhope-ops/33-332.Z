@@ -80,6 +80,16 @@ Assert-Equal 'Link' (Get-ReparseKind ([pscustomobject]@{ FullName = 'C:\Users\me
 Assert-Equal 'Link' (Get-ReparseKind ([pscustomobject]@{ FullName = $inOneDrive; LinkType = 'SymbolicLink'; Target = @('x') }) $odRoots) 'Symbolic link in OneDrive: not followed'
 Assert-Equal 'Link' (Get-ReparseKind ([pscustomobject]@{ FullName = $inOneDrive; LinkType = 'Junction'; Target = $null }) $odRoots) 'Junction in OneDrive: not followed'
 Assert-Equal 'Link' (Get-ReparseKind ([pscustomobject]@{ FullName = $inOneDrive }) $odRoots) 'Kind not known: not followed'
+# An online-only file: 'Cloud' from its attributes; LinkType and Target are not read (on 5.1 that read makes OneDrive
+# download the file; device test 2026-11-27). Outside a sync folder the attributes do not make it a cloud item.
+$script:linkReads = 0
+$onlineEntry = [pscustomobject]@{ FullName = $inOneDrive; Attributes = 0x400400 }
+$onlineEntry | Add-Member -MemberType ScriptProperty -Name LinkType -Value { $script:linkReads++; $null }
+$onlineEntry | Add-Member -MemberType ScriptProperty -Name Target -Value { $script:linkReads++; $null }
+Assert-Equal 'Cloud' (Get-ReparseKind $onlineEntry $odRoots) 'Online-only OneDrive file: read as a cloud item'
+Assert-Equal 0 $script:linkReads 'Online-only OneDrive file: LinkType and Target not read (no download by Windows)'
+Assert-Equal 'Link' (Get-ReparseKind ([pscustomobject]@{ FullName = 'D:\Share\a.docx'; Attributes = 0x400400 }) $odRoots) 'Online-only attribute outside OneDrive: not read'
+Assert-Equal 'Link' (Get-ReparseKind ([pscustomobject]@{ FullName = $inOneDrive; Attributes = 0x400; LinkType = 'SymbolicLink'; Target = @('x') }) $odRoots) 'Symbolic link (no online-only attribute) in OneDrive: not followed'
 # Online-only files: asked first (the PAM, 2026-11-23: "Ask each run"); Enter (no) leaves them NOT SCANNED, y reads them.
 function New-OnlineGroups {
     # Two files in one group: one online only, one on the disk.

@@ -24,3 +24,6 @@ Title: 33-332.Z · <task> · <date>. Read AGENTS.md first.
 20. Plan of 2026-11-26 done (PRs 138-142): map MINORs, step 5 MINORs, PDF scan OCR (known misses accepted,
     PR 140), small-scan note, old-version cap 25 MB; the reader time limit already existed. Open, not planned: version-history reads off
     the main thread (slow run 28:49; the 2026-11-24 parallel-downloads design kept them on it).
+21. Device results 2026-11-27 (the PAM, in chat): map fix pass; permission cells pass as a member; PDF with scanned
+    pages: scanned pages read, no 3-minute limit (pass). Open: the synced-folder run made Windows download online-only
+    files before the scan; fix built (PR of 2026-11-27, probe-7.md Result): waits on a device run (cloud icons stay).
