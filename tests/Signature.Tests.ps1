@@ -1,5 +1,5 @@
 <#
-Signature.Tests.ps1 - tests of the e-signature DoD ID (PiiSignedIds.psm1 Find-SignedIdHits, Add-SignedIdHits): 25 layouts, decoys, masking, speed.
+Signature.Tests.ps1 - tests of the e-signature DoD ID (PiiEngine.psm1 Find-SignedIdHits, Add-SignedIdHits): 25 layouts, decoys, masking, speed.
 
   Purpose:     Each layout of docs/reviews/2026-11-23-ion-esignature-layouts.md (this session's 25 and the source's 25) gives
                exactly one hit, a DoD ID (Low), and no SSN, except source layout OF by design; decoys give no DoD ID;
@@ -46,7 +46,7 @@ $SignatureLayouts = [ordered]@{
     'S24 CRLF, then 3-2-4-1'      = "$sigName`r`n$sig3241"
     'S25 one digit, then nine'    = "$sigName$($sigId.Substring(0, 1)) $($sigId.Substring(1))"
 }
-# A CAC name, a gap, then 9+1 digits (S23, S24, OE) is a DoD ID Low (the PAM's gap rule, 2026-11-24, question dialog):
+# A CAC name, a gap, then 9+1 digits (S23, S24, OE) is a DoD ID Low (the Administrator's gap rule, 2026-11-24, question dialog):
 # no layout stays an SSN. A roster row without a name, and a count after an SSN, stay SSNs (tests below and Detectors.Tests.ps1).
 $sigAsSsn = @{}
 foreach ($layout in $SignatureLayouts.Keys) {
@@ -72,8 +72,8 @@ foreach ($layout in $SourceLayouts.Keys) {
     $expected = if ($sigAsSsn.ContainsKey($layout)) { $sigAsSsn[$layout] } else { 'DoD ID/Low/******7890' }
     Assert-Equal $expected ((Get-HitSummary $SourceLayouts[$layout]) -join ',') "E-signature source layout $layout"
 }
-# A (capitals, no dots, 3-2-4-1) is a DoD ID by the PAM's gap rule (2026-11-24); F, 10 spaced digits alone, is not reported.
-Assert-Equal 'DoD ID/Low/******7890' ((Get-HitSummary "DOE JOHN A $sig3241") -join ',') 'E-signature source layout OA: DoD ID (the PAM, 2026-11-24)'
+# A (capitals, no dots, 3-2-4-1) is a DoD ID by the Administrator's gap rule (2026-11-24); F, 10 spaced digits alone, is not reported.
+Assert-Equal 'DoD ID/Low/******7890' ((Get-HitSummary "DOE JOHN A $sig3241") -join ',') 'E-signature source layout OA: DoD ID (the Administrator, 2026-11-24)'
 Assert-Equal 0 (Get-HitSummary (($sigId.ToCharArray()) -join ' ')).Count 'E-signature source layout OF: no hit, by design'
 
 # ---- Decoys: no DoD ID where there is no signature ID; an SSN with a label or dashes stays an SSN ----
@@ -156,7 +156,7 @@ foreach ($context in @('', 'Digitally signed by ', 'Name: Jane Doe ', 'born ', '
             foreach ($value in $invValues) {
                 foreach ($tail in @('', ' 2 copies', "`n2 ROE.JOHN.A.", "`t5")) {
                     $text = $context + $name + $gap + $value + $tail
-                    $off = & (Get-Module PiiDetectors) { param($t) Remove-OverlappingHits @(Get-AllHits $t.Replace('_', ' ')) } $text
+                    $off = & (Get-Module PiiEngine) { param($t) Remove-OverlappingHits @(Get-AllHits $t.Replace('_', ' ')) } $text
                     $on = @(Get-PiiSpan $text)
                     $invCount++
                     foreach ($hit in $off) {
@@ -208,7 +208,7 @@ $sigAfterHit = [ordered]@{
 foreach ($case in $sigAfterHit.Keys) {
     Assert-Equal 1 @(Get-HitSummary $sigAfterHit[$case] | Where-Object { $_ -eq 'DoD ID/Low/******7890' }).Count "E-signature ID after a hit or a second word ($case)"
 }
-# A date, time, year or page number and one gap before bare digits after a signature word: the ID is found (the PAM,
+# A date, time, year or page number and one gap before bare digits after a signature word: the ID is found (the Administrator,
 # 2026-11-24, "1a": the guard of 013ca82 narrowed). A lone digit and a gap still block it (the ID could be 11 digits).
 $sigLeadIns = @("Digitally signed by`n2026.11.20 $sigId", "Digitally signed by`nPage 3 $sig3241", "Digitally signed by 2026-11-20 $sigId",
     "Digitally signed by 11/20/2026 $sigId", "Digitally signed by 10:15:22 $sigId", "Digitally signed by 2026 $sigId")
@@ -216,12 +216,12 @@ foreach ($case in $sigLeadIns) {
     Assert-Equal 1 @(Get-HitSummary $case | Where-Object { $_ -eq 'DoD ID/Low/******7890' }).Count "ID after a date, time, year or page ($($case -replace "`n", ' ' -replace '\d', '#'))"
 }
 Assert-Equal 0 @(Get-HitSummary "Digitally signed by 7 $sigId" | Where-Object { $_ -like 'DoD ID/*' }).Count 'No ID after a lone digit and a gap'
-# After a CAC name a 3-7 split is an ID; a 3-3-4 phone there stays a phone (the PAM, 2026-11-24, "1a").
+# After a CAC name a 3-7 split is an ID; a 3-3-4 phone there stays a phone (the Administrator, 2026-11-24, "1a").
 Assert-Equal 'DoD ID/Low/******7890' ((Get-HitSummary "$sigName $($sigId.Substring(0, 3)) $($sigId.Substring(3))") -join ',') 'CAC name, a gap, a 3-7 split: an ID'
 $sigNamePhone = @(Find-PiiInText "$sigName $($Sample.Phone -replace '-', ' ')" | ForEach-Object { $_.Detector })
 Assert-Equal 'True False' ('{0} {1}' -f ($sigNamePhone -contains 'Phone'), ($sigNamePhone -contains 'DoD ID')) 'CAC name, a gap, a 3-3-4 phone: a phone'
 
-# ---- Review of PR 57 (the PAM, 2026-11-24: close PR 57, fix its cases on main) ----
+# ---- Review of PR 57 (the Administrator, 2026-11-24: close PR 57, fix its cases on main) ----
 $sig9 = $sigId.Substring(0, 9)
 $sigCaps = 'DOE' + ' JANE Q'
 $pr57Ids = [ordered]@{
@@ -276,7 +276,7 @@ foreach ($case in @("Signed. John Doe $sigId", "Signature. Capt Jane Doe $sigId"
     Assert-Equal 1 @(Get-HitSummary $case | Where-Object { $_ -eq 'DoD ID/Low/******7890' }).Count "Stamp, not prose: $($case -replace "`n", ' ' -replace '\d', '#')"
 }
 
-# ---- PR 69 MINORs (the PAM, 2026-11-24, docs/DECISIONS.md "PR 69 MINORs") ----
+# ---- PR 69 MINORs (the Administrator, 2026-11-24, docs/DECISIONS.md "PR 69 MINORs") ----
 # 1. The prose guard takes only "signed" and ".": "is signature." and "signed?" or "signed!" keep the ID.
 # 2. After a year alone only 10 digits in a row or 3-2-4-1 are an ID. 3. A capital "Signed." in prose is no stamp.
 # 4. One line break is the gap of a sentence end.
@@ -303,7 +303,7 @@ foreach ($case in $minorEdges.Keys) {
     Assert-Equal $minorEdges[$case][0] @(Get-HitSummary $minorEdges[$case][1] | Where-Object { $_ -like 'DoD ID/*' }).Count "PR 69 MINORs: $case"
 }
 
-# ---- A date with a month name is a date, as a numeric date (the PAM, 2026-11-24, no-persistence plan step 1) ----
+# ---- A date with a month name is a date, as a numeric date (the Administrator, 2026-11-24, no-persistence plan step 1) ----
 # Any ID shape after it is an ID (4-4-2, 9+1, 5-5); a year alone keeps the PR 69 MINORs rule (above: no ID).
 $monYear = '20' + '26'
 $sig55 = $sigId.Substring(0, 5) + ' ' + $sigId.Substring(5)
@@ -324,7 +324,7 @@ foreach ($case in $monNone) {
 $monPhone = @(Get-HitSummary "Signed 20 Nov $monYear $revPhone")
 Assert-Equal 'Phone' (($monPhone | ForEach-Object { $_.Split('/')[0] }) -join ',') 'Month-name date: a phone after it stays a phone'
 
-# More month-name spellings are dates (the PAM, 2026-11-24, question dialog): no comma, a 2-digit year, dashes, ordinals.
+# More month-name spellings are dates (the Administrator, 2026-11-24, question dialog): no comma, a 2-digit year, dashes, ordinals.
 # "Signed 20 Nov 26 ..." was no ID above before this ruling; it is now an ID. Other mixes stay no date (as on main).
 $monYear2 = '2' + '6'
 $monMore = @("Nov 20 $monYear", "nov. 5 $monYear", "20NOV$monYear2", "20 Nov $monYear2", "Nov 20, $monYear2", "20-Nov-$monYear", "20-Nov-$monYear2",

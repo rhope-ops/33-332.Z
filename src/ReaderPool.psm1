@@ -1,8 +1,8 @@
 <#
 ReaderPool.psm1 - reads several files at once in PowerShell runspaces, and each identical file only once per run.
 
-  Purpose:     Speed (the PAM, 2026-11-21): files are read and checked for PII by 1 to 8 workers at a time (Normal speed: at most half
-               the processors; Fast: one per processor; the PAM, 2026-11-25), while the
+  Purpose:     Speed (the Administrator, 2026-11-21): files are read and checked for PII by 1 to 8 workers at a time (Normal speed: at most half
+               the processors; Fast: one per processor; the Administrator, 2026-11-25), while the
                main thread lists, downloads (SharePoint) and reports. The number of workers follows the load: it
                grows while the throughput grows and shrinks when it falls. A file whose content (SHA-256) was
                already read in this run is not read again: it gets the same hits. Nothing is kept after the run.
@@ -10,7 +10,7 @@ ReaderPool.psm1 - reads several files at once in PowerShell runspaces, and each 
   Outputs:     results: Status, Reason, Note, Hits, Parts, Hash, Duplicate, Seconds, Size.
   How to run:  imported by Find-ChannelPII.ps1; each worker loads the same reader code (the readers above this
                module and this module) once.
-  Depends on:  PiiDetectors.psm1 (Find-PiiInText) and TextExtract.psm1 (Get-TextFromBytes), imported first.
+  Depends on:  PiiEngine.psm1 (Find-PiiInText) and TextExtract.psm1 (Get-TextFromBytes), imported first.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7). Runspaces are part of PowerShell: no module, no
                compiled code, no other process.
   Network:     none here (a network-drive path is opened read-only with the person's Windows logon).
@@ -23,7 +23,7 @@ Set-StrictMode -Version 2.0
 # Workers: at most this many (and at most one per processor); the first target is 2.
 $script:MaxWorkers = 8
 $script:FirstWorkers = 2
-# The run's speed (the PAM, 2026-11-25: a Fast run made the fan loud): 'Normal' uses at most half the processors for
+# The run's speed (the Administrator, 2026-11-25: a Fast run made the fan loud): 'Normal' uses at most half the processors for
 # readers; 'Fast' one per processor. In both, workers run at below-normal Windows priority, so other programs come first.
 $script:ScanSpeed = 'Normal'
 
@@ -34,8 +34,8 @@ $script:Processors = [Environment]::ProcessorCount
 $script:ReviewEvery = 6
 $script:GrowthStep = 0.05
 $script:DropStep = 0.15
-# The longest one file may take in a worker (seconds). Above the PDF reader's own limit (120 s, PdfCore.psm1), so that
-# limit, with its own reason, fires first. A worker over it is stopped without waiting, and the scan goes on (the PAM's
+# The longest one file may take in a worker (seconds). Above the PDF reader's own limit (120 s, PdfExtract.psm1), so that
+# limit, with its own reason, fires first. A worker over it is stopped without waiting, and the scan goes on (the Administrator's
 # gov run, 2026-11-23: a SharePoint scan hung after 50 minutes and Ctrl+C did not stop it).
 $script:FileSecondsLimit = 180
 $script:FileSlowReason = 'Reading took longer than 3 minutes (the file may be fine): check by hand'
@@ -47,14 +47,18 @@ $script:WaitSliceMs = 250
 $script:LongPathAt = 240
 
 # The reader modules, in load order, for a development run (the bundle gives the reader block's text instead).
-$script:ReaderModules = @('PiiPatterns', 'PiiSignedIds', 'PiiDetectors', 'PiiMasking', 'OcrText', 'OleText', 'ContainerText', 'PdfCore', 'PdfObjects', 'PdfFonts',
-    'PdfShown', 'PdfLayout', 'PdfContent', 'PdfText', 'TextExtract', 'ReaderPool')
+$script:ReaderModules = @('PiiEngine', 'ContainerText', 'PdfExtract', 'TextExtract', 'ReaderPool')
 
 # The scripts each runspace runs (a worker per file; Invoke-LimitedRead per old version): load the reader code, then read.
 $script:ReaderLoader = @'
 [System.Threading.Thread]::CurrentThread.Priority = [System.Threading.ThreadPriority]::BelowNormal
 if (-not $global:IonReaderReady) {
-    if ($Init.ContainsKey('Code')) { New-Module -Name IonReaders -ScriptBlock ([scriptblock]::Create($Init.Code)) | Import-Module -Global }
+    if ($Init.ContainsKey('Code')) {
+        $t = $null; $e = $null
+        $sb = [System.Management.Automation.Language.Parser]::ParseInput($Init.Code, [ref]$t, [ref]$e).GetScriptBlock()
+        if ($e.Count -gt 0) { throw ('Worker code parse error: ' + $e[0].Message) }
+        New-Module -Name IonReaders -ScriptBlock $sb | Import-Module -Global
+    }
     else { Import-Module $Init.Paths -Global -Force }
     $global:IonReaderReady = $true
 }

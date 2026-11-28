@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
-"""33-332.Z's own parts of the site build: the section kinds looks-for and breach, and the tool-text check.
+"""ion's own parts of the site build: the section kinds looks-for and breach, and the tool-text check.
 
 Why: scripts/build_site.py is a kit file (kit 7.0.0) that builds intro and key-facts; a project adds its own kinds in
-this file, which a kit sync never touches (the PAM, 2026-11-21: the project's own parts moved out of build_site.py).
+this file, which a kit sync never touches (the Administrator, 2026-11-21: the project's own parts moved out of build_site.py).
 Run target: any machine with Python 3 (a build tool, never run on a gov device).
 What it does: the kit's build_site.py loads this file and uses
   looks-for  a table Type | Found when | Shown as | Confidence   -> the table's rows (the first three columns)
   breach     the advice, a blank line, its citation               -> the breach note
-  extra_checks: the tool's breach text (src/ReportBook.psm1, $script:BreachAdvice) must say the README's breach section,
+  extra_checks: the tool's breach text (src/ReportExport.psm1, $script:BreachAdvice) must say the README's breach section,
              word for word (the advice, then its citation in brackets); and the page checks of scripts/site_page.py
              (size, security metas, accessibility parts, WCAG contrast of the tokens).
-Inputs:  README.md, index.html, src/ReportBook.psm1 (through the kit's build_site.py); with --test, invented files only.
+Inputs:  README.md, index.html, src/ReportExport.psm1 (through the kit's build_site.py); with --test, invented files only.
 Outputs: with --test, one line per case and "SITE LOCAL TEST PASS" (or "... FAIL"); the checks run in build_site.py.
 Usage:   python3 scripts/build_site_local.py --test    self-test (scripts/check.sh runs it); the build itself:
          python3 scripts/build_site.py --write | --check
+Prevents: the site's "What it looks for" table or breach advice drifts from README.md or the PowerShell tool text
 Network: none.
 Writes: nothing in the repo (the self-test: temporary files).
 Credentials: none.
@@ -30,7 +31,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # the kit's helpers: scripts/build_site.py
 from build_site import COMMAND, README, SITE, inline, paragraphs, readme_sections, run  # noqa: E402
 
-TOOL = 'src/ReportBook.psm1'
+TOOL = 'src/ReportExport.psm1'
 # The site shows the first three columns of the README's "What it looks for" table (Confidence stays README only);
 # their names must be these, as the site's hand-written table head says them (index.html <thead>).
 SITE_HEAD = ('Type', 'Found when', 'Shown as')

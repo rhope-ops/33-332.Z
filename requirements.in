@@ -1,0 +1,3 @@
+# Direct Python security tools for CI (.github/workflows/security.yml; Administrator, 2026-11-28).
+# Source of hash-pinned requirements.txt (bandit==1.9.4, matching archimedes_lever/requirements.txt).
+bandit==1.9.4

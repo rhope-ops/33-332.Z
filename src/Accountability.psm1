@@ -1,17 +1,17 @@
 <#
 Accountability.psm1 - who made and changed a file with PII, and who put the PII in and when.
 
-  Purpose:     The PAM, 2026-11-21: for accountability and to date a possible incident, each file with a hit shows
+  Purpose:     The Administrator, 2026-11-21: for accountability and to date a possible incident, each file with a hit shows
                who last modified it, when it was made and by whom, and who added the PII and when, by e-mail
                address (the report is CUI and stays in DoD365). SharePoint and Teams: the file's fields and its
                version history (the first version that holds each hit). Drives: the file's owner (a Windows logon
-               name, which Windows looks up from the owner's ID; no search of the directory: "No reconnaissance"), its times, and the names an Office file stores.
+               name, which Windows looks up from the Administrator's ID; no search of the directory: "No reconnaissance"), its times, and the names an Office file stores.
   Inputs:      the file's list item, path or reader result, and its hits.
-  Outputs:     @{ ModifiedBy; Created; CreatedBy; AddedOn; AddedBy; HistoryNote; ByHit } for Report.psm1 Set-RowAccountability.
+  Outputs:     @{ ModifiedBy; Created; CreatedBy; AddedOn; AddedBy; HistoryNote; ByHit } for ReportExport.psm1 Set-RowAccountability.
                "PII first saved" and "PII first saved by" hold only a date and a person (or "Not recorded"); every caveat goes in
-               "History note" (the PAM, 2026-11-21: the columns must be easy to understand).
+               "History note" (the Administrator, 2026-11-21: the columns must be easy to understand).
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
-  Depends on:  TextExtract.psm1 and ReaderPool.psm1 (Invoke-LimitedRead), PiiDetectors.psm1 (Find-PiiInText) and, for SharePoint,
+  Depends on:  TextExtract.psm1 and ReaderPool.psm1 (Invoke-LimitedRead), PiiEngine.psm1 (Find-PiiInText) and, for SharePoint,
                PnP.PowerShell 1.12.0 (Get-PnPFileVersion, Get-PnPContext; read-only), imported first.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7).
   Network:     only the signed-in site (version history and permissions of files with a hit; the site's own 3 groups).
@@ -24,7 +24,7 @@ Set-StrictMode -Version 2.0
 # Old versions read per file with a hit, oldest first (a file with more is dated from the oldest ones read).
 $script:MaxVersionsRead = 30
 # An old version larger than this is not downloaded: it counts as a version that could not be read (plan step 5 of the
-# next build, the PAM, 2026-11-26, approved a cap; the value is the author's choice: the default file limit, -MaxFileMB 25).
+# next build, the Administrator, 2026-11-26, approved a cap; the value is the author's choice: the default file limit, -MaxFileMB 25).
 $script:MaxVersionBytes = 25MB
 $script:NotRecorded = 'Not recorded'
 $script:NoHistory = 'The file has no version history'
@@ -36,7 +36,7 @@ $script:DriveNoHistory = 'A drive keeps no file history'
 # The two fallbacks of "PII first saved by" say so in the History note (review of PR 41).
 $script:NoOlderVersion = "No older version: the file's creator is named"
 $script:OnlyCurrentVersion = 'In no older version: the current version is named'
-# Plan step 5 (the PAM, 2026-11-26: docs/DECISIONS.md): who has access to a web file with PII, as counts of entry kinds.
+# Plan step 5 (the Administrator, 2026-11-26: docs/DECISIONS.md): who has access to a web file with PII, as counts of entry kinds.
 $script:NotReadable = 'Not readable'
 $script:NotReadableEntries = 'Not readable (owner only)'
 # Each entry kind: its name for 1 and for more (in this order on the cell).
@@ -327,7 +327,7 @@ function Find-PiiAddedVersion {
     <#
     .SYNOPSIS
       For each hit of a SharePoint file, the first version that holds it (who saved it and when), and each time it
-      was put back after a version without it (the PAM, 2026-11-21). A hit
+      was put back after a version without it (the Administrator, 2026-11-21). A hit
       in no older version came with the current one (the last modifier). Read-only; versions stay in memory.
     .PARAMETER Ref
       The file's server-relative path.
@@ -354,7 +354,7 @@ function Find-PiiAddedVersion {
     $readFailed = $false   # a version before this one could not be read (the cap only leaves newer ones unread)
     $keys = $open
     $present = @{}   # per hit: in the last version read ($true/$false), or not known after a version not read ($null)
-    $back = @{}      # per hit: when it was put back after a version without it (the PAM, 2026-11-21)
+    $back = @{}      # per hit: when it was put back after a version without it (the Administrator, 2026-11-21)
     $unsure = @{}    # per hit: a version not read after the hit was seen: a removal and put-back there cannot be named
     foreach ($version in $versions) {   # every version read (not only to the first with each hit): put-backs count too
         $text = Read-VersionText $version $context $Name
@@ -415,7 +415,7 @@ function Get-DriveWho {
 function Get-AccountRows {
     <#
     .SYNOPSIS
-      The By account tab (C6, the PAM, 2026-11-21): one row per "PII first saved by" account, most hits first, with how
+      The By account tab (C6, the Administrator, 2026-11-21): one row per "PII first saved by" account, most hits first, with how
       many files and how many High, Medium and Low hits it first saved. Each file counts once per account; "Not
       recorded" and empty cells are left out. The same limits as the column apply (see the Method tab).
     .PARAMETER Hits
@@ -443,8 +443,8 @@ function Get-MethodRows {
     <#
     .SYNOPSIS
       The rows of the workbook's Method tab: how Ion finds possible PII, how sure each confidence is for each type (as
-      src/PiiDetectors.psm1 decides it), and how it fills the who-and-when columns, with what that evidence can and
-      cannot show (the PAM, 2026-11-21: the method on its own page; "PII first saved by" is evidence, not proof).
+      src/PiiEngine.psm1 decides it), and how it fills the who-and-when columns, with what that evidence can and
+      cannot show (the Administrator, 2026-11-21: the method on its own page; "PII first saved by" is evidence, not proof).
     .OUTPUTS
       [object[]] rows of two cells (topic, text).
     #>

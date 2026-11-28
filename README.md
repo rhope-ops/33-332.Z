@@ -1,6 +1,8 @@
-![Ion: 33-332.Z · Privacy Act Management](docs/assets/33-332.Z-social-preview.png)
+![Ion: ion · Privacy Act Management](docs/assets/33-332.Z-social-preview.png)
 
 # Ion
+Privacy Act Management: small, read-only tools that help a DAF unit find and protect PII in Microsoft 365 (AFI 33-332).
+
 **DoD365 PII Reporter**
 
 <!-- site:intro -->
@@ -28,7 +30,7 @@ Keep your eyes on the files in local, network, and cloud directories you can acc
 
 ---
 
-[**Open the script**](https://raw.githubusercontent.com/rhope-ops/33-332.Z/main/paste/Ion-script.txt)
+[**Open the script**](https://raw.githubusercontent.com/rhope-ops/ion/main/paste/Ion-script.txt)
 
 The steps to run it are at the top of the script.
 
@@ -129,25 +131,19 @@ Each file starts with a header: purpose, inputs, outputs, how to run, run target
 | File | What it does |
 |---|---|
 | `src/Find-ChannelPII.ps1` | Entry point: address or folder, sign-in for cloud sites, folders, files, results |
-| `src/SiteTarget.psm1` | What you paste (Teams link, site address or drive folder), the lookup of a team's site from a Teams link, and the sign-in to that one site |
-| `src/ChannelScan.psm1` | SharePoint and Teams steps after the sign-in: libraries, folders, read files |
+| `src/ChannelScan.psm1` | What you paste (Teams link, site address or drive folder), Teams site lookup, CAC sign-in, libraries, and parallel downloads |
 | `src/DriveScan.psm1` | Scans a folder on a mapped or network drive (`X:\folder` or `\\server\share\folder`) |
 | `src/ReaderPool.psm1` | Reads several files at once in PowerShell runspaces, and each identical file only once per run |
-| `src/ScanQueue.psm1` | Turns the reader pool's results into report rows, in the order files finish; the steps both scans share, and the "Scan now?" question |
+| `src/ScanQueue.psm1` | Live progress bars and masked per-folder lines, turns reader pool results into report rows, and asks "Scan now?" |
 | `src/Accountability.psm1` | Who made and changed a file with PII, and who put the PII in and when |
 | `src/TextExtract.psm1` | Turns file bytes into plain text, in memory, and picks the reader for each file type |
-| `src/PdfCore.psm1`, `src/PdfObjects.psm1`, `src/PdfFonts.psm1`, `src/PdfShown.psm1`, `src/PdfLayout.psm1`, `src/PdfContent.psm1`, `src/PdfText.psm1` | The PDF reader, with .NET only: limits and stream filters, objects, fonts, word spacing, page text |
-| `src/OcrText.psm1` | Text in images and in a scanned PDF's JPEG pages, with Windows' built-in OCR |
-| `src/OleText.psm1` | Text from old .doc, .xls and .ppt files and Outlook .msg messages |
-| `src/ContainerText.psm1` | Opens .zip archives and .eml e-mails in memory, so each file inside is read |
-| `src/PiiPatterns.psm1`, `src/PiiSignedIds.psm1`, `src/PiiDetectors.psm1` | One detector per PII type, the e-signature DoD ID; finds positions and raw values |
-| `src/PiiMasking.psm1` | Masks every value and snippet; the only way results leave the detectors |
-| `src/Report.psm1`, `src/ReportBook.psm1` | Screen summary and the severity order; the workbook tabs and where the workbook is saved |
-| `src/XlsxWriter.psm1` | Writes the .xlsx workbook with .NET only (no Excel, no module) |
-| `src/ScanMeter.psm1` | The two progress bars and the line per folder: counts, and the MB downloaded of a large file; folder names masked |
+| `src/PdfExtract.psm1` | The PDF reader, with .NET only: limits, stream filters, objects, fonts, word spacing, page text |
+| `src/ContainerText.psm1` | Text from images (Windows OCR), old .doc/.xls/.ppt and Outlook .msg files, and .zip archives / .eml e-mails |
+| `src/PiiEngine.psm1` | One detector per PII type, e-signature DoD ID, overlap removal, and masking of every value and snippet |
+| `src/ReportExport.psm1` | Screen summary, severity order, workbook tabs, save path, and .xlsx writer with .NET only (no Excel, no module) |
 | `tests/Run-Tests.ps1` | Runs all tests (invented data, fake PnP cmdlets, no network) |
 | `tests/TestKit.ps1`, `tests/FakePnP.ps1` | The test assertion and samples; the fake PnP cmdlets |
-| `tests/*.Tests.ps1` | One test file per module, a start-to-end run, and a run of the paste text |
+| `tests/*.Tests.ps1` | Tests per module, a start-to-end run, and a run of the paste text |
 | `tests/Lint.ps1` | Windows PowerShell 5.1 syntax check (PSScriptAnalyzer) |
 | `paste/Ion-script.txt` | GENERATED: the one text you paste into ISE (the run steps, a Settings block, the modules and the script); the README and the site link it |
 | `scripts/build_paste.py` | Builds the paste text from `src/`; `--check` fails when it is out of date |

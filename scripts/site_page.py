@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Checks of the site page index.html that are not about the README blocks: size, security metas, accessibility parts
-and the WCAG contrast of its colour tokens (fleet v2 Stage 3B, 2026-11-23; DEC 5 Option A tokens).
+and the WCAG contrast of its colour tokens (USAF Blue Light + Fulcrum Dark v2.1.1; DEC-BRAND, 2026-11-27).
 
-Why: the page is mostly hand-written; these checks keep the fleet v2 fixes in place. Contrast is computed here from the
-page's own CSS tokens (WCAG 2.x relative luminance), never by hand.
-What it checks (check_page): the page is under MAX_BYTES; a Content-Security-Policy meta with connect-src 'none', a
-no-referrer meta, two theme-color metas (light and dark); a skip link to #main; a polite live region; every external
-link opens with rel="noopener noreferrer"; each <img> has alt text and its file exists; the reduced-motion, [hidden] and
-.sr-only !important rules; each contrast pair in PAIRS, per theme, at its minimum.
+Why: the page is mostly hand-written; these checks keep the fleet v2 and DEC-BRAND fixes in place. Contrast is computed
+here from the page's own CSS tokens (WCAG 2.x relative luminance), never by hand.
+What it checks (check_page): the page is under MAX_BYTES; a Content-Security-Policy meta with connect-src 'none' and an
+exact SHA-256 style hash matching <style>...</style> (no 'unsafe-inline'); a no-referrer meta; two theme-color metas;
+a skip link to #main; a polite live region; every external link opens with rel="noopener noreferrer"; each <img> has
+alt text and its file exists; reduced-motion, [hidden] and .sr-only !important rules; each contrast pair per theme.
 Inputs:  index.html and the files it links (through scripts/build_site_local.py extra_checks); with --test, invented
          pages only.
 Outputs: a list of problem lines (empty = pass); --test prints "SITE PAGE TEST PASS".
@@ -23,7 +23,8 @@ import re
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))  # the kit's scripts/fulcrum_palette.py
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # the kit's scripts/build_site.py & fulcrum_palette.py
+from build_site import sha256  # noqa: E402
 from fulcrum_palette import contrast  # noqa: E402
 
 PAGE = 'index.html'
@@ -31,21 +32,19 @@ PAGE = 'index.html'
 MAX_BYTES = 35000
 TEXT_MIN = 4.5   # SC 1.4.3, normal text
 UI_MIN = 3.0     # SC 1.4.11, UI borders and focus; SC 1.4.3 large text
-# (foreground token, background token, minimum, scope). Scope "page" reads :root (and its dark block); "tool" reads the
-# .tool card's own tokens on top (the card is dark in both themes; its background is --card).
+# (foreground token, background token, minimum, scope).
 PAIRS = (
-    ('fg', 'bg', TEXT_MIN, 'page'), ('focus', 'bg', UI_MIN, 'page'), ('ctl', 'bg', UI_MIN, 'page'), ('band-fg', 'band', TEXT_MIN, 'page'),
-    ('band-mist', 'band', TEXT_MIN, 'page'), ('gold', 'band', UI_MIN, 'page'),
-    ('fg', 'card', TEXT_MIN, 'tool'), ('mut', 'card', TEXT_MIN, 'tool'), ('link', 'card', TEXT_MIN, 'tool'),
-    ('err', 'card', TEXT_MIN, 'tool'), ('focus', 'card', UI_MIN, 'tool'), ('ctl', 'card', UI_MIN, 'tool'),
-    ('btn-fg', 'btn', TEXT_MIN, 'tool'), ('btn-fg', 'btn-hover', TEXT_MIN, 'tool'), ('btn', 'card', UI_MIN, 'tool'),
-    ('btn-hover', 'card', UI_MIN, 'tool'),
+    ('fg', 'bg', TEXT_MIN, 'page'), ('focus', 'bg', UI_MIN, 'page'), ('ctl', 'bg', UI_MIN, 'page'),
+    ('band-fg', 'band', TEXT_MIN, 'page'), ('band-mist', 'band', TEXT_MIN, 'page'), ('gold', 'band', UI_MIN, 'page'),
+    ('warn', 'bg', UI_MIN, 'page'),
+    ('fg', 'card', TEXT_MIN, 'card'), ('mut', 'card', TEXT_MIN, 'card'), ('link', 'card', TEXT_MIN, 'card'),
+    ('err', 'card', TEXT_MIN, 'card'), ('focus', 'card', UI_MIN, 'card'), ('ctl', 'card', UI_MIN, 'card'),
+    ('btn-fg', 'btn', TEXT_MIN, 'card'), ('btn-fg', 'btn-hover', TEXT_MIN, 'card'), ('btn', 'card', UI_MIN, 'card'),
+    ('btn-hover', 'card', UI_MIN, 'card'), ('accent', 'card', UI_MIN, 'card'),
 )
 HEX = r'#[0-9A-Fa-f]{6}'
-# The whole policy, as the page must say it: no script, no network calls, images only from the site.
-CSP = "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; connect-src 'none'; base-uri 'none'; form-action 'none'"
+CSP_TEMPLATE = "default-src 'none'; img-src 'self'; style-src %s; connect-src 'none'; base-uri 'none'; form-action 'none'"
 REQUIRED = (
-    (r'<meta http-equiv="Content-Security-Policy" content="' + re.escape(CSP) + '">', 'the Content-Security-Policy meta: ' + CSP),
     (r'<meta name="referrer" content="no-referrer">', 'a no-referrer meta'),
     (r'<meta name="theme-color" content="' + HEX + r'" media="\(prefers-color-scheme: light\)">', 'a light theme-color meta'),
     (r'<meta name="theme-color" content="' + HEX + r'" media="\(prefers-color-scheme: dark\)">', 'a dark theme-color meta'),
@@ -68,26 +67,29 @@ BLOCKS = (
     ('root', r':root\{(.*?)\}'),
     ('dark-media', r'@media \(prefers-color-scheme:dark\)\{:root:not\(\[data-theme="light"\]\)\{(.*?)\}\}'),
     ('dark-attr', r':root\[data-theme="dark"\]\{(.*?)\}'),
-    ('tool', r'\n\.tool\{(.*?)\}'),
-    ('more-tool', r'@media \(prefers-contrast:more\)\{\.tool\{(.*?)\}'),
-    ('more-root', r'@media \(prefers-contrast:more\)\{\.tool\{.*?\}:root\{(.*?)\}'),
+    ('more-root', r'@media \(prefers-contrast:more\)\{\s*:root\{(.*?)\}'),
+    ('more-dark-attr', r'@media \(prefers-contrast:more\)\{.*?:root\[data-theme="dark"\]\{(.*?)\}\}'),
+    ('more-dark-media', r'@media \(prefers-contrast:more\) and \(prefers-color-scheme:dark\)\{:root:not\(\[data-theme="light"\]\)\{(.*?)\}\}'),
 )
-# Each theme a person can get: light; dark by the system setting (the media block, the one that renders without a
-# script) and by the data-theme attribute; each again with prefers-contrast:more. Later blocks win, as in the CSS.
+# Each theme a person can get: light; dark by the system setting and by the data-theme attribute;
+# and each again with prefers-contrast:more. Later blocks win, as in the CSS.
 THEMES = {
-    'light': ('root',), 'dark (system)': ('root', 'dark-media'), 'dark (attribute)': ('root', 'dark-attr'),
-    'light, more contrast': ('root', 'more-root'), 'dark (system), more contrast': ('root', 'dark-media', 'more-root'),
+    'light': ('root',),
+    'dark (system)': ('root', 'dark-media'),
+    'dark (attribute)': ('root', 'dark-attr'),
+    'light, more contrast': ('root', 'more-root'),
+    'dark (system), more contrast': ('root', 'dark-media', 'more-dark-media'),
+    'dark (attribute), more contrast': ('root', 'dark-attr', 'more-dark-attr'),
 }
-TOOL_EXTRA = {'more contrast': ('tool', 'more-tool')}
 
 
 def themes(html):
-    """Return the token sets per theme and scope, and the blocks that are missing.
+    """Return the token sets per theme and the blocks that are missing.
 
     Args:
-        html: the page text.
+        html: the HTML page text.
     Returns:
-        A pair: {(theme, 'page'|'tool'): {name: hex}}, and a list of missing block names.
+        A pair: ({theme: {token: hex}}, list of missing block names).
     """
     found, missing = {}, []
     for name, pattern in BLOCKS:
@@ -98,29 +100,44 @@ def themes(html):
             missing.append(name)
     out = {}
     for theme, layers in THEMES.items():
-        page = {}
+        pal = {}
         for layer in layers:
-            page.update(found.get(layer, {}))
-        tool = dict(page)
-        for layer in TOOL_EXTRA['more contrast'] if 'more contrast' in theme else ('tool',):
-            tool.update(found.get(layer, {}))
-        out[(theme, 'page')], out[(theme, 'tool')] = page, tool
+            pal.update(found.get(layer, {}))
+        out[theme] = pal
     return out, missing
+
+
+def csp_problems(html):
+    """Verify the Content-Security-Policy meta tag hashes the inline <style> and forbids unsafe-inline and network calls.
+
+    Args:
+        html: the HTML page text.
+    Returns:
+        A list of finding strings, empty when the CSP matches the style hash.
+    """
+    style = re.search(r'<style>(.*?)</style>', html, re.S)
+    if not style:
+        return [f'{PAGE}: missing <style> block for Content-Security-Policy hash']
+    expected = CSP_TEMPLATE % sha256(style.group(1))
+    tag = '<meta http-equiv="Content-Security-Policy" content="' + expected + '">'
+    if tag not in html:
+        return [f'{PAGE}: missing the Content-Security-Policy meta: {expected}']
+    return []
 
 
 def contrast_problems(html):
     """Return one line per contrast pair below its minimum, or with a token missing.
 
     Args:
-        html: the page text.
+        html: the HTML page text.
     Returns:
-        A list of problem lines (empty = every pair passes).
+        A list of finding strings (empty when every pair passes).
     """
     sets, missing = themes(html)
     problems = [f'{PAGE}: contrast: the CSS block {name} is not found' for name in missing]
     for fore, back, minimum, scope in PAIRS:
         for theme in THEMES:
-            values = sets[(theme, scope)]
+            values = sets[theme]
             if fore not in values or back not in values:
                 problems.append(f'{PAGE}: contrast {fore} on {back} ({scope}, {theme}): a token is missing')
                 continue
@@ -135,14 +152,15 @@ def check_page(root):
     """Return the problems of the page under root (an empty list = pass).
 
     Args:
-        root: the repo folder (a Path).
+        root: the repository folder (a Path or str).
     Returns:
-        A list of problem lines.
+        A list of finding strings.
     """
     path = Path(root) / PAGE
     data = path.read_bytes()
     html = data.decode('utf-8')
     problems = [] if len(data) < MAX_BYTES else [f'{PAGE}: {len(data):,} bytes; keep it under {MAX_BYTES:,} (images go in files)']
+    problems += csp_problems(html)
     problems += [f'{PAGE}: missing {what}' for pattern, what in REQUIRED if not re.search(pattern, html)]
     for tag in re.findall(r'<a [^>]*target="_blank"[^>]*>', html):
         if 'rel="noopener noreferrer"' not in tag:
@@ -166,14 +184,18 @@ def self_test():
     good = Path(__file__).resolve().parent.parent / PAGE
     cases = (
         ('the page passes', lambda t: t, []),
-        ('a low-contrast control line fails', lambda t: t.replace('--focus:#FF8C66;--ctl:#6E7382;', '--focus:#FF8C66;--ctl:#30343D;'), ['ctl #30343D on card']),
+        ('a low-contrast control line fails', lambda t: t.replace('--focus:#FF8C66; --field:#A9ACB5; --hl:#1B2433; --ctl:#7A7F8C;',
+                                                                 '--focus:#FF8C66; --field:#A9ACB5; --hl:#1B2433; --ctl:#30343D;'),
+         ['ctl #30343D on card']),
+        ('a CSP with unsafe-inline fails', lambda t: re.sub(r"style-src 'sha256-[^']+'", "style-src 'unsafe-inline'", t), ['Content-Security-Policy']),
         ('a CSP that allows network calls fails', lambda t: t.replace("connect-src 'none'", "connect-src *"), ['Content-Security-Policy']),
         ('a CSP that allows any image fails', lambda t: t.replace("img-src 'self'", "img-src *"), ['Content-Security-Policy']),
+        ('a stale style CSP hash fails', lambda t: t.replace('padding:28px', 'padding:29px'), ['Content-Security-Policy']),
         ('a low-contrast text in the system dark theme fails',
-         lambda t: t.replace(':root:not([data-theme="light"]){\n  --bg:#15171D; --card:#1C1F27; --ring:#5A5E6A; --fg:#F3EEE4;',
-                             ':root:not([data-theme="light"]){\n  --bg:#15171D; --card:#1C1F27; --ring:#5A5E6A; --fg:#3A3D46;'),
+         lambda t: t.replace('--ring:#7A7F8C; --fg:#F3EEE4;', '--ring:#7A7F8C; --fg:#3A3D46;', 1),
          ['fg #3A3D46 on bg #15171D (page, dark (system))']),
-        ('a low-contrast line at more contrast fails', lambda t: t.replace('--ctl:#8A8D96}', '--ctl:#1C1F27}'), ['more contrast']),
+        ('a low-contrast line at more contrast fails',
+         lambda t: t.replace(':root{--mut:#1B2430;--ctl:#0E1A2B;', ':root{--mut:#1B2430;--ctl:#E8ECF0;'), ['more contrast']),
         ('a missing dark block fails', lambda t: t.replace('@media (prefers-color-scheme:dark){', '@media print{', 1), ['dark-media is not found']),
         ('no referrer meta fails', lambda t: t.replace('content="no-referrer"', 'content="origin"'), ['no-referrer']),
         ('one theme-color fails', lambda t: t.replace('media="(prefers-color-scheme: dark)">', '>'), ['dark theme-color']),
@@ -198,23 +220,19 @@ def self_test():
             got = check_page(tmp)
             passed = (not got) if not expect else all(any(e in line for line in got) for e in expect)
             ok = ok and passed
-            print(('pass' if passed else 'FAIL') + '  ' + label + ('' if passed else ': ' + '; '.join(got)))
+            print(('pass' if passed else 'FAIL') + '  ' + label + ('' if passed else f' (got {got})'))
     print('SITE PAGE TEST ' + ('PASS' if ok else 'FAIL'))
     return ok
 
 
-def main():
-    """Check the page, or run the self-test with --test."""
-    ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
-    ap.add_argument('--test', action='store_true', help='run the self-test')
-    if ap.parse_args().test:
-        sys.exit(0 if self_test() else 1)
-    problems = check_page(Path(__file__).resolve().parent.parent)
-    for line in problems:
-        print('SITE PAGE FAIL: ' + line)
-    print('SITE PAGE PASS' if not problems else 'SITE PAGE FAIL')
-    sys.exit(1 if problems else 0)
-
-
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser(description=__doc__.split('\n')[0])
+    parser.add_argument('--test', action='store_true', help='run the self-test')
+    args = parser.parse_args()
+    if args.test:
+        sys.exit(0 if self_test() else 1)
+    found = check_page(Path(__file__).resolve().parent.parent)
+    for line in found:
+        print(line)
+    print('SITE PAGE ' + ('FAIL' if found else 'PASS'))
+    sys.exit(1 if found else 0)

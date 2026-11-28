@@ -3,7 +3,7 @@ Protection.Tests.ps1 - tests that protected files and PII stay protected: the no
 (a sensitivity label with encryption told apart from a password, in PDFs and Office files; a zlib header of any window
 size), and negative tests that no raw PII value leaks into a hit, a reason, a file name, the screen or the workbook.
 
-  Purpose:     The PAM's gov run of 2026-11-21: labelled and password-protected files in groups of their own, and good
+  Purpose:     The Administrator's gov run of 2026-11-21: labelled and password-protected files in groups of their own, and good
                PDFs not called damaged. AGENTS.md "Masked output": every found value is masked where it is shown or saved.
   Inputs:      $Sample, New-PdfBytes and Get-ResultFiles (TestKit.ps1); invented values built from parts.
   Outputs:     passes and failures counted by Assert-Equal.
@@ -14,13 +14,13 @@ size), and negative tests that no raw PII value leaks into a hit, a reason, a fi
   Credentials: none.
 #>
 
-# A sensitivity label with encryption is told apart from a password (the PAM, 2026-11-21).
+# A sensitivity label with encryption is told apart from a password (the Administrator, 2026-11-21).
 $labelPdf = New-PdfBytes 'BT (x) Tj ET' -Extra @('<< /Filter /MicrosoftIRMServices /V 2 >>') -Trailer '/Encrypt 9 0 R'
 Assert-Equal $true ((Get-TextFromBytes -Bytes $labelPdf -FileName 'l.pdf').Reason -match '^Sensitivity label') 'PDF: Purview encryption named as a sensitivity label'
 $wrapperPdf = New-PdfBytes 'BT (This document is protected) Tj ET' -Extra @('<< /Type /EmbeddedFile /Subtype /EncryptedPayload >>')
 Assert-Equal $true ((Get-TextFromBytes -Bytes $wrapperPdf -FileName 'w.pdf').Reason -match '^Sensitivity label') 'PDF: a protected-PDF wrapper is not read as clean'
 # A zlib header with a smaller window (0x58, not 0x78) is still skipped, so the stream is not called damaged.
-$zlibSmall = & (Get-Module PdfCore) {
+$zlibSmall = & (Get-Module PdfExtract) {
     $memory = New-Object System.IO.MemoryStream
     $deflate = New-Object System.IO.Compression.DeflateStream($memory, [System.IO.Compression.CompressionMode]::Compress, $true)
     $plain = [System.Text.Encoding]::ASCII.GetBytes('BT (Roster) Tj ET'); $deflate.Write($plain, 0, $plain.Length); $deflate.Dispose()

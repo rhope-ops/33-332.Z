@@ -1,33 +1,36 @@
 name: ps51
-# The PowerShell tests on Windows PowerShell 5.1 (powershell.exe), the version on the gov computers (the PAM, 2026-11-20:
+# The PowerShell tests on Windows PowerShell 5.1 (powershell.exe), the version on the gov computers (the Administrator, 2026-11-20:
 # DoD/M365 code gets the higher level of checks). PnP and the tenant are not on the runner: the tests use fake PnP cmdlets.
 # Pull requests that change PowerShell code or its tests, and manual runs; never on push (Actions minutes).
-# -ExecutionPolicy Bypass applies to this GitHub runner only, to run the test file; on a gov computer the tool is pasted
-# into PowerShell ISE and no policy change is used (ISSM ruling, 2026-11-13).
 on:
   pull_request:
     paths:
-      - "src/**"
-      - "tests/**"
-      - ".github/workflows/ps51.yml"
+      - 'src/**'
+      - 'tests/**'
+      - 'PSScriptAnalyzerSettings.psd1'
+      - '.github/workflows/ps51.yml'
   workflow_dispatch:
 permissions:
   contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   ps51:
+    if: github.event_name != 'pull_request' || github.event.repository.private == false
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
-      - name: Keep line ends as they are in the repository
-        run: git config --global core.autocrlf false
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
-      - name: Run the tests on Windows PowerShell 5.1
-        shell: powershell
+      - name: Check Windows PowerShell 5.1 version
         run: |
-          Write-Host ('PowerShell ' + $PSVersionTable.PSVersion)
-          if ($PSVersionTable.PSVersion.Major -ne 5) { Write-Host 'This job must run Windows PowerShell 5.1'; exit 1 }
-          if (-not (Test-Path tests/Run-Tests.ps1)) { Write-Host 'SKIP: no tests yet'; exit 0 }
-          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/Run-Tests.ps1
-          exit $LASTEXITCODE
+          $PSVersionTable.PSVersion
+          if ($PSVersionTable.PSVersion.Major -ne 5) { throw "expected Windows PowerShell 5.1, got $($PSVersionTable.PSVersion)" }
+      - name: Run tests on Windows PowerShell 5.1
+        shell: cmd
+        run: |
+          powershell.exe -NoProfile -Command "& { Set-StrictMode -Version 2.0; & '.\tests\Run-Tests.ps1' }"

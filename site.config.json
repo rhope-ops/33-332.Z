@@ -1,7 +1,7 @@
 {
   "about": "The one home of this repo's GitHub owner and name (fleet v2 DEC 7, 2026-11-23). scripts/build_paste_test.py checks the README and site links against them; docs and history keep their text.",
   "owner": "rhope-ops",
-  "repo": "33-332.Z",
+  "repo": "ion",
   "branch": "main",
   "script": "paste/Ion-script.txt"
 }

@@ -1,4 +1,4 @@
-# Threat model of 33-332.Z
+# Threat model of ion
 
 A short STRIDE model of Ion (the DoD365 PII Reporter), its paste bundle and this repo. Rules it relies on: AGENTS.md "Project rules" (data boundary, no reconnaissance, masked output, platform). Rule source for the privacy steps: AFI 33-332 with AFI33-332_DAFGM2026-01 (`ref/`, pinned in `ref/SHA256SUMS`).
 
@@ -22,9 +22,9 @@ A short STRIDE model of Ion (the DoD365 PII Reporter), its paste bundle and this
 | Threat | Example | Control |
 |---|---|---|
 | Spoofing | A changed copy of the bundle from another source | The person opens it only from this repo's README or site link (GitHub over HTTPS); a copy from anywhere else is not trusted |
-| Tampering | A pull request that changes the bundle by hand | `scripts/build_paste.py --check` fails when `paste/Ion-script.txt` is not the fresh build of `src/`; guard files change only on the PAM's request |
+| Tampering | A pull request that changes the bundle by hand | `scripts/build_paste.py --check` fails when `paste/Ion-script.txt` is not the fresh build of `src/`; guard files change only on the Administrator's request |
 | Repudiation | Who put PII in a file | The report names the first version that holds the PII (version history), Created By and Modified By |
-| Information disclosure | A found SSN shown in full in the report or the console | Masked output (Project rule; `src/PiiMasking.psm1`; tests in `tests/`); `.check` blocks report files; the content check on push |
+| Information disclosure | A found SSN shown in full in the report or the console | Masked output (Project rule; `src/PiiEngine.psm1`; tests in `tests/`); `.check` blocks report files; the content check on push |
 | Information disclosure | The tool lists sites or users outside the one given | No reconnaissance (Project rule): Ion takes one site, team or folder and reads only it |
 | Denial of service | A very large or crafted PDF stalls the scan | File size limit (`$MaxFileMB`), a time and work budget per PDF, NOT SCANNED rows instead of a stop |
 | Elevation of privilege | A script that asks for admin rights or changes the execution policy | Platform rule: no admin, no service account, no policy change; read-only calls only; no compiled code (`tests/Bundle.Tests.ps1`) |

@@ -45,8 +45,8 @@ Assert-Equal $true (Test-FakePnPCall 'Read-Host') 'Teams link, lookup gives no s
 Assert-Equal 'https://usaf.dps.mil https://tenant.example.com/teams/TeamA' ((Get-FakePnPConnection) -join ' ') 'Teams link: the tenant root for the lookup, then the team site'
 Assert-Equal $true (Test-FakePnPCall ('Lookup /_api/GroupSiteManager/GetSiteStatus ' + $groupId)) 'Teams link: one lookup, of the group in the link'
 Assert-Equal $true (Test-FakePnPCall 'Quiet sign-in https://tenant.example.com/teams/TeamA') 'Sign-in warnings hidden'
-# The lookup answers (the PAM's test 2, 2026-11-21): a team or channel link alone is enough, no question.
-$siteTargetModule = Get-Module SiteTarget
+# The lookup answers (the Administrator's test 2, 2026-11-21): a team or channel link alone is enough, no question.
+$siteTargetModule = Get-Module ChannelScan
 & $siteTargetModule { $script:TenantRoot = 'https://tenant.example.com' }
 foreach ($link in @($teamLink, $channelLink)) {
     Reset-FakePnP @{}; Set-FakeLookupSite 'https://tenant.example.com/teams/TeamA'
@@ -76,7 +76,7 @@ Set-FakeSiteAnswer -TypedSite 'https://tenant.example.com/teams/TeamB' -SiteGrou
 $refused = $false
 try { Connect-TeamSite (Get-ScanTarget $teamLink) 6>$null | Out-Null } catch { $refused = $true }  # expected: another team's site
 Assert-Equal $true $refused 'Site of another team refused'
-# One sign-in per host (the PAM, 2026-11-24): Connect-TeamSite does not sign out; the run signs out once at its end.
+# One sign-in per host (the Administrator, 2026-11-24): Connect-TeamSite does not sign out; the run signs out once at its end.
 Assert-Equal $false (Test-FakePnPCall 'Disconnect-PnPOnline') 'Site of another team: no sign-out here (the run signs out at its end)'
 Reset-FakePnP @{}
 Set-FakeSiteAnswer -TypedSite 'not an address'
@@ -291,7 +291,7 @@ Assert-Equal $true ((ConvertTo-FriendlyError 'The remote server returned an erro
 $closed = 'The underlying connection was closed: An unexpected error occurred on a send.'
 Assert-Equal $closed (ConvertTo-FriendlyError $closed) 'A closed connection is not called a closed sign-in window'
 Assert-Equal 'File Not Found.' (ConvertTo-FriendlyError 'File Not Found.') 'A missing file is not called a missing site'
-# Sign-in blocked on this computer (the PAM, 2026-11-23: Connect-PnPOnline blocked outside the US): no stop, but the steps
+# Sign-in blocked on this computer (the Administrator, 2026-11-23: Connect-PnPOnline blocked outside the US): no stop, but the steps
 # to scan a synced copy as a folder; "no access" keeps its own words only.
 Set-FakeSiteAnswer
 Set-FakePnPOption ConnectFails $true
@@ -325,7 +325,7 @@ Assert-Equal '' ((Write-MeterLine $liveMeter 'file' 6>&1 | ForEach-Object { [str
 Assert-Equal 'Time downloading|Time reading files (all readers)|Parallel downloads' (@((Get-ScanTiming).Keys) -join '|') 'Timing: download and reading times, then the parallel downloads'
 Assert-Equal $true ((Get-ScanTiming)['Parallel downloads'] -match '^off \(\w+\)$') 'No copy of the connection (no PnP here): parallel downloads off, with the error type name only'
 
-# ---- Parallel downloads in a planned order (plan step 6, the PAM 2026-11-24) ----
+# ---- Parallel downloads in a planned order (plan step 6, the Administrator 2026-11-24) ----
 # The plan of one folder: the files to download first, largest first (equal sizes in list order), then the others.
 $planItem = { param($name, $size) @{ FileLeafRef = $name; FileRef = "$library/General/$name"; File_x0020_Size = [string]$size } }
 $planFiles = @((& $planItem 'small.txt' 10), (& $planItem 'big.docx' 3000), (& $planItem 'logo.exe' 5000), (& $planItem 'mid-a.txt' 200),
@@ -340,7 +340,7 @@ Assert-Equal $true ((Get-FakeProgressText) -match 'Downloading\.\. 3 files: 12\.
 Reset-FakePnP @{}
 Write-DownloadsStep 2 (500KB) (100KB) ([TimeSpan]::FromSeconds(2)) 'Downloading..'
 Assert-Equal '' (Get-FakeProgressText) 'Download bar: none under 1 MB, as for one file'
-# Speed (the PAM, 2026-11-25): the most readers at one time, Normal = half the processors, Fast = one per processor.
+# Speed (the Administrator, 2026-11-25): the most readers at one time, Normal = half the processors, Fast = one per processor.
 Assert-Equal '4|1|1|8|8' (@((Get-ReaderLimit 'Normal' 8), (Get-ReaderLimit 'Normal' 1), (Get-ReaderLimit 'Normal' 3), (Get-ReaderLimit 'Fast' 8),
     (Get-ReaderLimit 'Fast' 16)) -join '|') 'Speed: readers Normal = half the processors (at least 1), Fast = one per processor (at most 8)'
 Assert-Equal 'Normal' (Get-ScanSpeed) 'Speed: Normal until the person types F'

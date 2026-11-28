@@ -42,13 +42,13 @@ Assert-Equal $true ((Test-FakePnPCall 'Open question') -and (Test-FakePnPCall ('
 Assert-Equal 1 @(Get-FakePnPConnection).Count 'One sign-in only: no posts sign-in'
 Assert-Equal $true ((Get-FakeProgressText) -match '2 of 3 files \(\d+%\) \| read \d+ \| not scanned 0 \| possible PII \d+ in \d+ files \| \d\d:\d\d elapsed') 'Progress bar shows the file counts'
 Assert-Equal $true ((Get-FakeProgressText) -match 'Folder 2 of 2: Ops \d+ of 3 files .* File: scan\.pdf') 'Progress bar: the folder and its number, then the file'
-Assert-Equal $false ((Get-FakeProgressText).Contains([string][char]0x3B3)) 'The mark is on the start line only, not on the bars (the PAM, 2026-11-21)'
+Assert-Equal $false ((Get-FakeProgressText).Contains([string][char]0x3B3)) 'The mark is on the start line only, not on the bars (the Administrator, 2026-11-21)'
 Assert-Equal $false ((Get-FakeProgressText) -match 'Downloading [\d.]+ (of|MB)') 'Small files: no per-file bar (it would only slow the scan)'
 
 Assert-Equal $true (Test-FakePnPCall 'Scan question') 'Before the scan: "Scan now?" is asked'
 Assert-Equal 1 (Get-FakeCallCount 'Speed question') 'Speed: asked one time, after the targets'
 
-# ---- "No" to "Scan now?": nothing read, nothing saved, signed out (the PAM, 2026-11-21) ----
+# ---- "No" to "Scan now?": nothing read, nothing saved, signed out (the Administrator, 2026-11-21) ----
 Reset-FakePnP @{ "$library/General/notes.txt" = $Txt; "$library/Ops/scan.exe" = $Txt }
 Set-FakeSiteAnswer -ScanAnswer 'n'
 $noFolder = Join-Path $runFolder 'declined'
@@ -151,7 +151,7 @@ Set-FakePnPOption StopInFolder2 $true
 $stopShown = (& $script -SiteUrl $Sample.Site -OutputFolder (Join-Path $runFolder 'stop') 6>&1 | ForEach-Object { [string]$_ }) -join ' '
 Assert-Equal $true ($stopShown -match 'INCOMPLETE: the scan stopped early\. Only the 1 file read') 'Stopped part way: the red line counts the files read'
 
-# ---- Several targets in one run (the PAM, 2026-11-24): asked once, one workbook each, a closing table ----
+# ---- Several targets in one run (the Administrator, 2026-11-24): asked once, one workbook each, a closing table ----
 Reset-FakePnP @{ "$library/General/notes.txt" = $Txt }
 $siteB = $Sample.Site + 'B'
 Set-FakeSiteAnswer -TypedSite @($Sample.Site, $siteB)
@@ -162,7 +162,7 @@ Assert-Equal ($Sample.Site + '|' + $siteB) ((Get-FakePnPConnection) -join '|') '
 $questions = '{0} {1} {2} {3}' -f (Get-FakeCallCount 'List question'), (Get-FakeCallCount 'Scan question'), (Get-FakeCallCount 'Open question'), (Get-FakeCallCount 'Folder question')
 Assert-Equal '1 0 0 1' $questions 'Several targets: asked once; no "Scan now?" or "Open the workbook?" per site; the folder offered once'
 Assert-Equal $true ($listShown -match 'Done: 2 of 2 saved' -and $listShown -match '2 to scan, one after the other') 'Several targets: the list and the closing table'
-# One sign-in per host (the PAM, 2026-11-24): no sign-out between the sites; one sign-out, after the last site.
+# One sign-in per host (the Administrator, 2026-11-24): no sign-out between the sites; one sign-out, after the last site.
 $lastConnect = Get-FakeCallIndex ('Connect ' + $siteB) -Last
 Assert-Equal '1 True' ('{0} {1}' -f (Get-FakeCallCount 'Disconnect-PnPOnline'), ((Get-FakeCallIndex 'Disconnect-PnPOnline') -gt $lastConnect)) 'Several targets: one sign-out, after the last site'
 Reset-FakePnP @{ "$library/General/notes.txt" = $Txt }
@@ -202,7 +202,7 @@ $ssnBooks = @(Get-ResultFiles $ssnFolder)
 $ssnCells = (@($ssnBooks | ForEach-Object { (Get-XlsxSheets $_.FullName)['Summary'] | ForEach-Object { $_ -join ' ' } })) -join ' '
 Assert-Equal '2 False False' ('{0} {1} {2}' -f $ssnBooks.Count, $ssnShown.Contains($Sample.Ssn), $ssnCells.Contains($Sample.Ssn)) 'SSN-shaped site name: masked on screen and in the workbooks'
 
-# ---- One sign-in per host across "Scan more" rounds, and the sign-out at a cancel (the PAM, 2026-11-24) ----
+# ---- One sign-in per host across "Scan more" rounds, and the sign-out at a cancel (the Administrator, 2026-11-24) ----
 Reset-FakePnP @{ "$library/General/notes.txt" = $Txt }
 Set-FakeSiteAnswer -TypedSite @($siteB)
 $roundFolder = Join-Path $runFolder 'rounds'

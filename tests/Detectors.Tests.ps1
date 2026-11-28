@@ -1,5 +1,5 @@
 <#
-Detectors.Tests.ps1 - tests of PiiDetectors.psm1 and PiiMasking.psm1: what is found, what is not, and masking.
+Detectors.Tests.ps1 - tests of PiiEngine.psm1: what is found, what is not, and masking.
 
   Purpose:     True and false cases for each PII type; overlap; masked values and snippets never
                show a full value.
@@ -24,7 +24,7 @@ foreach ($bad in @('SsnArea000', 'SsnArea666', 'SsnArea9xx', 'SsnGroup00', 'SsnS
 Assert-Equal 'DoD ID/High/******7890' (Get-HitSummary "DoD ID: $($Sample.DodId)") 'DoD ID with label'
 Assert-Equal 'DoD ID/High/******7890' (Get-HitSummary "EDIPI $($Sample.DodId)") 'EDIPI with label'
 Assert-Equal 0 (Get-HitSummary "tracking $($Sample.DodId) shipped").Count '10 digits without label not reported'
-# A CAC name in a digital signature block is a DoD ID, never an SSN, also when the digits are drawn with gaps (the PAM, 2026-11-21).
+# A CAC name in a digital signature block is a DoD ID, never an SSN, also when the digits are drawn with gaps (the Administrator, 2026-11-21).
 $cacName = 'DOE' + '.' + 'JANE' + '.Q.'
 $spacedId = ($Sample.DodId.Substring(0, 3) + ' ' + $Sample.DodId.Substring(3, 2) + ' ' + $Sample.DodId.Substring(5, 4) + ' ' + $Sample.DodId.Substring(9))
 Assert-Equal 'DoD ID/Low/******7890' ((Get-HitSummary "Digitally signed by $cacName$($Sample.DodId)") -join ',') 'CAC name: the DoD ID, no SSN'
@@ -62,8 +62,8 @@ $manyHits = @(foreach ($n in 1..1500) {
     [pscustomobject]@{ Index = $random.Next(0, 3000); Length = $random.Next(1, 40)
                        Detector = $types[$random.Next(0, $types.Count)]; Confidence = @('High', 'Medium', 'Low')[$random.Next(0, 3)] }
 })
-$fastKept = & (Get-Module PiiDetectors) { param($hits) Remove-OverlappingHits $hits } $manyHits
-$order = & (Get-Module PiiDetectors) { $script:DetectorOrder }
+$fastKept = & (Get-Module PiiEngine) { param($hits) Remove-OverlappingHits $hits } $manyHits
+$order = & (Get-Module PiiEngine) { $script:DetectorOrder }
 $slowSorted = $manyHits | Sort-Object @{ Expression = { [array]::IndexOf($order, $_.Detector) } },
     @{ Expression = { @{ High = 3; Medium = 2; Low = 1 }[$_.Confidence] }; Descending = $true }, Index
 $slowKept = New-Object System.Collections.Generic.List[object]
@@ -87,7 +87,7 @@ Assert-Equal 0 (Get-HitSummary 'Suspense 03/14/2027').Count 'Date without birth 
 
 # ---- Passport, phone, e-mail ----
 Assert-Equal 'Passport/Medium/*****567' (Get-HitSummary "Passport no. $($Sample.Passport)") 'Passport with label'
-# 9 digits right after a Passport label are a Passport, not an SSN (the PAM, 2026-11-24); every other 9-digit value stays as before.
+# 9 digits right after a Passport label are a Passport, not an SSN (the Administrator, 2026-11-24); every other 9-digit value stays as before.
 foreach ($label in @('Passport: ', 'Passport No. ', 'passport no.: ', 'Passport # ')) {
     Assert-Equal 'Passport/Medium/******789' ((Get-HitSummary ($label + $Sample.SsnBare + ' end')) -join ',') "9 digits after a Passport label: Passport ($label)"
 }
@@ -106,7 +106,7 @@ Assert-Equal 0 (Get-HitSummary $Sample.GovEmail).Count '.gov e-mail not reported
 Assert-Equal 'Personal e-mail/Medium/***@gmail.com' (Get-HitSummary ('write to pat.sample' + '@gmail.com')) 'E-mail at a personal provider: Medium'
 Assert-Equal 'Personal e-mail/Low/***@mail.example.com' (Get-HitSummary ('write to pat.sample' + '@mail.example.com')) 'A company subdomain named mail is not a personal provider'
 
-# ---- False positives in typical documents (the PAM, 2026-11-20) ----
+# ---- False positives in typical documents (the Administrator, 2026-11-20) ----
 Assert-Equal 0 (Get-HitSummary ('PAGEREF _Toc' + $Sample.SsnBare)).Count 'A Word bookmark number is no SSN'
 Assert-Equal 0 (Get-HitSummary ('Form ABC' + $Sample.SsnBare + ' rev')).Count 'Digits glued to letters are no SSN'
 Assert-Equal 0 (Get-HitSummary ('tracking 1234' + '5678' + '9012' + '3452')).Count 'A Luhn-valid number with no card issuer prefix is no card'
@@ -153,25 +153,25 @@ $cacId = '1234' + '567890'
 $cacHits = @(Find-PiiInText ('Digitally signed by ' + 'DOE.' + 'JANE.Q.' + $cacId + ' e.g. on the form'))
 $cacOk = $cacHits.Count -eq 1 -and $cacHits[0].Context -match 'D\*\*\.J\*\*\*\.Q\.' -and $cacHits[0].Context -notmatch 'DOE|JANE'
 Assert-Equal $true ($cacOk -and $cacHits[0].Context -match 'e\.g\.') 'Snippet: a CAC name keeps only its initials'
-$oddName = & (Get-Module PiiMasking) { param($t) Get-MaskedText $t @() } ("O'" + "NEIL.MARY-" + "ANN.B. and _DOE." + "JANE.Q. and DOE." + "JANE.QUINN.SMITH.")
+$oddName = & (Get-Module PiiEngine) { param($t) Get-MaskedText $t @() } ("O'" + "NEIL.MARY-" + "ANN.B. and _DOE." + "JANE.Q. and DOE." + "JANE.QUINN.SMITH.")
 Assert-Equal "O'****.M***-***.B. and _D**.J***.Q. and D**.J***.Q****.S****." $oddName 'Snippet: apostrophes, hyphens, an underscore before and four parts are masked'
 $longRun = 'x ' + ('A' * 160000) + '.BB. z'
-$clock = [Diagnostics.Stopwatch]::StartNew(); $null = & (Get-Module PiiMasking) { param($t) Get-MaskedText $t @() } $longRun
+$clock = [Diagnostics.Stopwatch]::StartNew(); $null = & (Get-Module PiiEngine) { param($t) Get-MaskedText $t @() } $longRun
 Assert-Equal $true ($clock.ElapsedMilliseconds -lt 3000) 'Snippet: a 160,000-letter name part masks fast (linear)'
-$umlaut = & (Get-Module PiiMasking) { param($t) Get-MaskedText $t @() } ('M' + [char]0xDC + 'LLER.JANE.Q.')
+$umlaut = & (Get-Module PiiEngine) { param($t) Get-MaskedText $t @() } ('M' + [char]0xDC + 'LLER.JANE.Q.')
 Assert-Equal 'M*****.J***.Q.' $umlaut 'Snippet: a name with non-ASCII letters is masked'
-$after = & (Get-Module PiiMasking) { param($t) Get-MaskedText $t @() } ("by 'DOE." + "JANE.Q.' and -DOE." + "JANE.Q. and a.DOE." + "JANE.Q. and AAA.BBB.CCC.DOE." + "JANE.Q.")
+$after = & (Get-Module PiiEngine) { param($t) Get-MaskedText $t @() } ("by 'DOE." + "JANE.Q.' and -DOE." + "JANE.Q. and a.DOE." + "JANE.Q. and AAA.BBB.CCC.DOE." + "JANE.Q.")
 Assert-Equal "by 'D**.J***.Q.' and -D**.J***.Q. and a.D**.J***.Q. and A**.B**.C**.D**.J***.Q." $after 'Snippet: a CAC name after a quote, a dash, a short part or other parts is masked'
-$oneLetter = & (Get-Module PiiMasking) { param($t) Get-MaskedText $t @() } ('DOE.' + 'J.Q. and NG.' + 'A.B. and DOE.' + 'JANE.QUINN and e.g. i.e. U.S.')
+$oneLetter = & (Get-Module PiiEngine) { param($t) Get-MaskedText $t @() } ('DOE.' + 'J.Q. and NG.' + 'A.B. and DOE.' + 'JANE.QUINN and e.g. i.e. U.S.')
 Assert-Equal 'D**.J.Q. and N*.A.B. and D**.J***.Q**** and e.g. i.e. U.S.' $oneLetter 'Snippet: one-letter parts and a last part without a dot; e.g., i.e., U.S. stay'
-$astral = & (Get-Module PiiMasking) { param($t) Get-MaskedText $t @() } ([char]::ConvertFromUtf32(0x1D400) + 'BC.DEF.Q.')
+$astral = & (Get-Module PiiEngine) { param($t) Get-MaskedText $t @() } ([char]::ConvertFromUtf32(0x1D400) + 'BC.DEF.Q.')
 Assert-Equal ([char]::ConvertFromUtf32(0x1D400) + '**.D**.Q.') $astral 'Snippet: a letter outside the BMP counts as a letter'
 $clock = [Diagnostics.Stopwatch]::StartNew()
 $longTexts = @(('AA.' * 100000), ('A.' * 150000), ('AA.BB ' * 50000), ('Amount 12.50 and 7.25 ' * 50000), ('a.b. ' * 100000),
     ('e.g. U.S. ' * 50000), ('A..' * 100000), ("'.." * 100000), ('_A' * 150000))
-foreach ($adv in $longTexts) { $null = & (Get-Module PiiMasking) { param($t) Get-MaskedText $t @() } $adv }
+foreach ($adv in $longTexts) { $null = & (Get-Module PiiEngine) { param($t) Get-MaskedText $t @() } $adv }
 Assert-Equal $true ($clock.ElapsedMilliseconds -lt 10000) 'Snippet: long dotted text masks fast'
-$longPart = & (Get-Module PiiMasking) { param($x) Get-MaskedText $x @() } (('_' * 45) + 'DOE.' + 'JANE.Q.')
+$longPart = & (Get-Module PiiEngine) { param($x) Get-MaskedText $x @() } (('_' * 45) + 'DOE.' + 'JANE.Q.')
 Assert-Equal (('_' * 45) + 'D**.J***.Q.') $longPart 'Snippet: a long part before a CAC name does not hide it'
 
 # ---- Detection in names: underscores and accented e-mail names ----
@@ -213,7 +213,7 @@ Assert-Equal 'FY27 Roster v2.docx' (Protect-PiiName 'FY27 Roster v2.docx') 'Name
 Assert-Equal 'Roster ***-**-6789.docx' (Protect-PiiName "Roster $($Sample.Ssn).docx") 'Name: SSN masked like a found value'
 Assert-Equal 'Folder/***@example.com.docx' (Protect-PiiName "Folder/$($Sample.Email).docx") 'Name: e-mail name hidden'
 $dashName = Protect-PiiName "TeamA-$($Sample.Ssn)-x"
-Assert-Equal 'TeamA-***-**-6789-x' $dashName 'Name: an SSN shape between dashes is masked too (the PAM, 2026-11-24)'
+Assert-Equal 'TeamA-***-**-6789-x' $dashName 'Name: an SSN shape between dashes is masked too (the Administrator, 2026-11-24)'
 Assert-Equal 'Plan 2026-11-24 v1-12-123.docx' (Protect-PiiName 'Plan 2026-11-24 v1-12-123.docx') 'Name: dates and other digit groups kept'
 Assert-Equal $false (Protect-PiiName "CAC_$($Sample.DodId).docx").Contains($Sample.DodId) 'Name: DoD ID never shown in full'
 
@@ -221,7 +221,7 @@ Assert-Equal $false (Protect-PiiName "CAC_$($Sample.DodId).docx").Contains($Samp
 Assert-Equal $true (Test-Luhn '4111111111111111') 'Luhn true'
 Assert-Equal $false (Test-Luhn '4111111111111112') 'Luhn false'
 
-# ---- Unreadable text (the PAM, 2026-11-21): a Low hit inside symbol-font noise is dropped; High and Medium stay ----
+# ---- Unreadable text (the Administrator, 2026-11-21): a Low hit inside symbol-font noise is dropped; High and Medium stay ----
 $noise = -join @(1..40 | ForEach-Object { [char](0xA4 + ($_ % 8)) })   # Latin-1 signs, as a symbol font read as text gives
 Assert-Equal 0 @(Find-PiiInText ($noise + ' ' + $Sample.Phone + ' ' + $noise)).Count 'Garbled: a Low phone in symbol noise is dropped'
 Assert-Equal 'Phone/Low' ((Get-HitSummary ('Call the front desk at ' + $Sample.Phone + ' for the schedule of the week.')) -replace '/[^/]*$', '') `

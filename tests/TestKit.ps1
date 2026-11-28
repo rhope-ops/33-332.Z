@@ -10,7 +10,7 @@ TestKit.ps1 - shared test tools: the assertion, the invented sample values and a
   Writes:      none.
   Credentials: none.
 
-  Test data:   all invented. PII-shaped samples are built from parts when the tests run (the PAM,
+  Test data:   all invented. PII-shaped samples are built from parts when the tests run (the Administrator,
                2026-11-20), so this public repo holds no complete SSN-, DoD ID- or phone-shaped string.
                Card numbers are the published test numbers of the card networks.
 #>
@@ -146,7 +146,7 @@ function Get-XlsxSheets {
     <#
     .SYNOPSIS
       Reads a workbook back for the tests: tab name -> rows, each row an array of cell texts (inline strings
-      and numbers). Only the parts XlsxWriter.psm1 writes are read.
+      and numbers). Only the parts ReportExport.psm1 writes are read.
     .PARAMETER Path
       The .xlsx file.
     .OUTPUTS

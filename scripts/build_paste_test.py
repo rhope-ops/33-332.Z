@@ -2,11 +2,11 @@
 """Self-test of scripts/build_paste.py and of the links to its output.
 
 It proves: the build is the same text twice (no time stamp or random part); the header lists every source with the
-first 12 characters of the SHA-256 of its text; each module appears once, in the READERS/MODULES order, and every src/*.psm1 is in MODULES; two
-modules that define the same function stop the build; a module's export list and Set-StrictMode line are dropped; the
-retired .ps1 copy (DEC 8) is absent; the paste check's hash line holds the hash of the text from the check's mark to the
-end, which a Settings edit, CRLF line ends or spaces at line ends do not change and a changed character does; the README "Open the script" link and the site button point at the bundle named
-in site.config.json (DEC 7: the one home of the owner, repo and branch).
+first 12 characters of the SHA-256 of its text; each module appears once, in the READERS/MODULES order, and every
+src/*.psm1 is in MODULES; two modules that define the same function stop the build; a module's export list and
+Set-StrictMode line are dropped; the retired .ps1 copy (DEC 8) is absent; the paste check's hash line holds the hash
+of the text from the check's mark to the end (Settings edits, CRLF, and trailing spaces do not change it, while a
+changed character does); and the README "Open the script" link and site button match site.config.json (DEC 7).
 Usage:   python3 scripts/build_paste_test.py        (prints "BUILD_PASTE TEST PASS" and exits 0, or names the failure)
 Inputs:  scripts/build_paste.py, src/, README.md, index.html, site.config.json.
 Network: none.
