@@ -156,8 +156,11 @@ try {
     $ionText = [System.IO.File]::ReadAllText((Join-Path (Join-Path $recallRoot 'paste') 'Ion-script.txt'))
     $readerBlock = [regex]::Match($ionText, '(?s)\$IonReaderBlock = \{\r?\n(.*?)\r?\n\}\r?\n\$null = New-Module -Name IonReaders')
     Assert-Equal $true $readerBlock.Success 'Recall: the reader block is in paste/Ion-script.txt'
+    $t = $null; $e = $null
+    $readerAst = [System.Management.Automation.Language.Parser]::ParseInput($readerBlock.Groups[1].Value, [ref]$t, [ref]$e)
+    Assert-Equal 0 $e.Count 'Recall: the reader block in paste/Ion-script.txt parses cleanly'
     Set-FakeSiteAnswer
-    $recallBook = Invoke-DriveScan -Path $recallDir -OutputFolder $recallOut -MaxFileMB 25 -Init @{ Code = $readerBlock.Groups[1].Value } 6>$null
+    $recallBook = Invoke-DriveScan -Path $recallDir -OutputFolder $recallOut -MaxFileMB 25 -Init @{ Ast = $readerAst } 6>$null
     $ionBook = Read-RecallWorkbook $recallBook
     Assert-Equal (@((Get-XlsxSheets $recallBook)['Hits']).Count - 1) $ionBook.Hits.Count 'Recall Score: every row of the Hits tab is read'
     $ionScore = Get-RecallScore $recallPlan $ionBook

@@ -53,13 +53,11 @@ $script:ReaderModules = @('PiiEngine', 'ContainerText', 'PdfExtract', 'TextExtra
 $script:ReaderLoader = @'
 [System.Threading.Thread]::CurrentThread.Priority = [System.Threading.ThreadPriority]::BelowNormal
 if (-not $global:IonReaderReady) {
-    if ($Init.ContainsKey('Code')) {
-        $t = $null; $e = $null
-        $sb = [System.Management.Automation.Language.Parser]::ParseInput($Init.Code, [ref]$t, [ref]$e).GetScriptBlock()
-        if ($e.Count -gt 0) { throw ('Worker code parse error: ' + $e[0].Message) }
-        New-Module -Name IonReaders -ScriptBlock $sb | Import-Module -Global
+    if ($Init.ContainsKey('Ast')) {
+        New-Module -Name IonReaders -ScriptBlock ($Init.Ast.GetScriptBlock()) | Import-Module -Global
     }
-    else { Import-Module $Init.Paths -Global -Force }
+    elseif ($Init.ContainsKey('Paths')) { Import-Module $Init.Paths -Global -Force }
+    else { throw 'Worker reader set-up is missing Ast and Paths.' }
     $global:IonReaderReady = $true
 }
 '@
@@ -193,7 +191,7 @@ function New-ReaderPool {
     .SYNOPSIS
       Opens the worker pool: up to Get-ReaderLimit runspaces (the run's speed), $FirstWorkers busy at first.
     .PARAMETER Init
-      How a worker loads the reader code: @{ Code = <text> } (the paste bundle) or @{ Paths = <module files> }; when
+      How a worker loads the reader code: @{ Ast = $block.Ast } (the paste bundle) or @{ Paths = <module files> }; when
       empty, the files of the reader modules loaded now (a development run).
     .OUTPUTS
       [hashtable] the pool state for Add-PoolJob, Receive-PoolResult and Close-ReaderPool.

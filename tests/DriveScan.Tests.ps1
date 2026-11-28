@@ -130,9 +130,14 @@ finally { Close-ReaderPool $livePool }
 $readerPool = Get-Module ReaderPool
 $savedLimit = & $readerPool { $script:FileSecondsLimit }
 & $readerPool { $script:FileSecondsLimit = 2 }
-$stuckCode = 'function Invoke-PooledRead { param($Job, $Seen) if ($Job.Id -eq 7) { [System.Threading.Thread]::Sleep(15000) }; @{ Id = $Job.Id; Status = "OK" } }' +
-    "`nfunction Get-TextFromBytes { param(`$Bytes, `$FileName) [System.Threading.Thread]::Sleep(15000) }"
-$stuckPool = New-ReaderPool @{ Code = $stuckCode }
+# Fake reader module block that sleeps past $FileSecondsLimit to trigger worker timeout handling.
+$stuckBlock = {
+    # Simulates a stuck pooled read on job 7 while succeeding immediately on subsequent jobs.
+    function Invoke-PooledRead { param($Job, $Seen) if ($Job.Id -eq 7) { [System.Threading.Thread]::Sleep(15000) }; @{ Id = $Job.Id; Status = 'OK' } }
+    # Simulates a stuck limited read for old SharePoint version timeouts.
+    function Get-TextFromBytes { param($Bytes, $FileName) [System.Threading.Thread]::Sleep(15000) }
+}
+$stuckPool = New-ReaderPool @{ Ast = $stuckBlock.Ast }
 # One worker only: the next file can run only when the pool gets a worker in place of the stuck one.
 [void]$stuckPool.Pool.SetMaxRunspaces(1); $stuckPool.Max = 1; $stuckPool.Target = 1
 $clock = [Diagnostics.Stopwatch]::StartNew()

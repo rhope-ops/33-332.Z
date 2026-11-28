@@ -15,7 +15,7 @@ What it writes: paste/Ion-script.txt, the one bundle file (a .txt: a .ps1 link c
      before anything runs when that text is not the built text (a cut text does not parse: the try opens above);
   3. the modules of src/, inline (no module file is loaded), in dependency order: the reader modules inside one
      script block ($IonReaderBlock), loaded as an in-memory module by the script and by each reader worker
-     (ReaderPool.psm1 gets the block's text as $IonWorkerInit), then the scan and report modules;
+     (ReaderPool.psm1 gets the block's parsed AST as $IonWorkerInit), then the scan and report modules;
   4. the body of src/Find-ChannelPII.ps1 (from its "# ==== Body ====" line to the end);
   5. a Clean-up block: parts 2 to 4 run inside try/finally, which turns strict mode off and puts the ISE session's
      error setting back when the run ends.
@@ -54,7 +54,7 @@ $ErrorActionPreference = 'Stop'
 """
 READER_END = """}
 $null = New-Module -Name IonReaders -ScriptBlock $IonReaderBlock
-$IonWorkerInit = @{ Code = $IonReaderBlock.ToString() }
+$IonWorkerInit = @{ Ast = $IonReaderBlock.Ast }
 """
 BODY_MARK = '# ==== Body ===='
 # The end of the bundle: strict mode off and the session's error setting back, also after an error or Ctrl+C, so

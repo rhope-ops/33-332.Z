@@ -27,10 +27,10 @@ $filled = $filled.Replace("`$OutputFolder = (Join-Path ([Environment]::GetFolder
     "`$OutputFolder = '$bundleFolder'")
 Assert-Equal $true ($filled -ne $text) 'Settings filled in'
 # No module file and no script file: the only Import-Module is the reader workers' line for the module files of a
-# development run (src/), which the bundle never takes (its $IonWorkerInit holds the reader block's text).
+# development run (src/), which the bundle never takes (its $IonWorkerInit holds the reader block's AST).
 $imports = @([regex]::Matches($filled, 'Import-Module[^\r\n]*|\$PSScriptRoot') | ForEach-Object { $_.Value })
 Assert-Equal 'Import-Module -Global|Import-Module $Init.Paths -Global -Force }' ($imports -join '|') 'Bundle loads no module or file'
-Assert-Equal 1 ([regex]::Matches($filled, '(?m)^\$IonWorkerInit = @\{ Code = ').Count) 'Bundle workers load the reader block, not files'
+Assert-Equal 1 ([regex]::Matches($filled, '(?m)^\$IonWorkerInit = @\{ Ast = ').Count) 'Bundle workers load the reader block AST, not files'
 # No compiled code (NIPRNet: no unapproved .exe, .dll or .jar): nothing compiled (Add-Type with code), no binary
 # loaded from a file or bytes, nothing started; only assemblies of .NET Framework itself, by name.
 $compiled = 'Add-Type\s+(?!-AssemblyName\b)|-TypeDefinition|-MemberDefinition|Assembly\]::Load|LoadFrom|LoadFile|Start-Process|\.(?:exe|dll|jar)\b'

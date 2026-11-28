@@ -68,7 +68,7 @@ BLOCKS = (
     ('dark-media', r'@media \(prefers-color-scheme:dark\)\{:root:not\(\[data-theme="light"\]\)\{(.*?)\}\}'),
     ('dark-attr', r':root\[data-theme="dark"\]\{(.*?)\}'),
     ('more-root', r'@media \(prefers-contrast:more\)\{\s*:root\{(.*?)\}'),
-    ('more-dark-attr', r'@media \(prefers-contrast:more\)\{.*?:root\[data-theme="dark"\]\{(.*?)\}\}'),
+    ('more-dark-attr', r'@media \(prefers-contrast:more\)\{[^{}]*(?::root\{[^{}]*\})?\s*:root\[data-theme="dark"\]\{(.*?)\}\}'),
     ('more-dark-media', r'@media \(prefers-contrast:more\) and \(prefers-color-scheme:dark\)\{:root:not\(\[data-theme="light"\]\)\{(.*?)\}\}'),
 )
 # Each theme a person can get: light; dark by the system setting and by the data-theme attribute;

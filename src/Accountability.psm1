@@ -5,7 +5,7 @@ Accountability.psm1 - who made and changed a file with PII, and who put the PII 
                who last modified it, when it was made and by whom, and who added the PII and when, by e-mail
                address (the report is CUI and stays in DoD365). SharePoint and Teams: the file's fields and its
                version history (the first version that holds each hit). Drives: the file's owner (a Windows logon
-               name, which Windows looks up from the Administrator's ID; no search of the directory: "No reconnaissance"), its times, and the names an Office file stores.
+               name, which Windows looks up from the file owner's ID; no search of the directory: "No reconnaissance"), its times, and the names an Office file stores.
   Inputs:      the file's list item, path or reader result, and its hits.
   Outputs:     @{ ModifiedBy; Created; CreatedBy; AddedOn; AddedBy; HistoryNote; ByHit } for ReportExport.psm1 Set-RowAccountability.
                "PII first saved" and "PII first saved by" hold only a date and a person (or "Not recorded"); every caveat goes in
