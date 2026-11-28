@@ -29,7 +29,7 @@ foreach ($folder in @('Ops', 'Ops\old', 'Admin')) { New-Item -ItemType Directory
 [System.IO.File]::WriteAllBytes((Join-Path $driveRoot 'Admin\Roster.docx'), $Docx)
 [System.IO.File]::WriteAllBytes((Join-Path $driveRoot 'Admin\scan.pdf'), $Txt)
 [System.IO.File]::WriteAllBytes((Join-Path $driveRoot 'top.txt'), $Txt)
-# A file link to a file outside the folder is never read (the PAM, 2026-11-21).
+# A file link to a file outside the folder is never read (the Administrator, 2026-11-21).
 $outside = Join-Path ([System.IO.Path]::GetTempPath()) ('piitest-outside-' + $letters + '.txt')
 [System.IO.File]::WriteAllText($outside, "SSN: $($Sample.Ssn)")
 New-Item -ItemType SymbolicLink -Path (Join-Path $driveRoot 'Admin\pointer.txt') -Target $outside | Out-Null
@@ -69,7 +69,7 @@ try {
 }
 finally { Close-ReaderPool $pool }
 
-# OneDrive (the PAM, 2026-11-23): a synced OneDrive item is a reparse point but no link: it is read; a symbolic link or
+# OneDrive (the Administrator, 2026-11-23): a synced OneDrive item is a reparse point but no link: it is read; a symbolic link or
 # junction is not followed; when its kind cannot be read, it stays a link.
 $odRoots = @('C:\Users\me\OneDrive - Org')
 $inOneDrive = 'C:\Users\me\OneDrive - Org\Ops\a.docx'
@@ -91,7 +91,7 @@ Assert-Equal 0 $script:linkReads 'Online-only OneDrive file: LinkType and Target
 Assert-Equal 'Link' (Get-ReparseKind ([pscustomobject]@{ FullName = 'D:\Share\a.docx'; Attributes = 0x400400 }) $odRoots) 'Online-only attribute outside OneDrive: not read'
 $linkEntry = [pscustomobject]@{ FullName = $inOneDrive; Attributes = 0x1410; LinkType = 'Junction'; Target = @('C:\Users') }
 Assert-Equal 'Link' (Get-ReparseKind $linkEntry $odRoots) 'Junction with Offline set by hand in OneDrive: not followed'
-# Online-only files: asked first (the PAM, 2026-11-23: "Ask each run"); Enter (no) leaves them NOT SCANNED, y reads them.
+# Online-only files: asked first (the Administrator, 2026-11-23: "Ask each run"); Enter (no) leaves them NOT SCANNED, y reads them.
 function New-OnlineGroups {
     # Two files in one group: one online only, one on the disk.
     $files = New-Object System.Collections.Generic.List[object]
@@ -126,13 +126,18 @@ try { Assert-Equal 'OK' (Invoke-LimitedRead ([System.Text.Encoding]::UTF8.GetByt
 finally { Close-ReaderPool $livePool }
 
 # A worker stuck inside a .NET call (it does not stop; here for 15 s, so the test run can end): the file is NOT SCANNED after the time limit, and closing the pool
-# (as after Ctrl+C) does not wait for it (the PAM's gov run, 2026-11-23: a scan hung and Ctrl+C did not stop it).
+# (as after Ctrl+C) does not wait for it (the Administrator's gov run, 2026-11-23: a scan hung and Ctrl+C did not stop it).
 $readerPool = Get-Module ReaderPool
 $savedLimit = & $readerPool { $script:FileSecondsLimit }
 & $readerPool { $script:FileSecondsLimit = 2 }
-$stuckCode = 'function Invoke-PooledRead { param($Job, $Seen) if ($Job.Id -eq 7) { [System.Threading.Thread]::Sleep(15000) }; @{ Id = $Job.Id; Status = "OK" } }' +
-    "`nfunction Get-TextFromBytes { param(`$Bytes, `$FileName) [System.Threading.Thread]::Sleep(15000) }"
-$stuckPool = New-ReaderPool @{ Code = $stuckCode }
+# Fake reader module block that sleeps past $FileSecondsLimit to trigger worker timeout handling.
+$stuckBlock = {
+    # Simulates a stuck pooled read on job 7 while succeeding immediately on subsequent jobs.
+    function Invoke-PooledRead { param($Job, $Seen) if ($Job.Id -eq 7) { [System.Threading.Thread]::Sleep(15000) }; @{ Id = $Job.Id; Status = 'OK' } }
+    # Simulates a stuck limited read for old SharePoint version timeouts.
+    function Get-TextFromBytes { param($Bytes, $FileName) [System.Threading.Thread]::Sleep(15000) }
+}
+$stuckPool = New-ReaderPool @{ Ast = $stuckBlock.Ast }
 # One worker only: the next file can run only when the pool gets a worker in place of the stuck one.
 [void]$stuckPool.Pool.SetMaxRunspaces(1); $stuckPool.Max = 1; $stuckPool.Target = 1
 $clock = [Diagnostics.Stopwatch]::StartNew()
@@ -157,7 +162,7 @@ finally {
     & $readerPool { param($limit) $script:FileSecondsLimit = $limit } $savedLimit
 }
 
-# A whole OneDrive folder (the PAM, 2026-11-23: "Warn, then ask"): its top folders can be shortcuts to other teams'
+# A whole OneDrive folder (the Administrator, 2026-11-23: "Warn, then ask"): its top folders can be shortcuts to other teams'
 # libraries ("No reconnaissance"), so Ion asks first; Enter = no. A folder inside it, or any other folder: no question.
 $odRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('ion-od-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path (Join-Path $odRoot 'Team A') -Force | Out-Null
@@ -198,7 +203,7 @@ finally {
     Remove-Item -LiteralPath $odRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-# ---- Accountability (the PAM, 2026-11-21): who changed the file, who added the PII and when ----
+# ---- Accountability (the Administrator, 2026-11-21): who changed the file, who added the PII and when ----
 Assert-Equal $Sample.Email (Get-PersonText ([pscustomobject]@{ Email = $Sample.Email; LookupValue = 'Tom Mims' })) 'Who: a SharePoint person is shown by e-mail address'
 # Version history: the first version that holds the SSN dates it, and names who saved that version.
 $plain = [System.Text.Encoding]::UTF8.GetBytes('Roster draft, no numbers yet')
@@ -261,7 +266,7 @@ try {
     $plainEntry = (Find-PiiAddedVersion '/sites/x/Shared Documents/a.txt' 'a.txt' $hits $who)[$hits[0].Detector + '|' + $hits[0].MaskedValue]
     Assert-Equal 'true.adder|Versions after the 30 oldest were not checked' `
         ($plainEntry.AddedBy + '|' + $plainEntry.Note) 'Who: past the version cap, the oldest version with the hit is credited, with a note'
-    # Removed, then put back: the first adder is named, and who put it back (the PAM, 2026-11-21).
+    # Removed, then put back: the first adder is named, and who put it back (the Administrator, 2026-11-21).
     $versionList = @((New-FakeVersion ([datetime]'2026-01-01') 'orig.adder' $withSsn), (New-FakeVersion ([datetime]'2026-01-02') 'remover' $plain),
         (New-FakeVersion ([datetime]'2026-01-03') 'readder' $withSsn))
     $backEntry = (Find-PiiAddedVersion '/sites/x/Shared Documents/a.txt' 'a.txt' $hits $who)[$hits[0].Detector + '|' + $hits[0].MaskedValue]

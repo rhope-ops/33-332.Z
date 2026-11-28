@@ -1,26 +1,7 @@
-# Next session: 33-332.Z
+# Next session: ion
 
-Title: 33-332.Z · <task> · <date>. Read AGENTS.md first.
+Title: ion · <task> · <date>. Read AGENTS.md first.
 
-00. Detectors frozen after PR 85 (PR 60 merged, PR 61 closed 2026-11-26): docs/reviews/2026-11-24-ion-detector-handoff.md.
-10. The PAM to test on the gov device: ISE paste of paste/Ion-script.txt ("Paste check: OK", P4c); a drive folder scan (runspaces in ISE, FIPS
-   SHA-256); Windows OCR on an image; SharePoint version history ("PII first saved by"); colours; Excel opening.
-12. Tracked minors (PR bodies of #14, #19, #20): short spaced line under a heading of another size; OCR time outside
-   the PDF limit; meter misses file-name hits; masked dates/addresses compare equal (3 more: item 20).
-   A second address pasted after a Teams link without a groupId can supply that groupId (the site check holds).
-   Teams-link lookup and OCR wait on the PAM's test snippet results.
-13. README open items: docs/reviews/2026-11-21-readme-rework.md.
-14. Done 2026-11-21: PRs 30-39 (bars, symbol-font hits, glyph names, workbook columns, screen polish, "Scan now?").
-    Gov results: bar works; "Wingdings" PDF 1 hit left (a wide PDF: open); Ctrl+C saves; Teams lookup test 1 works.
-    Next: Teams test 2 (docs/reviews/2026-11-21-teams-lookup-test.md). Roadmap and open items: docs/DECISIONS.md
-    2026-11-21 rows; C2, C4-C6 of docs/reviews/2026-11-21-ion-polish-audit.md; the output folder layout.
-15. 2026-11-21 PR 46: gamma on the start line only; file on its own scan-bar line; "Downloading..."; "done / total";
-    not-scanned groups split (label, password, PDF time limit, PDF parts). Waits on the PAM: ISE layout test
-    (docs/reviews/2026-11-21-ise-progress-test.md); the reason text of the "damaged" PDFs on the next run.
-17. 2026-11-24 merged: PRs 58-88. Excel and local OneDrive tests open.
-18. Plan approved 2026-11-24, continue it: docs/reviews/2026-11-24-no-persistence-plan.md (Status).
-19. 2026-11-25/26: PRs 105-134 merged; audit not now (the PAM); no views column (test 4).
-20. Plan of 2026-11-26 done (PRs 138-142): map MINORs, step 5 MINORs, PDF scan OCR (known misses accepted,
-    PR 140), small-scan note, old-version cap 25 MB; the reader time limit already existed. Open, not planned: version-history reads off
-    the main thread (slow run 28:49; the 2026-11-24 parallel-downloads design kept them on it).
-21. 2026-11-27 device: tests 1-3 pass; Windows downloaded online-only files; fix (cause: medium) waits on a device run (probe-7.md).
+1. Batch F5 (2026-11-28): synced Kit `16.0.0` (`nipr-safe: on`), scrubbed `Administrator`, updated `ion` naming, removed CI `Bypass`, consolidated `src/*.psm1` into 10 modules, applied USAF Blue Light + Fulcrum Dark v2.1.1 + CSP hash, cached PSSA 1.23.0, and added CodeQL + `requirements.cdx.json` + hash-pinned `requirements.txt` (`docs/DECISIONS.md`).
+2. Device probes & open items (Administrator): ISE paste check and Teams lookup work; pending checks on gov device are OCR on image, version-history off-thread reads (`docs/reviews/2026-11-24-no-persistence-plan.md`), online-only OneDrive fallback (`probe-7.md`), and frozen detectors (`docs/reviews/2026-11-24-ion-detector-handoff.md`).
+3. Optional follow-on once RADE `engine-v50` ships: wrap `ion` in RADE's app-agnostic local-PS1 profile (`FLEET-MASTER-PLAN-v3.md` Stage 3A.2).

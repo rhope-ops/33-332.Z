@@ -4,18 +4,18 @@ PowerShell ISE and runs with F5 (AGENTS.md "Platform": paste and run, never an e
 
 Why: a gov computer runs pasted text in ISE, not downloaded files (ISSM ruling 2026-11-13). A pasted text loads no
 module file and runs no script file, so the execution policy does not apply to it.
-What it writes: paste/Ion-script.txt, the one bundle file (a .txt: a .ps1 link causes trouble on gov computers, the PAM,
+What it writes: paste/Ion-script.txt, the one bundle file (a .txt: a .ps1 link causes trouble on gov computers, the Administrator,
 2026-11-21; the .ps1 copy is retired, fleet v2 DEC 8, 2026-11-23), in this order:
   1. a header (the build ID, how to run first, then GENERATED, the sources with their SHA-256, Network/Writes/Credentials,
      a contents list);
   2. the Settings block, inside the try that opens above it: plain variables a person may set in ISE (site, results
      folder, file size limit), and $IonPasteHash, the SHA-256 of the text from the Paste check line to the end;
   2a. the Paste check (plan P4c, 2026-11-25): strict mode, the error setting, $IonBuild (the build ID that Ion shows
-     on its start screen; the PAM, 2026-11-24: which Ion ran), then the check: it reads the pasted text back and stops
+     on its start screen; the Administrator, 2026-11-24: which Ion ran), then the check: it reads the pasted text back and stops
      before anything runs when that text is not the built text (a cut text does not parse: the try opens above);
   3. the modules of src/, inline (no module file is loaded), in dependency order: the reader modules inside one
      script block ($IonReaderBlock), loaded as an in-memory module by the script and by each reader worker
-     (ReaderPool.psm1 gets the block's text as $IonWorkerInit), then the scan and report modules;
+     (ReaderPool.psm1 gets the block's parsed AST as $IonWorkerInit), then the scan and report modules;
   4. the body of src/Find-ChannelPII.ps1 (from its "# ==== Body ====" line to the end);
   5. a Clean-up block: parts 2 to 4 run inside try/finally, which turns strict mode off and puts the ISE session's
      error setting back when the run ends.
@@ -42,11 +42,10 @@ RETIRED = ROOT / 'paste' / '33332Z-pii-spot-check.ps1'
 MAIN = 'src/Find-ChannelPII.ps1'
 # Dependency order: each module uses only those listed before it (their headers say so).
 # The reader modules come first; the reader workers (ReaderPool.psm1) load exactly these.
-READERS = ('src/PiiPatterns.psm1', 'src/PiiSignedIds.psm1', 'src/PiiDetectors.psm1', 'src/PiiMasking.psm1', 'src/OcrText.psm1', 'src/OleText.psm1', 'src/ContainerText.psm1',
-           'src/PdfCore.psm1', 'src/PdfObjects.psm1', 'src/PdfFonts.psm1', 'src/PdfShown.psm1', 'src/PdfLayout.psm1', 'src/PdfContent.psm1', 'src/PdfText.psm1', 'src/TextExtract.psm1',
+READERS = ('src/PiiEngine.psm1', 'src/ContainerText.psm1', 'src/PdfExtract.psm1', 'src/TextExtract.psm1',
            'src/ReaderPool.psm1')
-MODULES = READERS + ('src/XlsxWriter.psm1', 'src/Report.psm1', 'src/ReportBook.psm1', 'src/ScanMeter.psm1', 'src/ScanQueue.psm1', 'src/Accountability.psm1',
-                     'src/SiteTarget.psm1', 'src/ChannelScan.psm1', 'src/DriveScan.psm1')
+MODULES = READERS + ('src/ReportExport.psm1', 'src/ScanQueue.psm1', 'src/Accountability.psm1',
+                     'src/ChannelScan.psm1', 'src/DriveScan.psm1')
 READER_START = """# ==== Reader modules ==== (one script block: this script loads it as an in-memory module, and each reader
 # worker loads the same text; nothing is read from a file)
 $IonReaderBlock = {
@@ -55,7 +54,7 @@ $ErrorActionPreference = 'Stop'
 """
 READER_END = """}
 $null = New-Module -Name IonReaders -ScriptBlock $IonReaderBlock
-$IonWorkerInit = @{ Code = $IonReaderBlock.ToString() }
+$IonWorkerInit = @{ Ast = $IonReaderBlock.Ast }
 """
 BODY_MARK = '# ==== Body ===='
 # The end of the bundle: strict mode off and the session's error setting back, also after an error or Ctrl+C, so
@@ -73,7 +72,7 @@ EXPORT_START = 'Export-ModuleMember'
 STRICT_LINE = 'Set-StrictMode -Version 2.0'
 
 # The Settings block: a person may edit these values in ISE before F5; empty means the script asks. The scan
-# always covers every folder of the site's library and saves one workbook (the PAM, 2026-11-20).
+# always covers every folder of the site's library and saves one workbook (the Administrator, 2026-11-20).
 SETTINGS = """# ISE runs pasted text in your session: keep its error setting so the Clean-up block at the end can put it back.
 # The try starts here, before the Settings, so a text that is cut short anywhere below does not parse: nothing runs.
 try {
@@ -236,7 +235,7 @@ def header(sources, contents):
         The header text.
     """
     out = ['<#',
-           '  Ion - DoD365 PII Reporter, build %s (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)'
+           '  Ion - DoD365 PII Reporter, build %s (ion; GENERATED from src/ by scripts/build_paste.py: do not edit this text)'
            % build_id(sources),
            '',
            '  HOW TO RUN',

@@ -4,19 +4,21 @@
 # self-test (scripts/build_paste_test.py), the PowerShell tests (tests/Run-Tests.ps1: invented data, fake PnP cmdlets, no
 # network) and the lint (tests/Lint.ps1: parser and Windows PowerShell 5.1 syntax with PSScriptAnalyzer).
 # Usage:   scripts/check.local.sh [--fast]   (--fast: the same; both are quick)
-# Needs:   pwsh 7; PSScriptAnalyzer 1.23.0 for the lint (in GitHub Actions it is installed here, as the kit's workflow
-#          file is locked; elsewhere a missing module is a FAIL, not a skip, so the lint is never left out silently).
+# Needs:   pwsh 7; PSScriptAnalyzer 1.23.0 for the lint (in GitHub Actions it is installed here if not cached;
+#          elsewhere a missing module is a FAIL, not a skip, so the lint is never left out silently).
 #          The installed module's code files must match scripts/pssa-1.23.0.sha256 (fleet v2, 2026-11-23); a mismatch is a FAIL.
-# Network: in GitHub Actions only, the PowerShell Gallery once, to install PSScriptAnalyzer. Else none.
+# Prevents: unpinned PSScriptAnalyzer, drifted ref rule sources, stale paste bundles, or broken PowerShell tests/syntax reaching main
+# Network: in GitHub Actions only, the PowerShell Gallery once on a cache miss to install PSScriptAnalyzer. Else none.
 # Writes:  none in the repo (the tests write report files to a temporary folder and delete them).
 # Credentials: none.
 set -u
 cd "$(dirname "$0")/.."
 if [ ! -f tests/Run-Tests.ps1 ]; then echo "SKIP  PowerShell tests: no tests/Run-Tests.ps1 yet"; exit 0; fi
 if [ -n "${GITHUB_ACTIONS:-}" ]; then
-  pwsh -NoProfile -Command "Install-Module PSScriptAnalyzer -RequiredVersion 1.23.0 -Scope CurrentUser -Force" || exit 1
+  pwsh -NoProfile -Command 'if (-not (Get-Module -ListAvailable PSScriptAnalyzer |
+    Where-Object { $_.Version -eq [version]"1.23.0" })) { Install-Module PSScriptAnalyzer -RequiredVersion 1.23.0 -Scope CurrentUser -Force }' || exit 1
 fi
-# A dev machine may keep PSScriptAnalyzer outside the default module path (as 90-161.Z's scripts/lint.sh does).
+# A dev machine may keep PSScriptAnalyzer outside the default module path (as kanon's scripts/lint.sh does).
 [ -d /opt/psmods ] && export PSModulePath="/opt/psmods:${PSModulePath:-}"
 rc=0
 # PSScriptAnalyzer 1.23.0: the SHA-256 of every code file (.dll, .psd1, .psm1, .ps1xml, in every folder: pwsh 7 loads

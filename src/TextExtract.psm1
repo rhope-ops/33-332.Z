@@ -3,12 +3,12 @@ TextExtract.psm1 - turns file bytes into plain text, in memory.
 
   Purpose:     Plain text from Word, Excel and PowerPoint files (.docx/.xlsx/.pptx and macro versions), PDF,
                OpenDocument, Visio, RTF, text and HTML; images (OCR), old .doc/.xls/.ppt and .msg; and each file
-               inside a .zip or an .eml (the PAM, 2026-11-20). Other types (scripts and anything else), encrypted
+               inside a .zip or an .eml (the Administrator, 2026-11-20). Other types (scripts and anything else), encrypted
                files and files that cannot be read are reported as NOT SCANNED, so a person checks them by hand.
   Inputs:      file bytes and the file name (for its extension).
   Outputs:     an object with Status ('OK' or 'NOT SCANNED'), Reason, Text, Note and Parts (Get-TextFromBytes).
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
-  Depends on:  PdfText.psm1 (Get-PdfText), OcrText.psm1 (Get-ImageText), OleText.psm1 (Get-OleText) and
+  Depends on:  PdfExtract.psm1 (Get-PdfText), ContainerText.psm1 (Get-ImageText), ContainerText.psm1 (Get-OleText) and
                ContainerText.psm1 (Get-ArchiveParts, Get-EmailParts, Read-LimitedStream; Add-RosterValues,
                Add-RosterSection and Add-CsvRosterLabels: roster labels), imported first by Find-ChannelPII.ps1.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7); .NET System.IO.Compression only.
@@ -45,14 +45,14 @@ $script:OfficeParts = @{
     '.xlsm' = '^xl/(worksheets/sheet\d+|comments\d*)\.xml$'
     '.pptx' = '^ppt/(slides/slide\d+|notesSlides/notesSlide\d+|comments/comment\d+)\.xml$'
     '.pptm' = '^ppt/(slides/slide\d+|notesSlides/notesSlide\d+|comments/comment\d+)\.xml$'
-    # OpenDocument (ODF: a zip with content.xml) and Visio (pages in visio/pages); the PAM, 2026-11-20: round 3.
+    # OpenDocument (ODF: a zip with content.xml) and Visio (pages in visio/pages); the Administrator, 2026-11-20: round 3.
     '.odt' = '^content\.xml$'
     '.ods' = '^content\.xml$'
     '.odp' = '^content\.xml$'
     '.vsdx' = '^visio/pages/page\d+\.xml$'
 }
 
-# Images, read with Windows OCR (OcrText.psm1); old binary Office and Outlook files (OleText.psm1); files that
+# Images, read with Windows OCR (ContainerText.psm1); old binary Office and Outlook files (ContainerText.psm1); files that
 # hold other files (ContainerText.psm1): their parts are read one by one, at most $MaxContainerDepth levels deep.
 $script:ImageExtensions = @('.jpg', '.jpeg', '.png', '.tif', '.tiff', '.bmp', '.gif')
 $script:OleExtensions = @('.doc', '.xls', '.ppt', '.msg')
@@ -72,7 +72,7 @@ $script:OldFormatReason = 'An old Office file (97-2003 format) with a new-style 
 # =====================================================================================
 
 # Between two cells of a worksheet row: a mark that no detector reads across, so values of neighbouring cells
-# (123 | 45 | 6789) never join into one SSN, card or phone number (the PAM, 2026-11-20: Excel false positives).
+# (123 | 45 | 6789) never join into one SSN, card or phone number (the Administrator, 2026-11-20: Excel false positives).
 $script:CellBreak = ' | '
 # Column letters of a cell reference (1 to 3, as Excel: A to XFD) -> column number (A = 1), kept once worked out (speed).
 $script:ColumnNumbers = @{}
@@ -138,7 +138,7 @@ function Convert-XmlToText {
     #>
     param([string]$Xml)
     # Word field codes are not shown on the page: PAGEREF _Toc123456789, HYPERLINK addresses, form IDs. They gave
-    # false positives (a 9-digit bookmark number read as an SSN), so their text is dropped (the PAM, 2026-11-20).
+    # false positives (a 9-digit bookmark number read as an SSN), so their text is dropped (the Administrator, 2026-11-20).
     $text = $Xml -replace '(?s)<w:instrText\b[^>]*?(?:/>|>.*?</w:instrText>)', ''
     $text = $text -replace '<w:tab/>|<w:br/>|<a:br/>', ' '
     $text = $text -replace '<text:(?:s|tab|line-break)\b[^>]*/>', ' '
@@ -216,7 +216,7 @@ function Get-OfficeProps {
     <#
     .SYNOPSIS
       The names an Office file stores about itself (docProps/core.xml: creator, last modified by), as Office saved
-      them; empty for other files (the accountability columns, the PAM 2026-11-21).
+      them; empty for other files (the accountability columns, the Administrator 2026-11-21).
     .PARAMETER Bytes
       The file bytes.
     .OUTPUTS
@@ -321,7 +321,7 @@ function Get-NotZipReason {
     <#
     .SYNOPSIS
       Why an Office file's bytes are not a zip, from their first bytes; empty when they are one. Without this check
-      the zip reader says only "End of central directory not found" (the PAM's DoD365 run, 2026-11-20).
+      the zip reader says only "End of central directory not found" (the Administrator's DoD365 run, 2026-11-20).
     .PARAMETER Bytes
       The file bytes.
     .OUTPUTS

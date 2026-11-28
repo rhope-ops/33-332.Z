@@ -1,15 +1,15 @@
 <#
 DriveScan.psm1 - scans a folder on a mapped or network drive (X:\<folder> or \\<server>\<share>\<folder>).
 
-  Purpose:     The PAM, 2026-11-21: the same check as for a SharePoint site, for one folder and all its subfolders on
+  Purpose:     The Administrator, 2026-11-21: the same check as for a SharePoint site, for one folder and all its subfolders on
                a drive the person can open. Nothing above the folder, no other share or server is touched ("No
                reconnaissance"). Files are opened read-only and shared, with the person's own Windows logon.
   Inputs:      the pasted folder path; the reader workers' set-up (New-ReaderPool).
-  Outputs:     report rows; the results workbook (Report.psm1 Publish-ScanReport).
+  Outputs:     report rows; the results workbook (ReportExport.psm1 Publish-ScanReport).
   How to run:  imported by Find-ChannelPII.ps1; Invoke-DriveScan runs when the pasted target is a folder path.
-  Depends on:  PiiDetectors.psm1, PiiMasking.psm1, TextExtract.psm1 (Test-SupportedFile), Report.psm1,
-               ScanMeter.psm1, ScanQueue.psm1, ChannelScan.psm1 (Get-ShownItem, Get-FileBytes, Get-FieldValue,
-               Get-SafeLink), Accountability.psm1 and SiteTarget.psm1 (Connect-TeamSite), imported first.
+  Depends on:  PiiEngine.psm1, TextExtract.psm1 (Test-SupportedFile), ReportExport.psm1,
+               ScanQueue.psm1, ChannelScan.psm1 (Get-ShownItem, Get-FileBytes, Get-FieldValue,
+               Get-SafeLink), Accountability.psm1 and ChannelScan.psm1 (Connect-TeamSite), imported first.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7, where the tests run on a temporary folder).
   Network:     only the given folder's server, through the person's Windows logon (SMB). In a folder of the own
                work OneDrive, or of a synced team library or a shortcut in it (Connect-OneDriveWeb): the site of that folder (from
@@ -24,12 +24,12 @@ Set-StrictMode -Version 2.0
 
 # Files directly in the pasted folder form this group (each subfolder is its own group).
 $script:DriveTopGroup = '(top of the folder)'
-# A file link in the folder is never read (the PAM, 2026-11-21: "No reconnaissance").
+# A file link in the folder is never read (the Administrator, 2026-11-21: "No reconnaissance").
 $script:FileLinkReason = 'A link to another file is not followed (it can lead outside the folder): check by hand'
 # OneDrive (and a SharePoint library synced by OneDrive) keeps its files and folders as reparse points too: they are the
-# item itself, not a link, so they are read (the PAM, 2026-11-23: scan a synced OneDrive folder when SharePoint sign-in
+# item itself, not a link, so they are read (the Administrator, 2026-11-23: scan a synced OneDrive folder when SharePoint sign-in
 # is blocked). A file whose data is only in the cloud has one of these attributes: RecallOnDataAccess (0x400000),
-# RecallOnOpen (0x40000) or Offline (0x1000). Ion asks before it reads such files (the PAM, 2026-11-23: "Ask each run").
+# RecallOnOpen (0x40000) or Offline (0x1000). Ion asks before it reads such files (the Administrator, 2026-11-23: "Ask each run").
 $script:OnlineOnlyAttributes = 0x441000
 $script:RecallAttributes = 0x440000   # set only by the cloud files system (Get-ReparseKind)
 $script:OnlineReason = 'Online only (OneDrive), not downloaded: check by hand, or run Ion again and answer y to download'
@@ -64,7 +64,7 @@ function Confirm-OneDriveRoot {
     .SYNOPSIS
       When the pasted folder is the person's own OneDrive folder (Get-OneDriveHomes), its top folders can be shortcuts to
       other teams' libraries ("Add shortcut to My files"), which look like normal folders. Ion says so, lists the top
-      folders (names masked) and asks before it scans them all (the PAM, 2026-11-23: "Warn, then ask"; the rule
+      folders (names masked) and asks before it scans them all (the Administrator, 2026-11-23: "Warn, then ask"; the rule
       "No reconnaissance"). A folder that holds the OneDrive folder (the user folder) is asked about too. Any other
       folder: true without a question.
     .PARAMETER Path
@@ -112,7 +112,7 @@ function Get-ReparseKind {
     # An online-only item has a Recall attribute (RecallOnDataAccess or RecallOnOpen, 0x440000): only the cloud files
     # system sets these, so a link cannot have them (Offline, 0x1000, can be set by hand: not used here; review of
     # PR 145). Its LinkType and Target are not read: the assumption (confidence medium) is that on Windows PowerShell
-    # 5.1 that read opens the file and OneDrive downloads it (device test 2026-11-27; the PAM, 2026-11-24: nothing
+    # 5.1 that read opens the file and OneDrive downloads it (device test 2026-11-27; the Administrator, 2026-11-24: nothing
     # goes to the disk).
     $attributes = 0; try { $attributes = [int]$Entry.Attributes } catch { $attributes = 0 }
     if (($attributes -band $script:RecallAttributes) -ne 0) { return 'Cloud' }
@@ -174,7 +174,7 @@ function Get-DriveGroups {
       The folder path.
     .OUTPUTS
       [hashtable] Groups (each @{ Name; Files }), Blocked (each @{ Folder; Reason }), Links (folder link paths),
-      FileLinks (file link paths: never read, they can lead outside the folder; the PAM, 2026-11-21).
+      FileLinks (file link paths: never read, they can lead outside the folder; the Administrator, 2026-11-21).
     #>
     param([string]$Root)
     $Root = $Root.TrimEnd('\', '/')
@@ -271,7 +271,7 @@ function Invoke-DriveFile {
     $info.Added = { param($hits) Find-PiiAddedVersion $ref $name $hits $who }.GetNewClosure()
     $info.Access = { Get-SharePointAccess $web }.GetNewClosure()
     if (-not $File.Online -and $File.Path) { Submit-ScanFile $Queue $info $name $null $File.Path; return $true }   # on the disk: read from the disk
-    # Online only, or on the web only: read from the web into memory (the PAM, 2026-11-24: nothing goes to the disk).
+    # Online only, or on the web only: read from the web into memory (the Administrator, 2026-11-24: nothing goes to the disk).
     try { $bytes = Get-FileBytes $ref $File.Size }
     catch {
         $rows.Add((New-ReportRow 'File' $channel $item $link $File.Modified 'NOT SCANNED' '' '' (Protect-PiiText ('Download failed: ' + $_.Exception.Message))))
@@ -287,7 +287,7 @@ function Add-OneDriveWebFiles {
     .SYNOPSIS
       Joins the web files of the pasted folder (Connect-OneDriveWeb) to its local files: a local file with a web copy
       gets it (Web, Origin: history, and the read of an online-only file); a web file that is not on the disk joins its
-      group (the PAM, 2026-11-24: read through PnP). The web side never adds a file outside the pasted folder.
+      group (the Administrator, 2026-11-24: read through PnP). The web side never adds a file outside the pasted folder.
     .PARAMETER Groups
       The groups of Get-DriveGroups (changed in place).
     .PARAMETER Web
@@ -463,7 +463,7 @@ function Invoke-DriveScan {
         $rows.Add((New-ReportRow 'Scan' '(all)' '(scan)' '' '' 'INCOMPLETE' '' '' ('Stopped early: ' + $reason)))
     }
     finally {
-        # "No" to "Scan now?": nothing was read, so nothing is saved (the PAM, 2026-11-21).
+        # "No" to "Scan now?": nothing was read, so nothing is saved (the Administrator, 2026-11-21).
         if ($run.ContainsKey('Declined') -and $run.Declined) { Write-Ui 'Not scanned: nothing was saved.' 'Accent' }
         else {
             Add-IncompleteRow -Rows $rows -Finished $finished
@@ -475,11 +475,11 @@ function Invoke-DriveScan {
     return $workbook
 }
 
-# ---- OneDrive on the web (plan step 4, the OneDrive hybrid; the PAM, 2026-11-24: docs/reviews/2026-11-24-onedrive-hybrid-design.md) ----
+# ---- OneDrive on the web (plan step 4, the OneDrive hybrid; the Administrator, 2026-11-24: docs/reviews/2026-11-24-onedrive-hybrid-design.md) ----
 
 # The OneDrive app's list of synced folders (one key per folder: MountPoint, UrlNamespace, FullRemotePath).
 $script:SyncEnginesKey = 'HKCU:\Software\SyncEngines\Providers\OneDrive'
-# All 3 folder kinds use the web (the PAM, 2026-11-24, with a probe first): probe 4 tested 'Home' (runs 1 and 2); probe 7
+# All 3 folder kinds use the web (the Administrator, 2026-11-24, with a probe first): probe 4 tested 'Home' (runs 1 and 2); probe 7
 # (2026-11-25, runs A and B) tested 'Library' and 'Shortcut' with the web folder from FullRemotePath (7 of 7 and 8 of 8
 # names on both sides): docs/reviews/2026-11-25-device-probe-7.md.
 # The list fields read for each web file (as ChannelScan.psm1 reads them for a team site).

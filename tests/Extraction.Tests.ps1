@@ -55,7 +55,7 @@ $realSsn = "<worksheet><sheetData><row><c t=`"inlineStr`"><is><t>SSN</t></is></c
 Assert-Equal 1 @(Find-PiiInText (Get-TextFromBytes -Bytes (New-ZipBytes @{ 'xl/worksheets/sheet1.xml' = $realSsn }) -FileName 'a.xlsx').Text |
     Where-Object { $_.Detector -eq 'SSN' }).Count 'Excel: a real SSN in a number cell is still found'
 
-# ---- Roster columns: a PII label only in a column header (the PAM, 2026-11-24; design: review of PR 96) ----
+# ---- Roster columns: a PII label only in a column header (the Administrator, 2026-11-24; design: review of PR 96) ----
 function Get-RosterXlsxText {
     # The text of a one-sheet workbook; each row a list of 'B2=text' cells (digits only: a number cell, else an inline string).
     param([object[]]$Rows)
@@ -175,9 +175,9 @@ Assert-Equal 'SSN' (@(Find-PiiInText (Get-TextFromBytes -Bytes $formPdf -FileNam
 Assert-Equal 'No text in this PDF (a scanned image?): check by hand' (Get-TextFromBytes -Bytes (New-PdfBytes 'q 100 0 0 100 0 0 cm /Im1 Do Q') -FileName 's.pdf').Reason 'PDF: an image-only page named'
 Assert-Equal $true ((Get-TextFromBytes -Bytes (New-PdfBytes 'BT (x) Tj ET' -Trailer '/Encrypt 9 0 R') -FileName 'e.pdf').Reason -match '^Encrypted PDF') 'PDF: encrypted named'
 Assert-Equal $true ((Get-TextFromBytes -Bytes $Txt -FileName 'scan.pdf').Reason -match '^Not a valid PDF') 'PDF: not a PDF named'
-$a85 = & (Get-Module PdfCore) { ConvertFrom-Ascii85 '9jqo^BlbD-BleB1DJ+*+F(f,q~>' }
+$a85 = & (Get-Module PdfExtract) { ConvertFrom-Ascii85 '9jqo^BlbD-BleB1DJ+*+F(f,q~>' }
 Assert-Equal 'Man is distinguished' $a85 'PDF: ASCII85 filter decoded (a published test vector)'
-$hexData = & (Get-Module PdfCore) { Read-PdfStream '/Filter /ASCIIHexDecode' '48 49>' }
+$hexData = & (Get-Module PdfExtract) { Read-PdfStream '/Filter /ASCIIHexDecode' '48 49>' }
 Assert-Equal 'HI' $hexData 'PDF: ASCIIHex filter decoded'
 # Object stream (PDF 1.5): a form field packed inside one is still read.
 $packed = "9 0 << /T (SSN) /V ($($Sample.Ssn)) >>"
@@ -191,7 +191,7 @@ Assert-Equal 'SSN' (@(Find-PiiInText (Get-TextFromBytes -Bytes $crPdf -FileName 
 $inline = Get-TextFromBytes -Bytes (New-PdfBytes "BI /W 1 /H 1 ID 7 Tj EI BT 7 Tj (SSN: $($Sample.Ssn)) Tj ET" -Plain) -FileName 'i.pdf'
 Assert-Equal 'OK|SSN' ($inline.Status + '|' + (@(Find-PiiInText $inline.Text) | Select-Object -First 1).Detector) 'PDF: inline image and Tj on a number skipped'
 # Hostile input stays inside the time limit (lowered to 2 s here): unbalanced brackets, and headers without endobj.
-& (Get-Module PdfCore) { $script:PdfSecondsLimit = 2 }
+& (Get-Module PdfExtract) { $script:PdfSecondsLimit = 2 }
 $clock = [Diagnostics.Stopwatch]::StartNew()
 $slow = Get-TextFromBytes -Bytes (New-PdfBytes ('BT ' + ('(a' * 20000) + ' Tj ET') -Plain) -FileName 'h.pdf'
 $noEnd = Get-TextFromBytes -Bytes ([System.Text.Encoding]::ASCII.GetBytes('%PDF-1.4 ' + ('1 0 obj << >> ' * 50000))) -FileName 'n.pdf'
@@ -205,7 +205,7 @@ $manyRanges = Get-TextFromBytes -Bytes (New-PdfBytes ("BT /F1 12 Tf <$glyphs> Tj
 Assert-Equal $true ($clock.Elapsed.TotalSeconds -lt 15) 'PDF: hostile font maps end inside the time limit'
 Assert-Equal $true ($badMap.Status -in @('OK', 'NOT SCANNED')) 'PDF: a damaged map gives a result, not a stall'
 Assert-Equal 'SSN' (@(Find-PiiInText $manyRanges.Text) | Select-Object -First 1).Detector 'PDF: full ranges still decode'
-& (Get-Module PdfCore) { $script:PdfSecondsLimit = 30 }
+& (Get-Module PdfExtract) { $script:PdfSecondsLimit = 30 }
 # A long string is read; one over the string limit makes the PDF NOT SCANNED, never read in part without a word.
 $longString = Get-TextFromBytes -Bytes (New-PdfBytes ('BT (' + ('\101' * 1100) + " $($Sample.Ssn)) Tj ET") -Plain) -FileName 'l.pdf'
 Assert-Equal 'SSN' (@(Find-PiiInText $longString.Text) | Select-Object -First 1).Detector 'PDF: a string with 1,100 escapes read'
@@ -225,13 +225,13 @@ Assert-Equal 'SSN' (@(Find-PiiInText (Get-TextFromBytes -Bytes $formPdf2 -FileNa
 # A part not read is never silent: an attached file, or a stream over the unpack cap, gives a note.
 $attached = Get-TextFromBytes -Bytes (New-PdfBytes 'BT (hello) Tj ET' -Plain -Extra @("<< /Type /EmbeddedFile /Length 3 >> stream`nabc`nendstream")) -FileName 'a.pdf'
 Assert-Equal $true ($attached.Status -eq 'OK' -and $attached.Note -match 'attached inside this PDF') 'PDF: attachments give a check-by-hand note'
-& (Get-Module PdfCore) { $script:MaxInflatedBytes = 10 }
+& (Get-Module PdfExtract) { $script:MaxInflatedBytes = 10 }
 $capped = Get-TextFromBytes -Bytes (New-PdfBytes ("BT /F1 12 Tf (SSN: $($Sample.Ssn)) Tj ET " * 3000)) -FileName 'cap.pdf'
-& (Get-Module PdfCore) { $script:MaxInflatedBytes = 64MB }
+& (Get-Module PdfExtract) { $script:MaxInflatedBytes = 64MB }
 # The cut can end inside a string (then the whole PDF is Not scanned) or between tokens (a note): never silent.
 Assert-Equal $true (($capped.Note + $capped.Reason) -match 'too large to unpack|could not be read') 'PDF: text past the unpack cap is never silent'
 # A stream that inflates far past the cap is cut, not held whole in memory.
-$bomb = & (Get-Module PdfCore) {
+$bomb = & (Get-Module PdfExtract) {
     $memory = New-Object System.IO.MemoryStream
     $deflate = New-Object System.IO.Compression.DeflateStream($memory, [System.IO.Compression.CompressionMode]::Compress, $true)
     $zeros = New-Object byte[] (1MB); for ($i = 0; $i -lt 40; $i++) { $deflate.Write($zeros, 0, $zeros.Length) }
@@ -254,7 +254,7 @@ Assert-Equal $true ((Get-TextFromBytes -Bytes $Txt -FileName 'broken.docx').Reas
 $html = (Convert-HtmlToText "<div><p>SSN $($Sample.Ssn)</p></div>here") -replace '\s+', ' '
 Assert-Equal "SSN $($Sample.Ssn) here" $html.Trim() 'HTML tags removed'
 
-# ==== Round 3 readers (the PAM, 2026-11-20): RTF, OpenDocument, Visio, old Office and Outlook, zip, e-mail, images ====
+# ==== Round 3 readers (the Administrator, 2026-11-20): RTF, OpenDocument, Visio, old Office and Outlook, zip, e-mail, images ====
 $ssnLine = "SSN: $($Sample.Ssn)"
 $rtf = [System.Text.Encoding]::ASCII.GetBytes('{\rtf1\ansi{\fonttbl{\f0 Arial;}}{\*\generator Word}\f0 ' + $ssnLine + '\par caf\''e9 ' + [char]92 + 'u8364?}')
 $rtfText = (Get-TextFromBytes -Bytes $rtf -FileName 'memo.rtf').Text
@@ -378,7 +378,7 @@ if ($ocrHere -and $PSVersionTable.PSVersion.Major -eq 5) {
     $ocrRead = Get-TextFromBytes -Bytes $png.ToArray() -FileName 'roster.png'
     Assert-Equal $true (@(Find-PiiInText $ocrRead.Text | ForEach-Object { $_.Detector }) -contains 'SSN') 'Image: Windows OCR reads an SSN drawn in a picture'
 }
-& (Get-Module OcrText) { param($line) $script:OcrOverride = [scriptblock]::Create("param(`$b) @{ Text = '$line'; Reason = ''; Note = '' }") } $ssnLine
+& (Get-Module ContainerText) { param($line) $script:OcrOverride = [scriptblock]::Create("param(`$b) @{ Text = '$line'; Reason = ''; Note = '' }") } $ssnLine
 Assert-Equal 'SSN' (@(Find-PiiInText (Get-TextFromBytes -Bytes ([byte[]](1, 2, 3)) -FileName 'scan.png').Text) | Select-Object -First 1).Detector 'Image: OCR text checked'
 Assert-Equal 'SSN' (@(Find-PiiInText (Get-TextFromBytes -Bytes $scanPdf -FileName 's.pdf').Text) | Select-Object -First 1).Detector 'Scanned PDF: page images read with OCR'
 $mixedRead = Get-TextFromBytes -Bytes $mixedPdf -FileName 'm.pdf'
@@ -386,4 +386,4 @@ Assert-Equal $true ($mixedRead.Text -match 'Meeting notes' -and @(Find-PiiInText
     'Text and a scanned page, with OCR: the text and the scanned page are both checked'
 $layerRead = Get-TextFromBytes -Bytes (New-PdfBytes $textPage -Plain -Extra @($scanImage, $layerPage, $layerContent)) -FileName 'l.pdf'
 Assert-Equal 0 @(Find-PiiInText $layerRead.Text | Where-Object { $_.Detector -eq 'SSN' }).Count 'A searchable scan, with OCR: the image is not read again (no double hit)'
-& (Get-Module OcrText) { $script:OcrOverride = $null }
+& (Get-Module ContainerText) { $script:OcrOverride = $null }

@@ -16,14 +16,14 @@
   How to run:  .\Find-ChannelPII.ps1   (README.md "Run it" gives every step)
   Run target:  Windows PowerShell 5.1 (also PowerShell 7) with PnP.PowerShell 1.12.0. No other modules.
   Network:     only the one SharePoint site, or the one drive folder's server, given; for a Teams link also the tenant
-               root, for one lookup of that team's site (SiteTarget.psm1). Channel posts are not read (the PAM, 2026-11-20).
+               root, for one lookup of that team's site (ChannelScan.psm1). Channel posts are not read (the Administrator, 2026-11-20).
   Writes:      only the workbook in -OutputFolder (default Documents\Ion); nothing in Teams or SharePoint.
   Credentials: the person's own CAC sign-in in the PnP sign-in window (a drive folder: the Windows logon); nothing is stored.
                One sign-in per host: no sign-out between sites; one sign-out at the end of the run, also after an
-               error or Ctrl+C (the PAM, 2026-11-24).
+               error or Ctrl+C (the Administrator, 2026-11-24).
 
   Policy:      Read-only; one site only (no network reconnaissance); file content stays in memory; values
-               masked (the PAM, 2026-11-20). No script file is collected or sent: script types are not
+               masked (the Administrator, 2026-11-20). No script file is collected or sent: script types are not
                read and only their (masked) names appear in the report.
   Not scanned: encrypted or password-protected files, script and other unread file types, files over -MaxFileMB, and
                images where Windows OCR is not there (each a NOT SCANNED row with its reason); channel posts; private
@@ -60,10 +60,8 @@ $IonBuild = 'src'   # run from src/; the paste bundle sets its build ID here (sc
 
 # Modules, in dependency order (each module's header names what it needs).
 # The readers (the reader workers load the same files: ReaderPool.psm1), then the scan and report modules.
-$readerModules = @('PiiPatterns.psm1', 'PiiSignedIds.psm1', 'PiiDetectors.psm1', 'PiiMasking.psm1', 'OcrText.psm1', 'OleText.psm1', 'ContainerText.psm1',
-    'PdfCore.psm1', 'PdfObjects.psm1', 'PdfFonts.psm1', 'PdfShown.psm1', 'PdfLayout.psm1', 'PdfContent.psm1', 'PdfText.psm1', 'TextExtract.psm1', 'ReaderPool.psm1')
-$otherModules = @('XlsxWriter.psm1', 'Report.psm1', 'ReportBook.psm1',
-    'ScanMeter.psm1', 'ScanQueue.psm1', 'Accountability.psm1', 'SiteTarget.psm1', 'ChannelScan.psm1', 'DriveScan.psm1')
+$readerModules = @('PiiEngine.psm1', 'ContainerText.psm1', 'PdfExtract.psm1', 'TextExtract.psm1', 'ReaderPool.psm1')
+$otherModules = @('ReportExport.psm1', 'ScanQueue.psm1', 'Accountability.psm1', 'ChannelScan.psm1', 'DriveScan.psm1')
 foreach ($module in $readerModules + $otherModules) {
     Import-Module (Join-Path $PSScriptRoot $module) -Force
 }
@@ -91,7 +89,7 @@ function Invoke-SiteFiles {
     param([string]$SiteUrl, [string]$OutputFolder, [int]$MaxFileMB, [switch]$AutoStart)
     $path = $null; $clock = [Diagnostics.Stopwatch]::StartNew(); $rows = New-Object System.Collections.Generic.List[object]
     $scanned = 0; $selected = @()
-    $folderLabel = 'Folder'   # 'Channel' when the site belongs to a team (the PAM, 2026-11-20)
+    $folderLabel = 'Folder'   # 'Channel' when the site belongs to a team (the Administrator, 2026-11-20)
     $listName = ''            # what the header lists: 'Channels', 'Folders' or 'Libraries'
     $progress = @{ AutoStart = [bool]$AutoStart }   # Invoke-FileScan puts its live meter here
     $finished = $false   # set only after the last step; a cancelled run (Ctrl+C) skips 'catch' but not 'finally'
@@ -156,7 +154,7 @@ function Get-SiteHeader {
 function Open-ScanResult {
     <#
     .SYNOPSIS
-      Asks whether to open the saved workbook now (Enter = yes; the PAM, 2026-11-20) and opens it in Excel.
+      Asks whether to open the saved workbook now (Enter = yes; the Administrator, 2026-11-20) and opens it in Excel.
       Only the local file is opened; nothing is sent.
     .PARAMETER Path
       The workbook path, or empty when nothing was saved.
@@ -234,9 +232,9 @@ function Show-ListResult {
 }
 
 Write-Banner 'Ion - DoD365 PII Reporter' -Mark
-Write-Ui ('Build ' + $IonBuild) 'Muted'   # which Ion ran: the PAM copies this line with the results (2026-11-24)
+Write-Ui ('Build ' + $IonBuild) 'Muted'   # which Ion ran: the Administrator copies this line with the results (2026-11-24)
 Write-Ui 'Read-only. Every PII value found is masked on screen and in the results.' 'Muted'
-# What it scans and how to stop early (the PAM, 2026-11-21): a cancel still saves the results so far ('finally').
+# What it scans and how to stop early (the Administrator, 2026-11-21): a cancel still saves the results so far ('finally').
 Write-Ui ('Scans the files of Teams teams, SharePoint sites or drive folders you paste. Files over {0} MB are listed, not read.' -f $MaxFileMB) 'Muted'
 Write-Ui 'To stop early: Ctrl+C (in ISE: the red Stop button). The results so far are still saved.' 'Muted'
 $script:IonSignInTried = $false   # true after the first site sign-in is tried: the run then signs out once, at its end
@@ -244,14 +242,14 @@ $script:IonSignInTried = $false   # true after the first site sign-in is tried: 
 # ---- Ask for one or more targets, then scan each and save its workbook; then offer more, until the person presses Enter ----
 # A wrong paste is explained and asked again (Read-ScanTarget); a site the person cannot open is reported as "no access"
 # and nothing is saved for it (Connect-TeamSite); only the targets the person pastes are touched ("No reconnaissance").
-# One sign-in per host (the PAM, 2026-11-24): each site connects without a sign-out between sites (probe 3, second run);
+# One sign-in per host (the Administrator, 2026-11-24): each site connects without a sign-out between sites (probe 3, second run);
 # the run signs out once here, at its end, also after an error or Ctrl+C ('finally' runs on both).
 try {
     $targets = @(Read-ScanTargetList $SiteUrl 'What to scan')
-    # Speed, asked once per run (the PAM, 2026-11-25): Normal (Enter) = one reader per 2 processors (at most 8) and 2 downloads;
+    # Speed, asked once per run (the Administrator, 2026-11-25): Normal (Enter) = one reader per 2 processors (at most 8) and 2 downloads;
     # Fast = one reader per processor (at most 8) and 3 downloads.
     if ($targets.Count -gt 0) {
-        # A note on each mode, so the person can decide (from the PAM's words, 2026-11-25).
+        # A note on each mode, so the person can decide (from the Administrator's words, 2026-11-25).
         Write-Ui 'Choose how much of this computer Ion uses:' 'Text'
         Write-Ui '  Normal: uses less power and memory.' 'Muted'
         Write-Ui '  Fast:   resource intensive.' 'Muted'
@@ -261,7 +259,7 @@ try {
     while ($targets.Count -gt 0) {
         $list = $targets.Count -gt 1
         $go = $true
-        if ($list) {   # several: listed and asked once (the PAM, 2026-11-24: one workbook per site)
+        if ($list) {   # several: listed and asked once (the Administrator, 2026-11-24: one workbook per site)
             Write-Ui ('{0} to scan, one after the other (sign-in windows open only when needed):' -f $targets.Count) 'Label'
             $n = 0; foreach ($t in $targets) { $n++; Write-Ui ('{0,2}. {1}' -f $n, (Get-TargetLabel $t)) 'Text' }
             $answer = Read-Host ('Scan these {0} now? [Y/n]' -f $targets.Count)
@@ -282,5 +280,5 @@ finally {
         catch { Write-Verbose 'Already signed out.' }  # nothing to sign out of: not an error for the person
     }
 }
-# The CAC sign-in of the window lasts until ISE closes (probe 3, second run): the PAM, 2026-11-24, chose this text.
+# The CAC sign-in of the window lasts until ISE closes (probe 3, second run): the Administrator, 2026-11-24, chose this text.
 if ($script:IonSignInTried) { Write-Ui 'Ion is done: signed out. Close Windows PowerShell ISE to end the CAC session.' 'Good' } else { Write-Ui 'Ion is done.' 'Good' }

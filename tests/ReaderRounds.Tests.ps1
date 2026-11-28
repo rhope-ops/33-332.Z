@@ -47,9 +47,9 @@ Assert-Equal $true ($clock.Elapsed.TotalSeconds -lt 10 -and $hugeRead.Note -matc
 
 # ---- PDF review round 6 (2026-11-21) ----
 # LZW and RunLength output counts toward the unpack total: past it, a note (bounded memory).
-& (Get-Module PdfCore) { $script:MaxInflatedBytes = 10 }
+& (Get-Module PdfExtract) { $script:MaxInflatedBytes = 10 }
 $lzwCapped = Get-TextFromBytes -Bytes $lzwPdf -FileName 'l2.pdf'
-& (Get-Module PdfCore) { $script:MaxInflatedBytes = 64MB }
+& (Get-Module PdfExtract) { $script:MaxInflatedBytes = 64MB }
 Assert-Equal $true (($lzwCapped.Note + $lzwCapped.Reason) -match 'too large to unpack|could not be read') 'PDF: LZW output counts toward the unpack total'
 # A composite font without a ToUnicode map: a reason or note, never glyph numbers read as text.
 $type0 = New-PdfBytes 'BT /F1 12 Tf <001400150016> Tj ET' -Plain -FontDict '<< /Type /Font /Subtype /Type0 /BaseFont /X /Encoding /Identity-H >>'
@@ -97,7 +97,7 @@ $bullet = New-PdfBytes 'BT /F1 12 Tf <F0B70020004D> Tj ET' -Plain -ToUnicode 'be
 $bulletRead = Get-TextFromBytes -Bytes $bullet -FileName 'b.pdf'
 Assert-Equal "|$([char]0xB7) M" ($bulletRead.Note + '|' + $bulletRead.Text.Trim()) 'PDF: a Word bullet reads as a plain character, no note'
 
-# ---- Picture fonts (the PAM, 2026-11-21): Wingdings and the like read as spaces, so their symbols give no hits ----
+# ---- Picture fonts (the Administrator, 2026-11-21): Wingdings and the like read as spaces, so their symbols give no hits ----
 $digits = $Sample.Phone -replace '-', ' '
 $wingdings = New-PdfBytes "BT /F1 12 Tf ($digits) Tj ET" -Plain -FontDict '<< /Type /Font /Subtype /TrueType /BaseFont /ABCDEF+Wingdings-Regular >>'
 $wingRead = Get-TextFromBytes -Bytes $wingdings -FileName 'w.pdf'
@@ -113,7 +113,7 @@ $wideWing = New-PdfBytes 'BT /F1 12 Tf <00350035> Tj ET' -Plain -FontDict '<< /T
     -ToUnicode 'begincmap 1 beginbfrange <0000> <FFFF> <0000> endbfrange endcmap'
 Assert-Equal '' (Get-TextFromBytes -Bytes $wideWing -FileName 'ww.pdf').Text.Trim() 'PDF: a 2-byte Wingdings font reads as spaces'
 
-# ---- A font's own glyph names (/Differences, the PAM 2026-11-21): standard names read, made-up names never ----
+# ---- A font's own glyph names (/Differences, the Administrator 2026-11-21): standard names read, made-up names never ----
 $named = New-PdfBytes 'BT /F1 12 Tf (ABCD) Tj ET' -Plain -FontDict '<< /Type /Font /Subtype /Type1 /BaseFont /ABCDEF+Garamond /Encoding << /Differences [65 /S /eacute /seven /a.sc] >> >>'
 Assert-Equal ('S' + [char]0xE9 + '7a') (Get-TextFromBytes -Bytes $named -FileName 'n.pdf').Text.Trim() 'PDF: standard glyph names read (letter, accent, digit, suffix)'
 $madeUp = New-PdfBytes 'BT /F1 12 Tf (ABC) Tj ( end) Tj ET' -Plain -FontDict '<< /Type /Font /Subtype /Type1 /BaseFont /ABCDEF+X /Encoding 7 0 R >>' `
@@ -190,7 +190,7 @@ Assert-Equal 'ABCD' $wRead.Text.Trim() 'PDF: glyphs placed by their /W widths jo
 $padded = Get-TextFromBytes -Bytes (New-PdfBytes "BT /F1 10 Tf (Sponsor SSN) Tj 65.58 0 Td ($($Sample.Ssn)) Tj ET" -Plain) -FileName 'pad.pdf'
 Assert-Equal 'SSN' (@(Find-PiiInText $padded.Text) | Select-Object -First 1).Detector 'PDF: a label and a value a pad apart stay apart'
 # ASCII85: z (four zero bytes) is lower case only; a capital Z is data.
-Assert-Equal 'hello' (& (Get-Module PdfCore) { ConvertFrom-Ascii85 'BOu!rDZ~>' }) 'PDF: ASCII85 keeps a capital Z (hello encodes as BOu!rDZ)'
+Assert-Equal 'hello' (& (Get-Module PdfExtract) { ConvertFrom-Ascii85 'BOu!rDZ~>' }) 'PDF: ASCII85 keeps a capital Z (hello encodes as BOu!rDZ)'
 
 # ---- PDF review round 11 (2026-11-21) ----
 # pdfTeX style: word gaps are TJ adjustments, with one-letter words among them: the words stay apart.
@@ -227,11 +227,11 @@ Assert-Equal 'SSN' (@(Find-PiiInText $t3TurnedRead.Text) | Select-Object -First 
 
 # ---- PDF review round 13 (2026-11-21) ----
 # Many text state operators between text objects stay inside the time limit (lowered to 2 s here).
-& (Get-Module PdfCore) { $script:PdfSecondsLimit = 2 }
+& (Get-Module PdfExtract) { $script:PdfSecondsLimit = 2 }
 $clock.Restart()
 $manyTc = Get-TextFromBytes -Bytes (New-PdfBytes (("1 Tc`n" * 300000) + "BT /F1 12 Tf (SSN: $($Sample.Ssn)) Tj ET")) -FileName 'tc.pdf'
 Assert-Equal $true ($clock.Elapsed.TotalSeconds -lt 15 -and $manyTc.Status -in @('OK', 'NOT SCANNED')) 'PDF: many state operators between text objects end inside the time limit'
-& (Get-Module PdfCore) { $script:PdfSecondsLimit = 30 }
+& (Get-Module PdfExtract) { $script:PdfSecondsLimit = 30 }
 # A damaged string between text objects cannot hide the text after it: NOT SCANNED, never OK without it.
 $damaged = Get-TextFromBytes -Bytes (New-PdfBytes "BT /F1 12 Tf (Roster) Tj ET (ab % ( ) BT (SSN: $($Sample.Ssn)) Tj ET" -Plain) -FileName 'dm.pdf'
 Assert-Equal $true ($damaged.Status -eq 'NOT SCANNED' -or @(Find-PiiInText $damaged.Text).Count -gt 0) 'PDF: a damaged string between text objects is reported or read past'

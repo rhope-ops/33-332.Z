@@ -3,33 +3,36 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>33-332.Z</title>
+<title>ion — Privacy Act Management</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<meta name="description" content="33-332.Z, Privacy Act Management: simple tools to help you protect PII.">
-<!-- Security (fleet v2, 2026-11-23): no script, no network calls from the page; images only from this site. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="description" content="ion, Privacy Act Management: simple tools to help you protect PII.">
+<!-- Security (fleet v2, 2026-11-23; DEC-BRAND 2026-11-27): no script, no network calls, hash-pinned style, images only from this site. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'sha256-fKYAS7C1KIe7KgbYKPrZy6Aj+58Qj0TXcEiG/ipZcs0='; connect-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
-<meta name="theme-color" content="#F3EEE4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#F4F6F9" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171D" media="(prefers-color-scheme: dark)">
 <style>
-/* Layout: the 90-161.Z header band (logo, name and subtitle left, Core right), then one narrow column with the tool card drawn as the disc. */
-/* Fulcrum Minimal 2.0.0, Option A (archimedes_lever docs/brand/fulcrum.json; fleet v2 DEC 5, 2026-11-23): five Logo Studies colours
-   and the roles built from them. --ctl is the control line (3:1 for UI borders, WCAG 1.4.11); --focus is the Option A focus. */
+/* Layout: the USAF Blue header band (logo, name and subtitle left, Core right), then one column with the tool card. */
+/* Light: Tier 1 Option A USAF Blue / Neutral; Dark: Fulcrum Dark v2.1.1 (DEC-BRAND, 2026-11-27). */
 :root{
-  --ink:#15171D; --cream:#F3EEE4; --ember:#E4572E; --slate:#5A5E6A; --gold:#D4AF37;
-  --bg:#F3EEE4; --card:#15171D; --ring:#F3EEE4; --fg:#15171D; --mut:#5A5E6A;   --link:#A63A16; --link-hover:#15171D; --err:#A3241A; --focus:#B83B14; --field:#5A5E6A; --hl:transparent; --ctl:#7A766E;
-  --btn:#E4572E; --btn-fg:#15171D; --btn-hover:#F2916F;
-  --band:#15171D; --band-fg:#F3EEE4; --band-mist:#A9ACB5;
+  --ink:#0E1A2B; --cream:#F4F6F9; --accent:#00539F; --slate:#6C7B8E; --gold:#FFCD00; --warn:#8A5A00;
+  --bg:#F4F6F9; --card:#FFFFFF; --ring:#6C7B8E; --fg:#0E1A2B; --mut:#526173; --link:#00539F; --link-hover:#0B2545; --err:#8B1A1A; --focus:#0B2545; --field:#6C7B8E; --hl:#F2F6FB; --ctl:#6C7B8E; --track:#E3E8EE;
+  --btn:#00539F; --btn-fg:#FFFFFF; --btn-hover:#0B2545;
+  --band:#0B2545; --band-fg:#FFFFFF; --band-mist:#DDE8F3;
   --display:"Bahnschrift","Segoe UI Semibold","Segoe UI",system-ui,sans-serif;
   --text:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
   --mono:"Cascadia Mono","Consolas","SFMono-Regular",Menlo,monospace;
   color-scheme:light;
 }
-/* Dark theme: the page is ink and the disc a step lighter, with a slate ring. */
+/* Dark theme: Fulcrum Dark v2.1.1 (#EB653B btn/#15171D ink, #FF8C66 focus, #222631 card, bordered #3A3F4A track/#7A7F8C edge). */
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --bg:#15171D; --card:#1C1F27; --ring:#5A5E6A; --fg:#F3EEE4; --mut:#A9ACB5;   --link:#F2916F; --link-hover:#F3EEE4; --err:#F49B91; --focus:#FF8C66; --field:#A9ACB5; --ctl:#6E7382; color-scheme:dark}}
+  --accent:#EB653B; --slate:#7A7F8C; --gold:#D4AF37; --warn:#F0C24B;
+  --bg:#15171D; --card:#222631; --ring:#7A7F8C; --fg:#F3EEE4; --mut:#A9ACB5; --link:#8DB8F0; --link-hover:#F3EEE4; --err:#F49B91; --focus:#FF8C66; --field:#A9ACB5; --hl:#1B2433; --ctl:#7A7F8C; --track:#3A3F4A;
+  --btn:#EB653B; --btn-fg:#15171D; --btn-hover:#F2916F; --band:#0E1015; --band-fg:#F3EEE4; --band-mist:#A9ACB5; color-scheme:dark}}
 :root[data-theme="dark"]{
-  --bg:#15171D; --card:#1C1F27; --ring:#5A5E6A; --fg:#F3EEE4; --mut:#A9ACB5;   --link:#F2916F; --link-hover:#F3EEE4; --err:#F49B91; --focus:#FF8C66; --field:#A9ACB5; --ctl:#6E7382; color-scheme:dark}
+  --accent:#EB653B; --slate:#7A7F8C; --gold:#D4AF37; --warn:#F0C24B;
+  --bg:#15171D; --card:#222631; --ring:#7A7F8C; --fg:#F3EEE4; --mut:#A9ACB5; --link:#8DB8F0; --link-hover:#F3EEE4; --err:#F49B91; --focus:#FF8C66; --field:#A9ACB5; --hl:#1B2433; --ctl:#7A7F8C; --track:#3A3F4A;
+  --btn:#EB653B; --btn-fg:#15171D; --btn-hover:#F2916F; --band:#0E1015; --band-fg:#F3EEE4; --band-mist:#A9ACB5; color-scheme:dark}
 /* Base: page, links, focus ring, type, the centred column with its safe side gutter. */
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 var(--text)}
@@ -41,8 +44,10 @@ p{margin:0}
 code,pre{font-family:var(--mono);font-size:.9em}
 .wrap{max-width:760px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 
-/* Header band: as 90-161.Z (logo 64 px, name, subtitle; the Core mark at the same size on the right). */
-.band{background:var(--band);color:var(--band-fg);border-bottom:3px solid var(--gold)}
+/* Header band: navy to USAF Blue gradient with yellow rule and 1 px warn edge under it. */
+.band{background:linear-gradient(100deg,var(--band),var(--accent));color:var(--band-fg);border-bottom:3px solid var(--gold);box-shadow:0 1px 0 var(--warn)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .band{background:var(--band)}}
+:root[data-theme="dark"] .band{background:var(--band)}
 .band .wrap{display:flex;align-items:center;gap:14px;padding-block:18px}
 .logo{flex:none;width:64px;height:64px}
 .logo.core{margin-left:auto}
@@ -52,35 +57,33 @@ code,pre{font-family:var(--mono);font-size:.9em}
 
 /* The tool card and its sections. */
 main{padding-block:32px 48px}
-.tool{--fg:#F3EEE4;--mut:#A9ACB5;--link:#F2916F;--link-hover:#F3EEE4;--err:#F49B91;--field:#A9ACB5;--bg:var(--card);--focus:#FF8C66;--ctl:#6E7382;
-  color:var(--fg);color-scheme:dark;background:var(--card);border-radius:14px;padding:28px;display:flex;flex-direction:column;gap:26px;
-  box-shadow:inset 0 0 0 5px var(--card),inset 0 0 0 6px var(--ring)}   /* the disc and its ring, as the logo */
+.tool{color:var(--fg);background:var(--card);border-radius:14px;border:1px solid var(--ring);padding:28px;display:flex;flex-direction:column;gap:26px;box-shadow:0 1px 3px rgba(14,26,43,.06)}
 .tool a{color:var(--link)}
-/* Sections are split by the marks' dotted line (round dots), and each heading stands on the ember fulcrum. */
-.tool > section + section{padding-top:22px;background:radial-gradient(circle,var(--slate) 1.5px,transparent 1.7px) 0 0/10px 4px repeat-x}
+.tool a:hover{color:var(--link-hover)}
+/* Sections are split by a clean hairline track with bordered edges, and each heading stands on a fulcrum triangle. */
+.tool > section + section{padding-top:22px;border-top:1px solid var(--ctl)}
 .tool h3{display:flex;align-items:center;gap:8px}
-.tool h3::before{content:"";flex:none;width:12px;height:10px;background:var(--ember);clip-path:polygon(50% 0,100% 100%,0 100%)}
+.tool h3::before{content:"";flex:none;width:12px;height:10px;background:var(--accent);clip-path:polygon(50% 0,100% 100%,0 100%)}
 .tool > header{display:flex;flex-direction:column;gap:8px}
 .tool h2{font-size:1.5rem}
-.tool h2 .sub2{display:block;font-size:.95rem;font-weight:600;color:var(--mut);margin-top:4px}   /* the subtitle under the name */
+.tool h2 .sub2{display:block;font-size:.95rem;font-weight:600;color:var(--mut);margin-top:4px}
 .tool h3{font-size:1.05rem}
 .tool section{display:flex;flex-direction:column;gap:12px;min-width:0}
 .mut{color:var(--mut)}
 .small{font-size:.875rem}
 ul.plain{margin:0;padding-left:1.15em;display:flex;flex-direction:column;gap:4px}
-/* Key facts: each label in one column, its text aligned in the next (the PAM, 2026-11-20); one column on narrow phones. */
+/* Key facts: each label in one column, its text aligned in the next (the Administrator, 2026-11-20); one column on narrow phones. */
 .facts{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;margin:0}
 .facts dt{font-weight:600}
 .facts dd{margin:0;min-width:0}
 @media (max-width:420px){.facts{grid-template-columns:1fr;gap:0}.facts dd{margin-bottom:8px}}
 
-/* The one button: "Open the script" opens the script as a .txt in a new tab (the PAM, 2026-11-21). */
+/* The one button: "Open the script" opens the script as a .txt in a new tab (the Administrator, 2026-11-21). */
 .go{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
-.btn,a.btn{display:inline-flex;text-decoration:none;align-items:center;gap:8px;min-height:44px;padding:8px 18px;border-radius:8px;border:0;background:var(--btn);color:var(--btn-fg);font:600 1rem var(--text);cursor:pointer}
-.btn:hover{background:var(--btn-hover);color:var(--btn-fg)}
+.btn,a.btn{display:inline-flex;text-decoration:none;align-items:center;gap:8px;min-height:44px;padding:8px 18px;border-radius:8px;border:1px solid var(--btn);background:var(--btn);color:var(--btn-fg);font:600 1rem var(--text);cursor:pointer}
+.btn:hover,.tool a.btn:hover{background:var(--btn-hover);border-color:var(--btn-hover);color:var(--btn-fg)}
 .btn svg{width:18px;height:18px}
 /* The "What it looks for" box and its table. */
-/* What it looks for: always shown (the PAM, 2026-11-20), in a framed box. */
 .looks{border:1px solid var(--ctl);border-radius:8px;background:var(--bg)}
 .looks-title{padding:10px 12px;font-weight:600;font-size:.92rem}
 .looks .tbl{padding:0 12px 12px;overflow-x:auto}
@@ -88,19 +91,20 @@ table{border-collapse:collapse;width:100%;font-size:.9rem;min-width:480px}
 th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--ctl);vertical-align:top}
 th{font-family:var(--display);font-weight:600}
 tr:last-child td{border-bottom:0}
-/* How it works: the five steps as chips; Mask is marked. */
+/* How it works: the five steps as chips (track surface with 1 px bordered edge); Mask is marked. */
 .flow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:.92rem}
-.flow span{padding:4px 10px;border:1px solid var(--ctl);border-radius:999px;background:var(--bg)}
-.flow span.key{border-color:var(--ember);background:var(--hl);font-weight:600}
+.flow span{padding:4px 10px;border:1px solid var(--ctl);border-radius:999px;background:var(--track)}
+.flow span.key{border-color:var(--accent);background:var(--hl);font-weight:600}
 .flow i{color:var(--mut);font-style:normal}
 /* If it finds PII: the breach note. */
-.note{padding:12px 14px;border-left:3px solid var(--ember);background:var(--hl);border-radius:0 6px 6px 0;font-size:.95rem}
+.note{padding:12px 14px;border-left:3px solid var(--accent);background:var(--hl);border-radius:0 6px 6px 0;font-size:.95rem}
 
-/* More contrast (a Windows or browser setting): stronger grey text and lines inside the disc and in the band
-   (after the .tool rule, so it wins): lines 4.9:1 or more and grey text 11:1 or more on both disc colours.
-   The ring is raised only in the dark theme (slate 2.5:1 to 5.0:1); the light theme's cream ring is already 15.5:1. */
-@media (prefers-contrast:more){.tool{--mut:#D8D4CC;--ctl:#8A8D96}:root{--band-mist:#D8D4CC}:root[data-theme="dark"]{--ring:#8A8D96}}
-@media (prefers-contrast:more) and (prefers-color-scheme:dark){:root:not([data-theme="light"]){--ring:#8A8D96}}
+/* More contrast: stronger muted text and borders in light and dark modes (4.5:1+ UI lines, 7:1+ text). */
+@media (prefers-contrast:more){
+  :root{--mut:#1B2430;--ctl:#0E1A2B;--ring:#0E1A2B;--band-mist:#FFFFFF}
+  :root[data-theme="dark"]{--mut:#D8D4CC;--ctl:#C3C7D1;--ring:#C3C7D1;--band-mist:#FFFFFF}
+}
+@media (prefers-contrast:more) and (prefers-color-scheme:dark){:root:not([data-theme="light"]){--mut:#D8D4CC;--ctl:#C3C7D1;--ring:#C3C7D1;--band-mist:#FFFFFF}}
 /* Phones: a smaller card padding and logos. */
 @media (max-width:640px){
   .tool{padding:18px}
@@ -115,21 +119,20 @@ tr:last-child td{border-bottom:0}
 /* Skip link: hidden until it gets the keyboard focus, then shown on the page colours. */
 .skip-link{position:absolute;left:16px;top:-100px;z-index:10;padding:10px 16px;border-radius:6px;background:var(--bg);color:var(--fg);font-weight:600}
 .skip-link:focus{top:12px}
-@media (forced-colors:active){.logo{forced-color-adjust:none}.band{border-bottom-color:CanvasText}.tool{box-shadow:none;border:1px solid CanvasText}}
+@media (forced-colors:active){.logo{forced-color-adjust:none}.band{background:Canvas;color:CanvasText;border-bottom-color:CanvasText;box-shadow:none}.tool{box-shadow:none;border:1px solid CanvasText}}
 </style>
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to the content</a>
 <header class="band">
   <div class="wrap">
-    <!-- Logo: gamma, 33-332.Z, Fulcrum colours, no phrase (text versions only at 160 px and larger). Source: Logo Studies,
-         board "Gamma: 33-332.Z", L2 Lens, pages, standard v2.9 (the PAM, 2026-11-20). -->
-    <img class="logo" src="assets/logo-33-332z.svg" alt="33-332.Z logo: Greek gamma in an eye" width="64" height="64">
+    <!-- Logo: gamma, ion mark (standard v2.9, the Administrator, 2026-11-20; kept on USAF Blue band). -->
+    <img class="logo" src="assets/logo-33-332z.svg" alt="ion logo: Greek gamma in an eye" width="64" height="64">
     <div class="ttl">
-      <h1>33-332.Z</h1>
+      <h1>ion</h1>
       <p class="sub">Privacy Act Management</p>
     </div>
-    <!-- Logo: Core, the parent mark, Fulcrum colours, no phrase, same size (the PAM, 2026-11-20). Source: Logo Studies, board "Core". -->
+    <!-- Logo: Core parent mark, same size (the Administrator, 2026-11-20). Source: Logo Studies, board "Core". -->
     <img class="logo core" src="assets/logo-core.svg" alt="Core logo: capital omega with the project letters in orbit" width="64" height="64">
   </div>
 </header>

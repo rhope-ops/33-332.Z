@@ -1,5 +1,5 @@
 <#
-  Ion - DoD365 PII Reporter, build da4379b0 (33-332.Z; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
+  Ion - DoD365 PII Reporter, build 0584dada (ion; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
 
   HOW TO RUN
     1. Optional: read this text first (Open the script shows it as a .txt in your browser).
@@ -20,32 +20,17 @@
   the files at each library's top), or the drive folder and all its subfolders. Channel posts are not read.
 
   Built from these files; to change it, change them and rebuild with: python3 scripts/build_paste.py
-    src/PiiPatterns.psm1, sha256 f7ef8ca1789f
-    src/PiiSignedIds.psm1, sha256 0b83d916e727
-    src/PiiDetectors.psm1, sha256 78cd47865039
-    src/PiiMasking.psm1, sha256 9bf871e9e244
-    src/OcrText.psm1, sha256 21007e5e3cce
-    src/OleText.psm1, sha256 2f5d0a036e97
-    src/ContainerText.psm1, sha256 57e5ef54a1c4
-    src/PdfCore.psm1, sha256 2911c3a19ab3
-    src/PdfObjects.psm1, sha256 085efef3e4fb
-    src/PdfFonts.psm1, sha256 b637776a0111
-    src/PdfShown.psm1, sha256 abcac9ee7a8f
-    src/PdfLayout.psm1, sha256 feafecd946b7
-    src/PdfContent.psm1, sha256 85ee6cfeaf8f
-    src/PdfText.psm1, sha256 9f86877f652a
-    src/TextExtract.psm1, sha256 18f1eb17ebf9
-    src/ReaderPool.psm1, sha256 e5865e4bc160
-    src/XlsxWriter.psm1, sha256 56c1ec673d09
-    src/Report.psm1, sha256 8886eccd4dc5
-    src/ReportBook.psm1, sha256 e6b91e1d763c
-    src/ScanMeter.psm1, sha256 d887bd7d283a
-    src/ScanQueue.psm1, sha256 7b052e7e6ff3
-    src/Accountability.psm1, sha256 085d1b5b7b76
-    src/SiteTarget.psm1, sha256 2e693a68f413
-    src/ChannelScan.psm1, sha256 bc6ea04dbc70
-    src/DriveScan.psm1, sha256 7bfd8dc0ffbf
-    src/Find-ChannelPII.ps1, sha256 485aca86fc94
+    src/PiiEngine.psm1, sha256 625207b881f8
+    src/ContainerText.psm1, sha256 9e0f6c964401
+    src/PdfExtract.psm1, sha256 d2da613a2158
+    src/TextExtract.psm1, sha256 14837c41b6e8
+    src/ReaderPool.psm1, sha256 440115fd7e42
+    src/ReportExport.psm1, sha256 f60f583255a0
+    src/ScanQueue.psm1, sha256 70af40b532b6
+    src/Accountability.psm1, sha256 0ed8daa740a0
+    src/ChannelScan.psm1, sha256 2e12f4ce83dd
+    src/DriveScan.psm1, sha256 09a5ea13a08c
+    src/Find-ChannelPII.ps1, sha256 7ee4d5901963
 
   Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.
   Run target: Windows PowerShell 5.1 with PnP.PowerShell 1.12.0; no admin rights, no file to unblock.
@@ -54,37 +39,22 @@
   Credentials: your own CAC sign-in in the PnP sign-in window (a drive folder: your Windows logon); nothing is stored.
 
   Contents (line numbers of this file):
-    line    90  Settings
-    line   102  Paste check
-    line   140  Reader block
-    line   146  Module PiiPatterns.psm1
-    line   546  Module PiiSignedIds.psm1
-    line   864  Module PiiDetectors.psm1
-    line  1068  Module PiiMasking.psm1
-    line  1315  Module OcrText.psm1
-    line  1470  Module OleText.psm1
-    line  1609  Module ContainerText.psm1
-    line  2057  Module PdfCore.psm1
-    line  2419  Module PdfObjects.psm1
-    line  2777  Module PdfFonts.psm1
-    line  3095  Module PdfShown.psm1
-    line  3346  Module PdfLayout.psm1
-    line  3486  Module PdfContent.psm1
-    line  3816  Module PdfText.psm1
-    line  4200  Module TextExtract.psm1
-    line  4641  Module ReaderPool.psm1
-    line  5008  Reader block end
-    line  5012  Module XlsxWriter.psm1
-    line  5449  Module Report.psm1
-    line  5826  Module ReportBook.psm1
-    line  6133  Module ScanMeter.psm1
-    line  6555  Module ScanQueue.psm1
-    line  6972  Module Accountability.psm1
-    line  7474  Module SiteTarget.psm1
-    line  7831  Module ChannelScan.psm1
-    line  8667  Module DriveScan.psm1
-    line  9336  Body of Find-ChannelPII.ps1
-    line  9552  Clean-up
+    line    60  Settings
+    line    72  Paste check
+    line   110  Reader block
+    line   116  Module PiiEngine.psm1
+    line  1229  Module ContainerText.psm1
+    line  1934  Module PdfExtract.psm1
+    line  3964  Module TextExtract.psm1
+    line  4405  Module ReaderPool.psm1
+    line  4774  Reader block end
+    line  4778  Module ReportExport.psm1
+    line  5851  Module ScanQueue.psm1
+    line  6670  Module Accountability.psm1
+    line  7172  Module ChannelScan.psm1
+    line  8342  Module DriveScan.psm1
+    line  9011  Body of Find-ChannelPII.ps1
+    line  9227  Clean-up
 #>
 
 # ISE runs pasted text in your session: keep its error setting so the Clean-up block at the end can put it back.
@@ -97,12 +67,12 @@ $SiteUrl = ''            # the team's Teams link, or its site https://usaf.dps.m
 $OutputFolder = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Ion')   # results: a folder per site, then per day
 $MaxFileMB = 25          # files larger than this are reported as NOT SCANNED
 
-$IonPasteHash = '3a265f14733abf3230be2d9f2ae68d3dbc72dc06b71effb192cce81dc72fa22d'   # the SHA-256 of the text from the line Paste check to the end (do not edit)
+$IonPasteHash = 'f9d0efd3319fa25c0a4e8c28f7525e66288a2164cb40b74b3e6b3da99da32e23'   # the SHA-256 of the text from the line Paste check to the end (do not edit)
 
 # ==== Paste check ==== (the text from this line to the end must be the published text, or nothing runs)
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
-$IonBuild = 'da4379b0'       # the build ID: Ion shows it at the start (do not edit)
+$IonBuild = '0584dada'       # the build ID: Ion shows it at the start (do not edit)
 $IonPasteCheck = 'not read'
 $pasteText = ''
 try { $pastePath = $PSCommandPath } catch { $pastePath = '' }   # no script path: read the ISE pane
@@ -143,17 +113,16 @@ $IonReaderBlock = {
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
 
-# ==== Module PiiPatterns.psm1 ====
+# ==== Module PiiEngine.psm1 ====
 <#
-PiiPatterns.psm1 - the patterns and the one-type detectors that PiiDetectors.psm1 runs together.
+PiiEngine.psm1 - PII patterns, e-signature DoD IDs, detector orchestration, and masking.
 
-  Purpose:     One detector function per PII type (SSN, DoD ID, date of birth, payment card, passport, phone,
-               personal e-mail, home address), the label test before a match, the SSN and Luhn checks, and the
-               hit object. Split from PiiDetectors.psm1 (fleet v2 DEC 6, 2026-11-23: 450 lines for hand-written code).
+  Purpose:     Finds SSNs, DoD IDs (text and e-signatures), dates of birth, payment cards, passports, phones,
+               personal e-mails, home addresses, and labelled names; removes overlaps and masks every value
+               and snippet before anything is shown or saved (the Administrator, 2026-11-20: all values masked).
   Inputs:      plain text (from TextExtract.psm1).
-  Outputs:     hit objects WITH the raw value. Only PiiMasking.psm1 reads them; it masks every value
-               before anything is shown or saved (the PAM, 2026-11-20: all values masked).
-  Depends on:  nothing (PiiSignedIds.psm1 and PiiDetectors.psm1 import it next; PiiDetectors runs these detectors).
+  Outputs:     masked hit records (Find-PiiInText), masked strings and names (Protect-PiiText, Protect-PiiName).
+  Depends on:  nothing.
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7).
   Network:     none.
@@ -162,6 +131,7 @@ PiiPatterns.psm1 - the patterns and the one-type detectors that PiiDetectors.psm
 #>
 
 
+# ==== PiiPatterns.psm1 ====
 # =====================================================================================
 # Settings (named values; each says where it comes from)
 # =====================================================================================
@@ -197,7 +167,7 @@ $script:DodIdLabels = 'DoD\s*ID|DODID|EDIPI|\bCAC\b|DoD\s*(?:ID\s*)?(?:#|no\.?|n
 $script:GovernmentMailLabels = @('gov', 'mil')
 
 # Personal mail providers (AFI 33-332 A3's breach example names Yahoo, Gmail and Hotmail): an address there is Medium;
-# an address at any other domain (a company, a vendor, a no-reply sender) is Low, to cut noise (the PAM, 2026-11-20).
+# an address at any other domain (a company, a vendor, a no-reply sender) is Low, to cut noise (the Administrator, 2026-11-20).
 # The whole domain must be the provider and a top-level label (gmail.com, yahoo.co.uk): mail.<company>.com is not one.
 $script:PersonalMailDomains = '^(?:gmail|googlemail|yahoo|ymail|rocketmail|hotmail|outlook|live|msn|aol|icloud|me|mac|' +
     'proton|protonmail|pm|gmx|mail|zoho|yandex|comcast|verizon|att|sbcglobal|cox|charter|spectrum|earthlink|juno|netzero)' +
@@ -235,7 +205,7 @@ function Test-KeywordBefore {
 }
 
 function Test-DodIdLabelBefore {
-    # True when a DoD ID label ($DodIdLabels) is just before the given place (PiiSignedIds.psm1 Find-SignedIdHits).
+    # True when a DoD ID label ($DodIdLabels) is just before the given place (PiiEngine.psm1 Find-SignedIdHits).
     param([string]$Text, [int]$Index)
     return (Test-KeywordBefore $Text $Index $script:DodIdLabels)
 }
@@ -292,7 +262,7 @@ function New-PiiHit {
     <#
     .SYNOPSIS
       Builds one hit object. It holds the raw value for overlap checks and masking;
-      PiiMasking.psm1 removes the raw value before anything leaves the scan.
+      PiiEngine.psm1 removes the raw value before anything leaves the scan.
     .PARAMETER Detector
       The PII type, as named in $DetectorOrder.
     .PARAMETER Confidence
@@ -353,12 +323,12 @@ function Find-SsnHits {
     param([string]$Text)
     $labels = 'SSN|SSAN|social\s*security|soc\.?\s*sec'
     # No letter, digit, underscore or dash may touch the number: Word bookmarks (_Toc123456789) and IDs (ABC123456789)
-    # are not SSNs (the PAM, 2026-11-20: trim false positives).
+    # are not SSNs (the Administrator, 2026-11-20: trim false positives).
     $pattern = '(?<![\w-])(\d{3})([- ]?)(\d{2})\2(\d{4})(?![\w-])'
     foreach ($m in [regex]::Matches($Text, $pattern)) {
         if (-not (Test-SsnValid $m.Groups[1].Value $m.Groups[3].Value $m.Groups[4].Value)) { continue }
         $labelled = Test-KeywordBefore $Text $m.Index $labels
-        # Without a label, 9 digits that are part of a gapped DoD ID are no SSN (Test-SsnPartOfLonger). The PAM's
+        # Without a label, 9 digits that are part of a gapped DoD ID are no SSN (Test-SsnPartOfLonger). The Administrator's
         # gov run, 2026-11-21: DoD IDs in PDF signature blocks were shown as SSNs.
         if (-not $labelled -and (Test-SsnPartOfLonger $Text $m)) { continue }
         $confidence = 'Low'
@@ -384,7 +354,7 @@ function Find-DodIdHits {
         if (Test-KeywordBefore $Text $m.Index $labels) { New-PiiHit 'DoD ID' 'High' $m.Index $m.Value }
     }
     # A CAC name, as a digital signature shows it: LAST.FIRST.MIDDLE. then the DoD ID (the digits may be drawn with single
-    # spaces between them): Low, the only Low DoD ID, so the scan reads no version history for it (the PAM, 2026-11-21:
+    # spaces between them): Low, the only Low DoD ID, so the scan reads no version history for it (the Administrator, 2026-11-21:
     # "Low tab, no history").
     foreach ($m in [regex]::Matches($Text, $script:CacNamePattern)) {
         $digits = $m.Groups['id']
@@ -518,7 +488,7 @@ function Find-HomeAddressHits {
     <#
     .SYNOPSIS
       US street addresses: house number, 1-4 capitalised words and a street type (St, Ave, Rd ...),
-      with an optional unit, city, state and ZIP code. Added at the PAM's request, 2026-11-20.
+      with an optional unit, city, state and ZIP code. Added at the Administrator's request, 2026-11-20.
     .DESCRIPTION
       High   = a label near (home address, residence, mailing address, lives at, home).
       Medium = ends with a 2-letter state and a ZIP code.
@@ -543,26 +513,7 @@ function Find-HomeAddressHits {
     }
 }
 
-# ==== Module PiiSignedIds.psm1 ====
-<#
-PiiSignedIds.psm1 - e-signature DoD IDs, and the unreadable-text test.
-
-  Purpose:     Add-SignedIdHits adds the e-signature DoD IDs that PiiPatterns.psm1 Find-DodIdHits misses (Low, the PAM,
-               2026-11-21 and -24), only where no other hit is. Test-GarbledNear tells when a hit sits in unreadable text.
-               Split from PiiDetectors.psm1 (fleet v2 DEC 6, 2026-11-23: 450 lines for hand-written code; the PAM,
-               2026-11-24: split first, then the PR 69 MINORs).
-  Inputs:      plain text and the kept hits of PiiDetectors.psm1 (Remove-OverlappingHits).
-  Outputs:     hit objects WITH the raw value, added to the kept hits. Only PiiMasking.psm1 reads them; it masks
-               every value before anything is shown or saved (the PAM, 2026-11-20: all values masked).
-  Depends on:  PiiPatterns.psm1 (Test-DodIdLabelBefore), imported first.
-  How to run:  imported by Find-ChannelPII.ps1; not run on its own.
-  Run target:  Windows PowerShell 5.1 (also PowerShell 7).
-  Network:     none.
-  Writes:      none (pure functions on strings).
-  Credentials: none.
-#>
-
-
+# ==== PiiSignedIds.psm1 ====
 # =====================================================================================
 # Settings (named values; each says where it comes from)
 # =====================================================================================
@@ -579,7 +530,7 @@ $script:VisibleChar = [regex]'\S'
 # text uses (|, the cell break of a sheet; box drawing; maths; currency) are not counted (review of PR 31).
 $script:GarbledChar = [regex]'[\p{Co}\uFFFD\x01-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F\u00A4-\u00A6\u00A8-\u00AF\u00B1-\u00B6\u00B8-\u00BF]'
 
-# E-signature DoD IDs that PiiPatterns.psm1 Find-DodIdHits misses (docs/reviews/2026-11-23-ion-esignature-layouts.md). $SignedName: a CAC name (line
+# E-signature DoD IDs that PiiEngine.psm1 Find-DodIdHits misses (docs/reviews/2026-11-23-ion-esignature-layouts.md). $SignedName: a CAC name (line
 # breaks in or after parts, up to 3 words a later part, 40 letters a part: linear time), then 10 digits with one space, tab,
 # no-break space or line break between any two (or dashes right after the name), no digit after them, no phone shape.
 $script:SignedPart = "[A-Z][A-Z'-]{0,39}(?:\r?\n[A-Z'-]{1,40})?"
@@ -590,12 +541,12 @@ $script:SignedIdDash = '(?<id>\d(?:[ \t\u00A0-]?\d){9})(?![\w-])(?![ \t\u00A0]\d
 $script:DigitRun = [regex]'\d(?:(?:[ \t\u00A0-]|\r?\n)?\d){9}'   # 10 digits with gaps: where a window can find an ID
 $script:NotDate = '(?!(?:19|20)\d\d(?:[ \t\u00A0./-]|\r?\n|(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01]))|\d{1,2}[ \t./-]\d{1,2}[ \t./-](?:19|20)\d\d)'
 $script:NotPhone = '(?!\d{3}(?:[ \t\u00A0.-]|\r?\n)\d{3}(?:[ \t\u00A0.-]|\r?\n)?\d{4}(?![\w-]))'   # 3-3-4 or 3-7: a phone
-# After a CAC name only a 3-3-4 phone is no ID: a 3-7 split there is an ID (the PAM, 2026-11-24, "1a": narrow the guard).
+# After a CAC name only a 3-3-4 phone is no ID: a 3-7 split there is an ID (the Administrator, 2026-11-24, "1a": narrow the guard).
 $script:NotPhoneAfterName = '(?!\d{3}(?:[ \t\u00A0.-]|\r?\n)\d{3}(?:[ \t\u00A0.-]|\r?\n)\d{4}(?![\w-]))'
 # Before bare digits after a signature word: a date, a time or a page number (a year alone: $SignedYearLeadIn), then one gap, is no part of the ID
-# (the PAM, 2026-11-24, "1a"; the guard of 013ca82 blocked every digit and gap: 0 of 400 such IDs found).
+# (the Administrator, 2026-11-24, "1a"; the guard of 013ca82 blocked every digit and gap: 0 of 400 such IDs found).
 # A date with an English month name or its 3 letters (any case, a dot or not) is a date: "20 Nov yyyy", "20NOVyyyy",
-# "Nov 20, yyyy", "yyyy-Nov-20" (the PAM, 2026-11-24, no-persistence plan step 1). Also (the PAM, 2026-11-24, question
+# "Nov 20, yyyy", "yyyy-Nov-20" (the Administrator, 2026-11-24, no-persistence plan step 1). Also (the Administrator, 2026-11-24, question
 # dialog): "Nov 20 yyyy"; a 2-digit year in "20NOVyy", "20 Nov yy", "Nov 20, yy"; "20-Nov-yyyy", "20-Nov-yy"; ordinals
 # (st, nd, rd, th, any case) in "Nov 20th, yyyy", "20th Nov yyyy", "Nov 1st yyyy". Gaps (space, tab, no-break space;
 # optional in "20 Nov yy" as in "20 Nov yyyy"), the month's dot and the unbounded day are as in main's forms; "Nov 20 yy",
@@ -607,11 +558,11 @@ $script:SignedLeadIn = '(?:(?:19|20)\d\d[./-]\d{1,2}[./-]\d{1,2}|\d{1,2}[./-]\d{
     '\d{1,2}-' + $script:MonthName + '-(?:(?:19|20)\d\d|\d\d)|\d{1,2}' + $script:Ordinal + '[ \t\u00A0]' + $script:MonthName + '[ \t\u00A0](?:19|20)\d\d|' +
     '(?<![A-Za-z])' + $script:MonthName + '[ \t\u00A0]\d{1,2}(?:' + $script:Ordinal + '?,?[ \t\u00A0](?:19|20)\d\d|,[ \t\u00A0]\d\d)|' +
     '(?:19|20)\d\d-' + $script:MonthName + '-\d{1,2})[ \t\u00A0]'
-# After a year alone only 10 digits in a row or the 3-2-4-1 shape are an ID ("Signed 2012 #### #### ##": no ID; the PAM, 2026-11-24, PR 69 MINORs).
+# After a year alone only 10 digits in a row or the 3-2-4-1 shape are an ID ("Signed 2012 #### #### ##": no ID; the Administrator, 2026-11-24, PR 69 MINORs).
 $script:SignedYearLeadIn = '(?<![\w.-])(?:19|20)\d\d[ \t\u00A0]'
 $script:SignedYearShape = '(?=(?:\d{10}|\d{3}[ \u00A0]\d{2}[ \u00A0]\d{4}[ \u00A0]\d)(?![\w-]))'
 # "signed" in prose, not a stamp: "signed." or "Signed." after a form of "be", ending a sentence, a line break allowed as
-# its gap ("was signed. Tracking"; PRs 57, 69; the PAM, 2026-11-24, PR 69 MINORs). Other words and "?" or "!" count.
+# its gap ("was signed. Tracking"; PRs 57, 69; the Administrator, 2026-11-24, PR 69 MINORs). Other words and "?" or "!" count.
 $script:ProseBefore = [regex]'(?i)\b(?:was|were|is|are|been|be|being)[ \t\u00A0]+$'
 $script:SentenceEnd = [regex]'^[Ss]igned\.(?:[ \t\u00A0]+(?:\r?\n[ \t\u00A0]*)?|\r?\n[ \t\u00A0]*)[A-Z][a-z]{2}'   # one line break at most
 # A signature word counts when it starts at most this many characters before a candidate (PR 60: the "Rule" section
@@ -639,7 +590,7 @@ $script:SignedBareIdAt = [regex]('\G(?:' + $script:SignedBareText + ')')
 # The 10 digits in a row just before a CAC name in capitals (the ID above the name; not "REF.NO." and the like).
 $script:SignedIdThenName = [regex]('(?<id>\d(?<=(?:^|[^\w.-])\d)\d{9})(?![\w-])[ \t\u00A0]*(?:\r?\n[ \t\u00A0]*)?' +
     "(?!(?:NO|NR|NUM|REF|ACCT|ACC|TEL|PH|FAX|ID|DOC|REV|VER)\.)(?=[A-Z][A-Z'-]+\.[A-Z][A-Z'-]*\.)")
-# The PAM, 2026-11-24: a capitals name without dots on one line ("DOE JANE Q", "DOE, JANE Q."), only before an SSN shape and
+# The Administrator, 2026-11-24: a capitals name without dots on one line ("DOE JANE Q", "DOE, JANE Q."), only before an SSN shape and
 # one digit ($GapShape), read in the 80 characters before it (speed; no headings: review of PR 69).
 $script:NotNameWord = '\b(?:NO|NR|NUM|REF|ACCT|ACC|TEL|PH|FAX|ID|DOC|REV|VER)\b'   # as the dotted rule's list
 $script:GapShape = [regex]'(?<![\w-])(?:\d{3} \d{2} \d{4}|\d{9}) \d(?![\w-])(?![ \t\u00A0]\d)'
@@ -691,7 +642,7 @@ function Get-FreeDigitRun {
 function Find-SignedIdHits {
     <#
     .SYNOPSIS
-      E-signature DoD ID candidates (Low, the PAM, 2026-11-21) that the CAC-name rule of Find-DodIdHits misses: after a
+      E-signature DoD ID candidates (Low, the Administrator, 2026-11-21) that the CAC-name rule of Find-DodIdHits misses: after a
       CAC name ($SignedName; small letters only after a signature word), a name in capitals without dots before an SSN shape
       and one digit ($SignedNameSpaced), alone after a signature word ($SignedBareId), or before a CAC name in capitals
       ($SignedIdThenName). Get-PiiSpan adds a candidate only where no other hit is.
@@ -718,7 +669,7 @@ function Find-SignedIdHits {
     $words = @([regex]::Matches($Text, $script:SignedWords))   # on the whole text, so no cut makes "assigned" a word
     $result.WordStarts = [int[]]@(foreach ($w in $words) { $w.Index })
     $result.WordEnds = [int[]]@(foreach ($w in $words) { $w.Index + $w.Length })
-    # Each candidate: (match, needs a signature word, follows a CAC name: an SSN in it gives way, the PAM's gap rule 2026-11-24).
+    # Each candidate: (match, needs a signature word, follows a CAC name: an SSN in it gives way, the Administrator's gap rule 2026-11-24).
     foreach ($m in $script:SignedName.Matches($Text)) { $found.Add(@($m, $false, $true)) }
     foreach ($m in $script:SignedIdThenName.Matches($Text)) { $found.Add(@($m, $false, $true)) }
     foreach ($g in $script:GapShape.Matches($Text)) {   # a name without dots: only just before an SSN shape and one digit
@@ -783,7 +734,7 @@ function Add-SignedIdHits {
     <#
     .SYNOPSIS
       Adds Find-SignedIdHits' e-signature DoD IDs only where no kept hit is (after the overlap removal), except over SSNs
-      (not High, no dashes) wholly inside, with a signature word before or digits touching the name (the PAM, 2026-11-21, -24).
+      (not High, no dashes) wholly inside, with a signature word before or digits touching the name (the Administrator, 2026-11-21, -24).
     .PARAMETER Text
       The text searched (as the detectors saw it).
     .PARAMETER Kept
@@ -822,7 +773,7 @@ function Add-SignedIdHits {
         $free = $true
         foreach ($k in $held) {
             $hit = $Kept[$k]
-            # After a CAC name and a gap only an SSN of the first 9 digits gives way (9+1: the PAM's gap rule; 1+9: review of PR 69).
+            # After a CAC name and a gap only an SSN of the first 9 digits gives way (9+1: the Administrator's gap rule; 1+9: review of PR 69).
             if (-not (($sure -or ($item[2] -and $hit.Index -eq $digits.Index)) -and $hit.Confidence -ne 'High' -and $hit.Value -notmatch '-' -and $hit.Index -ge $digits.Index -and
                 $hit.Index + $hit.Length -le $end)) { $free = $false }
         }
@@ -842,7 +793,7 @@ function Test-GarbledNear {
     .SYNOPSIS
       True when the text around a hit is mostly unreadable: at least $GarbledShare of its visible characters are
       private-use, replacement or control characters or Latin-1 signs ($GarbledChar), as when a symbol font is read
-      as text (the PAM, 2026-11-21: 50-100 characters of Wingdings flagged as Low hits).
+      as text (the Administrator, 2026-11-21: 50-100 characters of Wingdings flagged as Low hits).
     .PARAMETER Text
       The text searched.
     .PARAMETER Index
@@ -861,26 +812,7 @@ function Test-GarbledNear {
     return (@($script:GarbledChar.Matches($around)).Count / $visible) -ge $script:GarbledShare
 }
 
-# ==== Module PiiDetectors.psm1 ====
-<#
-PiiDetectors.psm1 - finds text that looks like PII and returns where it is.
-
-  Purpose:     Get-PiiSpan runs every detector (PiiPatterns.psm1, and the labelled-name detector here), removes
-               overlaps, raises a name near an identifier, drops Low hits in unreadable text, and returns each hit
-               with its position and raw value.
-  Inputs:      plain text (from TextExtract.psm1).
-  Outputs:     hit objects WITH the raw value. Only PiiMasking.psm1 reads them; it masks every value
-               before anything is shown or saved (the PAM, 2026-11-20: all values masked).
-  Depends on:  PiiPatterns.psm1 (the one-type detectors, New-PiiHit) and
-               PiiSignedIds.psm1 (Add-SignedIdHits, Test-GarbledNear), imported first.
-  How to run:  imported by Find-ChannelPII.ps1; not run on its own.
-  Run target:  Windows PowerShell 5.1 (also PowerShell 7).
-  Network:     none.
-  Writes:      none (pure functions on strings).
-  Credentials: none.
-#>
-
-
+# ==== PiiDetectors.psm1 ====
 # =====================================================================================
 # Settings (named values; each says where it comes from)
 # =====================================================================================
@@ -915,7 +847,7 @@ function Find-NameHits {
     <#
     .SYNOPSIS
       Names after a label (Name:, Full name:, Member:, Employee:, Spouse:, Dependent:, NOK:,
-      Next of kin:, POC:). Added at the PAM's request, 2026-11-20.
+      Next of kin:, POC:). Added at the Administrator's request, 2026-11-20.
     .DESCRIPTION
       Low by itself: a name alone is PII but rarely sensitive. Get-PiiSpan raises it to High when an
       identifier is near ($NameToIdentifierChars). A name without a label is not found: that would
@@ -1000,7 +932,7 @@ function Remove-SsnUnderPassport {
     <#
     .SYNOPSIS
       Drops an SSN Low hit (9 bare digits, no SSN label) that covers the same characters as a Passport hit, so the
-      Passport hit is kept (the PAM, 2026-11-24: a 9-digit value right after a Passport label is a Passport).
+      Passport hit is kept (the Administrator, 2026-11-24: a 9-digit value right after a Passport label is a Passport).
     .DESCRIPTION
       The one exception to $DetectorOrder. A Passport hit exists only with a Passport label in the label window
       (Find-PassportHits). An SSN with an SSN label (High) or with dashes or spaces (Medium) stays an SSN.
@@ -1045,7 +977,7 @@ function Get-PiiSpan {
     <#
     .SYNOPSIS
       The one entry point of this module: every PII hit in a text, without overlaps, in text order.
-      Hits hold raw values: pass them only to PiiMasking.psm1.
+      Hits hold raw values: pass them only to PiiEngine.psm1.
     .PARAMETER Text
       The text to search.
     .OUTPUTS
@@ -1065,25 +997,7 @@ function Get-PiiSpan {
     return @($kept | Sort-Object Index)
 }
 
-# ==== Module PiiMasking.psm1 ====
-<#
-PiiMasking.psm1 - turns raw PII hits into masked report data. Nothing unmasked leaves this module.
-
-  Purpose:     Find-PiiInText returns, for one text, each hit's type, confidence, masked value and a
-               masked snippet of the text around it. Protect-PiiText masks PII inside a short text that
-               the report shows as it is (file and folder names, error messages).
-               The PAM, 2026-11-20: every value is masked on screen and in the report files.
-  Inputs:      plain text; hits from PiiDetectors.psm1 (Get-PiiSpan).
-  Outputs:     masked hit objects and masked strings.
-  Depends on:  PiiDetectors.psm1 (Get-PiiSpan), imported first by Find-ChannelPII.ps1.
-  How to run:  imported by Find-ChannelPII.ps1; not run on its own.
-  Run target:  Windows PowerShell 5.1 (also PowerShell 7).
-  Network:     none.
-  Writes:      none (pure functions on strings).
-  Credentials: none.
-#>
-
-
+# ==== PiiMasking.psm1 ====
 # =====================================================================================
 # Settings
 # =====================================================================================
@@ -1138,7 +1052,7 @@ function Get-MaskedValue {
       Phone  -> ***-***-1234       Passport -> *****567          E-mail  -> ***@domain
       DOB    -> [date masked]      Address  -> [address masked]  Name    -> initials (P*** S***)
     .PARAMETER Detector
-      The PII type (as named in PiiDetectors.psm1).
+      The PII type (as named in PiiEngine.psm1).
     .PARAMETER Value
       The raw value.
     .OUTPUTS
@@ -1291,10 +1205,10 @@ function Protect-PiiName {
     <#
     .SYNOPSIS
       Masks a site, folder or file name the person must find again: each found value becomes its masked value and
-      every e-mail name becomes '***'; other digits stay (the PAM, 2026-11-20: "FY27 Plan.docx" stays as it is, so the
+      every e-mail name becomes '***'; other digits stay (the Administrator, 2026-11-20: "FY27 Plan.docx" stays as it is, so the
       file can be found). Example: "Roster_123-45-6789.docx" -> "Roster_***-**-6789.docx". An SSN shape that the
       detectors skip because a dash or a digit group joins it (a site name "TeamA-123-45-6789") is masked too (the
-      PAM, 2026-11-24): a name is masked more, never less.
+      Administrator, 2026-11-24): a name is masked more, never less.
     .PARAMETER Text
       The name or path.
     .OUTPUTS
@@ -1312,24 +1226,25 @@ function Protect-PiiName {
     return [regex]::Replace($result, $script:NameSsnShapePattern, '***-**-${last}')
 }
 
-# ==== Module OcrText.psm1 ====
+# ==== Module ContainerText.psm1 ====
 <#
-OcrText.psm1 - text in images with Windows' built-in OCR (Windows.Media.Ocr), in memory, without a module.
+ContainerText.psm1 - text extraction from images (Windows OCR), old Office/Outlook OLE files, and archives/e-mail.
 
-  Purpose:     Reads the text of .jpg, .png, .tif, .bmp and .gif files and of scanned PDF pages, so the detectors can
-               check them (the PAM, 2026-11-20: round 3 readers). Uses the OCR engine of Windows 10/11 through
-               WinRT from Windows PowerShell 5.1; where it is missing (no OCR language, another OS), every image
-               gets a "check by hand" reason instead.
-  Inputs:      image bytes.
-  Outputs:     a hashtable with Text, Reason (empty when the text was read) and Note (pages not read).
-  How to run:  imported by Find-ChannelPII.ps1 (used by PdfText.psm1 and TextExtract.psm1); not run on its own.
-  Run target:  Windows PowerShell 5.1 on Windows 10/11 (WinRT OCR); elsewhere images get a reason.
-  Network:     none (the OCR engine runs on the computer).
-  Writes:      none. Bytes stay in memory; nothing is saved to disk.
+  Purpose:     Extracts text in memory from images and scanned JPEG PDF pages (Windows.Media.Ocr), binary .doc,
+               .xls, .ppt and .msg files, and .zip archives / .eml e-mail parts, with roster header promotion.
+  Inputs:      file bytes (or scan images / HTML / XML nodes).
+  Outputs:     text strings and archive/e-mail parts lists.
+  Depends on:  PiiEngine.psm1 (Get-PiiSpan), imported first (TextExtract.psm1 and PdfExtract.psm1 call into ContainerText.psm1).
+  How to run:  imported by Find-ChannelPII.ps1; not run on its own.
+  Run target:  Windows PowerShell 5.1 (also PowerShell 7).
+  Network:     none.
+  Writes:      none.
   Credentials: none.
 #>
 
+Add-Type -AssemblyName System.IO.Compression
 
+# ==== OcrText.psm1 ====
 # Seconds one WinRT step (decode, read) may take; frames read from one multi-page TIFF.
 $script:OcrStepMilliseconds = 30000
 $script:MaxImageFrames = 30
@@ -1467,24 +1382,7 @@ function Get-ScanPagesText {
     return @{ Text = ($pages -join "`n"); Reason = ''; Note = ($notes -join '; ') }
 }
 
-# ==== Module OleText.psm1 ====
-<#
-OleText.psm1 - text from old binary Office files (.doc, .xls, .ppt) and Outlook messages (.msg), in memory.
-
-  Purpose:     These files are OLE compound files, not zips. Their text is stored as runs of UTF-16 or 8-bit
-               characters, which this module pulls out (the PAM, 2026-11-20: round 3 readers). Partial for .xls:
-               numbers kept as binary values are not read, and the report says so for each .xls. Encrypted files
-               are found and named.
-  Inputs:      the file bytes.
-  Outputs:     a hashtable with Text, Reason (not read, and why) and Note (read in part).
-  How to run:  imported by Find-ChannelPII.ps1 (used by TextExtract.psm1); not run on its own.
-  Run target:  Windows PowerShell 5.1 (also PowerShell 7); .NET only.
-  Network:     none.
-  Writes:      none. Bytes stay in memory; nothing is saved to disk.
-  Credentials: none.
-#>
-
-
+# ==== OleText.psm1 ====
 # Bytes as characters one to one, so a binary file can be searched with regular expressions.
 $script:OleLatin1 = [System.Text.Encoding]::GetEncoding(28591)
 
@@ -1502,7 +1400,7 @@ $script:EncryptedStreamNames = @('EncryptedPackage', 'EncryptedSummary')
 
 # Names that only a file protected by rights management has (MS-OFFCRYPTO 2.2.11, IRM: a Microsoft Purview sensitivity
 # label with encryption uses it): DRMEncrypted* in a new-style file kept in OLE form, DRMDataSpace and DRMContent in an
-# old .doc/.xls/.ppt; a password-protected file has StrongEncryptionDataSpace instead (the PAM, 2026-11-21: tell
+# old .doc/.xls/.ppt; a password-protected file has StrongEncryptionDataSpace instead (the Administrator, 2026-11-21: tell
 # labels from passwords).
 $script:LabelStreamNames = @('DRMEncryptedDataSpace', 'DRMEncryptedTransform', 'DRMDataSpace', 'DRMContent')
 $script:LabelReason = 'Sensitivity label with encryption (Microsoft Purview): open it and check by hand'
@@ -1606,28 +1504,7 @@ function Get-OleText {
     return @{ Text = ($runs -join "`n"); Reason = ''; Note = $note }
 }
 
-# ==== Module ContainerText.psm1 ====
-<#
-ContainerText.psm1 - unpacks files that hold other files: zip archives and e-mails (.eml), in memory.
-
-  Purpose:     The parts of a .zip (each file inside) and of an .eml (its headers and text, and each attachment),
-               so TextExtract.psm1 reads each part with its own reader and the report names it as
-               "archive.zip/inner/file" (the PAM, 2026-11-20: round 3 readers). Limits on the number of files and
-               the unpacked size guard against zip bombs; a part over a limit gets a reason instead of its bytes.
-               It also labels roster columns: a PII label only in a column header of a worksheet or .csv/.tsv file is
-               written before each value below it, so the detectors read it (the PAM, 2026-11-24).
-  Inputs:      the file bytes; for roster columns, the rows of a worksheet or the text of a .csv/.tsv file.
-  Outputs:     parts: Name, and Bytes (a file to read), Text (text already read) or Reason (not read, and why); text.
-  How to run:  imported by Find-ChannelPII.ps1 (used by TextExtract.psm1); not run on its own.
-  Depends on:  PiiDetectors.psm1 (Get-PiiSpan: Add-RosterSection), imported first.
-  Run target:  Windows PowerShell 5.1 (also PowerShell 7); .NET System.IO.Compression only.
-  Network:     none.
-  Writes:      none. Bytes stay in memory; nothing is saved to disk.
-  Credentials: none.
-#>
-
-Add-Type -AssemblyName System.IO.Compression
-
+# ==== ContainerText.psm1 ====
 # Zip limits: files read from one archive, the size of one unpacked file, and of all of them together.
 $script:MaxArchiveEntries = 2000
 $script:MaxEntryBytes = 25MB
@@ -1948,7 +1825,7 @@ function Get-EmailParts {
     Get-MimeParts $text 0
 }
 
-# ---- Roster columns: a PII label only in a column header (the PAM, 2026-11-24; design: review of PR 96) ----
+# ---- Roster columns: a PII label only in a column header (the Administrator, 2026-11-24; design: review of PR 96) ----
 # The text stays as it is; each header-column value that no hit touches is written again after it (Add-RosterSection).
 # A header cell: the whole cell is one label of this list (case ignored; quotes, and a trailing ':', '#' or '.', allowed).
 $script:RosterHeaderPattern = [regex]::new('^\s*"?\s*(?:(?<ssn>SSN|SSAN)|(?<dod>DoD\s*ID|DODID|EDIPI)|(?<dob>DOB|Date\s+of\s+birth)|(?<pp>Passport(?:\s+No)?))\s*[:#.]*\s*"?\s*$', 'IgnoreCase')
@@ -2054,25 +1931,25 @@ function Add-CsvRosterLabels {
     return (Add-RosterSection $Text $found)
 }
 
-# ==== Module PdfCore.psm1 ====
+# ==== Module PdfExtract.psm1 ====
 <#
-PdfCore.psm1 - the base of the PDF reader: its time and size limits, stream filters and ToUnicode font maps.
+PdfExtract.psm1 - pure-.NET PDF reader: budgets, filters, objects, fonts, glyph decoding, layout, content streams, page text.
 
-  Purpose:     So one damaged or hostile PDF cannot stall the scan or fill the memory (fresh reviews, 2026-11-20/21):
-               a time limit per PDF and per regex search, caps on unpacked size, and "check by hand" notes for any
-               part not read. Also the stream filters (Flate, ASCII85, ASCIIHex) and the ToUnicode maps of fonts.
-               PdfText.psm1 builds the page text on top of it.
-  Inputs:      PDF stream bytes and dictionaries, as Latin-1 text.
-  Outputs:     decoded streams, font maps, the limit checks and the notes of one PDF (Start-/Stop-PdfBudget).
-  How to run:  imported by Find-ChannelPII.ps1 (used by PdfText.psm1); not run on its own.
-  Run target:  Windows PowerShell 5.1 (also PowerShell 7); .NET System.IO.Compression only.
+  Purpose:     Reads PDF objects, ToUnicode character maps, glyph widths, word spacing, content streams, and
+               XFA/form text with .NET only, enforcing time and inflation budgets and sending scan-only pages to OCR.
+  Inputs:      PDF file bytes (from TextExtract.psm1).
+  Outputs:     extracted text and scan/not-read notes (Get-PdfText).
+  Depends on:  ContainerText.psm1 (Get-ScanPagesText), imported first.
+  How to run:  imported by Find-ChannelPII.ps1; not run on its own.
+  Run target:  Windows PowerShell 5.1 (also PowerShell 7); .NET only.
   Network:     none.
-  Writes:      none. Bytes stay in memory; nothing is saved to disk.
+  Writes:      none.
   Credentials: none.
 #>
 
 Add-Type -AssemblyName System.IO.Compression
 
+# ==== PdfCore.psm1 ====
 # Bytes as characters one to one (ISO-8859-1), so binary PDF parts can be cut with string functions.
 $script:Latin1 = [System.Text.Encoding]::GetEncoding(28591)
 
@@ -2154,7 +2031,7 @@ function Expand-PdfStream {
     param([string]$Raw)
     $bytes = $script:Latin1.GetBytes($Raw)
     # The zlib header (RFC 1950): method 8 in the low 4 bits, and the two bytes a multiple of 31. Any window size, not
-    # only 0x78: a header read as deflate data made good PDFs look damaged (the PAM's gov run, 2026-11-21).
+    # only 0x78: a header read as deflate data made good PDFs look damaged (the Administrator's gov run, 2026-11-21).
     $skip = 0
     if ($bytes.Length -ge 2 -and ($bytes[0] -band 0x0F) -eq 8 -and (($bytes[0] * 256 + $bytes[1]) % 31) -eq 0) { $skip = 2 }
     $source = New-Object System.IO.MemoryStream -ArgumentList $bytes, $skip, ($bytes.Length - $skip)
@@ -2416,25 +2293,7 @@ function Get-PdfCMap {
     return @{ Bytes = $bytes; Map = $map; Ranges = $ranges }
 }
 
-# ==== Module PdfObjects.psm1 ====
-<#
-PdfObjects.psm1 - the objects of a PDF and the text kept in its dictionaries, with .NET only (the PAM, 2026-11-20).
-
-  Purpose:     Finds a PDF's objects (also in object streams and in incremental updates, older versions kept), decodes
-               PDF strings, and reads the text kept in dictionaries: form-field values, comments, file info and XFA
-               form data. A string it cannot read throws (Assert-PdfGap), so a PDF is never read in part without a word.
-               PdfText.psm1 reads the page text on top of it.
-  Inputs:      the PDF bytes as Latin-1 text.
-  Outputs:     objects (Get-PdfObjects), decoded strings, dictionary and XFA text lines.
-  How to run:  imported by Find-ChannelPII.ps1 (used by PdfText.psm1); not run on its own.
-  Depends on:  PdfCore.psm1 (limits, stream filters), imported first by Find-ChannelPII.ps1.
-  Run target:  Windows PowerShell 5.1 (also PowerShell 7); .NET only.
-  Network:     none.
-  Writes:      none. Bytes stay in memory; nothing is saved to disk.
-  Credentials: none.
-#>
-
-
+# ==== PdfObjects.psm1 ====
 # Bytes as characters one to one (ISO-8859-1), so binary PDF parts can be cut with string functions.
 $script:ObjLatin1 = [System.Text.Encoding]::GetEncoding(28591)
 
@@ -2470,7 +2329,7 @@ $script:PdfTextKeys = [ordered]@{ 'V' = ''; 'Contents' = 'Comment'; 'RC' = 'Comm
     'Subject' = 'Subject'; 'Keywords' = 'Keywords' }
 
 function Get-PdfStringPattern {
-    # The pattern of one PDF string token (PdfText.psm1 builds its token pattern on it).
+    # The pattern of one PDF string token (PdfExtract.psm1 builds its token pattern on it).
     return $script:PdfStringPattern
 }
 
@@ -2774,29 +2633,10 @@ function Get-PdfXfaText {
     }
 }
 
-# ==== Module PdfFonts.psm1 ====
-<#
-PdfFonts.psm1 - the fonts of a PDF: their character maps and their real glyph widths, with .NET only.
-
-  Purpose:     A shown string becomes text through its font's ToUnicode map, and its width comes from the font's own
-               widths (/Widths of a simple font, /W of a composite font, built-in widths for the standard Helvetica,
-               Times and Courier families), so PdfText.psm1 can tell a word gap from a glyph placed one by one
-               (fresh reviews, 2026-11-21: estimated widths split and joined words wrongly). A guess is the last resort.
-  Inputs:      the PDF objects (PdfObjects.psm1 Get-PdfObjects).
-  Outputs:     font records (CMap, Bytes, Widths, DefaultWidth, Standard); PdfShown.psm1 decodes and measures shown
-               strings with them.
-  How to run:  imported by Find-ChannelPII.ps1 (used by PdfText.psm1); not run on its own.
-  Depends on:  PdfCore.psm1 (Get-PdfCMap, Get-PdfRegex, Assert-PdfTime, Add-PdfNote), imported first.
-  Run target:  Windows PowerShell 5.1 (also PowerShell 7); .NET only.
-  Network:     none.
-  Writes:      none.
-  Credentials: none.
-#>
-
-
+# ==== PdfFonts.psm1 ====
 # Fonts that draw pictures, not text (by name, with or without a subset prefix such as ABCDEF+): Wingdings 1-3,
 # Webdings, (Zapf) Dingbats, Marlett and Symbol (Greek and maths signs). Their text is read as spaces: a row of symbols
-# read as letters and digits gave Low hits that were plainly wrong (the PAM, 2026-11-21).
+# read as letters and digits gave Low hits that were plainly wrong (the Administrator, 2026-11-21).
 # Standard glyph names (Adobe Glyph List) of the digits and common signs, for a font's /Differences; single letters
 # name themselves. Any other name is a made-up one: its glyph cannot be read.
 $script:GlyphNames = @{ space = ' '; zero = '0'; one = '1'; two = '2'; three = '3'; four = '4'; five = '5'; six = '6'; seven = '7'
@@ -2949,7 +2789,7 @@ function Get-PdfDifferences {
       The /Differences of a simple font's /Encoding (in the font, or in an encoding object of its own): code -> text by
       glyph name. A made-up name (letters and a number, such as /g12, /a3 or /cid34, as subset and Type3 fonts use) maps
       to $null: its glyph cannot be read. Any other name this table does not know is left out: its code reads as before. Without them, codes were read as Latin-1 and gave nonsense letters and
-      signs (the PAM, 2026-11-21: "Wingdings"-like text from a PDF with no Wingdings font).
+      signs (the Administrator, 2026-11-21: "Wingdings"-like text from a PDF with no Wingdings font).
     .PARAMETER Dict
       The font dictionary.
     .PARAMETER Objects
@@ -3092,26 +2932,7 @@ function Add-PdfCidWidths {
     }
 }
 
-# ==== Module PdfShown.psm1 ====
-<#
-PdfShown.psm1 - a PDF's shown strings: their text through the font's map, and their widths in ems.
-
-  Purpose:     Decodes a shown string with its font record (ToUnicode map, glyph names, one- or two-byte codes),
-               measures it with the font's widths, and sums the pieces a line showed, so PdfText.psm1 can tell a word
-               gap from a glyph placed one by one. Caches per font (speed). Split from PdfFonts.psm1 (fleet v2 DEC 6,
-               2026-11-23: 450 lines for hand-written code).
-  Inputs:      font records (PdfFonts.psm1 Get-PdfFontTable) and shown strings.
-  Outputs:     decoded text and widths.
-  Depends on:  PdfCore.psm1 (Add-PdfNote, Assert-PdfTime, ConvertFrom-Utf16Hex), PdfObjects.psm1 (ConvertFrom-PdfString)
-               and PdfFonts.psm1 (the font records it reads), imported first.
-  How to run:  imported by Find-ChannelPII.ps1 (used by PdfText.psm1); not run on its own.
-  Run target:  Windows PowerShell 5.1 (also PowerShell 7); .NET only.
-  Network:     none.
-  Writes:      none.
-  Credentials: none.
-#>
-
-
+# ==== PdfShown.psm1 ====
 # Per font: shown strings decoded and measured before (text and width in ems), up to this many each (speed).
 $script:MaxFontCache = 20000
 # Entries of what a line showed before they are summed (Compress-PdfShown).
@@ -3131,7 +2952,7 @@ function ConvertFrom-PdfGlyphs {
       A font record, or $null.
     #>
     param([string]$Raw, $Font)
-    # A picture font (Wingdings and the like): one space per glyph, so its symbols never read as PII (the PAM, 2026-11-21).
+    # A picture font (Wingdings and the like): one space per glyph, so its symbols never read as PII (the Administrator, 2026-11-21).
     # First, before its glyph names: a picture font's codes are never letters.
     if ($Font -and $Font.ContainsKey('Picture') -and $Font.Picture) { return ' ' * [int][Math]::Ceiling($Raw.Length / [Math]::Max(1, [int]$Font.Bytes)) }
     if ($Font -and -not $Font.CMap -and $Font.ContainsKey('Glyphs') -and $Font.Glyphs) { return ConvertFrom-PdfNamedGlyphs $Raw $Font }
@@ -3343,24 +3164,7 @@ function Get-PdfTextWidth {
     return ($ems * $Size)
 }
 
-# ==== Module PdfLayout.psm1 ====
-<#
-PdfLayout.psm1 - spaces and line breaks of PDF page text: where a gap between two pieces of text is a word space.
-
-  Purpose:     A PDF places text in pieces (Chrome glyph by glyph, Word by kerning pairs, LibreOffice with letter
-               spacing); this module joins a text block's pieces back into words and lines, so the detectors see
-               "SSN: <number>" and not "S S N :" or "SSN:<number>" (fresh reviews r9 to r16, 2026-11-21).
-  Inputs:      a text block's pieces (strings, and gaps in ems) from PdfText.psm1.
-  Outputs:     the block's text, added to the page text.
-  How to run:  imported by Find-ChannelPII.ps1 (used by PdfText.psm1); not run on its own.
-  Depends on:  PdfCore.psm1 (Assert-PdfTime, Add-PdfNote), imported first by Find-ChannelPII.ps1.
-  Run target:  Windows PowerShell 5.1 (also PowerShell 7); .NET only.
-  Network:     none.
-  Writes:      none.
-  Credentials: none.
-#>
-
-
+# ==== PdfLayout.psm1 ====
 # Gaps along a line (a same-line Td move past the real end of the text before it, or a TJ adjustment), in ems: a
 # space when wider than the block's letter spacing plus WordGapEms. The letter spacing is the median gap between two
 # one-glyph pieces when a block has at least MinSpacingGaps of them and they are at least half of its gaps (gaps of
@@ -3483,26 +3287,7 @@ function Complete-PdfTextBlock {
     $State.Shown.Clear()
 }
 
-# ==== Module PdfContent.psm1 ====
-<#
-PdfContent.psm1 - a PDF content stream walked for its text: tokens, text operators, moves and shown strings.
-
-  Purpose:     Reads one content stream's tokens (strings, arrays, names, numbers, operators), runs the text
-               operators (Tf, Tc, Tw, Tz, TJ, Tj, ', ", Td, TD, T*, Tm, ET) on a text state, steps over inline image
-               bytes, and returns the page text with its spaces and line breaks (ISO 32000-1, 9.4). Split from
-               PdfText.psm1 (fleet v2 DEC 6, 2026-11-23: 450 lines for hand-written code).
-  Inputs:      a decoded content stream and the page's fonts (PdfFonts.psm1 Get-PdfFontTable).
-  Outputs:     the text of the stream (Convert-PdfContentToText).
-  Depends on:  PdfCore.psm1 (Assert-PdfTime, Add-PdfNote), PdfObjects.psm1 (Get-PdfStringPattern, Assert-PdfGap),
-               PdfShown.psm1 (shown text and widths) and PdfLayout.psm1 (Complete-PdfTextBlock), imported first.
-  How to run:  imported by Find-ChannelPII.ps1 (used by PdfText.psm1); not run on its own.
-  Run target:  Windows PowerShell 5.1 (also PowerShell 7).
-  Network:     none.
-  Writes:      none.
-  Credentials: none.
-#>
-
-
+# ==== PdfContent.psm1 ====
 # The tokens of a content stream that matter for text: strings, array brackets, names, numbers and operators.
 $script:PdfTokenPattern = (Get-PdfStringPattern) + '|%[^\r\n]*|\[|\]|/[^\s/\[\]()<>{}%]+|[-+]?(?:\d+\.?\d*|\.\d+)|[A-Za-z''"*]+'
 
@@ -3813,28 +3598,7 @@ function Add-PdfArrayPieces {
     }
 }
 
-# ==== Module PdfText.psm1 ====
-<#
-PdfText.psm1 - the text of a PDF file, in memory, with .NET only (no module; the PAM, 2026-11-20).
-
-  Purpose:     Page text (Tj/TJ text in Flate, ASCII85 or hex streams, with ToUnicode font maps), filled-in form-field
-               values, comments and file info, so the detectors can check a PDF (ISO 32000). An encrypted PDF,
-               a PDF with no text (a scanned image) or a file that is not a PDF gets a reason instead.
-  Inputs:      the file bytes.
-  Outputs:     a hashtable with Text and Reason (Get-PdfText).
-  How to run:  imported by Find-ChannelPII.ps1 (used by TextExtract.psm1); not run on its own.
-  Depends on:  PdfCore.psm1 (limits, stream filters), PdfObjects.psm1 (objects, strings, dictionary text),
-               PdfFonts.psm1 (font maps), PdfContent.psm1 (the text of a content stream; split from this file,
-               fleet v2 DEC 6, 2026-11-23) and OcrText.psm1 (scanned pages), imported first by Find-ChannelPII.ps1.
-  Run target:  Windows PowerShell 5.1 (also PowerShell 7); .NET System.IO.Compression only.
-  Network:     none.
-  Writes:      none. Bytes stay in memory; nothing is saved to disk.
-  Credentials: none.
-#>
-
-Add-Type -AssemblyName System.IO.Compression
-
-
+# ==== PdfText.psm1 ====
 # Bytes as characters one to one (ISO-8859-1), so binary PDF parts can be cut with string functions.
 $script:PdfLatin1 = [System.Text.Encoding]::GetEncoding(28591)
 
@@ -3842,7 +3606,7 @@ $script:PdfLatin1 = [System.Text.Encoding]::GetEncoding(28591)
 $script:PdfNoTextReason = 'No text in this PDF (a scanned image?): check by hand'
 # A scanned PDF's JPEG page images, found by Get-PdfAllText: read with Windows OCR when the PDF has no text.
 $script:PdfScanImages = @()
-# The scanned images of a PDF that also has text (the PAM, 2026-11-26: plan step 3), read with Windows OCR: every image of
+# The scanned images of a PDF that also has text (the Administrator, 2026-11-26: plan step 3), read with Windows OCR: every image of
 # a page with no text, and a page-size image of a page with visible text (a scan with a banner or a stamp). A page with
 # invisible text (render mode 3: a "searchable" scan's text layer) is read from that text only, so its hits are not
 # found twice and no OCR time is spent (reviews of step 3).
@@ -3850,12 +3614,12 @@ $script:PdfPageImages = @()
 # On a page with visible text, only an image this big (pixels, both sides) is a scan.
 $script:PdfPageImageMin = 800
 # A smaller picture on such a page with a side of this many pixels or more, or of an unknown size, can be a small scan
-# (an ID card): it is not read with OCR, and the file gets a note (the PAM, 2026-11-26: "Merge, then a note").
+# (an ID card): it is not read with OCR, and the file gets a note (the Administrator, 2026-11-26: "Merge, then a note").
 $script:PdfMaybeScanMin = 300
 $script:PdfMaybeScans = 0
 $script:PdfMaybeScanNote = 'Scanned PDF: an image on a page with text was not read with OCR (it can be a scanned page): check by hand'
-# Not-scanned reasons, each its own group on the Not scanned tab (the PAM, 2026-11-21: tell labels from passwords, and
-# a time limit from damage: many PDFs called damaged open fine). The limits are $PdfSecondsLimit and $PdfRegexTimeout of PdfCore.psm1.
+# Not-scanned reasons, each its own group on the Not scanned tab (the Administrator, 2026-11-21: tell labels from passwords, and
+# a time limit from damage: many PDFs called damaged open fine). The limits are $PdfSecondsLimit and $PdfRegexTimeout of PdfExtract.psm1.
 $script:PdfSlowReason = 'This PDF took longer than the time limit to read (2 minutes; the file may be fine): check by hand'
 $script:PdfSearchSlowReason = 'One search in this PDF took longer than its time limit (2 seconds; the file may be fine): check by hand'
 $script:PdfPartReason = 'Part of this PDF could not be read (an unusual string; the file may still open fine): check by hand'
@@ -4203,12 +3967,12 @@ TextExtract.psm1 - turns file bytes into plain text, in memory.
 
   Purpose:     Plain text from Word, Excel and PowerPoint files (.docx/.xlsx/.pptx and macro versions), PDF,
                OpenDocument, Visio, RTF, text and HTML; images (OCR), old .doc/.xls/.ppt and .msg; and each file
-               inside a .zip or an .eml (the PAM, 2026-11-20). Other types (scripts and anything else), encrypted
+               inside a .zip or an .eml (the Administrator, 2026-11-20). Other types (scripts and anything else), encrypted
                files and files that cannot be read are reported as NOT SCANNED, so a person checks them by hand.
   Inputs:      file bytes and the file name (for its extension).
   Outputs:     an object with Status ('OK' or 'NOT SCANNED'), Reason, Text, Note and Parts (Get-TextFromBytes).
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
-  Depends on:  PdfText.psm1 (Get-PdfText), OcrText.psm1 (Get-ImageText), OleText.psm1 (Get-OleText) and
+  Depends on:  PdfExtract.psm1 (Get-PdfText), ContainerText.psm1 (Get-ImageText), ContainerText.psm1 (Get-OleText) and
                ContainerText.psm1 (Get-ArchiveParts, Get-EmailParts, Read-LimitedStream; Add-RosterValues,
                Add-RosterSection and Add-CsvRosterLabels: roster labels), imported first by Find-ChannelPII.ps1.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7); .NET System.IO.Compression only.
@@ -4244,14 +4008,14 @@ $script:OfficeParts = @{
     '.xlsm' = '^xl/(worksheets/sheet\d+|comments\d*)\.xml$'
     '.pptx' = '^ppt/(slides/slide\d+|notesSlides/notesSlide\d+|comments/comment\d+)\.xml$'
     '.pptm' = '^ppt/(slides/slide\d+|notesSlides/notesSlide\d+|comments/comment\d+)\.xml$'
-    # OpenDocument (ODF: a zip with content.xml) and Visio (pages in visio/pages); the PAM, 2026-11-20: round 3.
+    # OpenDocument (ODF: a zip with content.xml) and Visio (pages in visio/pages); the Administrator, 2026-11-20: round 3.
     '.odt' = '^content\.xml$'
     '.ods' = '^content\.xml$'
     '.odp' = '^content\.xml$'
     '.vsdx' = '^visio/pages/page\d+\.xml$'
 }
 
-# Images, read with Windows OCR (OcrText.psm1); old binary Office and Outlook files (OleText.psm1); files that
+# Images, read with Windows OCR (ContainerText.psm1); old binary Office and Outlook files (ContainerText.psm1); files that
 # hold other files (ContainerText.psm1): their parts are read one by one, at most $MaxContainerDepth levels deep.
 $script:ImageExtensions = @('.jpg', '.jpeg', '.png', '.tif', '.tiff', '.bmp', '.gif')
 $script:OleExtensions = @('.doc', '.xls', '.ppt', '.msg')
@@ -4271,7 +4035,7 @@ $script:OldFormatReason = 'An old Office file (97-2003 format) with a new-style 
 # =====================================================================================
 
 # Between two cells of a worksheet row: a mark that no detector reads across, so values of neighbouring cells
-# (123 | 45 | 6789) never join into one SSN, card or phone number (the PAM, 2026-11-20: Excel false positives).
+# (123 | 45 | 6789) never join into one SSN, card or phone number (the Administrator, 2026-11-20: Excel false positives).
 $script:CellBreak = ' | '
 # Column letters of a cell reference (1 to 3, as Excel: A to XFD) -> column number (A = 1), kept once worked out (speed).
 $script:ColumnNumbers = @{}
@@ -4337,7 +4101,7 @@ function Convert-XmlToText {
     #>
     param([string]$Xml)
     # Word field codes are not shown on the page: PAGEREF _Toc123456789, HYPERLINK addresses, form IDs. They gave
-    # false positives (a 9-digit bookmark number read as an SSN), so their text is dropped (the PAM, 2026-11-20).
+    # false positives (a 9-digit bookmark number read as an SSN), so their text is dropped (the Administrator, 2026-11-20).
     $text = $Xml -replace '(?s)<w:instrText\b[^>]*?(?:/>|>.*?</w:instrText>)', ''
     $text = $text -replace '<w:tab/>|<w:br/>|<a:br/>', ' '
     $text = $text -replace '<text:(?:s|tab|line-break)\b[^>]*/>', ' '
@@ -4415,7 +4179,7 @@ function Get-OfficeProps {
     <#
     .SYNOPSIS
       The names an Office file stores about itself (docProps/core.xml: creator, last modified by), as Office saved
-      them; empty for other files (the accountability columns, the PAM 2026-11-21).
+      them; empty for other files (the accountability columns, the Administrator 2026-11-21).
     .PARAMETER Bytes
       The file bytes.
     .OUTPUTS
@@ -4520,7 +4284,7 @@ function Get-NotZipReason {
     <#
     .SYNOPSIS
       Why an Office file's bytes are not a zip, from their first bytes; empty when they are one. Without this check
-      the zip reader says only "End of central directory not found" (the PAM's DoD365 run, 2026-11-20).
+      the zip reader says only "End of central directory not found" (the Administrator's DoD365 run, 2026-11-20).
     .PARAMETER Bytes
       The file bytes.
     .OUTPUTS
@@ -4642,8 +4406,8 @@ function Add-ContainerParts {
 <#
 ReaderPool.psm1 - reads several files at once in PowerShell runspaces, and each identical file only once per run.
 
-  Purpose:     Speed (the PAM, 2026-11-21): files are read and checked for PII by 1 to 8 workers at a time (Normal speed: at most half
-               the processors; Fast: one per processor; the PAM, 2026-11-25), while the
+  Purpose:     Speed (the Administrator, 2026-11-21): files are read and checked for PII by 1 to 8 workers at a time (Normal speed: at most half
+               the processors; Fast: one per processor; the Administrator, 2026-11-25), while the
                main thread lists, downloads (SharePoint) and reports. The number of workers follows the load: it
                grows while the throughput grows and shrinks when it falls. A file whose content (SHA-256) was
                already read in this run is not read again: it gets the same hits. Nothing is kept after the run.
@@ -4651,7 +4415,7 @@ ReaderPool.psm1 - reads several files at once in PowerShell runspaces, and each 
   Outputs:     results: Status, Reason, Note, Hits, Parts, Hash, Duplicate, Seconds, Size.
   How to run:  imported by Find-ChannelPII.ps1; each worker loads the same reader code (the readers above this
                module and this module) once.
-  Depends on:  PiiDetectors.psm1 (Find-PiiInText) and TextExtract.psm1 (Get-TextFromBytes), imported first.
+  Depends on:  PiiEngine.psm1 (Find-PiiInText) and TextExtract.psm1 (Get-TextFromBytes), imported first.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7). Runspaces are part of PowerShell: no module, no
                compiled code, no other process.
   Network:     none here (a network-drive path is opened read-only with the person's Windows logon).
@@ -4663,7 +4427,7 @@ ReaderPool.psm1 - reads several files at once in PowerShell runspaces, and each 
 # Workers: at most this many (and at most one per processor); the first target is 2.
 $script:MaxWorkers = 8
 $script:FirstWorkers = 2
-# The run's speed (the PAM, 2026-11-25: a Fast run made the fan loud): 'Normal' uses at most half the processors for
+# The run's speed (the Administrator, 2026-11-25: a Fast run made the fan loud): 'Normal' uses at most half the processors for
 # readers; 'Fast' one per processor. In both, workers run at below-normal Windows priority, so other programs come first.
 $script:ScanSpeed = 'Normal'
 
@@ -4674,8 +4438,8 @@ $script:Processors = [Environment]::ProcessorCount
 $script:ReviewEvery = 6
 $script:GrowthStep = 0.05
 $script:DropStep = 0.15
-# The longest one file may take in a worker (seconds). Above the PDF reader's own limit (120 s, PdfCore.psm1), so that
-# limit, with its own reason, fires first. A worker over it is stopped without waiting, and the scan goes on (the PAM's
+# The longest one file may take in a worker (seconds). Above the PDF reader's own limit (120 s, PdfExtract.psm1), so that
+# limit, with its own reason, fires first. A worker over it is stopped without waiting, and the scan goes on (the Administrator's
 # gov run, 2026-11-23: a SharePoint scan hung after 50 minutes and Ctrl+C did not stop it).
 $script:FileSecondsLimit = 180
 $script:FileSlowReason = 'Reading took longer than 3 minutes (the file may be fine): check by hand'
@@ -4687,15 +4451,17 @@ $script:WaitSliceMs = 250
 $script:LongPathAt = 240
 
 # The reader modules, in load order, for a development run (the bundle gives the reader block's text instead).
-$script:ReaderModules = @('PiiPatterns', 'PiiSignedIds', 'PiiDetectors', 'PiiMasking', 'OcrText', 'OleText', 'ContainerText', 'PdfCore', 'PdfObjects', 'PdfFonts',
-    'PdfShown', 'PdfLayout', 'PdfContent', 'PdfText', 'TextExtract', 'ReaderPool')
+$script:ReaderModules = @('PiiEngine', 'ContainerText', 'PdfExtract', 'TextExtract', 'ReaderPool')
 
 # The scripts each runspace runs (a worker per file; Invoke-LimitedRead per old version): load the reader code, then read.
 $script:ReaderLoader = @'
 [System.Threading.Thread]::CurrentThread.Priority = [System.Threading.ThreadPriority]::BelowNormal
 if (-not $global:IonReaderReady) {
-    if ($Init.ContainsKey('Code')) { New-Module -Name IonReaders -ScriptBlock ([scriptblock]::Create($Init.Code)) | Import-Module -Global }
-    else { Import-Module $Init.Paths -Global -Force }
+    if ($Init.ContainsKey('Ast')) {
+        New-Module -Name IonReaders -ScriptBlock ($Init.Ast.GetScriptBlock()) | Import-Module -Global
+    }
+    elseif ($Init.ContainsKey('Paths')) { Import-Module $Init.Paths -Global -Force }
+    else { throw 'Worker reader set-up is missing Ast and Paths.' }
     $global:IonReaderReady = $true
 }
 '@
@@ -4829,7 +4595,7 @@ function New-ReaderPool {
     .SYNOPSIS
       Opens the worker pool: up to Get-ReaderLimit runspaces (the run's speed), $FirstWorkers busy at first.
     .PARAMETER Init
-      How a worker loads the reader code: @{ Code = <text> } (the paste bundle) or @{ Paths = <module files> }; when
+      How a worker loads the reader code: @{ Ast = $block.Ast } (the paste bundle) or @{ Paths = <module files> }; when
       empty, the files of the reader modules loaded now (a development run).
     .OUTPUTS
       [hashtable] the pool state for Add-PoolJob, Receive-PoolResult and Close-ReaderPool.
@@ -5007,35 +4773,27 @@ function Close-ReaderPool {
 
 }
 $null = New-Module -Name IonReaders -ScriptBlock $IonReaderBlock
-$IonWorkerInit = @{ Code = $IonReaderBlock.ToString() }
+$IonWorkerInit = @{ Ast = $IonReaderBlock.Ast }
 
-# ==== Module XlsxWriter.psm1 ====
+# ==== Module ReportExport.psm1 ====
 <#
-XlsxWriter.psm1 - writes a small Excel workbook (.xlsx) with .NET only: no Excel, no module.
+ReportExport.psm1 - screen summary formatting, workbook sheets/tabs, breach advice, and ECMA-376 .xlsx writer.
 
-  Purpose:     The results file of Ion: one workbook with tabs (the PAM, 2026-11-20: a CSV cannot have tabs).
-               Each tab has a bold header row; a list tab also has the header frozen and filter buttons on, and its
-               link column holds clickable links (the PAM, 2026-11-20); chosen columns wrap their text, and columns the
-               person fills in can have a dropdown list of fixed words (the PAM, 2026-11-21). A list tab can be an Excel
-               Table, with date cells, a confidence fill and frozen columns; every tab prints landscape, fit to width,
-               with "CUI" as header and footer (the PAM, 2026-11-24: one Hits table, as previewed).
-  Inputs:      the tabs to write (New-XlsxSheet), each with its columns and rows of cells (text, whole numbers, or
-               formulas that Ion's own code builds: New-XlsxFormula).
-  Outputs:     one .xlsx file (Office Open XML, ECMA-376: a zip of XML parts).
-  Depends on:  .NET System.IO.Compression (loaded here).
+  Purpose:     Builds report rows, severity counts, not-scanned groups, the Summary/Hits/Files/Not scanned/
+               By account/Method tabs, and writes the CUI-marked Excel workbook (.xlsx) with .NET only.
+  Inputs:      scan rows, summary metrics, output folder, site URL.
+  Outputs:     screen summaries and saved <OutputFolder>\<site>\Ion <site> <yyyy-MM-dd HHmm>.xlsx workbook.
+  Depends on:  PiiEngine.psm1 (Get-ConfidenceRank, Protect-PiiName), imported first; ScanQueue / Accountability at run time.
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7).
   Network:     none.
-  Writes:      the one .xlsx file the caller names; it never overwrites a file that exists.
+  Writes:      the one .xlsx workbook and its parent folders under OutputFolder; never overwrites an existing file.
   Credentials: none.
-
-  Safety:      every text cell is an inline string, never a formula, so text from a scanned file cannot run in Excel.
-               A formula cell comes only from New-XlsxFormula, whose text Ion's code builds from cell references and
-               table names, never from scanned text.
 #>
 
 Add-Type -AssemblyName System.IO.Compression
 
+# ==== XlsxWriter.psm1 ====
 # Excel limits: 31 characters in a tab name, 32,767 in a cell (ECMA-376 and Excel's specifications and limits).
 $script:MaxSheetName = 31
 $script:MaxCellText = 32767
@@ -5049,8 +4807,8 @@ $script:RelNs = 'http://schemas.openxmlformats.org/officeDocument/2006/relations
 $script:PackageRelNs = 'http://schemas.openxmlformats.org/package/2006/relationships'
 
 # Cell styles: 0 = normal, 1 = bold (the header row and the Summary labels), 2 = a link (blue, underlined),
-# 3 = wrapped text, top-aligned (long prose, for example the Method tab; the PAM, 2026-11-21), 4 = a date and time,
-# 5, 6, 7 = the High, Medium, Low fill of a confidence cell (the PAM, 2026-11-24, the approved preview).
+# 3 = wrapped text, top-aligned (long prose, for example the Method tab; the Administrator, 2026-11-21), 4 = a date and time,
+# 5, 6, 7 = the High, Medium, Low fill of a confidence cell (the Administrator, 2026-11-24, the approved preview).
 $script:StylesXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
     '<numFmts count="1"><numFmt numFmtId="164" formatCode="yyyy-mm-dd hh:mm"/></numFmts>' +
@@ -5075,7 +4833,7 @@ $script:StylesXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
 $script:FillStyle = @{ 'High' = 5; 'Medium' = 6; 'Low' = 7 }
 # The date and time texts Ion writes ("Last saved" and the like), read as Excel date cells; any other text stays text.
 $script:DateFormats = [string[]]@('yyyy-MM-dd HH:mm', 'yyyy-MM-dd HH:mm:ss', 'yyyy-MM-dd')
-# Every tab prints landscape, one page wide, "CUI" centred at the top and bottom (the PAM, 2026-11-24).
+# Every tab prints landscape, one page wide, "CUI" centred at the top and bottom (the Administrator, 2026-11-24).
 $script:PrintXml = '<pageMargins left="0.4" right="0.4" top="0.6" bottom="0.6" header="0.3" footer="0.3"/>' +
     '<pageSetup orientation="landscape" fitToWidth="1" fitToHeight="0"/>' +
     '<headerFooter><oddHeader>&amp;CCUI</oddHeader><oddFooter>&amp;CCUI</oddFooter></headerFooter>'
@@ -5446,25 +5204,7 @@ function Export-Xlsx {
     }
 }
 
-# ==== Module Report.psm1 ====
-<#
-Report.psm1 - the scan results for a person: the report rows and the summary on screen.
-
-  Purpose:     Holds the report rows, sorts them worst PII type first and shows the summary (totals and hits per type).
-               The workbook (Summary tab first, Hits and Files tables, Not scanned; the PAM, 2026-11-20: tabs
-               to cut noise; no .txt or .csv) is built by ReportBook.psm1, split from this file (fleet v2 DEC 6, 2026-11-23).
-  Inputs:      report rows (New-ReportRow) from ChannelScan.psm1; values in them are already masked.
-  Outputs:     the summary on screen; report rows.
-  Depends on:  PiiDetectors.psm1 (Find-PiiInText), PiiMasking.psm1 (Protect-PiiName, Protect-PiiText), imported first;
-               at run time also ScanMeter.psm1 (the screen tables), imported later by Find-ChannelPII.ps1.
-  How to run:  imported by Find-ChannelPII.ps1; not run on its own.
-  Run target:  Windows PowerShell 5.1 (also PowerShell 7).
-  Network:     none.
-  Writes:      none (ReportBook.psm1 saves the workbook).
-  Credentials: none.
-#>
-
-
+# ==== Report.psm1 ====
 # =====================================================================================
 # Settings
 # =====================================================================================
@@ -5473,17 +5213,17 @@ Report.psm1 - the scan results for a person: the report rows and the summary on 
 $script:Rank = @{ 'High' = 3; 'Medium' = 2; 'Low' = 1 }
 
 # PII types from most to least damaging, for sorting and for the order of the tabs. AFI 33-332 gives no ranking
-# (A3.1 lists only the factors for judging harm), so this is the PAM's order (2026-11-20): SSN and date of birth
+# (A3.1 lists only the factors for judging harm), so this is the Administrator's order (2026-11-20): SSN and date of birth
 # first, then identity documents and accounts, then contact details.
 $script:SeverityOrder = @('SSN', 'Date of birth', 'Passport', 'Payment card', 'DoD ID', 'Home address', 'Name', 'Phone', 'Personal e-mail')
 
 $script:TopItems = 10   # how many files the screen summary lists (the workbook lists all)
-# Under the table of types: what High, Medium and Low mean (the PAM, 2026-11-21: plain words for a unit member).
+# Under the table of types: what High, Medium and Low mean (the Administrator, 2026-11-21: plain words for a unit member).
 $script:ConfidenceKey = @('High = labelled ("SSN:") or a sure pattern. Medium = right form, no label.', 'Low = weak match, often not PII.')
 
-# Screen colours (the PAM, 2026-11-20: less grey, more format), of the 16 console colours: Cyan = headings and labels,
+# Screen colours (the Administrator, 2026-11-20: less grey, more format), of the 16 console colours: Cyan = headings and labels,
 # White = values, Green = clean or done, Yellow = check by hand and Medium, Red = possible PII, High and errors,
-# Gray = hints and folder-row labels, DarkGray = rules and table borders, DarkCyan (teal) = folder names (the PAM, 2026-11-20).
+# Gray = hints and folder-row labels, DarkGray = rules and table borders, DarkCyan (teal) = folder names (the Administrator, 2026-11-20).
 $script:ScreenColors = @{ Title = 'Cyan'; Label = 'Cyan'; Text = 'White'; Good = 'Green'; Accent = 'Yellow'; Alert = 'Red'
     Muted = 'Gray'; Rule = 'DarkGray'; Folder = 'DarkCyan' }
 
@@ -5591,12 +5331,12 @@ function Write-Ui {
 }
 
 function Get-IonMark {
-    # The app's mark as text: the Greek letter gamma (Logo Studies, the PAM's choice of 2026-11-20), written as a code so the script stays ASCII.
+    # The app's mark as text: the Greek letter gamma (Logo Studies, the Administrator's choice of 2026-11-20), written as a code so the script stays ASCII.
     return [string][char]0x3B3
 }
 
 function Write-Banner {
-    # A heading line "==== <text> ====" in the title colour. With -Mark (the start line next to "Ion" only; the PAM,
+    # A heading line "==== <text> ====" in the title colour. With -Mark (the start line next to "Ion" only; the Administrator,
     # 2026-11-21): "==== <mark> <text> ====", the mark in the mark's eye colour (yellow).
     param([string]$Text, [switch]$Mark)
     if (-not $Mark) { Write-Ui ('==== ' + $Text + ' ====') 'Title'; return }
@@ -5675,7 +5415,7 @@ function Get-NotScannedGroup {
 function Get-NotScannedCounts {
     <#
     .SYNOPSIS
-      How many files were not scanned, per reason, most first (the PAM, 2026-11-20: see at once what to check by hand).
+      How many files were not scanned, per reason, most first (the Administrator, 2026-11-20: see at once what to check by hand).
     .PARAMETER Rows
       All report rows.
     .OUTPUTS
@@ -5823,44 +5563,22 @@ function Add-PartRows {
     }
 }
 
-# ==== Module ReportBook.psm1 ====
-<#
-ReportBook.psm1 - the results workbook: its tabs, its Summary rows and where it is saved.
-
-  Purpose:     Builds the workbook tabs (Summary first, Hits and Files as Excel Tables, Not scanned, By account, Method)
-               with the review columns, and saves it as a new file under the output folder; the breach advice is on the Summary
-               tab and on screen at the end. Split from Report.psm1 (fleet v2 DEC 6, 2026-11-23: 450 lines for
-               hand-written code).
-  Inputs:      report rows (Report.psm1 New-ReportRow); values in them are already masked.
-  Outputs:     <OutputFolder>\<site>\Ion <site> <yyyy-MM-dd HHmm>.xlsx, and its path.
-  Depends on:  PiiDetectors.psm1 (Get-ConfidenceRank), PiiMasking.psm1 (Protect-PiiName), XlsxWriter.psm1 (New-XlsxSheet, New-XlsxFormula, Export-Xlsx),
-               Report.psm1 (Write-Ui, Get-SeverityIndex,
-               Get-TypeCounts, Get-NotScannedGroup, Get-NotScannedCounts, Get-ScanMetrics, Get-ScanSummaryText),
-               imported first; at run time also ScanMeter.psm1 and Accountability.psm1 (the By account and Method tabs).
-  How to run:  imported by Find-ChannelPII.ps1; not run on its own.
-  Run target:  Windows PowerShell 5.1 (also PowerShell 7).
-  Network:     none.
-  Writes:      the workbook and its site and day folders under the output folder (default Documents\Ion).
-               A new file each run; an existing result is never overwritten.
-  Credentials: none.
-#>
-
-
+# ==== ReportBook.psm1 ====
 # =====================================================================================
 # Settings
 # =====================================================================================
 
-# The tool's name on screen and in the workbook (the PAM, 2026-11-20).
+# The tool's name on screen and in the workbook (the Administrator, 2026-11-20).
 $script:ToolTitle = 'Ion - DoD365 PII Reporter'
 
 $script:MaxNameInPath = 40   # the site name is in the path twice: at most 40 characters keeps it under 260 (review of PR 41)
-# C6, the review columns the person fills in (the PAM, 2026-11-21), each with its dropdown (empty = free text); Ion never fills them.
-# Order: the answers first, then who and when (the PAM, 2026-11-24, the approved preview).
+# C6, the review columns the person fills in (the Administrator, 2026-11-21), each with its dropdown (empty = free text); Ion never fills them.
+# Order: the answers first, then who and when (the Administrator, 2026-11-24, the approved preview).
 $script:ReviewColumns = [ordered]@{ 'Is it PII?' = @('Yes', 'No', 'Not sure')
     'Action taken' = @('Removed', 'Moved', 'Access limited', 'Left (not PII)', 'Other')
     'Reported to Privacy Manager' = @('Yes', 'No', 'Not needed'); 'Reviewed by' = @(); 'Review date' = @() }
 # What to do with PII found where it should not be (rule source: AFI 33-332 para 3.1.2 as changed by AFI33-332_DAFGM2026-01,
-# 7 July 2026; edition: docs/DECISIONS.md). The wording is the README's "If it finds PII" section; scripts/build_site.py --check fails when they differ (the PAM, 2026-11-20).
+# 7 July 2026; edition: docs/DECISIONS.md). The wording is the README's "If it finds PII" section; scripts/build_site.py --check fails when they differ (the Administrator, 2026-11-20).
 $script:BreachAdvice = 'PII where it should not be is a potential or actual breach; report it to your servicing Privacy ' +
                        'Manager/Monitor without delay (AFI 33-332 para 3.1.2, as changed by AFI33-332_DAFGM2026-01 (7 July 2026), ' +
                        'page 1, second paragraph).'
@@ -5876,7 +5594,7 @@ $script:StartHere = @(
     @('Start here: 4', ('On the tab Hits, in the same row, do these actions: (1) In Is it PII?, select Yes, No or Not sure. ' +
         '(2) In Action taken, select the action that you did. (3) In Reported to Privacy Manager, select Yes, No or Not needed. ' +
         '(4) In Reviewed by, type your name. (5) In Review date, type the date of your check. The row is complete.')))
-# Shown as two lines, the advice and its rule source (the PAM, 2026-11-21); one line if no "(AFI ...)." part is found.
+# Shown as two lines, the advice and its rule source (the Administrator, 2026-11-21); one line if no "(AFI ...)." part is found.
 $script:BreachLines = @($script:BreachAdvice)
 if ($script:BreachAdvice -match '^(.*) \((AFI .*)\)\.$') { $script:BreachLines = @(($Matches[1] + '.'), ('Source: ' + $Matches[2] + '.')) }
 
@@ -5887,7 +5605,7 @@ if ($script:BreachAdvice -match '^(.*) \((AFI .*)\)\.$') { $script:BreachLines =
 function Get-ResultPath {
     <#
     .SYNOPSIS
-      A new workbook path: <OutputFolder>\<site>\Ion <site> <yyyy-MM-dd HHmm>.xlsx (the PAM, 2026-11-21), with (2), (3) ...
+      A new workbook path: <OutputFolder>\<site>\Ion <site> <yyyy-MM-dd HHmm>.xlsx (the Administrator, 2026-11-21), with (2), (3) ...
       if the name exists, so a result is never overwritten. Creates the folder. The site name is masked like any name the
       tool shows (found PII only); characters Windows refuses in a folder name are replaced.
     .PARAMETER OutputFolder
@@ -5957,7 +5675,7 @@ function Get-WorkbookSheets {
     <#
     .SYNOPSIS
       The tabs of the workbook: Summary first; Hits (every hit, one Excel Table: filter, sort, pivot) and Files (one row
-      per file) when there are hits; then Not scanned, By account and Method (the PAM, 2026-11-24: as previewed).
+      per file) when there are hits; then Not scanned, By account and Method (the Administrator, 2026-11-24: as previewed).
     .PARAMETER Rows
       All report rows.
     .PARAMETER ItemsScanned
@@ -5972,7 +5690,7 @@ function Get-WorkbookSheets {
     param([object[]]$Rows, [int]$ItemsScanned, [System.Collections.IDictionary]$Header, [string]$FolderLabel)
     $hits = @($Rows | Where-Object { (Get-ConfidenceRank $_.Confidence) -gt 0 } |
         Sort-Object @{ Expression = { Get-ConfidenceRank $_.Confidence }; Descending = $true }, @{ Expression = { Get-SeverityIndex $_.Detector } }, Channel, Item)
-    # The review columns right after the hit, then who and when (accountability names: the PAM, 2026-11-21; the Method tab explains them).
+    # The review columns right after the hit, then who and when (accountability names: the Administrator, 2026-11-21; the Method tab explains them).
     $columns = @('ID', 'Type', 'Confidence', $FolderLabel, 'File', 'Masked value', 'Context') + @($script:ReviewColumns.Keys) +
         @('Last saved', 'Last saved by', 'PII first saved', 'PII first saved by', 'Created', 'Created by', 'History note', 'Own permissions',
             'Access entries', 'Found in', 'Link')
@@ -5994,17 +5712,17 @@ function Get-WorkbookSheets {
     }
     $notes = @($Rows | Where-Object { (Get-ConfidenceRank $_.Confidence) -eq 0 })
     if ($notes.Count -gt 0) {
-        # A Group column, so the tab filters by the groups the Summary counts (the PAM, 2026-11-21).
+        # A Group column, so the tab filters by the groups the Summary counts (the Administrator, 2026-11-21).
         $sheets.Add((New-XlsxSheet 'Not scanned' @('Status', $FolderLabel, 'File', 'Reason', 'Group', 'Link') `
             @($notes | ForEach-Object { , @($_.Detector, $_.Channel, $_.Item, $_.Context, (Get-NotScannedGroup $_), $_.Link) }) `
             @(14, 22, 45, 70, 30, 50) -List -Table 'tblNotScanned' -LinkColumn 2 -LinkTarget 5))
     }
-    $accounts = @(Get-AccountRows $hits)   # C6 (the PAM, 2026-11-21): whom to contact first
+    $accounts = @(Get-AccountRows $hits)   # C6 (the Administrator, 2026-11-21): whom to contact first
     if ($accounts.Count -gt 0) {
         $sheets.Add((New-XlsxSheet 'By account' @('PII first saved by', 'Files', 'High', 'Medium', 'Low') $accounts @(40, 9, 9, 9, 9) -List -Table 'tblAccounts'))
     }
     $method = @(Get-MethodRows | Where-Object { $accounts.Count -gt 0 -or $_[0] -ne 'By account tab' })   # no row for a tab that is not there
-    $sheets.Add((New-XlsxSheet 'Method' @('Topic', 'How Ion works it out') $method @(34, 110) -List -Table 'tblMethod' -WrapColumns @(1)))   # the PAM, 2026-11-21
+    $sheets.Add((New-XlsxSheet 'Method' @('Topic', 'How Ion works it out') $method @(34, 110) -List -Table 'tblMethod' -WrapColumns @(1)))   # the Administrator, 2026-11-21
     return $sheets.ToArray()
 }
 
@@ -6117,7 +5835,7 @@ function Publish-ScanReport {
         if ($line.LabelLength -gt 0) { Write-Ui $line.Text.Substring(0, $line.LabelLength) 'Label' -NoNewline; Write-Ui $line.Text.Substring($line.LabelLength) $line.Kind }
         else { Write-Ui $line.Text $line.Kind }
     }
-    # The advice comes after the saved path (the PAM, 2026-11-21), and also when the save fails ('finally').
+    # The advice comes after the saved path (the Administrator, 2026-11-21), and also when the save fails ('finally').
     try {
         $path = Get-ResultPath $OutputFolder $SiteUrl
         Export-Xlsx -Path $path -Sheets (Get-WorkbookSheets $Rows $ItemsScanned $Header $FolderLabel)
@@ -6130,25 +5848,24 @@ function Publish-ScanReport {
     return $path
 }
 
-# ==== Module ScanMeter.psm1 ====
+# ==== Module ScanQueue.psm1 ====
 <#
-ScanMeter.psm1 - the progress bars and the per-folder lines of a scan: counts only, so the screen shows no PII.
+ScanQueue.psm1 - progress meters, box tables, reader-pool queue feeding, and shared SharePoint/drive scan loop.
 
-  Purpose:     Lets the person follow a scan: files done of the total, read, not scanned, possible PII,
-               time used and time left (the PAM, 2026-11-20). No found value is shown; channel and file
-               names show only masked PII.
-  Inputs:      the report row list and the counts the scan functions of ChannelScan.psm1 give.
-  Outputs:     a meter (hashtable), status text, percent, a per-file progress bar and one coloured line per folder,
-               counts in fixed widths (the PAM, 2026-11-20); the boxed screen tables of the summary, cut to the window.
-  Depends on:  PiiMasking.psm1 (Protect-PiiName), Report.psm1 (Write-Ui), imported first by Find-ChannelPII.ps1.
+  Purpose:     Displays live progress bars and masked folder lines, feeds ReaderPool workers, collects results,
+               populates accountability columns, and runs the Scan now? confirmation prompt.
+  Inputs:      file lists, ReaderPool workers, target info.
+  Outputs:     live progress UI, queued scan summary, report rows.
+  Depends on:  PiiEngine.psm1, TextExtract.psm1, ReaderPool.psm1, ReportExport.psm1, Accountability.psm1, imported first.
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7).
-  Network:     none of its own: it reads a download stream that ChannelScan.psm1 opens.
-  Writes:      none (screen only).
+  Network:     none itself (callers supply SharePoint getters when scanning online).
+  Writes:      none.
   Credentials: none.
 #>
 
 
+# ==== ScanMeter.psm1 ====
 # The per-file bar is shown only from this size on: a small file is done in a moment, and each bar update costs time in
 # Windows PowerShell 5.1 (the author's choice, 2026-11-20: faster scans of many small files).
 $script:FileBarBytes = 1MB
@@ -6157,7 +5874,7 @@ $script:FileBarBytes = 1MB
 $script:RateAfterSeconds = 1
 
 # A streamed download is read this much at a time (64 KB); the bar is updated at most this often (8 a second): smaller
-# steps, so the bar moves smoothly (the PAM, 2026-11-21: 256 KB and 4 a second looked choppy).
+# steps, so the bar moves smoothly (the Administrator, 2026-11-21: 256 KB and 4 a second looked choppy).
 $script:ChunkBytes = 64KB
 $script:BarRefreshMs = 125
 
@@ -6169,7 +5886,7 @@ $script:MinLastColumn = 12
 # A coloured line of live counts is printed under the progress bar at most this often (and after each folder).
 $script:LiveLineSeconds = 10
 
-# Width of each count on the live lines: 5 characters (up to 99,999), so the columns do not move (the PAM, 2026-11-20).
+# Width of each count on the live lines: 5 characters (up to 99,999), so the columns do not move (the Administrator, 2026-11-20).
 $script:CountWidth = 5
 
 # Length of the grey rule after each folder's lines.
@@ -6179,7 +5896,7 @@ $script:RuleWidth = 100
 $script:MaxNameWidth = 40
 $script:TotalName = 'Total'
 
-# Short PII type names for the live line, in the PAM's order (Report.psm1 $SeverityOrder).
+# Short PII type names for the live line, in the Administrator's order (ReportExport.psm1 $SeverityOrder).
 $script:ShortTypeNames = [ordered]@{ 'SSN' = 'SSN'; 'Date of birth' = 'DOB'; 'Passport' = 'Passport'; 'Payment card' = 'Card'
     'DoD ID' = 'DoD ID'; 'Home address' = 'Address'; 'Name' = 'Name'; 'Phone' = 'Phone'; 'Personal e-mail' = 'E-mail' }
 
@@ -6229,7 +5946,7 @@ function Format-Duration {
 }
 
 function Format-Count {
-    # A count right-aligned in $CountWidth characters, so the columns of the live lines stay in place (the PAM, 2026-11-20).
+    # A count right-aligned in $CountWidth characters, so the columns of the live lines stay in place (the Administrator, 2026-11-20).
     param([long]$Value)
     return ([string]$Value).PadLeft($script:CountWidth)
 }
@@ -6245,7 +5962,7 @@ function Get-TimeLeftText {
 function Get-ScanMeterText {
     <#
     .SYNOPSIS
-      The run so far as one line for the scan bar (its middle line; the PAM, 2026-11-21): files done of the total with
+      The run so far as one line for the scan bar (its middle line; the Administrator, 2026-11-21): files done of the total with
       the percent, read, not scanned, possible PII, the time elapsed and left, then the hits per type.
     .PARAMETER Meter
       Output of New-ScanMeter.
@@ -6337,7 +6054,7 @@ function Write-MeterLine {
     Write-CountPart 'read' $Meter.Read 'Text'
     Write-CountPart 'not scanned' $Meter.Skipped (Get-CountKind $Meter.Skipped 'Accent')
     Write-CountPart 'possible PII' $Meter.Hits (Get-CountKind $Meter.Hits 'Alert')
-    # No time here: the scan bar shows the time elapsed and left (the PAM, 2026-11-21).
+    # No time here: the scan bar shows the time elapsed and left (the Administrator, 2026-11-21).
     $types = Get-TypeCountText $Meter
     if ($types) { Write-Ui ' | ' 'Rule' -NoNewline; Write-Ui $types 'Alert' -NoNewline }
     Write-Ui ''
@@ -6360,7 +6077,7 @@ function Write-FileStep {
     <#
     .SYNOPSIS
       The second progress bar: the download of the file in work, by byte (MB done of the size, speed, time left), so a
-      large file does not look hung (the PAM, 2026-11-21: the bar must move). Reading happens in the workers, after it.
+      large file does not look hung (the Administrator, 2026-11-21: the bar must move). Reading happens in the workers, after it.
     .PARAMETER Size
       The file size in bytes.
     .PARAMETER Step
@@ -6387,14 +6104,14 @@ function Write-FileStep {
             if ($Done -lt $Size) { $status += ' | about {0} left' -f (Format-Duration ([TimeSpan]::FromSeconds(($Size - $Done) / $rate))) }
         }
     }
-    # No -ParentId: Windows PowerShell ISE indents a child bar; the PAM wants both bars aligned (2026-11-20).
+    # No -ParentId: Windows PowerShell ISE indents a child bar; the Administrator wants both bars aligned (2026-11-20).
     Write-Progress -Id 2 -Activity $Step -Status $status -PercentComplete $percent
 }
 
 function Write-DownloadsStep {
     <#
     .SYNOPSIS
-      The second progress bar while several files download at once (ChannelScan.psm1, the PAM 2026-11-24): one bar for
+      The second progress bar while several files download at once (ChannelScan.psm1, the Administrator 2026-11-24): one bar for
       all files in flight, "3 files: 12.4 of 30.1 MB (41%) | 2.1 MB/s". No bar while the total is under 1 MB, as for one file.
     .PARAMETER Files
       The number of files downloading now.
@@ -6468,7 +6185,7 @@ function Format-BoxTable {
     $widths = @(for ($i = 0; $i -lt $Columns.Count; $i++) {
         [Math]::Max($Columns[$i].Length, (@($Rows | ForEach-Object { ([string]$_[$i]).Length }) + 0 | Measure-Object -Maximum).Maximum)
     })
-    # Too wide for the screen: the last column (a file path) is cut, with '...', so no line wraps (the PAM, 2026-11-21).
+    # Too wide for the screen: the last column (a file path) is cut, with '...', so no line wraps (the Administrator, 2026-11-21).
     $total = ($widths | Measure-Object -Sum).Sum + 3 * $widths.Count + 1
     if ($MaxWidth -gt 0 -and $total -gt $MaxWidth) { $widths[-1] = [Math]::Max([Math]::Min($script:MinLastColumn, $widths[-1]), $widths[-1] - ($total - $MaxWidth)) }
     $border = '+' + ((@($widths) | ForEach-Object { '-' * ($_ + 2) }) -join '+') + '+'
@@ -6522,7 +6239,7 @@ function Write-ChannelLine {
     <#
     .SYNOPSIS
       Prints one row when a folder (a channel) is done: its (masked) name first in teal, in a fixed-width column,
-      then its counts in fixed widths with grey labels (the PAM, 2026-11-20). Not scanned in yellow and possible
+      then its counts in fixed widths with grey labels (the Administrator, 2026-11-20). Not scanned in yellow and possible
       PII in red when there are some; other numbers white.
     .PARAMETER Channel
       The channel name (masked here).
@@ -6552,26 +6269,7 @@ function Write-RuleLine {
     Write-Ui ('  ' + ('-' * $script:RuleWidth)) 'Rule'
 }
 
-# ==== Module ScanQueue.psm1 ====
-<#
-ScanQueue.psm1 - turns the reader pool's results into report rows, in the order files finish.
-
-  Purpose:     The link between the scans (ChannelScan.psm1 for SharePoint, DriveScan.psm1 for drives) and the
-               reader pool (ReaderPool.psm1): each file handed in gets its rows and is counted on the meter when its
-               worker finishes; a file with the same content as one read before gets that file's hits.
-  Inputs:      per file: how the report shows it (folder, item, link, change time) and its bytes or path.
-  Outputs:     report rows (Report.psm1 New-ReportRow) in the caller's row list; the meter and the live line.
-  How to run:  imported by Find-ChannelPII.ps1; not run on its own.
-  Depends on:  ReaderPool.psm1, PiiMasking.psm1, TextExtract.psm1 (Test-SupportedFile), Report.psm1 (New-ReportRow,
-               Add-PartRows, Write-Ui) and ScanMeter.psm1, imported first by Find-ChannelPII.ps1. The steps both scans
-               share (a file's start rows, the scan run around the groups) live here, once.
-  Run target:  Windows PowerShell 5.1 (also PowerShell 7).
-  Network:     none here.
-  Writes:      none (rows in memory).
-  Credentials: none.
-#>
-
-
+# ==== ScanQueue.psm1 ====
 # The "PII first saved" cells of a hit whose version history is not read (an e-signature DoD ID): "Not recorded", the
 # word the By account tab leaves out, so no account is made up (review of PR 50); the History note says why.
 $script:NotLookedUp = 'Not recorded'
@@ -6709,7 +6407,7 @@ function Invoke-GroupScan {
         $files = $group.Files
         if ($Queue.ContainsKey('GroupScan') -and $Queue.GroupScan) { & $Queue.GroupScan $Queue $group; $files = @() }
         foreach ($file in $files) {
-            # The file in work, with PII masked (the PAM, 2026-11-20: a slow file is then visible).
+            # The file in work, with PII masked (the Administrator, 2026-11-20: a slow file is then visible).
             Write-ScanBar $Queue ('File: ' + (& $ShownFile $group $file))
             $firstRow = $Queue.Rows.Count
             if (-not (& $StartFile $Queue $group $file)) {
@@ -6726,7 +6424,7 @@ function Invoke-GroupScan {
 function Add-WhoToRows {
     <#
     .SYNOPSIS
-      The accountability columns of a file's rows (the PAM, 2026-11-21): from its SharePoint fields and version
+      The accountability columns of a file's rows (the Administrator, 2026-11-21): from its SharePoint fields and version
       history (Info.Who and Info.Added), or from the drive file (Info.DrivePath), plus the names an Office file stores.
     .PARAMETER Info
       The file's queue info.
@@ -6764,7 +6462,7 @@ function Get-AddedByHit {
     <#
     .SYNOPSIS
       Who first saved each hit, from the version history, except for a DoD ID in an e-signature (the only Low DoD ID):
-      its history is not read, so a file with only such hits costs no version reads (the PAM, 2026-11-21).
+      its history is not read, so a file with only such hits costs no version reads (the Administrator, 2026-11-21).
     .PARAMETER Info
       The file's queue info (Added: the version-history lookup).
     .PARAMETER Hits
@@ -6806,7 +6504,7 @@ function Write-WaitBar {
     <#
     .SYNOPSIS
       The scan bar while every worker is busy or a folder waits for its last files: the time keeps moving and the bar
-      says what it waits for, so the scan does not look hung (the PAM, 2026-11-21).
+      says what it waits for, so the scan does not look hung (the Administrator, 2026-11-21).
     .PARAMETER Queue
       Output of New-ScanQueue.
     .PARAMETER Busy
@@ -6822,7 +6520,7 @@ function Write-ScanBar {
     <#
     .SYNOPSIS
       The scan bar: the folder, the run so far, then the file in work (CurrentOperation). ISE shows CurrentOperation
-      after the status, and a line break in the status does not show (the PAM's layout test, 2026-11-21); layout
+      after the status, and a line break in the status does not show (the Administrator's layout test, 2026-11-21); layout
       test 2 (docs/reviews/2026-11-21-ise-progress-test.md) decides how the file gets a line of its own.
     .PARAMETER Queue
       Output of New-ScanQueue (Activity: the folder line; Meter).
@@ -6893,7 +6591,7 @@ function Confirm-ScanStart {
     <#
     .SYNOPSIS
       Before a scan: how many files and MB were found, and how many will be listed but not read (type or size); then
-      "Scan now? [Y/n]" (Enter = yes; the PAM, 2026-11-21: a guard against a scope larger than meant).
+      "Scan now? [Y/n]" (Enter = yes; the Administrator, 2026-11-21: a guard against a scope larger than meant).
     .PARAMETER Groups
       The groups, each with Files.
     .PARAMETER Facts
@@ -6973,17 +6671,17 @@ function Invoke-ScanRun {
 <#
 Accountability.psm1 - who made and changed a file with PII, and who put the PII in and when.
 
-  Purpose:     The PAM, 2026-11-21: for accountability and to date a possible incident, each file with a hit shows
+  Purpose:     The Administrator, 2026-11-21: for accountability and to date a possible incident, each file with a hit shows
                who last modified it, when it was made and by whom, and who added the PII and when, by e-mail
                address (the report is CUI and stays in DoD365). SharePoint and Teams: the file's fields and its
                version history (the first version that holds each hit). Drives: the file's owner (a Windows logon
-               name, which Windows looks up from the owner's ID; no search of the directory: "No reconnaissance"), its times, and the names an Office file stores.
+               name, which Windows looks up from the file owner's ID; no search of the directory: "No reconnaissance"), its times, and the names an Office file stores.
   Inputs:      the file's list item, path or reader result, and its hits.
-  Outputs:     @{ ModifiedBy; Created; CreatedBy; AddedOn; AddedBy; HistoryNote; ByHit } for Report.psm1 Set-RowAccountability.
+  Outputs:     @{ ModifiedBy; Created; CreatedBy; AddedOn; AddedBy; HistoryNote; ByHit } for ReportExport.psm1 Set-RowAccountability.
                "PII first saved" and "PII first saved by" hold only a date and a person (or "Not recorded"); every caveat goes in
-               "History note" (the PAM, 2026-11-21: the columns must be easy to understand).
+               "History note" (the Administrator, 2026-11-21: the columns must be easy to understand).
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
-  Depends on:  TextExtract.psm1 and ReaderPool.psm1 (Invoke-LimitedRead), PiiDetectors.psm1 (Find-PiiInText) and, for SharePoint,
+  Depends on:  TextExtract.psm1 and ReaderPool.psm1 (Invoke-LimitedRead), PiiEngine.psm1 (Find-PiiInText) and, for SharePoint,
                PnP.PowerShell 1.12.0 (Get-PnPFileVersion, Get-PnPContext; read-only), imported first.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7).
   Network:     only the signed-in site (version history and permissions of files with a hit; the site's own 3 groups).
@@ -6995,7 +6693,7 @@ Accountability.psm1 - who made and changed a file with PII, and who put the PII 
 # Old versions read per file with a hit, oldest first (a file with more is dated from the oldest ones read).
 $script:MaxVersionsRead = 30
 # An old version larger than this is not downloaded: it counts as a version that could not be read (plan step 5 of the
-# next build, the PAM, 2026-11-26, approved a cap; the value is the author's choice: the default file limit, -MaxFileMB 25).
+# next build, the Administrator, 2026-11-26, approved a cap; the value is the author's choice: the default file limit, -MaxFileMB 25).
 $script:MaxVersionBytes = 25MB
 $script:NotRecorded = 'Not recorded'
 $script:NoHistory = 'The file has no version history'
@@ -7007,7 +6705,7 @@ $script:DriveNoHistory = 'A drive keeps no file history'
 # The two fallbacks of "PII first saved by" say so in the History note (review of PR 41).
 $script:NoOlderVersion = "No older version: the file's creator is named"
 $script:OnlyCurrentVersion = 'In no older version: the current version is named'
-# Plan step 5 (the PAM, 2026-11-26: docs/DECISIONS.md): who has access to a web file with PII, as counts of entry kinds.
+# Plan step 5 (the Administrator, 2026-11-26: docs/DECISIONS.md): who has access to a web file with PII, as counts of entry kinds.
 $script:NotReadable = 'Not readable'
 $script:NotReadableEntries = 'Not readable (owner only)'
 # Each entry kind: its name for 1 and for more (in this order on the cell).
@@ -7298,7 +6996,7 @@ function Find-PiiAddedVersion {
     <#
     .SYNOPSIS
       For each hit of a SharePoint file, the first version that holds it (who saved it and when), and each time it
-      was put back after a version without it (the PAM, 2026-11-21). A hit
+      was put back after a version without it (the Administrator, 2026-11-21). A hit
       in no older version came with the current one (the last modifier). Read-only; versions stay in memory.
     .PARAMETER Ref
       The file's server-relative path.
@@ -7325,7 +7023,7 @@ function Find-PiiAddedVersion {
     $readFailed = $false   # a version before this one could not be read (the cap only leaves newer ones unread)
     $keys = $open
     $present = @{}   # per hit: in the last version read ($true/$false), or not known after a version not read ($null)
-    $back = @{}      # per hit: when it was put back after a version without it (the PAM, 2026-11-21)
+    $back = @{}      # per hit: when it was put back after a version without it (the Administrator, 2026-11-21)
     $unsure = @{}    # per hit: a version not read after the hit was seen: a removal and put-back there cannot be named
     foreach ($version in $versions) {   # every version read (not only to the first with each hit): put-backs count too
         $text = Read-VersionText $version $context $Name
@@ -7386,7 +7084,7 @@ function Get-DriveWho {
 function Get-AccountRows {
     <#
     .SYNOPSIS
-      The By account tab (C6, the PAM, 2026-11-21): one row per "PII first saved by" account, most hits first, with how
+      The By account tab (C6, the Administrator, 2026-11-21): one row per "PII first saved by" account, most hits first, with how
       many files and how many High, Medium and Low hits it first saved. Each file counts once per account; "Not
       recorded" and empty cells are left out. The same limits as the column apply (see the Method tab).
     .PARAMETER Hits
@@ -7414,8 +7112,8 @@ function Get-MethodRows {
     <#
     .SYNOPSIS
       The rows of the workbook's Method tab: how Ion finds possible PII, how sure each confidence is for each type (as
-      src/PiiDetectors.psm1 decides it), and how it fills the who-and-when columns, with what that evidence can and
-      cannot show (the PAM, 2026-11-21: the method on its own page; "PII first saved by" is evidence, not proof).
+      src/PiiEngine.psm1 decides it), and how it fills the who-and-when columns, with what that evidence can and
+      cannot show (the Administrator, 2026-11-21: the method on its own page; "PII first saved by" is evidence, not proof).
     .OUTPUTS
       [object[]] rows of two cells (topic, text).
     #>
@@ -7471,28 +7169,25 @@ function Get-MethodRows {
         'check each hit. Ion leaves them empty. The first three have a dropdown list.'))
 }
 
-# ==== Module SiteTarget.psm1 ====
+# ==== Module ChannelScan.psm1 ====
 <#
-SiteTarget.psm1 - what the person gives Ion to scan, and the sign-in to that one site.
+ChannelScan.psm1 - target parsing (Teams link, site URL, drive folder), PnP CAC sign-in, libraries, and parallel downloads.
 
-  Purpose:     Reads a Teams link (a team's or a channel's), a SharePoint site address or a drive folder; turns a
-               Teams link alone into its team's site (a lookup at the tenant root, about that one group); signs in
-               to the site with the person's own CAC and checks that it belongs to the team in the link.
-  Inputs:      the text the person pastes.
-  Outputs:     a scan target (Get-ScanTarget) and the signed-in site address (Connect-TeamSite).
-  Depends on:  PnP.PowerShell 1.12.0; PiiMasking.psm1 (Protect-PiiText), Report.psm1 (Write-Ui), imported first.
+  Purpose:     Validates the user-supplied target, resolves a Teams link to its one site, connects via PnP
+               interactive CAC sign-in, lists document libraries and channel folders, and downloads files into memory.
+  Inputs:      Teams link, SharePoint site address, or drive path; ReaderPool workers.
+  Outputs:     validated target descriptors, SharePoint scan report rows and metrics.
+  Depends on:  PnP.PowerShell 1.12.0; PiiEngine.psm1, ReaderPool.psm1, ReportExport.psm1, ScanQueue.psm1, Accountability.psm1.
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
-  Run target:  Windows PowerShell 5.1 (also PowerShell 7).
-  Network:     the tenant root (one group-site lookup for a Teams link) and the one site; nothing lists other
-               sites, teams or users ("No reconnaissance").
-  Writes:      none.
-  Credentials: the person's own CAC sign-in (PnP web login). Nothing is stored. One sign-in per host: each next site
-               connects without a sign-out between sites; Find-ChannelPII.ps1 signs out once, at the end of the run
-               (the PAM, 2026-11-24; probe 3, second run: docs/reviews/2026-11-24-device-probe-3.md).
+  Run target:  Windows PowerShell 5.1 (also PowerShell 7) with PnP.PowerShell 1.12.0.
+  Network:     SharePoint Online (https://usaf.dps.mil/sites/<team-site>) and Graph group lookup on the one signed-in host.
+  Writes:      none on SharePoint (read-only).
+  Credentials: none stored (interactive CAC sign-in only).
 #>
 
 
-# What Ion can scan, for the first question and after a wrong paste (the PAM, 2026-11-21: one short block, not one long line).
+# ==== SiteTarget.psm1 ====
+# What Ion can scan, for the first question and after a wrong paste (the Administrator, 2026-11-21: one short block, not one long line).
 $script:TargetHelp = "Paste one of these, or press Enter to exit:`n  - a Teams link: in Teams, ... next to the team or channel > Copy link`n" +
     "  - a SharePoint site address: https://usaf.dps.mil/teams/<team-site> (or /sites/)`n  - a drive folder: X:\<folder> or \\<server>\<share>\<folder>`n" +
     "  Several? Paste one, press Enter, paste the next; press Enter on an empty line to start (one workbook each)."
@@ -7506,13 +7201,13 @@ $script:DrivePathPattern = '^"?(?:[A-Za-z]:\\|\\\\[^\\/\s]+\\[^\\/]+)'
 $script:SiteUrlPattern = '^(?<host>https://[A-Za-z0-9.-]+)/(?::[a-z]:/r/)?(?<site>(?:sites|teams)/[^/?#\s]+)'
 
 # The tenant root of DoD365: a Teams link alone is turned into its team's site here (GroupSiteManager GetSiteStatus, a
-# read about the one group in the link; the PAM's test 2 of 2026-11-21 works). Only a site on this host is used.
+# read about the one group in the link; the Administrator's test 2 of 2026-11-21 works). Only a site on this host is used.
 # GetSiteStatus reports whether the group's site exists (0 not found, 1 being made, 2 ready); it is not the call that
 # creates one (CreateGroupEx). Microsoft documents no write for it; not proven on DoD365 (review of PR 49).
 $script:TenantRoot = 'https://usaf.dps.mil'
 
 # When the SharePoint sign-in cannot work on this computer (for example Connect-PnPOnline blocked outside the US: the
-# PAM, 2026-11-23), Ion does not stop: it shows how to scan a synced copy of the same files as a folder.
+# Administrator, 2026-11-23), Ion does not stop: it shows how to scan a synced copy of the same files as a folder.
 # Steps in ASD-STE100: one action each, with what the person sees next (review of PR 59).
 $script:SyncSteps = "`nSharePoint sign-in did not work on this computer. You can scan a synced copy of the files as a folder." +
     "`nIf the library is open in your browser already, start at the step with Sync." +
@@ -7529,7 +7224,7 @@ $script:SyncSteps = "`nSharePoint sign-in did not work on this computer. You can
 
 # The longest one SharePoint call may wait for its answer (milliseconds), set on the signed-in connection when it has
 # no limit or a longer one (the PnP 1.12.0 default is not verified here): a download, the file list, a version read.
-# Without it a stalled call can wait without end, and Ctrl+C cannot stop a call in progress (the PAM's gov run,
+# Without it a stalled call can wait without end, and Ctrl+C cannot stop a call in progress (the Administrator's gov run,
 # 2026-11-23: a scan hung after 50 minutes). 5 minutes: a 25 MB file on a slow link still downloads.
 $script:SharePointCallMs = 300000
 
@@ -7743,7 +7438,7 @@ function Connect-TeamSite {
       when that fails; it then checks that the site belongs to the team in the link. It then checks that the connection
       reaches that site (Assert-ConnectedSite) and that the person can open it. On any error it throws a message a
       person can act on (ConvertTo-FriendlyError). It does not sign out: the next site connects without a sign-out,
-      and Find-ChannelPII.ps1 signs out once at the end of the run, after an error or Ctrl+C too (the PAM, 2026-11-24).
+      and Find-ChannelPII.ps1 signs out once at the end of the run, after an error or Ctrl+C too (the Administrator, 2026-11-24).
     .PARAMETER Target
       Output of Get-ScanTarget.
     .OUTPUTS
@@ -7765,7 +7460,7 @@ function Connect-TeamSite {
         }
         Write-Ui ('Signing in to ' + (Protect-PiiName $site) + ' ...') 'Muted'
         Write-Ui '  If a sign-in window opens, sign in with your CAC. If you do not see the window, press Alt+Tab. If it says that you have no access, close it.' 'Muted'
-        # PnP prints a warning that suggests -Interactive (and its update notice): not useful to the person, so hidden (the PAM, 2026-11-20).
+        # PnP prints a warning that suggests -Interactive (and its update notice): not useful to the person, so hidden (the Administrator, 2026-11-20).
         $signingIn = $true
         Connect-PnPOnline -Url $site -UseWebLogin -WarningAction SilentlyContinue
         $signingIn = $false
@@ -7786,7 +7481,7 @@ function Read-ScanTargetList {
     <#
     .SYNOPSIS
       Asks for what to scan, then "Add another, or press Enter to start" until an empty line: one or more targets
-      (the PAM, 2026-11-24: several sites per run, one workbook each). Each target is checked as it is pasted
+      (the Administrator, 2026-11-24: several sites per run, one workbook each). Each target is checked as it is pasted
       (Read-ScanTarget); only the targets the person pastes are touched ("No reconnaissance").
     .PARAMETER Given
       A target given up front (the -SiteUrl setting): the list is that one target, without asking.
@@ -7828,27 +7523,7 @@ function Get-TargetLabel {
     return 'Teams link (team)'
 }
 
-# ==== Module ChannelScan.psm1 ====
-<#
-ChannelScan.psm1 - reads one team's or site's files and turns them into report rows.
-
-  Purpose:     The SharePoint and Teams steps of Find-ChannelPII.ps1 after the sign-in (SiteTarget.psm1), one
-               function per step: find the library, list the channel folders, scan each file with a progress bar
-               and live counts. Posts are not read (the PAM,
-               2026-11-20: one sign-in only; reading posts needs an admin-approved Graph permission).
-  Inputs:      the signed-in site (SiteTarget.psm1 Connect-TeamSite).
-  Outputs:     report rows (Report.psm1 New-ReportRow) added to the list the caller passes in.
-  Depends on:  PnP.PowerShell 1.12.0; PiiDetectors.psm1, PiiMasking.psm1, TextExtract.psm1, Report.psm1,
-               ScanMeter.psm1, SiteTarget.psm1 (all imported first by Find-ChannelPII.ps1).
-  How to run:  imported by Find-ChannelPII.ps1; not run on its own.
-  Run target:  Windows PowerShell 5.1 (also PowerShell 7).
-  Network:     only the one signed-in SharePoint site (SiteTarget.psm1 signs in). Nothing lists other sites or teams (no network
-               reconnaissance).
-  Writes:      none in SharePoint or Teams: read calls only. Rows go to an in-memory list.
-  Credentials: the person's own CAC sign-in (PnP web login). Nothing is stored.
-#>
-
-
+# ==== ChannelScan.psm1 ====
 # =====================================================================================
 # Settings
 # =====================================================================================
@@ -7859,7 +7534,7 @@ $script:LibraryNames = @('Shared Documents', 'Documents')
 # A document library is list template 101 (SharePoint ListTemplateType.DocumentLibrary).
 $script:DocumentLibraryTemplate = 101
 
-# Visible libraries that hold SharePoint's own files, not people's files: not scanned (the PAM, 2026-11-20: Site Assets,
+# Visible libraries that hold SharePoint's own files, not people's files: not scanned (the Administrator, 2026-11-20: Site Assets,
 # Preservation Hold Library and Site Collection Documents are scanned).
 $script:NotScannedLibraries = @('Style Library', 'Form Templates')
 
@@ -7868,12 +7543,12 @@ $script:NotChannelFolders = @('Forms')
 
 # Time spent downloading and spent reading, for the summary (it shows where a slow scan loses its time).
 # The per-file bar's heading while a file comes down from SharePoint into memory (never to disk). ISE adds a "." after a
-# bar's heading, so two here show as "..." (the PAM's layout test E, 2026-11-21).
+# bar's heading, so two here show as "..." (the Administrator's layout test E, 2026-11-21).
 $script:DownloadStep = 'Downloading..'
 
 $script:Timing = @{ Download = [TimeSpan]::Zero; Check = [TimeSpan]::Zero }
 
-# Streamed download (Get-FileBytes, the PAM 2026-11-21): File.OpenBinaryDirect on the signed-in connection, so the bar
+# Streamed download (Get-FileBytes, the Administrator 2026-11-21): File.OpenBinaryDirect on the signed-in connection, so the bar
 # counts bytes; $false for the rest of a scan after one failure. Tests replace the opener.
 $script:DirectDownload = $true
 # Opens the file as a stream on the signed-in PnP connection.
@@ -7883,7 +7558,7 @@ $script:OpenDirectStream = {
     return $fileType::OpenBinaryDirect((Get-PnPContext), $ServerRelativeUrl).Stream
 }
 
-# Parallel downloads (the PAM, 2026-11-24): 3 at once in a Fast run, 2 in a Normal run (the PAM, 2026-11-25), each in a
+# Parallel downloads (the Administrator, 2026-11-24): 3 at once in a Fast run, 2 in a Normal run (the Administrator, 2026-11-25), each in a
 # worker with its own copy of the signed-in connection.
 $script:ParallelDownloads = 3
 $script:NormalDownloads = 2
@@ -7946,7 +7621,7 @@ function Get-SiteDocumentLibraries {
     .SYNOPSIS
       The document libraries of the connected site that hold people's files: every visible library (template 101),
       without SharePoint's own ($NotScannedLibraries). The team's "Documents" library comes first. Only this one
-      site: subsites are not read (the PAM, 2026-11-20).
+      site: subsites are not read (the Administrator, 2026-11-20).
     .OUTPUTS
       [pscustomobject] Title, List (the PnP list), ServerRelativeUrl (/sites/<name>/Shared Documents),
       SiteRelativeUrl (Shared Documents); one per library.
@@ -7968,7 +7643,7 @@ function Get-ChannelFolderNames {
     <#
     .SYNOPSIS
       Lists the channel folders: the top-level folders of the library, without SharePoint's own. The scan
-      covers all of them (the PAM, 2026-11-20: no channel choice). A plain SharePoint site may have none.
+      covers all of them (the Administrator, 2026-11-20: no channel choice). A plain SharePoint site may have none.
     .PARAMETER Library
       One library of Get-SiteDocumentLibraries.
     .OUTPUTS
@@ -7995,7 +7670,7 @@ function Get-FieldValue {
 function Get-SafeLink {
     <#
     .SYNOPSIS
-      A link for the report that holds no PII and opens the exact file (the PAM, 2026-11-20). It is the file's own
+      A link for the report that holds no PII and opens the exact file (the Administrator, 2026-11-20). It is the file's own
       path when its path below the library holds no PII (Protect-PiiName on the whole path changes nothing). Else, for an Office file,
       a link by the file's ID (<site>/_layouts/15/Doc.aspx?sourcedoc={id}), which names nothing; else the deepest
       folder whose name is clean (at least the library). Each part is escaped, so names with '#', '%' or spaces work.
@@ -8253,19 +7928,19 @@ function Invoke-OneFileScan {
         $script:Timing.Download += $clock.Elapsed; Write-Progress -Id 2 -Activity $script:DownloadStep -Completed
         if ($paused -and $Pool.Jobs.Count -gt 0) { $Pool.Busy.Start() }
     }
-    # The main thread downloads the next file while workers read this one (speed, the PAM 2026-11-21).
+    # The main thread downloads the next file while workers read this one (speed, the Administrator 2026-11-21).
     Complete-FileScan $Queue $prepared $bytes
     return $true
 }
 
 # =====================================================================================
-# Parallel downloads (plan step 6, the PAM 2026-11-24: docs/reviews/2026-11-24-parallel-downloads-design.md)
+# Parallel downloads (plan step 6, the Administrator 2026-11-24: docs/reviews/2026-11-24-parallel-downloads-design.md)
 # =====================================================================================
 
 function Get-DownloadPlan {
     <#
     .SYNOPSIS
-      The order of one folder's files (the PAM, 2026-11-24): the files to download first, largest first (equal sizes
+      The order of one folder's files (the Administrator, 2026-11-24): the files to download first, largest first (equal sizes
       keep the list order); then the files that are not downloaded (file type not read, or over the size limit).
     .PARAMETER Files
       The folder's list items.
@@ -8633,7 +8308,7 @@ function Invoke-FileScan {
     $run = $Progress; if (-not $run) { $run = @{} }
     # A file's name and size, for the question before the scan.
     $facts = { param($file) $size = 0L; [void][long]::TryParse((Get-FieldValue $file 'File_x0020_Size'), [ref]$size); (Get-FieldValue $file 'FileLeafRef'), $size }
-    # Parallel downloads in a planned order (the PAM, 2026-11-24); one file at a time when the pool is off.
+    # Parallel downloads in a planned order (the Administrator, 2026-11-24); one file at a time when the pool is off.
     $downloads = New-DownloadPool $SiteUrl
     $script:ParallelState = $downloads.State
     # Starts the files of one folder (Invoke-GroupScan calls it).
@@ -8656,7 +8331,7 @@ function Test-TeamSite {
     <#
     .SYNOPSIS
       True when the connected site belongs to a team (a Microsoft 365 group): its folders are then channels.
-      The report names the folder column "Channel" for a team and "Folder" for a plain site (the PAM, 2026-11-20).
+      The report names the folder column "Channel" for a team and "Folder" for a plain site (the Administrator, 2026-11-20).
     .OUTPUTS
       [bool]
     #>
@@ -8668,15 +8343,15 @@ function Test-TeamSite {
 <#
 DriveScan.psm1 - scans a folder on a mapped or network drive (X:\<folder> or \\<server>\<share>\<folder>).
 
-  Purpose:     The PAM, 2026-11-21: the same check as for a SharePoint site, for one folder and all its subfolders on
+  Purpose:     The Administrator, 2026-11-21: the same check as for a SharePoint site, for one folder and all its subfolders on
                a drive the person can open. Nothing above the folder, no other share or server is touched ("No
                reconnaissance"). Files are opened read-only and shared, with the person's own Windows logon.
   Inputs:      the pasted folder path; the reader workers' set-up (New-ReaderPool).
-  Outputs:     report rows; the results workbook (Report.psm1 Publish-ScanReport).
+  Outputs:     report rows; the results workbook (ReportExport.psm1 Publish-ScanReport).
   How to run:  imported by Find-ChannelPII.ps1; Invoke-DriveScan runs when the pasted target is a folder path.
-  Depends on:  PiiDetectors.psm1, PiiMasking.psm1, TextExtract.psm1 (Test-SupportedFile), Report.psm1,
-               ScanMeter.psm1, ScanQueue.psm1, ChannelScan.psm1 (Get-ShownItem, Get-FileBytes, Get-FieldValue,
-               Get-SafeLink), Accountability.psm1 and SiteTarget.psm1 (Connect-TeamSite), imported first.
+  Depends on:  PiiEngine.psm1, TextExtract.psm1 (Test-SupportedFile), ReportExport.psm1,
+               ScanQueue.psm1, ChannelScan.psm1 (Get-ShownItem, Get-FileBytes, Get-FieldValue,
+               Get-SafeLink), Accountability.psm1 and ChannelScan.psm1 (Connect-TeamSite), imported first.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7, where the tests run on a temporary folder).
   Network:     only the given folder's server, through the person's Windows logon (SMB). In a folder of the own
                work OneDrive, or of a synced team library or a shortcut in it (Connect-OneDriveWeb): the site of that folder (from
@@ -8690,12 +8365,12 @@ DriveScan.psm1 - scans a folder on a mapped or network drive (X:\<folder> or \\<
 
 # Files directly in the pasted folder form this group (each subfolder is its own group).
 $script:DriveTopGroup = '(top of the folder)'
-# A file link in the folder is never read (the PAM, 2026-11-21: "No reconnaissance").
+# A file link in the folder is never read (the Administrator, 2026-11-21: "No reconnaissance").
 $script:FileLinkReason = 'A link to another file is not followed (it can lead outside the folder): check by hand'
 # OneDrive (and a SharePoint library synced by OneDrive) keeps its files and folders as reparse points too: they are the
-# item itself, not a link, so they are read (the PAM, 2026-11-23: scan a synced OneDrive folder when SharePoint sign-in
+# item itself, not a link, so they are read (the Administrator, 2026-11-23: scan a synced OneDrive folder when SharePoint sign-in
 # is blocked). A file whose data is only in the cloud has one of these attributes: RecallOnDataAccess (0x400000),
-# RecallOnOpen (0x40000) or Offline (0x1000). Ion asks before it reads such files (the PAM, 2026-11-23: "Ask each run").
+# RecallOnOpen (0x40000) or Offline (0x1000). Ion asks before it reads such files (the Administrator, 2026-11-23: "Ask each run").
 $script:OnlineOnlyAttributes = 0x441000
 $script:RecallAttributes = 0x440000   # set only by the cloud files system (Get-ReparseKind)
 $script:OnlineReason = 'Online only (OneDrive), not downloaded: check by hand, or run Ion again and answer y to download'
@@ -8730,7 +8405,7 @@ function Confirm-OneDriveRoot {
     .SYNOPSIS
       When the pasted folder is the person's own OneDrive folder (Get-OneDriveHomes), its top folders can be shortcuts to
       other teams' libraries ("Add shortcut to My files"), which look like normal folders. Ion says so, lists the top
-      folders (names masked) and asks before it scans them all (the PAM, 2026-11-23: "Warn, then ask"; the rule
+      folders (names masked) and asks before it scans them all (the Administrator, 2026-11-23: "Warn, then ask"; the rule
       "No reconnaissance"). A folder that holds the OneDrive folder (the user folder) is asked about too. Any other
       folder: true without a question.
     .PARAMETER Path
@@ -8778,7 +8453,7 @@ function Get-ReparseKind {
     # An online-only item has a Recall attribute (RecallOnDataAccess or RecallOnOpen, 0x440000): only the cloud files
     # system sets these, so a link cannot have them (Offline, 0x1000, can be set by hand: not used here; review of
     # PR 145). Its LinkType and Target are not read: the assumption (confidence medium) is that on Windows PowerShell
-    # 5.1 that read opens the file and OneDrive downloads it (device test 2026-11-27; the PAM, 2026-11-24: nothing
+    # 5.1 that read opens the file and OneDrive downloads it (device test 2026-11-27; the Administrator, 2026-11-24: nothing
     # goes to the disk).
     $attributes = 0; try { $attributes = [int]$Entry.Attributes } catch { $attributes = 0 }
     if (($attributes -band $script:RecallAttributes) -ne 0) { return 'Cloud' }
@@ -8840,7 +8515,7 @@ function Get-DriveGroups {
       The folder path.
     .OUTPUTS
       [hashtable] Groups (each @{ Name; Files }), Blocked (each @{ Folder; Reason }), Links (folder link paths),
-      FileLinks (file link paths: never read, they can lead outside the folder; the PAM, 2026-11-21).
+      FileLinks (file link paths: never read, they can lead outside the folder; the Administrator, 2026-11-21).
     #>
     param([string]$Root)
     $Root = $Root.TrimEnd('\', '/')
@@ -8937,7 +8612,7 @@ function Invoke-DriveFile {
     $info.Added = { param($hits) Find-PiiAddedVersion $ref $name $hits $who }.GetNewClosure()
     $info.Access = { Get-SharePointAccess $web }.GetNewClosure()
     if (-not $File.Online -and $File.Path) { Submit-ScanFile $Queue $info $name $null $File.Path; return $true }   # on the disk: read from the disk
-    # Online only, or on the web only: read from the web into memory (the PAM, 2026-11-24: nothing goes to the disk).
+    # Online only, or on the web only: read from the web into memory (the Administrator, 2026-11-24: nothing goes to the disk).
     try { $bytes = Get-FileBytes $ref $File.Size }
     catch {
         $rows.Add((New-ReportRow 'File' $channel $item $link $File.Modified 'NOT SCANNED' '' '' (Protect-PiiText ('Download failed: ' + $_.Exception.Message))))
@@ -8953,7 +8628,7 @@ function Add-OneDriveWebFiles {
     .SYNOPSIS
       Joins the web files of the pasted folder (Connect-OneDriveWeb) to its local files: a local file with a web copy
       gets it (Web, Origin: history, and the read of an online-only file); a web file that is not on the disk joins its
-      group (the PAM, 2026-11-24: read through PnP). The web side never adds a file outside the pasted folder.
+      group (the Administrator, 2026-11-24: read through PnP). The web side never adds a file outside the pasted folder.
     .PARAMETER Groups
       The groups of Get-DriveGroups (changed in place).
     .PARAMETER Web
@@ -9129,7 +8804,7 @@ function Invoke-DriveScan {
         $rows.Add((New-ReportRow 'Scan' '(all)' '(scan)' '' '' 'INCOMPLETE' '' '' ('Stopped early: ' + $reason)))
     }
     finally {
-        # "No" to "Scan now?": nothing was read, so nothing is saved (the PAM, 2026-11-21).
+        # "No" to "Scan now?": nothing was read, so nothing is saved (the Administrator, 2026-11-21).
         if ($run.ContainsKey('Declined') -and $run.Declined) { Write-Ui 'Not scanned: nothing was saved.' 'Accent' }
         else {
             Add-IncompleteRow -Rows $rows -Finished $finished
@@ -9141,11 +8816,11 @@ function Invoke-DriveScan {
     return $workbook
 }
 
-# ---- OneDrive on the web (plan step 4, the OneDrive hybrid; the PAM, 2026-11-24: docs/reviews/2026-11-24-onedrive-hybrid-design.md) ----
+# ---- OneDrive on the web (plan step 4, the OneDrive hybrid; the Administrator, 2026-11-24: docs/reviews/2026-11-24-onedrive-hybrid-design.md) ----
 
 # The OneDrive app's list of synced folders (one key per folder: MountPoint, UrlNamespace, FullRemotePath).
 $script:SyncEnginesKey = 'HKCU:\Software\SyncEngines\Providers\OneDrive'
-# All 3 folder kinds use the web (the PAM, 2026-11-24, with a probe first): probe 4 tested 'Home' (runs 1 and 2); probe 7
+# All 3 folder kinds use the web (the Administrator, 2026-11-24, with a probe first): probe 4 tested 'Home' (runs 1 and 2); probe 7
 # (2026-11-25, runs A and B) tested 'Library' and 'Shortcut' with the web folder from FullRemotePath (7 of 7 and 8 of 8
 # names on both sides): docs/reviews/2026-11-25-device-probe-7.md.
 # The list fields read for each web file (as ChannelScan.psm1 reads them for a team site).
@@ -9355,7 +9030,7 @@ function Invoke-SiteFiles {
     param([string]$SiteUrl, [string]$OutputFolder, [int]$MaxFileMB, [switch]$AutoStart)
     $path = $null; $clock = [Diagnostics.Stopwatch]::StartNew(); $rows = New-Object System.Collections.Generic.List[object]
     $scanned = 0; $selected = @()
-    $folderLabel = 'Folder'   # 'Channel' when the site belongs to a team (the PAM, 2026-11-20)
+    $folderLabel = 'Folder'   # 'Channel' when the site belongs to a team (the Administrator, 2026-11-20)
     $listName = ''            # what the header lists: 'Channels', 'Folders' or 'Libraries'
     $progress = @{ AutoStart = [bool]$AutoStart }   # Invoke-FileScan puts its live meter here
     $finished = $false   # set only after the last step; a cancelled run (Ctrl+C) skips 'catch' but not 'finally'
@@ -9420,7 +9095,7 @@ function Get-SiteHeader {
 function Open-ScanResult {
     <#
     .SYNOPSIS
-      Asks whether to open the saved workbook now (Enter = yes; the PAM, 2026-11-20) and opens it in Excel.
+      Asks whether to open the saved workbook now (Enter = yes; the Administrator, 2026-11-20) and opens it in Excel.
       Only the local file is opened; nothing is sent.
     .PARAMETER Path
       The workbook path, or empty when nothing was saved.
@@ -9498,9 +9173,9 @@ function Show-ListResult {
 }
 
 Write-Banner 'Ion - DoD365 PII Reporter' -Mark
-Write-Ui ('Build ' + $IonBuild) 'Muted'   # which Ion ran: the PAM copies this line with the results (2026-11-24)
+Write-Ui ('Build ' + $IonBuild) 'Muted'   # which Ion ran: the Administrator copies this line with the results (2026-11-24)
 Write-Ui 'Read-only. Every PII value found is masked on screen and in the results.' 'Muted'
-# What it scans and how to stop early (the PAM, 2026-11-21): a cancel still saves the results so far ('finally').
+# What it scans and how to stop early (the Administrator, 2026-11-21): a cancel still saves the results so far ('finally').
 Write-Ui ('Scans the files of Teams teams, SharePoint sites or drive folders you paste. Files over {0} MB are listed, not read.' -f $MaxFileMB) 'Muted'
 Write-Ui 'To stop early: Ctrl+C (in ISE: the red Stop button). The results so far are still saved.' 'Muted'
 $script:IonSignInTried = $false   # true after the first site sign-in is tried: the run then signs out once, at its end
@@ -9508,14 +9183,14 @@ $script:IonSignInTried = $false   # true after the first site sign-in is tried: 
 # ---- Ask for one or more targets, then scan each and save its workbook; then offer more, until the person presses Enter ----
 # A wrong paste is explained and asked again (Read-ScanTarget); a site the person cannot open is reported as "no access"
 # and nothing is saved for it (Connect-TeamSite); only the targets the person pastes are touched ("No reconnaissance").
-# One sign-in per host (the PAM, 2026-11-24): each site connects without a sign-out between sites (probe 3, second run);
+# One sign-in per host (the Administrator, 2026-11-24): each site connects without a sign-out between sites (probe 3, second run);
 # the run signs out once here, at its end, also after an error or Ctrl+C ('finally' runs on both).
 try {
     $targets = @(Read-ScanTargetList $SiteUrl 'What to scan')
-    # Speed, asked once per run (the PAM, 2026-11-25): Normal (Enter) = one reader per 2 processors (at most 8) and 2 downloads;
+    # Speed, asked once per run (the Administrator, 2026-11-25): Normal (Enter) = one reader per 2 processors (at most 8) and 2 downloads;
     # Fast = one reader per processor (at most 8) and 3 downloads.
     if ($targets.Count -gt 0) {
-        # A note on each mode, so the person can decide (from the PAM's words, 2026-11-25).
+        # A note on each mode, so the person can decide (from the Administrator's words, 2026-11-25).
         Write-Ui 'Choose how much of this computer Ion uses:' 'Text'
         Write-Ui '  Normal: uses less power and memory.' 'Muted'
         Write-Ui '  Fast:   resource intensive.' 'Muted'
@@ -9525,7 +9200,7 @@ try {
     while ($targets.Count -gt 0) {
         $list = $targets.Count -gt 1
         $go = $true
-        if ($list) {   # several: listed and asked once (the PAM, 2026-11-24: one workbook per site)
+        if ($list) {   # several: listed and asked once (the Administrator, 2026-11-24: one workbook per site)
             Write-Ui ('{0} to scan, one after the other (sign-in windows open only when needed):' -f $targets.Count) 'Label'
             $n = 0; foreach ($t in $targets) { $n++; Write-Ui ('{0,2}. {1}' -f $n, (Get-TargetLabel $t)) 'Text' }
             $answer = Read-Host ('Scan these {0} now? [Y/n]' -f $targets.Count)
@@ -9546,7 +9221,7 @@ finally {
         catch { Write-Verbose 'Already signed out.' }  # nothing to sign out of: not an error for the person
     }
 }
-# The CAC sign-in of the window lasts until ISE closes (probe 3, second run): the PAM, 2026-11-24, chose this text.
+# The CAC sign-in of the window lasts until ISE closes (probe 3, second run): the Administrator, 2026-11-24, chose this text.
 if ($script:IonSignInTried) { Write-Ui 'Ion is done: signed out. Close Windows PowerShell ISE to end the CAC session.' 'Good' } else { Write-Ui 'Ion is done.' 'Good' }
 
 # ==== Clean-up ====

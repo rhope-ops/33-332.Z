@@ -9,8 +9,8 @@
 #   audit-<key>: <value>    a setting of the audit, for example `audit-ignore: ref/**`
 #                           (the keys and their defaults: the header of scripts/check_settings.py; a `code-` change
 #                           needs a docs/DECISIONS.md row that names this file)
-# An allowed string or a skip line is added only on the PAM's request, never by an agent to get past a block (AGENTS.md "Guards and checks").
-# This project: DoD/M365 data, so the DoD tier and the strict code standard (the PAM, 2026-11-20; docs/DECISIONS.md).
+# An allowed string or a skip line is added only on the Administrator's request, never by an agent to get past a block (AGENTS.md "Guards and checks").
+# This project: DoD/M365 data, so the DoD tier and the strict code standard (the Administrator, 2026-11-20; docs/DECISIONS.md).
 profile: dod
 code-max-line-chars: 200
 code-c1-safety: on
@@ -20,13 +20,14 @@ code-generated: paste/*.ps1
 # this is a DoD repo, so the kit's DoD security files sync here.
 code-strict-gate: on
 dod-security: on
+nipr-safe: on
 audit-ignore: paste/**
-# SharePoint host names: usaf.dps.mil is the site address people type; sharepoint-mil.us is the tenant host (the PAM, 2026-11-20).
+# SharePoint host names: usaf.dps.mil is the site address people type; sharepoint-mil.us is the tenant host (the Administrator, 2026-11-20).
 sharepoint-mil.us
 usaf.dps.mil
-# A tool's scan report holds masked PII locations: never commit one (the PAM, 2026-11-20).
+# A tool's scan report holds masked PII locations: never commit one (the Administrator, 2026-11-20).
 block: PIIScan-*
-# The published rule source (publicly releasable, the PAM, 2026-11-20): its office mailboxes, .mil links and markings are
+# The published rule source (publicly releasable, the Administrator, 2026-11-20): its office mailboxes, .mil links and markings are
 # the publication's own text, not project data. The copies are pinned in ref/SHA256SUMS.
 skip: ref/afi33-332.txt
 skip: ref/afi33-332.pdf
