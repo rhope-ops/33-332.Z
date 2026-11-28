@@ -1,5 +1,5 @@
 <#
-  Ion - DoD365 PII Reporter, build a1681c0b (ion; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
+  Ion - DoD365 PII Reporter, build 373978d5 (ion; GENERATED from src/ by scripts/build_paste.py: do not edit this text)
 
   HOW TO RUN
     1. Optional: read this text first (Open the script shows it as a .txt in your browser).
@@ -21,7 +21,7 @@
 
   Built from these files; to change it, change them and rebuild with: python3 scripts/build_paste.py
     src/PiiEngine.psm1, sha256 625207b881f8
-    src/ContainerText.psm1, sha256 bc86f4fc4a64
+    src/ContainerText.psm1, sha256 9e0f6c964401
     src/PdfExtract.psm1, sha256 d2da613a2158
     src/TextExtract.psm1, sha256 14837c41b6e8
     src/ReaderPool.psm1, sha256 a3de05ae68ad
@@ -29,7 +29,7 @@
     src/ScanQueue.psm1, sha256 70af40b532b6
     src/Accountability.psm1, sha256 9c5d9f47bef7
     src/ChannelScan.psm1, sha256 2e12f4ce83dd
-    src/DriveScan.psm1, sha256 0220b400e05d
+    src/DriveScan.psm1, sha256 09a5ea13a08c
     src/Find-ChannelPII.ps1, sha256 7ee4d5901963
 
   Read-only: it never changes, moves or deletes anything in Teams or SharePoint. Every value found is masked.
@@ -67,12 +67,12 @@ $SiteUrl = ''            # the team's Teams link, or its site https://usaf.dps.m
 $OutputFolder = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Ion')   # results: a folder per site, then per day
 $MaxFileMB = 25          # files larger than this are reported as NOT SCANNED
 
-$IonPasteHash = '725002da6568b7de7ef7fc4d61cfcb76e822d1813231d11c35b57508ba04a04f'   # the SHA-256 of the text from the line Paste check to the end (do not edit)
+$IonPasteHash = 'c3edcbc0f9b36569d0618e94d0c9cae3f9b3c2165b9755cefce0fe8fd0afa29d'   # the SHA-256 of the text from the line Paste check to the end (do not edit)
 
 # ==== Paste check ==== (the text from this line to the end must be the published text, or nothing runs)
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
-$IonBuild = 'a1681c0b'       # the build ID: Ion shows it at the start (do not edit)
+$IonBuild = '373978d5'       # the build ID: Ion shows it at the start (do not edit)
 $IonPasteCheck = 'not read'
 $pasteText = ''
 try { $pastePath = $PSCommandPath } catch { $pastePath = '' }   # no script path: read the ISE pane
@@ -1234,7 +1234,7 @@ ContainerText.psm1 - text extraction from images (Windows OCR), old Office/Outlo
                .xls, .ppt and .msg files, and .zip archives / .eml e-mail parts, with roster header promotion.
   Inputs:      file bytes (or scan images / HTML / XML nodes).
   Outputs:     text strings and archive/e-mail parts lists.
-  Depends on:  nothing (TextExtract.psm1 and PdfExtract.psm1 call into it).
+  Depends on:  PiiEngine.psm1 (Get-PiiSpan), imported first (TextExtract.psm1 and PdfExtract.psm1 call into ContainerText.psm1).
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7).
   Network:     none.
@@ -8352,7 +8352,7 @@ DriveScan.psm1 - scans a folder on a mapped or network drive (X:\<folder> or \\<
   Outputs:     report rows; the results workbook (ReportExport.psm1 Publish-ScanReport).
   How to run:  imported by Find-ChannelPII.ps1; Invoke-DriveScan runs when the pasted target is a folder path.
   Depends on:  PiiEngine.psm1, TextExtract.psm1 (Test-SupportedFile), ReportExport.psm1,
-               ScanQueue.psm1, ScanQueue.psm1, ChannelScan.psm1 (Get-ShownItem, Get-FileBytes, Get-FieldValue,
+               ScanQueue.psm1, ChannelScan.psm1 (Get-ShownItem, Get-FileBytes, Get-FieldValue,
                Get-SafeLink), Accountability.psm1 and ChannelScan.psm1 (Connect-TeamSite), imported first.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7, where the tests run on a temporary folder).
   Network:     only the given folder's server, through the person's Windows logon (SMB). In a folder of the own

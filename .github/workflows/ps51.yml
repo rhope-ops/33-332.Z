@@ -27,10 +27,11 @@ jobs:
         with:
           persist-credentials: false
       - name: Check Windows PowerShell 5.1 version
+        shell: powershell
         run: |
           $PSVersionTable.PSVersion
           if ($PSVersionTable.PSVersion.Major -ne 5) { throw "expected Windows PowerShell 5.1, got $($PSVersionTable.PSVersion)" }
       - name: Run tests on Windows PowerShell 5.1
         shell: cmd
-        run: |
-          powershell.exe -NoProfile -Command "& { Set-StrictMode -Version 2.0; & '.\tests\Run-Tests.ps1' }"
+        run: powershell.exe -NoProfile -File .\tests\Run-Tests.ps1
+

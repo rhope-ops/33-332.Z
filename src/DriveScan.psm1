@@ -8,7 +8,7 @@ DriveScan.psm1 - scans a folder on a mapped or network drive (X:\<folder> or \\<
   Outputs:     report rows; the results workbook (ReportExport.psm1 Publish-ScanReport).
   How to run:  imported by Find-ChannelPII.ps1; Invoke-DriveScan runs when the pasted target is a folder path.
   Depends on:  PiiEngine.psm1, TextExtract.psm1 (Test-SupportedFile), ReportExport.psm1,
-               ScanQueue.psm1, ScanQueue.psm1, ChannelScan.psm1 (Get-ShownItem, Get-FileBytes, Get-FieldValue,
+               ScanQueue.psm1, ChannelScan.psm1 (Get-ShownItem, Get-FileBytes, Get-FieldValue,
                Get-SafeLink), Accountability.psm1 and ChannelScan.psm1 (Connect-TeamSite), imported first.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7, where the tests run on a temporary folder).
   Network:     only the given folder's server, through the person's Windows logon (SMB). In a folder of the own

@@ -5,7 +5,7 @@ ContainerText.psm1 - text extraction from images (Windows OCR), old Office/Outlo
                .xls, .ppt and .msg files, and .zip archives / .eml e-mail parts, with roster header promotion.
   Inputs:      file bytes (or scan images / HTML / XML nodes).
   Outputs:     text strings and archive/e-mail parts lists.
-  Depends on:  nothing (TextExtract.psm1 and PdfExtract.psm1 call into it).
+  Depends on:  PiiEngine.psm1 (Get-PiiSpan), imported first (TextExtract.psm1 and PdfExtract.psm1 call into ContainerText.psm1).
   How to run:  imported by Find-ChannelPII.ps1; not run on its own.
   Run target:  Windows PowerShell 5.1 (also PowerShell 7).
   Network:     none.
